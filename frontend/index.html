@@ -558,7 +558,7 @@
               <div class="panel-heading">
                 <div>
                   <h2>账户设置</h2>
-                  <p id="paper-config-note">首次结算前设置初始资金</p>
+                  <p id="paper-config-note">初始资金与每项费用均可自定义</p>
                 </div>
               </div>
               <form id="paper-config-form" class="paper-config">
@@ -569,14 +569,33 @@
                     min="10000"
                     max="100000000"
                     step="1000"
-                    value="100000"
+                    value="1000000"
                     required /></label
                 ><label
                   >AI 验证通过后<select id="paper-improvement-mode">
                     <option value="auto">自动启用新策略</option>
                     <option value="manual">人工选择启用</option>
                   </select></label
-                ><button class="secondary" type="submit" data-paper-operation>
+                >
+                <fieldset class="paper-fee-settings">
+                  <legend>费用构成与自定义值</legend>
+                  <div class="fee-settings-heading">
+                    <p>费率按万分之输入，分项相加；最低佣金仅适用于佣金项。</p>
+                    <span class="outline-tag" id="paper-fee-version"
+                      >费用配置 v1</span
+                    >
+                  </div>
+                  <div id="paper-fee-controls" class="paper-fee-controls"></div>
+                  <p id="paper-fee-summary" class="fee-settings-note"></p>
+                  <button
+                    type="button"
+                    id="paper-fee-defaults"
+                    class="text-button"
+                  >
+                    恢复图中默认费用
+                  </button>
+                </fieldset>
+                <button class="secondary" type="submit" data-paper-operation>
                   保存设置
                 </button>
               </form>

@@ -1,3 +1,4 @@
+import { DEFAULT_FEES, FEE_FIELDS } from "../shared/fees.js";
 const $ = (id) => document.getElementById(id);
 const escape = (value) =>
   String(value ?? "").replace(
@@ -12,6 +13,12 @@ const money = (cents) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+const metricMoney = (cents) =>
+  Math.abs(cents || 0) >= 1e10
+    ? `${(cents / 1e10).toFixed(2)} 亿`
+    : Math.abs(cents || 0) >= 1e6
+      ? `${(cents / 1e6).toFixed(2)} 万`
+      : money(cents);
 const percent = (value) =>
   value === null || value === undefined
     ? "—"
@@ -35,7 +42,8 @@ const statusNames = {
   RETIRED: "已归档",
 };
 let data = null,
-  busy = false;
+  busy = false,
+  settingsDirty = false;
 async function request(path, body) {
   const response = await fetch(path, {
     ...(body === undefined
@@ -53,6 +61,30 @@ async function request(path, body) {
 }
 function message(value) {
   $("paper-message").textContent = value;
+}
+const feeDisplay = (key, value) =>
+  key === "commission_min" ? value : Number((value * 10000).toFixed(5));
+function fillFeeInputs(config) {
+  for (const { key } of FEE_FIELDS)
+    $(`fee-${key}`).value = feeDisplay(key, config[key]);
+}
+function feeSummary(config) {
+  return FEE_FIELDS.map(
+    ({ key, label, unit }) =>
+      `${label} ${feeDisplay(key, config[key])}${unit === "元" ? " 元" : " / 万"}`,
+  ).join(" · ");
+}
+function breakdown(fill) {
+  const labels = {
+    commission: "佣金",
+    stamp: "印花税",
+    handling: "经手费",
+    regulatory: "证管费",
+    transfer: "过户费",
+  };
+  return Object.entries(labels)
+    .map(([key, label]) => `${label} ¥ ${money(fill.feeBreakdown[key] || 0)}`)
+    .join("；");
 }
 function chart(rows) {
   if (!rows.length)
@@ -97,13 +129,13 @@ function render() {
   const metrics = [
     [
       "账户总权益",
-      `¥ ${money(book.equityCents)}`,
+      `¥ ${metricMoney(book.equityCents)}`,
       `初始资金 ¥ ${money(book.initialCashCents)}`,
       "",
     ],
     [
       "当日盈亏",
-      `¥ ${money(equity?.dailyPnlCents)}`,
+      `¥ ${metricMoney(equity?.dailyPnlCents)}`,
       `当日收益 ${percent(equity?.dailyReturn ?? 0)}`,
       tone(equity?.dailyPnlCents),
     ],
@@ -156,7 +188,7 @@ function render() {
     ? `${plan.signalDate} 盘后制定 → 下一交易日`
     : "尚未生成计划";
   $("paper-plan-meta").textContent = plan
-    ? `策略 ${plan.strategyVersion}${plan.sourceSnapshotMissing ? " · 评分缺失，仅执行风险保护" : ""} · 目标仓位 ${percent(plan.targetExposure)} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
+    ? `策略 ${plan.strategyVersion} · 费用 v${plan.feeConfigVersion || 0}${plan.sourceSnapshotMissing ? " · 评分缺失，仅执行风险保护" : ""} · 目标仓位 ${percent(plan.targetExposure)} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
     : "当日评分保存后，生成下一交易日计划。";
   $("paper-plan-rows").innerHTML = plan?.orders.length
     ? plan.orders
@@ -174,7 +206,7 @@ function render() {
         .sort((a, b) => b.date.localeCompare(a.date) || b.sequence - a.sequence)
         .map(
           (fill) =>
-            `<tr><td>${escape(fill.date)}<span class="stock-code">${escape(fill.time)}</span></td><td><strong>${escape(fill.name)}</strong><span class="stock-code">${escape(fill.code)}</span></td><td>${actionNames[fill.action]} · ${fill.side === "BUY" ? "买" : "卖"}</td><td>${fill.quantity}</td><td>${money(fill.priceCents)}</td><td>${money(fill.feeCents)}</td><td class="${tone(fill.cashDeltaCents)}">${money(fill.cashDeltaCents)}</td><td>${fill.dataQuality === "minute" ? "分钟采样" : "开盘假设"}</td></tr>`,
+            `<tr><td>${escape(fill.date)}<span class="stock-code">${escape(fill.time)}</span></td><td><strong>${escape(fill.name)}</strong><span class="stock-code">${escape(fill.code)}</span></td><td>${actionNames[fill.action]} · ${fill.side === "BUY" ? "买" : "卖"}</td><td>${fill.quantity}</td><td>${money(fill.priceCents)}</td><td title="${escape(breakdown(fill))}"><details class="fee-breakdown"><summary>¥ ${money(fill.feeCents)}</summary><span>${escape(breakdown(fill))}</span></details><span class="stock-code">费用 v${fill.feeConfigVersion || 0}</span></td><td class="${tone(fill.cashDeltaCents)}">${money(fill.cashDeltaCents)}</td><td>${fill.dataQuality === "minute" ? "分钟采样" : "开盘假设"}</td></tr>`,
         )
         .join("")
     : '<tr><td colspan="8"><div class="empty compact">尚无成交记录。未满足成交条件的计划不会记为收益。</div></td></tr>';
@@ -195,12 +227,19 @@ function render() {
       )
       .join("") ||
     '<div class="small-muted">尚无 AI 候选版本，持续积累真实数据。</div>';
-  $("paper-initial-capital").value = book.initialCashCents / 100;
-  $("paper-initial-capital").disabled = book.settlementCount > 0;
-  $("paper-improvement-mode").value = book.improvementMode || "auto";
-  $("paper-config-note").textContent = book.settlementCount
-    ? "初始资金已冻结；AI 启用方式可以调整。"
-    : "首次结算前可设置初始资金，之后固定收益基准。";
+  if (!settingsDirty)
+    $("paper-initial-capital").value = book.initialCashCents / 100;
+  $("paper-initial-capital").disabled = !data.canEditCapital;
+  if (!settingsDirty) fillFeeInputs(data.feeConfig);
+  $("paper-fee-version").textContent =
+    `费用配置 v${book.feeConfigVersion || 0}`;
+  $("paper-fee-summary").textContent =
+    `下一计划：${plan?.feeConfig ? feeSummary(plan.feeConfig) : "旧版固定费用"}。新设置随计划冻结，历史成交按当时配置核验。`;
+  if (!settingsDirty)
+    $("paper-improvement-mode").value = book.improvementMode || "auto";
+  $("paper-config-note").textContent = data.canEditCapital
+    ? "交易计划开始执行前可自定义初始资金；费用随时可调整。"
+    : "初始资金作为收益基准已冻结；费用仍可自定义，适用于后续新计划。";
   document.querySelectorAll("[data-activate]").forEach(
     (button) =>
       (button.onclick = () =>
@@ -243,6 +282,18 @@ async function perform(task) {
   }
 }
 export function initializePaper() {
+  $("paper-config-form").addEventListener("input", () => {
+    settingsDirty = true;
+  });
+  $("paper-fee-controls").innerHTML = FEE_FIELDS.map(
+    ({ key, label, unit, direction }) =>
+      `<label for="fee-${key}">${label}（${unit}）<input id="fee-${key}" type="number" min="0" max="${key === "commission_min" ? 10000 : 100}" step="${key === "commission_min" ? "0.01" : "0.001"}" value="${feeDisplay(key, DEFAULT_FEES[key])}" required><span>${direction}</span></label>`,
+  ).join("");
+  $("paper-fee-defaults").onclick = () => {
+    fillFeeInputs(DEFAULT_FEES);
+    settingsDirty = true;
+    message("已填入图中默认费用，保存设置后生效。");
+  };
   $("paper-run").onclick = () =>
     perform(async () => {
       const result = await request("/api/run-daily", {});
@@ -270,12 +321,21 @@ export function initializePaper() {
     event.preventDefault();
     void perform(async () => {
       await request("/api/paper/settings", {
-        ...(data?.book.settlementCount
-          ? {}
-          : { initialCapital: Number($("paper-initial-capital").value) }),
+        ...(data?.canEditCapital
+          ? { initialCapital: Number($("paper-initial-capital").value) }
+          : {}),
         improvementMode: $("paper-improvement-mode").value,
+        fees: Object.fromEntries(
+          FEE_FIELDS.map(({ key }) => [
+            key,
+            key === "commission_min"
+              ? Number($(`fee-${key}`).value)
+              : Number($(`fee-${key}`).value) / 10000,
+          ]),
+        ),
       });
-      return "账户设置已保存";
+      settingsDirty = false;
+      return "资金与费用设置已保存；新计划采用新配置，已执行记录保留原配置。";
     });
   };
   window.addEventListener("paper-updated", refresh);

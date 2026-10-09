@@ -60,3 +60,19 @@ export const paperRuns = sqliteTable("paper_runs", {
   status: text("status").notNull(),
   payload: text("payload").notNull(),
 });
+export const paperConfigurationHistory = sqliteTable(
+  "paper_configuration_history",
+  {
+    id: text("id").primaryKey(),
+    createdAt: text("created_at").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+  },
+);
+export const paperPlanRevisions = sqliteTable("paper_plan_revisions", {
+  id: text("id").primaryKey(),
+  signalDate: text("signal_date").notNull(),
+  createdAt: text("created_at").notNull(),
+  payload: text("payload").notNull(),
+  digest: text("digest").notNull(),
+});

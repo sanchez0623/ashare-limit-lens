@@ -159,7 +159,7 @@ export async function api(request, env) {
       if (
         !body ||
         Object.keys(body).some(
-          (key) => !["initialCapital", "improvementMode"].includes(key),
+          (key) => !["initialCapital", "improvementMode", "fees"].includes(key),
         )
       )
         return json({ error: "不支持的账户设置" }, 400);
@@ -183,18 +183,34 @@ export async function api(request, env) {
           "realizedPnlCents",
           "strategyVersion",
           "dataQuality",
+          "commissionCents",
+          "stampTaxCents",
+          "handlingCents",
+          "regulatoryCents",
+          "transferCents",
+          "feeConfigVersion",
         ];
         const csv =
           "\ufeff" +
           [
             fields.join(","),
-            ...bundle.ledger.map((row) =>
-              fields
-                .map(
-                  (key) => `"${String(row[key] ?? "").replaceAll('"', '""')}"`,
-                )
-                .join(","),
-            ),
+            ...bundle.ledger
+              .map((fill) => ({
+                ...fill,
+                commissionCents: fill.feeBreakdown.commission,
+                stampTaxCents: fill.feeBreakdown.stamp,
+                handlingCents: fill.feeBreakdown.handling || 0,
+                regulatoryCents: fill.feeBreakdown.regulatory || 0,
+                transferCents: fill.feeBreakdown.transfer,
+              }))
+              .map((row) =>
+                fields
+                  .map(
+                    (key) =>
+                      `"${String(row[key] ?? "").replaceAll('"', '""')}"`,
+                  )
+                  .join(","),
+              ),
           ].join("\r\n");
         return new Response(csv, {
           headers: {

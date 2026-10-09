@@ -35,16 +35,18 @@ import {
 } from "./fixtures/trading.mjs";
 
 function entered() {
-  return executePlan(newBook(), plan([order()]), dataset(dateAt(1)));
+  return executePlan(newBook(100000), plan([order()]), dataset(dateAt(1)));
 }
 test("交易费用使用分为单位，买卖印花税方向正确", () => {
   assert.deepEqual(transactionFees(1000000, "BUY"), {
     commission: 500,
     transfer: 10,
     stamp: 0,
-    total: 510,
+    handling: 34,
+    regulatory: 20,
+    total: 564,
   });
-  assert.equal(transactionFees(1000000, "SELL").total, 1010);
+  assert.equal(transactionFees(1000000, "SELL").total, 1064);
 });
 test("建仓、加仓、减仓、清仓可核对现金与已实现盈亏", () => {
   let result = entered(),
@@ -149,7 +151,7 @@ test("做 T 第二腿未触发时保留真实敞口，不虚构完成收益", ()
 });
 test("涨停不买、跌停不卖；不满足价格或成交量时跳过或部分成交", () => {
   const up = executePlan(
-    newBook(),
+    newBook(100000),
     plan([order("OPEN", 1000, { maxPriceCents: 1200 })]),
     dataset(dateAt(1), "600001", { open: 1100 }),
   );
@@ -163,7 +165,7 @@ test("涨停不买、跌停不卖；不满足价格或成交量时跳过或部�
   const limited = bars();
   limited.forEach((bar) => (bar.volumeShares = 10000));
   const partial = executePlan(
-    newBook(),
+    newBook(100000),
     plan([order()]),
     dataset(dateAt(1), "600001", { minutes: limited }),
   );
@@ -186,13 +188,17 @@ test("事前保护订单只卖旧仓，触发后取消做 T", () => {
 test("禁止用当日评分或晚于开盘的计划；缺失持仓价与除权暂停结算", () => {
   assert.throws(
     () =>
-      executePlan(newBook(), plan([order()], dateAt(1)), dataset(dateAt(1))),
+      executePlan(
+        newBook(100000),
+        plan([order()], dateAt(1)),
+        dataset(dateAt(1)),
+      ),
     /开盘前/,
   );
   assert.throws(
     () =>
       executePlan(
-        newBook(),
+        newBook(100000),
         { ...plan([order()]), createdAt: `${dateAt(1)}T01:15:00.000Z` },
         dataset(dateAt(1)),
       ),
@@ -218,7 +224,7 @@ test("禁止用当日评分或晚于开盘的计划；缺失持仓价与除权�
 });
 test("规划覆盖建仓、加仓、减仓、清仓与双向 T，低情绪不强行建仓", () => {
   assert.equal(
-    createPlan(snapshot(dateAt(0)), newBook(), BASE_STRATEGY, "v", "now")
+    createPlan(snapshot(dateAt(0)), newBook(100000), BASE_STRATEGY, "v", "now")
       .orders[0].action,
     "OPEN",
   );
@@ -256,7 +262,7 @@ test("规划覆盖建仓、加仓、减仓、清仓与双向 T，低情绪不强
   assert.equal(
     createPlan(
       { ...reverse, emotion: 20 },
-      newBook(),
+      newBook(100000),
       BASE_STRATEGY,
       "v",
       "now",

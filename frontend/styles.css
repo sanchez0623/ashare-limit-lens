@@ -1864,3 +1864,88 @@ table {
     gap: 16px;
   }
 }
+
+.paper-fee-settings {
+  border: 1px solid #dce3eb;
+  border-radius: 8px;
+  width: 100%;
+  padding: 18px 20px;
+  margin: 0;
+  min-width: 0;
+}
+.paper-fee-settings legend {
+  font-size: 14px;
+  font-weight: 600;
+  color: #21384b;
+  padding: 0 8px;
+}
+.fee-settings-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.fee-settings-heading p,
+.fee-settings-note {
+  font-size: 12px;
+  color: #758396;
+  line-height: 1.8;
+  margin: 0;
+}
+.paper-fee-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 24px;
+}
+.paper-config .paper-fee-controls input {
+  min-width: 0;
+  width: 100%;
+  font-size: 14px;
+}
+.paper-fee-controls span {
+  font-size: 12px;
+  color: #8896a6;
+}
+.fee-settings-note {
+  margin-top: 18px;
+}
+.paper-fee-settings .text-button {
+  margin-top: 8px;
+}
+.fee-breakdown {
+  max-width: 200px;
+  white-space: normal;
+  line-height: 1.7;
+}
+.fee-breakdown summary {
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fee-breakdown > span {
+  display: block;
+  color: #758396;
+  font-size: 12px;
+  margin-top: 8px;
+  min-width: 160px;
+}
+@media (max-width: 650px) {
+  .paper-fee-settings {
+    padding: 16px 12px;
+  }
+  .paper-fee-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 12px;
+  }
+  .paper-config .paper-fee-controls label {
+    font-size: 12px;
+  }
+  .fee-settings-heading p {
+    max-width: 100%;
+  }
+}
+
+#paper-metrics .metric-value {
+  font-size: clamp(22px, 2.2vw, 32px);
+}

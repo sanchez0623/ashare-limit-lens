@@ -1,4 +1,9 @@
 import { createPlan, executePlan, newBook, BASE_STRATEGY } from "./trading.js";
+import {
+  DEFAULT_INITIAL_CAPITAL,
+  DEFAULT_FEES,
+  normalizeFees,
+} from "../../shared/fees.js";
 
 const RANGES = {
   minScore: [70, 95],
@@ -62,8 +67,13 @@ export function validateProposal(output, base = BASE_STRATEGY) {
     rationale: output.rationale,
   };
 }
-export function replayStrategy(pairs, strategy, initialCapital = 100000) {
-  let book = newBook(initialCapital);
+export function replayStrategy(
+  pairs,
+  strategy,
+  initialCapital = DEFAULT_INITIAL_CAPITAL,
+  feeConfig = DEFAULT_FEES,
+) {
+  let book = newBook(initialCapital, feeConfig);
   const equities = [],
     fills = [];
   let covered = true;
@@ -120,9 +130,20 @@ export function validateCandidate(
   base,
   candidate,
   initialCapital,
+  feeConfig = DEFAULT_FEES,
 ) {
-  const baseline = replayStrategy(holdoutPairs, base, initialCapital);
-  const proposed = replayStrategy(holdoutPairs, candidate, initialCapital);
+  const baseline = replayStrategy(
+    holdoutPairs,
+    base,
+    initialCapital,
+    feeConfig,
+  );
+  const proposed = replayStrategy(
+    holdoutPairs,
+    candidate,
+    initialCapital,
+    feeConfig,
+  );
   const checks = {
     trainingSize: trainingPairs.length >= 20,
     holdoutSize: holdoutPairs.length >= 10,
@@ -144,6 +165,7 @@ export function validateCandidate(
     checks,
     baseline,
     candidate: proposed,
+    feeConfig: normalizeFees(feeConfig),
     trainingStart: trainingPairs[0]?.dataset.date,
     trainingEnd: trainingPairs.at(-1)?.dataset.date,
     validationStart: holdoutPairs[0]?.dataset.date,

@@ -1,4 +1,11 @@
 import { clamp, PRESETS } from "../../shared/scoring.js";
+import {
+  DEFAULT_INITIAL_CAPITAL,
+  DEFAULT_FEES,
+  LEGACY_FEES,
+  normalizeFees,
+  feesForBook,
+} from "../../shared/fees.js";
 
 export const ACTIONS = Object.freeze({
   OPEN: "建仓",
@@ -27,10 +34,6 @@ export const RISK_LIMITS = Object.freeze({
   maxPositionWeight: 0.2,
   maxDrawdown: 0.1,
   maxParticipation: 0.01,
-  commissionRate: 0.00025,
-  minCommissionCents: 500,
-  transferRate: 0.00001,
-  stampDutyRate: 0.0005,
   slippageBps: 10,
 });
 export const toCents = (value) => Math.round(Number(value) * 100);
@@ -45,7 +48,10 @@ export const availableQuantity = (position, date) =>
 export const costBasis = (position) =>
   position.lots.reduce((sum, lot) => sum + lot.costCents, 0);
 
-export function newBook(initialCapital = 100000) {
+export function newBook(
+  initialCapital = DEFAULT_INITIAL_CAPITAL,
+  feeConfig = DEFAULT_FEES,
+) {
   if (
     !Number.isFinite(initialCapital) ||
     initialCapital < 10000 ||
@@ -65,18 +71,42 @@ export function newBook(initialCapital = 100000) {
     peakEquityCents: initialCashCents,
     activeStrategy: "baseline-v1",
     settlementCount: 0,
+    feeModel: "itemized-v2",
+    feeConfig: normalizeFees(feeConfig),
+    feeConfigVersion: 1,
   };
 }
 
-export function transactionFees(notionalCents, side, limits = RISK_LIMITS) {
+export function transactionFees(
+  notionalCents,
+  side,
+  config = DEFAULT_FEES,
+  model = "itemized-v2",
+) {
   const commission = Math.max(
-    limits.minCommissionCents,
-    Math.round(notionalCents * limits.commissionRate),
+    Math.round(config.commission_min * 100),
+    Math.round(notionalCents * config.commission_rate),
   );
-  const transfer = Math.round(notionalCents * limits.transferRate);
+  const transfer = Math.round(notionalCents * config.transfer_fee);
   const stamp =
-    side === "SELL" ? Math.round(notionalCents * limits.stampDutyRate) : 0;
-  return { commission, transfer, stamp, total: commission + transfer + stamp };
+    side === "SELL" ? Math.round(notionalCents * config.stamp_tax) : 0;
+  if (model === "legacy-v1")
+    return {
+      commission,
+      transfer,
+      stamp,
+      total: commission + transfer + stamp,
+    };
+  const handling = Math.round(notionalCents * config.handling_fee);
+  const regulatory = Math.round(notionalCents * config.regulatory_fee);
+  return {
+    commission,
+    transfer,
+    stamp,
+    handling,
+    regulatory,
+    total: commission + transfer + stamp + handling + regulatory,
+  };
 }
 
 export function scoreSignals(snapshot, strategy) {
@@ -222,7 +252,14 @@ export function createPlan(
         maxPriceCents: Math.round(referenceCents * (1 + strategy.maxBuyGap)),
         reason: "高分信号延续，补足目标仓位",
       });
-      plannedBudget += addQuantity * referenceCents;
+      plannedBudget +=
+        addQuantity * referenceCents +
+        transactionFees(
+          addQuantity * referenceCents,
+          "BUY",
+          feesForBook(book),
+          book.feeModel || "legacy-v1",
+        ).total;
       plannedExposure += addQuantity * referenceCents;
       continue;
     }
@@ -295,12 +332,20 @@ export function createPlan(
     });
     plannedBudget +=
       quantity * referenceCents +
-      transactionFees(quantity * referenceCents, "BUY").total;
+      transactionFees(
+        quantity * referenceCents,
+        "BUY",
+        feesForBook(book),
+        book.feeModel || "legacy-v1",
+      ).total;
     plannedExposure += quantity * referenceCents;
     opened++;
   }
   return {
     signalDate: snapshot.date,
+    feeModel: book.feeModel || "legacy-v1",
+    feeConfig: structuredClone(feesForBook(book)),
+    feeConfigVersion: book.feeConfigVersion || 0,
     createdAt,
     strategyVersion,
     strategy,
@@ -344,6 +389,9 @@ export function defensivePlan(
   const drawdown = 1 - book.equityCents / book.peakEquityCents;
   return {
     signalDate: date,
+    feeModel: book.feeModel || "legacy-v1",
+    feeConfig: structuredClone(feesForBook(book)),
+    feeConfigVersion: book.feeConfigVersion || 0,
     createdAt,
     strategyVersion,
     strategy,
@@ -385,6 +433,8 @@ export function defensivePlan(
 export function executePlan(inputBook, plan, dataset) {
   const book = structuredClone(inputBook);
   const date = dataset.date;
+  const feeConfig = plan?.feeConfig || LEGACY_FEES;
+  const feeModel = plan?.feeModel || "legacy-v1";
   if (
     plan &&
     (plan.signalDate >= date || plan.createdAt >= `${date}T01:15:00.000Z`)
@@ -579,7 +629,8 @@ export function executePlan(inputBook, plan, dataset) {
       while (
         quantity >= 100 &&
         quantity * priceCents +
-          transactionFees(quantity * priceCents, side).total >
+          transactionFees(quantity * priceCents, side, feeConfig, feeModel)
+            .total >
           cap
       )
         quantity -= 100;
@@ -593,7 +644,7 @@ export function executePlan(inputBook, plan, dataset) {
             : "现金、仓位或流动性约束不足一手",
       };
     const notional = quantity * priceCents;
-    const fees = transactionFees(notional, side);
+    const fees = transactionFees(notional, side, feeConfig, feeModel);
     let basisCents = 0;
     let realizedPnlCents = 0;
     const cashDeltaCents =
@@ -641,6 +692,13 @@ export function executePlan(inputBook, plan, dataset) {
       notionalCents: notional,
       feeCents: fees.total,
       feeBreakdown: fees,
+      ...(feeModel === "itemized-v2"
+        ? {
+            feeModel,
+            feeConfig: structuredClone(feeConfig),
+            feeConfigVersion: plan.feeConfigVersion || 1,
+          }
+        : {}),
       cashDeltaCents,
       basisCents,
       realizedPnlCents,

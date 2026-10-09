@@ -11,6 +11,7 @@ import { collectTradingDay, tradingCalendar } from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
 import { improveStrategy } from "./improvement.js";
 import { safeError } from "../http.js";
+import { feesForBook } from "../../shared/fees.js";
 export async function runPaperDay(env, date) {
   try {
     return await settlePaperDay(env, date);
@@ -176,6 +177,8 @@ export async function exportPaper(env) {
       "paper_plans",
       "paper_market_days",
       "snapshots",
+      "paper_configuration_history",
+      "paper_plan_revisions",
     ].map((table) => repository.history(table, 100000)),
   );
   return {
@@ -184,6 +187,7 @@ export async function exportPaper(env) {
     initialCashCents: book.initialCashCents,
     book,
     riskLimits: RISK_LIMITS,
+    feeConfig: feesForBook(book),
     equities: rows[0].map((row) => JSON.parse(row.payload)).reverse(),
     ledger: rows[1]
       .map((row) => JSON.parse(row.payload))
@@ -196,6 +200,12 @@ export async function exportPaper(env) {
       .reverse(),
     snapshots: rows[4].map((row) => JSON.parse(row.payload)).reverse(),
     versions: await repository.versions(),
+    configurationHistory: rows[5]
+      .map((row) => ({ payload: JSON.parse(row.payload), digest: row.digest }))
+      .reverse(),
+    supersededPlans: rows[6]
+      .map((row) => ({ payload: JSON.parse(row.payload), digest: row.digest }))
+      .reverse(),
   };
 }
 
@@ -215,7 +225,12 @@ export async function verifyExport(bundle) {
   let book = newBook(bundle.initialCashCents / 100);
   let fillIndex = 0;
   try {
-    for (const row of [...bundle.plans, ...bundle.datasets])
+    for (const row of [
+      ...bundle.plans,
+      ...bundle.datasets,
+      ...(bundle.configurationHistory || []),
+      ...(bundle.supersededPlans || []),
+    ])
       if ((await digest(row.payload)) !== row.digest) hashes = false;
     for (let index = 0; index < bundle.datasets.length; index++) {
       const dataset = bundle.datasets[index].payload;
@@ -293,6 +308,8 @@ export async function paperOverview(env) {
     run: rows[3][0] ? JSON.parse(rows[3][0].payload) : null,
     audit,
     riskLimits: RISK_LIMITS,
+    feeConfig: feesForBook(book),
+    canEditCapital: await repository.canEditCapital(book),
     versions: await repository.versions(),
     ai: aiConfig(env),
   };

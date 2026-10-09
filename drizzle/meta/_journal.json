@@ -15,6 +15,13 @@
       "when": 1791553004451,
       "tag": "0001_shocking_penance",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791555839951,
+      "tag": "0002_friendly_genesis",
+      "breakpoints": true
     }
   ]
 }

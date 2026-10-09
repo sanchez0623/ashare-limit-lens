@@ -1,4 +1,5 @@
 import { aiConfig } from "./review.js";
+import { DEFAULT_FEES, feesForBook } from "../../shared/fees.js";
 import {
   validateProposal,
   replayStrategy,
@@ -10,12 +11,19 @@ export async function requestProposal(
   base,
   trainingPairs,
   initialCapital,
+  feeConfig = DEFAULT_FEES,
 ) {
   const config = aiConfig(env);
   if (!config.configured) throw new Error("尚未配置服务端大模型密钥");
-  const training = replayStrategy(trainingPairs, base, initialCapital);
+  const training = replayStrategy(
+    trainingPairs,
+    base,
+    initialCapital,
+    feeConfig,
+  );
   const evidence = {
     currentStrategy: base,
+    feeConfig,
     performance: { ...training, equities: undefined },
     dailyResults: training.equities,
     dailySignals: trainingPairs.map((pair) => ({
@@ -122,6 +130,7 @@ export async function improveStrategy(
   if (versions.some((version) => version.id === id))
     return { status: "EXISTING", version: id };
   const base = await repository.strategy(account.book);
+  const feeConfig = feesForBook(account.book);
   const reservation = crypto.randomUUID();
   await repository.recordVersion({
     id,
@@ -146,6 +155,7 @@ export async function improveStrategy(
       base,
       training,
       account.book.initialCashCents / 100,
+      feeConfig,
     );
     const validation = validateCandidate(
       training,
@@ -153,12 +163,15 @@ export async function improveStrategy(
       base,
       proposal.params,
       account.book.initialCashCents / 100,
+      feeConfig,
     );
     const evidence = {
       ...validation,
       rationale: proposal.rationale,
       baseVersion: account.book.activeStrategy,
       model: aiConfig(env).model,
+      feeConfigVersion: account.book.feeConfigVersion || 0,
+      initialCashCents: account.book.initialCashCents,
       externalData: "模型仅获得训练窗口；验证行情未发送给模型",
     };
     await repository.db
@@ -177,7 +190,9 @@ export async function improveStrategy(
     if (
       validation.passed &&
       current.book.improvementMode === "auto" &&
-      current.book.activeStrategy === account.book.activeStrategy
+      current.book.activeStrategy === account.book.activeStrategy &&
+      (current.book.feeConfigVersion || 0) ===
+        (account.book.feeConfigVersion || 0)
     )
       activated = await repository.activate(id);
     return {

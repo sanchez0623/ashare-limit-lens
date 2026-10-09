@@ -1,3 +1,4 @@
+import { DEFAULT_FEES } from "../../shared/fees.js";
 // All prices in this file are explicitly synthetic test fixtures.
 export const dateAt = (index) =>
   new Date(Date.UTC(2026, 0, 1 + index)).toISOString().slice(0, 10);
@@ -67,6 +68,9 @@ export function plan(orders, date = dateAt(0)) {
     signalDate: date,
     createdAt: `${date}T07:10:00.000Z`,
     strategyVersion: "baseline-v1",
+    feeConfig: DEFAULT_FEES,
+    feeModel: "itemized-v2",
+    feeConfigVersion: 1,
     orders,
   };
 }
