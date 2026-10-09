@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, mkdirSync } from 'node:fs';
 import worker from './dist/server/index.js';
+try{process.loadEnvFile();}catch{}
 mkdirSync('.sites-runtime',{recursive:true});
 const sqlite=new DatabaseSync('.sites-runtime/local.sqlite');
 sqlite.exec('CREATE TABLE IF NOT EXISTS local_migrations (name TEXT PRIMARY KEY)');

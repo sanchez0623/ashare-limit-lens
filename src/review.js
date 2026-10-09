@@ -57,8 +57,8 @@ async function loadReview(env,date,market){
  if(review.validCount===0)return {review:null,reason:'未获取到日期匹配且可比的收盘行情，暂不生成反馈。'};
  await db.prepare('INSERT OR IGNORE INTO reviews (trade_date, snapshot_date, created_at, payload) VALUES (?, ?, ?, ?)').bind(date,snapshot.date,review.createdAt,JSON.stringify(review)).run();return {review,ai:null,stored:true};
 }
-const ALLOWED_AI_HOSTS=new Set(['api.deepseek.com','api.openai.com','dashscope.aliyuncs.com']);
-function aiConfig(env){const base=env?.AI_BASE_URL||'https://api.deepseek.com/v1',model=env?.AI_MODEL||'deepseek-chat';let valid=false;try{const url=new URL(base);valid=url.protocol==='https:'&&ALLOWED_AI_HOSTS.has(url.hostname)&&!url.username&&!url.password;}catch{}return {configured:!!env?.AI_API_KEY&&valid,base,model};}
+const ALLOWED_AI_HOSTS=new Set(['api.deepseek.com','api.openai.com','dashscope.aliyuncs.com','ark.cn-beijing.volces.com']);
+function aiConfig(env){const base=env?.AI_BASE_URL||'https://api.deepseek.com/v1',model=env?.AI_MODEL||'deepseek-chat';let valid=false;try{const url=new URL(base);valid=url.protocol==='https:'&&(ALLOWED_AI_HOSTS.has(url.hostname)||url.hostname.endsWith('.volces.com'))&&!url.username&&!url.password;}catch{}return {configured:!!env?.AI_API_KEY&&valid,base,model};}
 async function gradeWithAI(env,result){
  const db=database(env),cfg=aiConfig(env);if(result.ai)return result.ai;if(!cfg.configured)throw new Error('尚未配置大模型服务端密钥。可接入 DeepSeek、OpenAI 或通义的兼容接口。');const r=result.review;if(!r||r.validCount<10||r.coverage<.8)throw new Error('可核验样本不足，不调用 AI 对系统评分。');
  const evidence={snapshotDate:r.snapshotDate,actualDate:r.date,modelVersion:r.modelVersion,weights:r.weights,objectiveScore:r.systemScore,validCount:r.validCount,coverage:r.coverage,topMean:r.topMean,allMean:r.allMean,excess:r.excess,rankingCorrelation:r.rho,topContinuation:r.topContinue,baselineContinuation:r.baseContinue,stocks:r.rows.filter(x=>x.available).map(x=>({code:x.code,score:x.score,sector:x.sector,closeReturn:x.closeReturn,openReturn:x.openReturn,lowReturn:x.lowReturn,continued:x.continued,risks:x.risks.map(y=>y.text)})),sectors:r.sectors,caveat:r.caveat};
