@@ -1,11 +1,38 @@
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
-const html = await readFile('src/index.html', 'utf8');
-const css = await readFile('src/style.css', 'utf8');
-const app = await readFile('src/app.js', 'utf8');
-const model = await readFile('src/model.js', 'utf8');
-const server = await readFile('src/worker.js', 'utf8');
-const review = await readFile('src/review.js', 'utf8');
-const page = html.replace('/* APP_STYLE */', css).replace('/* APP_MODEL */', model.replaceAll('export ', '')).replace('/* APP_SCRIPT */', app);
-await mkdir('dist/server', { recursive: true });
-await writeFile('dist/server/index.js', `const PAGE = ${JSON.stringify(page)};\n${model.replaceAll('export ', '')}\n${review.replace(/^import .*;$/gm,'').replaceAll('export ', '')}\n${server}`);
-console.log('Built Cloudflare-compatible Worker: dist/server/index.js');
+import { build } from "esbuild";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
+await mkdir(".sites-runtime", { recursive: true });
+await mkdir("dist/client/assets", { recursive: true });
+const client = await build({
+  entryPoints: ["frontend/app.js"],
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  write: false,
+  minify: true,
+});
+const js = client.outputFiles[0].text;
+const css = await readFile("frontend/styles.css", "utf8");
+const html = await readFile("frontend/index.html", "utf8");
+const assets = {
+  "/": { body: html, type: "text/html; charset=utf-8" },
+  "/assets/app.js": { body: js, type: "text/javascript; charset=utf-8" },
+  "/assets/styles.css": { body: css, type: "text/css; charset=utf-8" },
+};
+await Promise.all([
+  writeFile("dist/client/index.html", html),
+  writeFile("dist/client/assets/app.js", js),
+  writeFile("dist/client/assets/styles.css", css),
+  writeFile(
+    ".sites-runtime/assets.js",
+    `export const ASSETS = ${JSON.stringify(assets)};`,
+  ),
+]);
+await build({
+  entryPoints: ["backend/worker.js"],
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  target: "es2022",
+  outfile: "dist/server/index.js",
+});
+console.log("Built separate browser assets and Cloudflare Worker");

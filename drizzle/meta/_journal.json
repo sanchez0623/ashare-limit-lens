@@ -8,6 +8,13 @@
       "when": 1791543329055,
       "tag": "0000_early_captain_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791553004451,
+      "tag": "0001_shocking_penance",
+      "breakpoints": true
     }
   ]
 }

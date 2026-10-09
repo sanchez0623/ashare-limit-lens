@@ -6,10 +6,15 @@
   "scripts": {
     "build": "node build.mjs",
     "test": "node --test test/*.test.mjs",
-    "dev": "node dev.mjs"
+    "dev": "node dev.mjs",
+    "verify:paper": "node scripts/verify-paper.mjs",
+    "format": "prettier --write frontend backend shared scripts test db build.mjs dev.mjs",
+    "check": "prettier --check frontend backend shared scripts test db build.mjs dev.mjs"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.8",
-    "drizzle-orm": "^0.44.7"
+    "drizzle-orm": "^0.44.7",
+    "esbuild": "^0.25.12",
+    "prettier": "^3.6.2"
   }
 }
