@@ -22,6 +22,13 @@
       "when": 1791555839951,
       "tag": "0002_friendly_genesis",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791557590221,
+      "tag": "0003_legal_zombie",
+      "breakpoints": true
     }
   ]
 }

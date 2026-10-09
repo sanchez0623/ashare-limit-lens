@@ -431,6 +431,29 @@
               模拟账户按事前计划执行，真实数据到达后更新收益。
             </p>
             <div id="paper-metrics" class="metrics"></div>
+            <section class="panel paper-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>自动执行状态</h2>
+                  <p id="paper-live-summary">检查执行器心跳与腾讯行情</p>
+                </div>
+                <span class="outline-tag" id="paper-live-tag">未连接</span>
+              </div>
+              <p class="panel-footnote" id="paper-live-health"></p>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>个股 / 动作</th>
+                      <th>执行状态</th>
+                      <th>进度</th>
+                      <th>最近处理结果</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paper-live-orders"></tbody>
+                </table>
+              </div>
+            </section>
             <div class="paper-grid">
               <section class="panel">
                 <div class="panel-heading">
@@ -480,7 +503,7 @@
                       <th>个股</th>
                       <th>持股数量</th>
                       <th>每股成本</th>
-                      <th>收盘价</th>
+                      <th>最新估值价</th>
                       <th>持仓市值</th>
                       <th>浮动盈亏</th>
                       <th>持仓时间</th>
@@ -495,7 +518,7 @@
                 <div>
                   <h2>下一交易日计划</h2>
                   <p id="paper-plan-meta">
-                    盘后冻结，避免当日评分被用于当日交易
+                    盘后冻结数量与价格条件，下一交易日按实时行情自动模拟成交
                   </p>
                 </div>
                 <span class="outline-tag" id="paper-plan-date">等待评分</span>
@@ -517,8 +540,9 @@
               </div>
               <div id="paper-outcomes" class="paper-outcomes"></div>
               <div class="panel-footnote">
-                做 T 使用 T+1
-                可卖底仓并要求完整分钟时序；未完成的第二腿如实保留仓位。保护止损、止盈只卖旧仓；涨跌停或缺少行情时可能无法成交。
+                实时轮询按已观察到的报价先后执行做 T；14:50
+                起尝试恢复第二腿，未完成部分保留仓位并延续到下一交易日。保护退出遵守
+                T+1；涨跌停或缺少行情时可能无法成交。所有持仓持续获取行情，即使不再出现在涨停池中。
               </div>
             </section>
             <section class="panel paper-panel">
@@ -649,7 +673,8 @@
           晋级率需要上一可用交易日涨停列表；昨日池接口用于当日晋级统计；跨日反馈另用指数日期序列确认相邻交易日。获取不到历史数据时显示“—”。
         </p>
         <p>
-          模拟交易使用腾讯日线与分钟采样行情，按前一交易日冻结计划执行并计入费用。逐笔排队、龙虎榜与公告尚未接入；系统只操作模拟账户。
+          模拟交易按前一交易日冻结的数量和价格条件，以腾讯 HTTP
+          实时报价自动执行并计入费用；所有持仓持续跟踪，盘后按实际模拟成交更新收益。逐笔排队、龙虎榜与公告尚未接入；系统只操作模拟账户。
         </p>
       </div>
     </dialog>

@@ -41,6 +41,25 @@ const statusNames = {
   PROPOSING: "正在验证",
   RETIRED: "已归档",
 };
+const executionNames = {
+  PENDING: "等待触发",
+  BLOCKED: "受约束，重试中",
+  PARTIAL: "部分成交",
+  FIRST_LEG: "做 T 第一腿",
+  SECOND_LEG: "恢复第二腿",
+  FILLED: "完成",
+  CANCELLED: "已取消",
+  EXPIRED: "当日到期",
+  EXPIRED_PARTIAL: "部分完成后到期",
+  INCOMPLETE_T: "第二腿转下日",
+  RUNNING: "轮询运行中",
+  STALE_QUOTES: "报价陈旧，暂停成交",
+  MARKET_CLOSED: "等待交易时段",
+  ERROR: "异常，自动重试",
+  NON_TRADING_DAY: "非交易日",
+  CONFLICT: "并发结果已丢弃",
+  SETTLED: "已结算",
+};
 let data = null,
   busy = false,
   settingsDirty = false;
@@ -86,6 +105,21 @@ function breakdown(fill) {
     .map(([key, label]) => `${label} ¥ ${money(fill.feeBreakdown[key] || 0)}`)
     .join("；");
 }
+function priceConditions(order) {
+  const reference = `<span class="stock-code">参考价 ¥ ${money(order.referenceCents)}</span>`;
+  const protection = `<span class="stock-code">止损 ≤ ¥ ${money(order.stopCents)}<br>分批止盈 ≥ ¥ ${money(order.takeProfitCents)}</span>`;
+  const execution =
+    order.side === "PAIR"
+      ? `低吸 ≤ ¥ ${money(order.buyTriggerCents)}<br>兑现 ≥ ¥ ${money(order.sellTriggerCents)}<span class="stock-code">09:35 起触发 · 14:50 起恢复第二腿</span>`
+      : order.side === "BUY" && order.recovery
+        ? `恢复买回 · 参考 ¥ ${money(order.referenceCents)}<span class="stock-code">连续竞价时段按实时价 + 0.1% 滑点<br>受现金、仓位与涨停边界限制</span>`
+        : order.side === "BUY"
+          ? `买入上限 ¥ ${money(order.maxPriceCents)}<span class="stock-code">含滑点 · 09:30–09:35 内满足时成交</span>`
+          : order.side === "SELL"
+            ? `参考卖价 ¥ ${money(Math.round(order.referenceCents * 0.999))}<span class="stock-code">实际卖价 = 实时报价 − 0.1% 滑点<br>连续竞价时段重试，跌停不假设成交</span>`
+            : "持有并监控保护阈值";
+  return reference + execution + protection;
+}
 function chart(rows) {
   if (!rows.length)
     return '<div class="empty"><strong>收益曲线从首个结算日开始</strong>保存真实计划并执行后，逐日积累净值。</div>';
@@ -119,6 +153,24 @@ function chart(rows) {
 function render() {
   if (!data) return;
   const { book, equity, plan, run, versions } = data;
+  const live = data.realtime;
+  const health = live?.health;
+  $("paper-live-tag").textContent = live?.running
+    ? "常驻执行器已连接"
+    : "常驻执行器未连接";
+  $("paper-live-summary").textContent = live?.session
+    ? `${live.session.date} · ${live.session.sequence} 次观测 · ${live.session.fillCount} 笔成交`
+    : "尚无今日实时交易记录";
+  $("paper-live-health").textContent =
+    `${health ? `${executionNames[health.status] || health.status} · 最近心跳 ${new Date(health.checkedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} · ${health.pollIntervalSeconds} 秒轮询。` : "尚未收到常驻执行器心跳。"} ${!live?.running ? live?.requirement || "" : "关闭网页后服务继续执行；盘后按已记录成交结算。"}`;
+  $("paper-live-orders").innerHTML = live?.session?.orders.length
+    ? live.session.orders
+        .map(
+          (o) =>
+            `<tr><td><strong>${escape(o.name)} · ${actionNames[o.action]}</strong><span class="stock-code">${escape(o.code)}</span></td><td>${executionNames[o.status] || escape(o.status)}</td><td>${o.side === "PAIR" ? `第一腿 ${o.firstFilled} / 第二腿 ${o.secondFilled}` : `${o.filledQuantity} / ${o.quantity}`} 股</td><td>${escape(o.reason)}</td></tr>`,
+        )
+        .join("")
+    : '<tr><td colspan="4"><div class="empty compact">等待常驻服务在交易时段执行冻结计划。</div></td></tr>';
   const marketValue = book.positions.reduce(
     (sum, position) =>
       sum +
@@ -178,7 +230,14 @@ function render() {
             ),
             basis = position.lots.reduce((sum, lot) => sum + lot.costCents, 0);
           const available = position.lots
-            .filter((lot) => lot.acquiredDate < book.lastDate)
+            .filter(
+              (lot) =>
+                lot.acquiredDate <
+                (live?.session?.date ||
+                  new Date().toLocaleDateString("en-CA", {
+                    timeZone: "Asia/Shanghai",
+                  })),
+            )
             .reduce((sum, lot) => sum + lot.quantity, 0);
           return `<tr><td><strong>${escape(position.name)}</strong><span class="stock-code">${escape(position.code)}</span></td><td>${quantity}<span class="stock-code">当日可卖 ${available}</span></td><td>${money(basis / quantity)}</td><td>${money(position.markCents)}</td><td>¥ ${money(quantity * position.markCents)}</td><td class="${tone(quantity * position.markCents - basis)}">¥ ${money(quantity * position.markCents - basis)}</td><td>${position.heldDays} 日</td></tr>`;
         })
@@ -194,7 +253,7 @@ function render() {
     ? plan.orders
         .map(
           (order) =>
-            `<tr><td><strong>${escape(order.name)}</strong><span class="stock-code">${escape(order.code)} · ${escape(order.sector)}</span></td><td><span class="action-tag">${actionNames[order.action]}</span></td><td>${order.score ?? "—"}<span class="stock-code">原始 ${order.originalScore ?? "—"}</span></td><td>${order.quantity || "—"} 股</td><td>${order.side === "PAIR" ? `买 ≤ ${money(order.buyTriggerCents)}<br>卖 ≥ ${money(order.sellTriggerCents)}` : order.side === "BUY" ? `含滑点 ≤ ${money(order.maxPriceCents)}` : order.side === "SELL" ? "09:30–09:35 条件成交" : "观察保护阈值"}<span class="stock-code">止损 ${money(order.stopCents)} · 止盈 ${money(order.takeProfitCents)}</span></td><td class="plan-reason">${escape(order.reason)}</td></tr>`,
+            `<tr><td><strong>${escape(order.name)}</strong><span class="stock-code">${escape(order.code)} · ${escape(order.sector)}</span></td><td><span class="action-tag">${actionNames[order.action]}</span></td><td>${order.score ?? "—"}<span class="stock-code">原始 ${order.originalScore ?? "—"}</span></td><td>${order.quantity || "—"} 股</td><td class="plan-price-conditions">${priceConditions(order)}</td><td class="plan-reason">${escape(order.reason)}</td></tr>`,
         )
         .join("")
     : `<tr><td colspan="6"><div class="empty compact">${plan ? "当前没有满足建仓条件的个股，保持空仓。" : "等待有效盘后评分。"}</div></td></tr>`;
@@ -206,7 +265,7 @@ function render() {
         .sort((a, b) => b.date.localeCompare(a.date) || b.sequence - a.sequence)
         .map(
           (fill) =>
-            `<tr><td>${escape(fill.date)}<span class="stock-code">${escape(fill.time)}</span></td><td><strong>${escape(fill.name)}</strong><span class="stock-code">${escape(fill.code)}</span></td><td>${actionNames[fill.action]} · ${fill.side === "BUY" ? "买" : "卖"}</td><td>${fill.quantity}</td><td>${money(fill.priceCents)}</td><td title="${escape(breakdown(fill))}"><details class="fee-breakdown"><summary>¥ ${money(fill.feeCents)}</summary><span>${escape(breakdown(fill))}</span></details><span class="stock-code">费用 v${fill.feeConfigVersion || 0}</span></td><td class="${tone(fill.cashDeltaCents)}">${money(fill.cashDeltaCents)}</td><td>${fill.dataQuality === "minute" ? "分钟采样" : "开盘假设"}</td></tr>`,
+            `<tr><td>${escape(fill.date)}<span class="stock-code">${escape(fill.time)}</span></td><td><strong>${escape(fill.name)}</strong><span class="stock-code">${escape(fill.code)}</span></td><td>${actionNames[fill.action]} · ${fill.side === "BUY" ? "买" : "卖"}</td><td>${fill.quantity}</td><td>${money(fill.priceCents)}</td><td title="${escape(breakdown(fill))}"><details class="fee-breakdown"><summary>¥ ${money(fill.feeCents)}</summary><span>${escape(breakdown(fill))}</span></details><span class="stock-code">费用 v${fill.feeConfigVersion || 0}</span></td><td class="${tone(fill.cashDeltaCents)}">${money(fill.cashDeltaCents)}</td><td>${fill.dataQuality === "realtime_poll" ? "实时 HTTP 轮询" : fill.dataQuality === "minute" ? "历史分钟采样" : "开盘假设"}</td></tr>`,
         )
         .join("")
     : '<tr><td colspan="8"><div class="empty compact">尚无成交记录。未满足成交条件的计划不会记为收益。</div></td></tr>';
@@ -339,6 +398,9 @@ export function initializePaper() {
     });
   };
   window.addEventListener("paper-updated", refresh);
+  setInterval(() => {
+    if (!document.hidden && !busy) void refresh();
+  }, 15000);
   void refresh();
   return { refresh };
 }

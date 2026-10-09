@@ -1,5 +1,12 @@
 import { createPlan, executePlan, newBook, BASE_STRATEGY } from "./trading.js";
 import {
+  openSession,
+  advanceSession,
+  closeSession,
+  marketClock,
+  inSession,
+} from "./realtime.js";
+import {
   DEFAULT_INITIAL_CAPITAL,
   DEFAULT_FEES,
   normalizeFees,
@@ -95,7 +102,54 @@ export function replayStrategy(
       pair.snapshot.createdAt,
     );
     try {
-      const result = executePlan(book, plan, pair.dataset);
+      let result;
+      if (pair.dataset.executionMode === "realtime") {
+        if (!book.lastDate) book.lastDate = pair.snapshot.date;
+        let session = openSession(book, plan, pair.dataset.date),
+          liveFills = [];
+        const observations = pair.observations || [];
+        const watched = new Set(
+          observations.flatMap((tick) => Object.keys(tick.quotes)),
+        );
+        if (
+          !observations.length ||
+          observations[0].observedAt > `${pair.dataset.date}T01:30:30.000Z` ||
+          observations.at(-1).observedAt <
+            `${pair.dataset.date}T06:55:00.000Z` ||
+          plan.orders.some(
+            (order) => order.action !== "HOLD" && !watched.has(order.code),
+          )
+        )
+          covered = false;
+        for (let i = 0; i < observations.length; i++) {
+          const tick = observations[i];
+          if (
+            i &&
+            new Date(tick.observedAt) -
+              new Date(observations[i - 1].observedAt) >
+              Math.max(
+                20000,
+                Math.min(60, tick.pollIntervalSeconds || 10) * 2000,
+              ) &&
+            inSession(
+              marketClock(new Date(observations[i - 1].observedAt)).time,
+            ) &&
+            !(
+              marketClock(new Date(observations[i - 1].observedAt)).time >=
+                "11:29:40" &&
+              marketClock(new Date(tick.observedAt)).time <= "13:00:20"
+            )
+          )
+            covered = false;
+          const step = advanceSession(book, session, tick);
+          book = step.book;
+          session = step.session;
+          liveFills.push(...step.ledger);
+        }
+        result = closeSession(book, session, pair.dataset);
+        result.ledger = liveFills;
+        result.equity.missingMinuteOrders = 0;
+      } else result = executePlan(book, plan, pair.dataset);
       book = result.book;
       equities.push(result.equity);
       fills.push(...result.ledger);

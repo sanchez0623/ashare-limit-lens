@@ -193,6 +193,21 @@ export class PaperRepository {
           [fill.id, fill.date, JSON.stringify(fill)],
         ),
       );
+    if (result.session)
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO paper_live_sessions (trade_date,payload,digest) SELECT ?,?,? ${guard} ON CONFLICT(trade_date) DO UPDATE SET payload=excluded.payload,digest=excluded.digest`,
+          )
+          .bind(
+            dataset.date,
+            JSON.stringify(result.session),
+            await digest(result.session),
+            "primary",
+            nextRevision,
+            runId,
+          ),
+      );
     await this.db.batch(statements);
     const row = await this.db
       .prepare("SELECT last_run_id FROM paper_accounts WHERE id=?")
@@ -201,6 +216,10 @@ export class PaperRepository {
     return row.last_run_id === runId;
   }
   async canEditCapital(book) {
+    const live = await this.db
+      .prepare("SELECT COUNT(*) AS count FROM paper_live_sessions")
+      .first();
+    if (live.count) return false;
     if (
       book.settlementCount > 1 ||
       book.positions.length ||

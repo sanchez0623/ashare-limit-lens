@@ -1,0 +1,19 @@
+services:
+  limit-lens:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      AUTH_USER: ${AUTH_USER:?请设置 AUTH_USER}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:?请设置至少 16 位 AUTH_PASSWORD}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      TRADING_ENABLED: ${TRADING_ENABLED:-true}
+      TRADING_POLL_SECONDS: ${TRADING_POLL_SECONDS:-10}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com/v1}
+      AI_MODEL: ${AI_MODEL:-deepseek-chat}
+    volumes:
+      - paper-data:/data
+volumes:
+  paper-data:

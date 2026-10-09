@@ -113,29 +113,48 @@ export async function tradingQuotes(codes, date) {
     const url = `https://qt.gtimg.cn/q=${part.map(symbol).join(",")}`;
     const response = await publicFetch(url, 12000);
     if (!response.ok) throw new Error("持仓行情获取失败");
-    const text = await response.text();
-    for (const match of text.matchAll(/v_(sh|sz)(\d{6})="([^"]*)"/g)) {
-      const fields = match[3].split("~");
-      const actualDate = fields[30]?.slice(0, 8);
-      if (actualDate !== date.replaceAll("-", "")) continue;
-      const positive = (value) =>
-        Number.isFinite(Number(value)) && Number(value) > 0
-          ? toCents(value)
-          : null;
-      if (!positive(fields[3]) || !positive(fields[4])) continue;
-      quotes[match[2]] = {
-        date,
-        closeCents: positive(fields[3]),
-        previousCloseCents: positive(fields[4]),
-        openCents: positive(fields[5]),
-        highCents: positive(fields[33]),
-        lowCents: positive(fields[34]),
-        volumeShares: Math.round(Number(fields[6]) * 100),
-        limitUpCents: positive(fields[47]),
-        limitDownCents: positive(fields[48]),
-        timestamp: fields[30],
-      };
-    }
+    const text = new TextDecoder("gb18030").decode(
+      await response.arrayBuffer(),
+    );
+    Object.assign(quotes, parseTencentQuotes(text, date));
+  }
+  return quotes;
+}
+
+export function parseTencentQuotes(text, date) {
+  const quotes = {};
+  for (const match of text.matchAll(/v_(sh|sz)(\d{6})="([^"]*)"/g)) {
+    const fields = match[3].split("~");
+    if (
+      !/^\d{14}$/.test(fields[30]) ||
+      Number(fields[30].slice(8, 10)) > 23 ||
+      Number(fields[30].slice(10, 12)) > 59 ||
+      Number(fields[30].slice(12, 14)) > 59 ||
+      !Number.isFinite(Number(fields[6])) ||
+      Number(fields[6]) < 0
+    )
+      continue;
+    const actualDate = fields[30]?.slice(0, 8);
+    if (actualDate !== date.replaceAll("-", "")) continue;
+    const positive = (value) =>
+      Number.isFinite(Number(value)) && Number(value) > 0
+        ? toCents(value)
+        : null;
+    if (!positive(fields[3]) || !positive(fields[4])) continue;
+    quotes[match[2]] = {
+      date,
+      closeCents: positive(fields[3]),
+      previousCloseCents: positive(fields[4]),
+      openCents: positive(fields[5]),
+      highCents: positive(fields[33]),
+      lowCents: positive(fields[34]),
+      volumeShares: Math.round(Number(fields[6]) * 100),
+      limitUpCents: positive(fields[47]),
+      limitDownCents: positive(fields[48]),
+      timestamp: /^\d{14}$/.test(fields[30])
+        ? `${date}T${fields[30].slice(8, 10)}:${fields[30].slice(10, 12)}:${fields[30].slice(12, 14)}+08:00`
+        : null,
+    };
   }
   return quotes;
 }

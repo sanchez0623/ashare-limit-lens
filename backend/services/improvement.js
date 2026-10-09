@@ -123,6 +123,17 @@ export async function improveStrategy(
       reason: "配置服务端大模型密钥后启用真实 AI 改进",
     };
   const window = pairs.slice(-30);
+  // Validate the execution model that actually runs; minute bars do not substitute for missed live polls.
+  for (const pair of window)
+    if (pair.dataset.executionMode === "realtime") {
+      const ticks = await repository.db
+        .prepare(
+          "SELECT payload FROM paper_live_ticks WHERE trade_date=? ORDER BY sequence",
+        )
+        .bind(pair.dataset.date)
+        .all();
+      pair.observations = ticks.results.map((row) => JSON.parse(row.payload));
+    }
   const training = window.slice(0, 20),
     holdout = window.slice(20);
   // A window is reserved before the external call; retries cannot tune the same holdout.

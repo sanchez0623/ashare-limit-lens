@@ -20,6 +20,7 @@ import {
 } from "../services/paper.js";
 import { PaperRepository } from "../storage/paper.js";
 import { improveStrategy } from "../services/improvement.js";
+import { pollTrading, realtimeStatus } from "../services/realtime.js";
 
 async function runDaily(env) {
   const date = beijingDate();
@@ -85,6 +86,8 @@ export async function api(request, env) {
     "/api/paper/verify": ["GET"],
     "/api/paper/improve": ["POST"],
     "/api/paper/activate": ["POST"],
+    "/api/paper/live": ["GET"],
+    "/api/paper/poll": ["POST"],
   };
   if (!methods[path]) return json({ error: "接口不存在" }, 404);
   if (!methods[path].includes(request.method))
@@ -154,6 +157,8 @@ export async function api(request, env) {
       return json(await marketData(date));
     }
     if (path === "/api/paper") return json(await paperOverview(env));
+    if (path === "/api/paper/live") return json(await realtimeStatus(env));
+    if (path === "/api/paper/poll") return json(await pollTrading(env));
     if (path === "/api/paper/settings") {
       const body = await readJson(request);
       if (

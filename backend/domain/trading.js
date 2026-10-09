@@ -352,7 +352,7 @@ export function createPlan(
     emotion,
     targetExposure,
     maxExposure: RISK_LIMITS.maxGrossExposure,
-    orders,
+    orders: carriedPlanOrders(orders, book, snapshot.date, strategy),
     constraints:
       "下一交易日执行；T+1；整手买入；涨跌停不保证成交；成交费用和滑点计入账本。",
   };
@@ -378,6 +378,62 @@ function consumeLots(position, quantity, date) {
   if (remaining) throw new Error("成交数量超过 T+1 可卖数量");
   return basis;
 }
+function carriedPlanOrders(orders, book, date, strategy) {
+  const carried = new Map();
+  const create = (item, action, side, quantity, reason) => {
+    const p = book.positions.find((p) => p.code === item.code);
+    if (!p || !quantity) return;
+    const basis = costBasis(p) / totalQuantity(p);
+    carried.set(item.code, {
+      id: `${date}:${item.code}:carry`,
+      code: item.code,
+      name: p.name,
+      sector: p.sector,
+      score: p.lastScore ?? null,
+      originalScore: null,
+      referenceCents: p.markCents,
+      stopCents: Math.round(basis * (1 - strategy.stopLoss)),
+      takeProfitCents: Math.round(basis * (1 + strategy.takeProfit)),
+      action,
+      side,
+      quantity,
+      allDay: true,
+      carried: true,
+      recovery: !!item.side,
+      reason,
+    });
+  };
+  for (const item of book.pendingOrders || [])
+    create(
+      item,
+      "REDUCE",
+      "SELL",
+      item.quantity,
+      "继续执行上日未完成的减仓，连续竞价时段重试",
+    );
+  for (const item of book.pendingRecovery || [])
+    create(
+      item,
+      item.side === "BUY" ? "ADD" : "REDUCE",
+      item.side,
+      item.quantity,
+      "继续恢复上日做 T 第二腿，按实时行情及费用执行",
+    );
+  for (const item of book.pendingExits || []) {
+    const p = book.positions.find((p) => p.code === item.code);
+    create(
+      item,
+      "EXIT",
+      "SELL",
+      p ? totalQuantity(p) : 0,
+      "继续执行受 T+1 或跌停阻塞的清仓",
+    );
+  }
+  // A newly planned risk exit takes precedence over restoring an unfinished T.
+  for (const order of orders)
+    if (order.action === "EXIT") carried.delete(order.code);
+  return [...orders.filter((o) => !carried.has(o.code)), ...carried.values()];
+}
 
 export function defensivePlan(
   date,
@@ -399,33 +455,38 @@ export function defensivePlan(
     emotion: null,
     targetExposure: 0,
     maxExposure: RISK_LIMITS.maxGrossExposure,
-    orders: book.positions.map((position) => {
-      const quantity = totalQuantity(position),
-        basis = costBasis(position);
-      const exit =
-        drawdown >= RISK_LIMITS.maxDrawdown ||
-        (quantity * position.markCents) / basis - 1 <= -strategy.stopLoss ||
-        position.heldDays >= strategy.maxHoldDays;
-      return {
-        id: `${date}:${position.code}:defensive`,
-        code: position.code,
-        name: position.name,
-        sector: position.sector,
-        score: null,
-        originalScore: null,
-        referenceCents: position.markCents,
-        stopCents: Math.round((basis / quantity) * (1 - strategy.stopLoss)),
-        takeProfitCents: Math.round(
-          (basis / quantity) * (1 + strategy.takeProfit),
-        ),
-        action: exit ? "EXIT" : "HOLD",
-        side: exit ? "SELL" : "NONE",
-        quantity: exit ? quantity : 0,
-        reason: exit
-          ? "当日评分缺失，按已有持仓风险阈值清仓"
-          : "当日评分缺失，停止新增交易并保留旧仓保护",
-      };
-    }),
+    orders: carriedPlanOrders(
+      book.positions.map((position) => {
+        const quantity = totalQuantity(position),
+          basis = costBasis(position);
+        const exit =
+          drawdown >= RISK_LIMITS.maxDrawdown ||
+          (quantity * position.markCents) / basis - 1 <= -strategy.stopLoss ||
+          position.heldDays >= strategy.maxHoldDays;
+        return {
+          id: `${date}:${position.code}:defensive`,
+          code: position.code,
+          name: position.name,
+          sector: position.sector,
+          score: null,
+          originalScore: null,
+          referenceCents: position.markCents,
+          stopCents: Math.round((basis / quantity) * (1 - strategy.stopLoss)),
+          takeProfitCents: Math.round(
+            (basis / quantity) * (1 + strategy.takeProfit),
+          ),
+          action: exit ? "EXIT" : "HOLD",
+          side: exit ? "SELL" : "NONE",
+          quantity: exit ? quantity : 0,
+          reason: exit
+            ? "当日评分缺失，按已有持仓风险阈值清仓"
+            : "当日评分缺失，停止新增交易并保留旧仓保护",
+        };
+      }),
+      book,
+      date,
+      strategy,
+    ),
     constraints: "缺少评分时不构造信号；只允许基于已结算持仓执行风险保护。",
   };
 }
@@ -433,8 +494,6 @@ export function defensivePlan(
 export function executePlan(inputBook, plan, dataset) {
   const book = structuredClone(inputBook);
   const date = dataset.date;
-  const feeConfig = plan?.feeConfig || LEGACY_FEES;
-  const feeModel = plan?.feeModel || "legacy-v1";
   if (
     plan &&
     (plan.signalDate >= date || plan.createdAt >= `${date}T01:15:00.000Z`)
@@ -564,152 +623,18 @@ export function executePlan(inputBook, plan, dataset) {
       a.code.localeCompare(b.code),
   );
 
-  function fill(order, side, desiredQuantity, event) {
-    const quote = quotes[order.code];
-    const point = event.priceCents;
-    if (
-      (side === "BUY" && quote.limitUpCents && point >= quote.limitUpCents) ||
-      (side === "SELL" && quote.limitDownCents && point <= quote.limitDownCents)
-    )
-      return {
-        ok: false,
-        reason: side === "BUY" ? "涨停排队不假设成交" : "跌停卖出不假设成交",
-      };
-    let position = book.positions.find((item) => item.code === order.code);
-    let quantity =
-      side === "BUY"
-        ? roundLot(desiredQuantity)
-        : Math.min(
-            desiredQuantity,
-            position ? availableQuantity(position, date) : 0,
-          );
-    if (event.volumeShares !== null)
-      quantity = Math.min(
-        quantity,
-        roundLot(event.volumeShares * RISK_LIMITS.maxParticipation),
-      );
-    const priceCents = Math.round(
-      point *
-        (1 + ((side === "BUY" ? 1 : -1) * RISK_LIMITS.slippageBps) / 10000),
-    );
-    if (
-      side === "BUY" &&
-      order.maxPriceCents &&
-      priceCents > order.maxPriceCents
-    )
-      return { ok: false, reason: "含滑点价格超过事前买入上限" };
-    if (
-      (side === "BUY" &&
-        quote.limitUpCents &&
-        priceCents >= quote.limitUpCents) ||
-      (side === "SELL" &&
-        quote.limitDownCents &&
-        priceCents <= quote.limitDownCents)
-    )
-      return { ok: false, reason: "加入滑点后触及涨跌停边界" };
-    if (side === "BUY") {
-      const value = book.positions.reduce(
-        (sum, item) =>
-          sum + totalQuantity(item) * (prices.get(item.code) || item.markCents),
-        0,
-      );
-      const equity = book.cashCents + value;
-      const current = position
-        ? totalQuantity(position) * (prices.get(order.code) || point)
-        : 0;
-      const cap = Math.min(
-        book.cashCents,
-        equity * RISK_LIMITS.maxPositionWeight - current,
-        equity * RISK_LIMITS.maxGrossExposure - value,
-      );
-      quantity = Math.min(
-        quantity,
-        roundLot(Math.max(0, cap - 1000) / priceCents),
-      );
-      while (
-        quantity >= 100 &&
-        quantity * priceCents +
-          transactionFees(quantity * priceCents, side, feeConfig, feeModel)
-            .total >
-          cap
-      )
-        quantity -= 100;
-    }
-    if (quantity <= 0 || (side === "BUY" && quantity < 100))
-      return {
-        ok: false,
-        reason:
-          side === "SELL"
-            ? "没有 T+1 可卖底仓或流动性不足"
-            : "现金、仓位或流动性约束不足一手",
-      };
-    const notional = quantity * priceCents;
-    const fees = transactionFees(notional, side, feeConfig, feeModel);
-    let basisCents = 0;
-    let realizedPnlCents = 0;
-    const cashDeltaCents =
-      side === "BUY" ? -notional - fees.total : notional - fees.total;
-    if (side === "BUY") {
-      if (!position) {
-        position = {
-          code: order.code,
-          name: order.name,
-          sector: order.sector,
-          lots: [],
-          heldDays: 0,
-          markCents: point,
-          lastScore: order.score,
-          markDate: date,
-        };
-        book.positions.push(position);
-      }
-      position.lots.push({
-        acquiredDate: date,
-        quantity,
-        costCents: notional + fees.total,
-        priceCents,
-      });
-    } else {
-      basisCents = consumeLots(position, quantity, date);
-      realizedPnlCents = cashDeltaCents - basisCents;
-      book.realizedPnlCents += realizedPnlCents;
-    }
-    book.cashCents += cashDeltaCents;
-    book.feesCents += fees.total;
-    prices.set(order.code, point);
-    ledger.push({
-      id: `${date}:${order.id}:${ledger.length}`,
-      date,
-      signalDate: plan.signalDate,
-      sequence: ledger.length,
-      time: event.time,
-      code: order.code,
-      name: order.name,
-      action: order.action,
+  const fill = (order, side, quantity, event) =>
+    executeFill(
+      book,
+      plan,
+      dataset,
+      prices,
+      ledger,
+      order,
       side,
       quantity,
-      priceCents,
-      notionalCents: notional,
-      feeCents: fees.total,
-      feeBreakdown: fees,
-      ...(feeModel === "itemized-v2"
-        ? {
-            feeModel,
-            feeConfig: structuredClone(feeConfig),
-            feeConfigVersion: plan.feeConfigVersion || 1,
-          }
-        : {}),
-      cashDeltaCents,
-      basisCents,
-      realizedPnlCents,
-      cashAfterCents: book.cashCents,
-      strategyVersion: plan.strategyVersion,
-      dataQuality: event.quality,
-      source: dataset.source,
-      sourcePriceCents: point,
-    });
-    return { ok: true, quantity, priceCents };
-  }
+      event,
+    );
 
   for (const event of events) {
     const running = runtime.get(event.orderId);
@@ -931,6 +856,162 @@ export function executePlan(inputBook, plan, dataset) {
     throw new Error("资金账本与盈亏不一致");
   if (book.cashCents < 0) throw new Error("模拟账户不能透支");
   return { book, ledger, equity, outcomes, notices };
+}
+
+export function executeFill(
+  book,
+  plan,
+  dataset,
+  prices,
+  ledger,
+  order,
+  side,
+  desiredQuantity,
+  event,
+) {
+  const date = dataset.date;
+  const quotes = dataset.quotes;
+  const feeConfig = plan?.feeConfig || LEGACY_FEES;
+  const feeModel = plan?.feeModel || "legacy-v1";
+  const quote = quotes[order.code];
+  const point = event.priceCents;
+  if (
+    (side === "BUY" && quote.limitUpCents && point >= quote.limitUpCents) ||
+    (side === "SELL" && quote.limitDownCents && point <= quote.limitDownCents)
+  )
+    return {
+      ok: false,
+      reason: side === "BUY" ? "涨停排队不假设成交" : "跌停卖出不假设成交",
+    };
+  let position = book.positions.find((item) => item.code === order.code);
+  let quantity =
+    side === "BUY"
+      ? roundLot(desiredQuantity)
+      : Math.min(
+          desiredQuantity,
+          position ? availableQuantity(position, date) : 0,
+        );
+  if (event.volumeShares !== null)
+    quantity = Math.min(
+      quantity,
+      roundLot(event.volumeShares * RISK_LIMITS.maxParticipation),
+    );
+  const priceCents = Math.round(
+    point * (1 + ((side === "BUY" ? 1 : -1) * RISK_LIMITS.slippageBps) / 10000),
+  );
+  if (side === "BUY" && order.maxPriceCents && priceCents > order.maxPriceCents)
+    return { ok: false, reason: "含滑点价格超过事前买入上限" };
+  if (
+    (side === "BUY" &&
+      quote.limitUpCents &&
+      priceCents >= quote.limitUpCents) ||
+    (side === "SELL" &&
+      quote.limitDownCents &&
+      priceCents <= quote.limitDownCents)
+  )
+    return { ok: false, reason: "加入滑点后触及涨跌停边界" };
+  if (side === "BUY") {
+    const value = book.positions.reduce(
+      (sum, item) =>
+        sum + totalQuantity(item) * (prices.get(item.code) || item.markCents),
+      0,
+    );
+    const equity = book.cashCents + value;
+    const current = position
+      ? totalQuantity(position) * (prices.get(order.code) || point)
+      : 0;
+    const cap = Math.min(
+      book.cashCents,
+      equity * RISK_LIMITS.maxPositionWeight - current,
+      equity * RISK_LIMITS.maxGrossExposure - value,
+    );
+    quantity = Math.min(
+      quantity,
+      roundLot(Math.max(0, cap - 1000) / priceCents),
+    );
+    while (
+      quantity >= 100 &&
+      quantity * priceCents +
+        transactionFees(quantity * priceCents, side, feeConfig, feeModel)
+          .total >
+        cap
+    )
+      quantity -= 100;
+  }
+  if (quantity <= 0 || (side === "BUY" && quantity < 100))
+    return {
+      ok: false,
+      reason:
+        side === "SELL"
+          ? "没有 T+1 可卖底仓或流动性不足"
+          : "现金、仓位或流动性约束不足一手",
+    };
+  const notional = quantity * priceCents;
+  const fees = transactionFees(notional, side, feeConfig, feeModel);
+  let basisCents = 0;
+  let realizedPnlCents = 0;
+  const cashDeltaCents =
+    side === "BUY" ? -notional - fees.total : notional - fees.total;
+  if (side === "BUY") {
+    if (!position) {
+      position = {
+        code: order.code,
+        name: order.name,
+        sector: order.sector,
+        lots: [],
+        heldDays: 0,
+        markCents: point,
+        lastScore: order.score,
+        markDate: date,
+      };
+      book.positions.push(position);
+    }
+    position.lots.push({
+      acquiredDate: date,
+      quantity,
+      costCents: notional + fees.total,
+      priceCents,
+    });
+  } else {
+    basisCents = consumeLots(position, quantity, date);
+    realizedPnlCents = cashDeltaCents - basisCents;
+    book.realizedPnlCents += realizedPnlCents;
+  }
+  book.cashCents += cashDeltaCents;
+  book.feesCents += fees.total;
+  prices.set(order.code, point);
+  ledger.push({
+    id: `${date}:${order.id}:${ledger.length}`,
+    date,
+    signalDate: plan.signalDate,
+    sequence: ledger.length,
+    time: event.time,
+    code: order.code,
+    name: order.name,
+    action: order.action,
+    side,
+    quantity,
+    priceCents,
+    notionalCents: notional,
+    feeCents: fees.total,
+    feeBreakdown: fees,
+    ...(feeModel === "itemized-v2"
+      ? {
+          feeModel,
+          feeConfig: structuredClone(feeConfig),
+          feeConfigVersion: plan.feeConfigVersion || 1,
+        }
+      : {}),
+    cashDeltaCents,
+    basisCents,
+    realizedPnlCents,
+    cashAfterCents: book.cashCents,
+    strategyVersion: plan.strategyVersion,
+    dataQuality: event.quality,
+    source: dataset.source,
+    sourcePriceCents: point,
+  });
+  return { ok: true, quantity, priceCents };
 }
 
 export function completeMinutes(bars) {

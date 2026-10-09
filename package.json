@@ -7,9 +7,10 @@
     "build": "node build.mjs",
     "test": "node --test test/*.test.mjs",
     "dev": "node dev.mjs",
+    "start": "node server.mjs",
     "verify:paper": "node scripts/verify-paper.mjs",
-    "format": "prettier --write frontend backend shared scripts test db build.mjs dev.mjs",
-    "check": "prettier --check frontend backend shared scripts test db build.mjs dev.mjs"
+    "format": "prettier --write frontend backend shared scripts test db build.mjs dev.mjs server.mjs",
+    "check": "prettier --check frontend backend shared scripts test db build.mjs dev.mjs server.mjs"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.8",

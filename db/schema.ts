@@ -1,4 +1,10 @@
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  primaryKey,
+} from "drizzle-orm/sqlite-core";
 export const snapshots = sqliteTable("snapshots", {
   tradeDate: text("trade_date").primaryKey(),
   createdAt: text("created_at").notNull(),
@@ -75,4 +81,23 @@ export const paperPlanRevisions = sqliteTable("paper_plan_revisions", {
   createdAt: text("created_at").notNull(),
   payload: text("payload").notNull(),
   digest: text("digest").notNull(),
+});
+export const paperLiveSessions = sqliteTable("paper_live_sessions", {
+  tradeDate: text("trade_date").primaryKey(),
+  payload: text("payload").notNull(),
+  digest: text("digest").notNull(),
+});
+export const paperLiveTicks = sqliteTable(
+  "paper_live_ticks",
+  {
+    tradeDate: text("trade_date").notNull(),
+    sequence: integer("sequence").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.tradeDate, table.sequence] })],
+);
+export const paperExecutorHealth = sqliteTable("paper_executor_health", {
+  id: text("id").primaryKey(),
+  payload: text("payload").notNull(),
 });
