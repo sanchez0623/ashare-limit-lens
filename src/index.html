@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#101e2e"><title>涨停研究台 · A 股复盘与评分</title><meta name="description" content="每日 A 股涨停复盘，查看可解释的个股评分、行业板块强度和市场情绪。"><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101e2e'/%3E%3Cpath d='M7 24V17h4v7m3 0V12h4v12m3 0V7h4v17' stroke='%2356d3b5' stroke-width='3'/%3E%3C/svg%3E"><style>/* APP_STYLE */</style></head>
+<body>
+<div class="shell">
+ <aside class="sidebar">
+  <a class="brand" href="#overview" aria-label="涨停研究台首页"><span class="brand-mark"><i></i><i></i><i></i></span><span>涨停研究台<small>LIMIT LENS</small></span></a>
+  <div class="nav-label">研究工作台</div>
+  <nav aria-label="主导航">
+   <button data-view="overview" class="nav-item active"><span data-icon="dashboard"></span>总览复盘</button>
+   <button data-view="stocks" class="nav-item"><span data-icon="chart"></span>个股分析</button>
+   <button data-view="sectors" class="nav-item"><span data-icon="grid"></span>板块研究</button>
+   <button data-view="review" class="nav-item"><span data-icon="shield"></span>昨日反馈</button>
+   <button data-view="model" class="nav-item"><span data-icon="sliders"></span>评分模型</button>
+  </nav>
+  <div class="sidebar-note"><span class="mini-label">复盘闭环</span><strong>评分 · 检验 · 改进</strong><p>保存当时的判断，再用下一交易日的结果检验。</p><div class="note-line"></div><span id="snapshot-status">收盘后自动保存评分快照</span></div>
+  <div class="sidebar-footer"><span data-icon="database"></span><div>公开行情接入<small id="sidebar-source">正在检查数据源</small></div></div>
+ </aside>
+ <div class="workspace">
+  <header class="topbar"><div class="breadcrumb">研究工作台 <span>/</span> <strong id="crumb">总览复盘</strong></div><div class="topbar-right"><span class="session-label">A 股 · 沪深市场</span><button class="icon-button" id="help-btn" aria-label="查看数据口径"><span data-icon="info"></span></button></div></header>
+  <main>
+   <div class="page-heading"><div><div class="eyebrow">DAILY MARKET REVIEW</div><h1 id="page-title">每日涨停复盘</h1><p id="page-subtitle">把涨停拆成信号，把判断建立在数据上。</p></div><div class="heading-actions"><label class="date-control"><span data-icon="calendar"></span><input type="date" id="trade-date" aria-label="交易日期"></label><button class="primary" id="refresh-btn"><span data-icon="refresh"></span>刷新行情</button></div></div>
+   <div class="data-strip"><div><span class="source-tag" id="source-tag">行情加载中</span><span id="data-time">正在获取所选交易日涨停池</span></div><button class="text-button" id="demo-btn">查看演示</button></div>
+   <div class="notice" id="notice" role="status" hidden></div>
+   <section id="summary" class="metrics" aria-label="市场概况"></section>
+   <div id="overview-content" class="overview-grid">
+    <section class="panel pool-panel"><div class="panel-heading"><div><h2>涨停个股 <span class="count-chip" id="pool-count">—</span></h2><p>按综合评分排序，点击个股查看完整诊断</p></div><span class="small-muted" id="coverage-label">六维评分</span></div>
+     <div class="filters"><div class="search-control"><span data-icon="search"></span><input id="search" placeholder="搜索名称 / 代码" aria-label="搜索涨停个股"></div><select id="sector-filter" aria-label="筛选行业板块"><option value="">全部行业</option></select></div>
+     <div class="table-subnav"><div class="segments" role="group" aria-label="连板筛选"><button data-height="all" class="active">全部</button><button data-height="first">首板</button><button data-height="relay">连板</button></div><div class="sort-control"><label for="sort">排序</label><select id="sort"><option value="score">综合评分</option><option value="height">连板高度</option><option value="seal">封单金额</option><option value="first">首封时间</option></select></div></div>
+     <div class="table-scroll"><table><thead><tr><th>个股 / 代码</th><th>综合评分</th><th>行业板块</th><th>连板</th><th>首封时间</th><th>封单金额</th><th>换手率</th><th>炸板</th></tr></thead><tbody id="stock-rows"></tbody></table></div><div class="table-footer"><span id="table-status">正在读取公开行情…</span><span>评分区间 0–100</span></div>
+    </section>
+    <div class="right-column"><section class="panel sector-panel"><div class="panel-heading"><div><h2>板块强度</h2><p>涨停集聚 × 连板高度 × 封板表现</p></div><button class="icon-button" id="all-sectors" aria-label="查看全部行业板块"><span data-icon="grid"></span></button></div><div id="sector-rank"></div><div class="panel-footnote">行业分类口径，不等同于概念题材热度</div></section>
+     <section class="panel ladder-panel"><div class="panel-heading"><div><h2>连板梯队</h2><p>观察市场高度与接力结构</p></div><span class="outline-tag">当日</span></div><div id="ladder-chart"></div><div id="ladder-insight" class="insight"></div></section>
+    </div>
+   </div>
+   <section id="sectors-view" class="panel" hidden><div class="panel-heading"><div><h2>行业板块评分</h2><p>点击板块，筛选它的涨停个股</p></div><span class="outline-tag">透明权重</span></div><div class="sector-formula">涨停集聚 35% <span>+</span> 连板高度 25% <span>+</span> 封板稳定 25% <span>+</span> 早盘联动 15%</div><div class="table-scroll"><table><thead><tr><th>行业板块</th><th>板块得分</th><th>涨停家数</th><th>最高连板</th><th>封板稳定</th><th>早盘联动</th><th>涨停股成交额</th></tr></thead><tbody id="sector-rows"></tbody></table></div></section>
+   <section id="review-view" hidden>
+    <div class="review-intro"><div><span class="outline-tag" id="review-date-label">等待首个反馈日</span><p id="review-status">当天收盘后保存原始评分，下一个交易日核验市场表现。</p></div><button class="secondary" id="run-review"><span data-icon="refresh"></span>更新反馈</button></div>
+    <div id="review-metrics" class="metrics"></div>
+    <div class="review-grid"><section class="panel"><div class="panel-heading"><div><h2>原始评分与实际表现</h2><p>固定昨日样本，检验今天的表现，避免事后挑选赢家</p></div><span id="review-coverage" class="outline-tag">等待样本</span></div><div id="review-conclusion" class="review-conclusion" hidden></div><div class="table-scroll"><table><thead><tr><th>昨日涨停个股</th><th>原始评分</th><th>次日开盘</th><th>次日收盘</th><th>盘中最低</th><th>再次涨停</th></tr></thead><tbody id="review-rows"></tbody></table></div><div class="panel-footnote">收益以原始收盘价为基准，未假设能在涨停价成交；不等同于可实现策略收益。</div></section>
+     <section class="panel ai-panel"><div class="panel-heading"><div><h2>AI 系统评估</h2><p>用已核验的市场结果，审视评分质量</p></div><span class="outline-tag" id="ai-status-tag">检查连接</span></div><div id="ai-content"></div><div class="ai-actions"><button class="primary" id="ai-grade-btn">生成 AI 评价</button><span id="ai-action-status" role="status"></span></div></section></div>
+    <section class="panel review-sector-panel"><div class="panel-heading"><div><h2>板块判断反馈</h2><p>使用昨日固定的涨停成员，比较次日平均表现</p></div></div><div class="table-scroll"><table><thead><tr><th>昨日行业板块</th><th>原始板块分</th><th>有效 / 原始样本</th><th>次日平均收益</th><th>再次涨停比例</th></tr></thead><tbody id="review-sector-rows"></tbody></table></div></section>
+    <section class="panel history-panel"><div class="panel-heading"><div><h2>反馈记录</h2><p>持续积累样本，再判断模型是否稳定有效</p></div></div><div id="review-history"></div></section>
+   </section>
+   <section id="model-view" hidden><div class="model-grid"><section class="panel"><div class="panel-heading"><div><h2>个股评分权重</h2><p>即时重算并保存；已归档的原始评分不会被覆盖</p></div><span id="weight-total" class="outline-tag">合计 100%</span></div><div class="preset-buttons"><button data-preset="balanced" class="active">综合复盘</button><button data-preset="first">首板挖掘</button><button data-preset="relay">短线接力</button></div><div id="weight-controls"></div><div class="model-actions"><button class="secondary" id="reset-model">恢复综合复盘</button><span id="model-status" role="status">权重相加后归一化计算</span></div></section><section class="panel model-explain"><div class="panel-heading"><h2>分数如何产生</h2></div><div class="formula-box">综合分 = 有效指标加权均分<br><span>− 风险扣分（最多 20 分）</span></div><h3>数据不完整时</h3><p>缺失指标不按零分计入，剩余权重重新归一化。数据覆盖率同时显示，覆盖率较低的得分可比性较弱。</p><h3>风险扣分</h3><dl><div><dt>5 板及以上</dt><dd>−8</dd></div><div><dt>换手率 > 40%</dt><dd>−8</dd></div><div><dt>炸板 ≥ 3 次</dt><dd>−5</dd></div><div><dt>低换手竞价封板特征</dt><dd>−10</dd></div><div><dt>14:50 后回封</dt><dd>−4</dd></div></dl><p class="model-limit">此模型是规则评分，尚未进行历史收益校准。分数衡量观察指标，不代表次日上涨概率。</p></section></div><section class="panel model-connection"><div class="panel-heading"><div><h2>大模型连接</h2><p>DeepSeek、OpenAI、通义兼容接口</p></div><span class="outline-tag" id="model-ai-status">未配置</span></div><p id="model-ai-detail">服务端配置密钥、接口地址和模型后，AI 会根据冻结评分与已核验市场结果生成评价。密钥不进入浏览器。</p><p>AI 给出证据、判断失误与改进建议；不会自行改写评分权重或历史记录。</p></section></section>
+   <footer class="page-footer"><span>LIMIT LENS <i>·</i> 每日涨停研究</span><span>研究评分用于辅助复盘；实盘判断需结合公告、题材与次日承接。</span></footer>
+  </main>
+ </div>
+</div>
+<dialog id="stock-dialog" class="detail-dialog"><div class="dialog-top"><span class="eyebrow">STOCK DIAGNOSTICS</span><button class="icon-button close-dialog" aria-label="关闭个股诊断"><span data-icon="close"></span></button></div><div id="stock-detail"></div></dialog>
+<dialog id="help-dialog" class="help-dialog"><div class="dialog-top"><h2>数据与计算口径</h2><button class="icon-button close-dialog" aria-label="关闭数据说明"><span data-icon="close"></span></button></div><div class="help-content"><p>涨停池优先读取东方财富公开行情；指数读取腾讯公开行情。页面会标明实际来源、请求时间和交易日期。公开接口可能限流、延迟或停止服务。</p><p>涨停池以来源的沪深收盘封板列表为准。ST 与退市标识股票从评分中剔除；当前来源不含科创板、北交所及未中断连续一字涨停的新股。</p><p>封单额使用当前封单金额，封单比为封单额 ÷ 当日成交额；首封和最后封板时间来自行情字段，两者的间隔不能解释为实际开板时长。</p><p>板块仅按行情提供的行业分类聚合，不推断新闻题材。板块涨停数量未除以行业总成分数，因此分数会受行业规模影响。</p><p>封板率 = 涨停池家数 ÷（涨停池家数 + 收盘未封住的炸板池家数）。情绪强度由涨停家数（40%）、封板率（35%）、市场高度（25%）构成；数据缺失会重新归一化。</p><p>晋级率需要上一可用交易日涨停列表；昨日池接口用于当日晋级统计；跨日反馈另用指数日期序列确认相邻交易日。获取不到历史数据时显示“—”。</p><p>尚未接入逐笔、龙虎榜、公告文本与历史回测。本版为盘后辅助分析，不提供自动下单。</p></div></dialog>
+<script>/* APP_MODEL */
+/* APP_SCRIPT */</script>
+</body></html>

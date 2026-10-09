@@ -1,0 +1,11 @@
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+const html = await readFile('src/index.html', 'utf8');
+const css = await readFile('src/style.css', 'utf8');
+const app = await readFile('src/app.js', 'utf8');
+const model = await readFile('src/model.js', 'utf8');
+const server = await readFile('src/worker.js', 'utf8');
+const review = await readFile('src/review.js', 'utf8');
+const page = html.replace('/* APP_STYLE */', css).replace('/* APP_MODEL */', model.replaceAll('export ', '')).replace('/* APP_SCRIPT */', app);
+await mkdir('dist/server', { recursive: true });
+await writeFile('dist/server/index.js', `const PAGE = ${JSON.stringify(page)};\n${model.replaceAll('export ', '')}\n${review.replace(/^import .*;$/gm,'').replaceAll('export ', '')}\n${server}`);
+console.log('Built Cloudflare-compatible Worker: dist/server/index.js');

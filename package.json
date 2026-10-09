@@ -1,0 +1,15 @@
+{
+  "name": "limit-lens",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "dev": "node dev.mjs"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.8",
+    "drizzle-orm": "^0.44.7"
+  }
+}
