@@ -16,7 +16,7 @@ async function saveSnapshot(env,market,weights){
 function symbol(code){return /^(60|68)/.test(code)?`sh${code}`:`sz${code}`;}
 async function quoteRows(codes){
  const response=await fetch(`https://qt.gtimg.cn/q=${codes.map(symbol).join(',')}`,{signal:AbortSignal.timeout(12000)});if(!response.ok)throw new Error('次日行情获取失败');
- const buffer=await response.arrayBuffer();const text=new TextDecoder('gb18030').decode(buffer);const quotes=new Map();
+ const buffer=await response.arrayBuffer();const text=new TextDecoder('utf-8').decode(buffer);const quotes=new Map();
  for(const line of text.split(';')){const matched=line.match(/v_(sh|sz)(\d{6})="([^"]*)"/);if(!matched)continue;const f=matched[3].split('~');const close=num(f[3]),previousClose=num(f[4]);if(close===null||previousClose===null||previousClose<=0)continue;const positive=v=>num(v)>0?num(v):null;quotes.set(matched[2],{date:f[30]?.slice(0,8),close,previousClose,open:positive(f[5]),high:positive(f[33]),low:positive(f[34]),turnover:num(f[38])});}
  return quotes;
 }
