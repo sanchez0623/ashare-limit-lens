@@ -19,7 +19,11 @@ import {
   verifyExport,
 } from "../services/paper.js";
 import { PaperRepository } from "../storage/paper.js";
-import { improveStrategy } from "../services/improvement.js";
+import {
+  proposeImprovement,
+  promoteCandidate,
+  researchStatus,
+} from "../services/research.js";
 import { pollTrading, realtimeStatus } from "../services/realtime.js";
 
 async function runDaily(env) {
@@ -120,6 +124,7 @@ export async function api(request, env) {
       return json({ saved: true });
     }
     if (path === "/api/history") return json(await historyList(env));
+    if (path === "/api/research/status") return json(await researchStatus(env));
     if (path === "/api/review") {
       const date = url.searchParams.get("date") || beijingDate();
       if (!validDate(date)) return json({ error: "日期格式无效" }, 400);
@@ -238,11 +243,18 @@ export async function api(request, env) {
     const repository = new PaperRepository(env);
     await repository.initialize(await readWeights(env));
     if (path === "/api/paper/improve")
-      return json(await improveStrategy(repository, env));
+      return json(await proposeImprovement(repository, env));
     const body = await readJson(request);
-    if (typeof body.id !== "string" || !/^ai-\d{4}-\d{2}-\d{2}$/.test(body.id))
+    if (
+      typeof body.id !== "string" ||
+      !/^(?:ai-\d{4}-\d{2}-\d{2}|exp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(
+        body.id,
+      )
+    )
       return json({ error: "策略版本无效" }, 400);
-    return json({ activated: await repository.activate(body.id) });
+    return json({
+      activated: await promoteCandidate(repository, env, body.id),
+    });
   } catch (error) {
     return json({ error: safeError(error) }, 503);
   }

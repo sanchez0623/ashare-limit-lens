@@ -17,10 +17,8 @@ import {
 } from "../backend/domain/validation.js";
 import { PaperRepository } from "../backend/storage/paper.js";
 import { exportPaper, verifyExport } from "../backend/services/paper.js";
-import {
-  improveStrategy,
-  requestProposal,
-} from "../backend/services/improvement.js";
+import { requestProposal } from "../backend/services/improvement.js";
+import { proposeImprovement as improveStrategy } from "../backend/services/research.js";
 import { aiConfig } from "../backend/services/review.js";
 import { api } from "../backend/routes/api.js";
 import { localDatabase } from "../scripts/local-db.mjs";
@@ -338,7 +336,7 @@ test("AI 参数禁止代码、资金和风险上限修改；无改进或覆盖�
     false,
   );
 });
-test("真实 AI 适配器只发送训练窗口；版本通过后启用且禁止同窗口重复调参", async () => {
+test("研究闸门下数据不足不发起提案，历史通过不再自动启用", async () => {
   const DB = localDatabase(),
     env = {
       DB,
@@ -364,13 +362,10 @@ test("真实 AI 适配器只发送训练窗口；版本通过后启用且禁止�
       .bind(pair.dataset.date, JSON.stringify(pair.dataset), "fixture")
       .run();
   }
-  let received = null,
-    calls = 0;
+  let calls = 0;
   const fetchBefore = globalThis.fetch;
-  globalThis.fetch = async (url, options) => {
+  globalThis.fetch = async () => {
     calls++;
-    received = JSON.parse(options.body);
-    assert.equal(options.redirect, "error");
     return Response.json({
       choices: [
         {
@@ -386,17 +381,13 @@ test("真实 AI 适配器只发送训练窗口；版本通过后启用且禁止�
   };
   try {
     const result = await improveStrategy(repository, env, requestProposal);
-    assert.equal(result.status, "ACTIVE");
+    assert.equal(result.status, "COLLECTING");
+    assert.deepEqual(result.required, { trainDays: 60, histTestDays: 20 });
+    assert.equal(calls, 0);
     assert.equal(
       (await repository.account()).book.activeStrategy,
-      result.version,
+      "baseline-v1",
     );
-    const sent = JSON.parse(received.messages[1].content);
-    assert.equal(sent.dailySignals.length, 20);
-    assert.equal(sent.dailySignals.at(-1).date, dateAt(19));
-    assert.ok(!JSON.stringify(sent).includes(dateAt(30)));
-    await improveStrategy(repository, env, requestProposal);
-    assert.equal(calls, 1);
   } finally {
     globalThis.fetch = fetchBefore;
     DB.close();

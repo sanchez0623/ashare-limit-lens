@@ -36,10 +36,22 @@ const actionNames = {
 const statusNames = {
   ACTIVE: "使用中",
   VALIDATED: "验证通过",
+  LEGACY_VALIDATED: "历史通过（无启用资格）",
+  SHADOW_PENDING: "等待影子验证",
+  AWAITING_SHADOW: "等待影子验证",
   REJECTED: "未通过",
   ERROR: "调用失败",
   PROPOSING: "正在验证",
   RETIRED: "已归档",
+  COLLECTING: "数据积累中",
+  NOT_CONFIGURED: "未配置大模型",
+  BUSY: "已有进行中的实验",
+  BUDGET_EXHAUSTED: "本月提案次数已用完",
+  INCONCLUSIVE: "证据不足",
+  INVALIDATED: "环境变化已失效",
+  APPROVED: "已批准待排期",
+  SCHEDULED: "已排期",
+  PROMOTED: "已启用",
 };
 const executionNames = {
   PENDING: "等待触发",
