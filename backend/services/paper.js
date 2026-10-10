@@ -9,7 +9,7 @@ import {
 } from "../domain/trading.js";
 import { collectTradingDay, tradingCalendar } from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
-import { improveStrategy } from "./improvement.js";
+import { proposeImprovement } from "./research.js";
 import { safeError } from "../http.js";
 import { feesForBook } from "../../shared/fees.js";
 import { RealtimeRepository } from "../storage/realtime.js";
@@ -124,7 +124,7 @@ async function settlePaperDay(env, date) {
   }
   let improvement;
   try {
-    improvement = await improveStrategy(repository, env);
+    improvement = await proposeImprovement(repository, env);
   } catch {
     improvement = {
       status: "ERROR",

@@ -24,6 +24,7 @@ const RANGES = {
   tBuyDip: [0.01, 0.04],
   tSellRise: [0.01, 0.04],
 };
+export { RANGES };
 export function validateProposal(output, base = BASE_STRATEGY) {
   if (
     !output ||
@@ -71,6 +72,7 @@ export function validateProposal(output, base = BASE_STRATEGY) {
   }
   return {
     params: { ...structuredClone(base), ...patch },
+    patch: { ...patch },
     rationale: output.rationale,
   };
 }
@@ -79,8 +81,11 @@ export function replayStrategy(
   strategy,
   initialCapital = DEFAULT_INITIAL_CAPITAL,
   feeConfig = DEFAULT_FEES,
+  initialBook = null,
 ) {
-  let book = newBook(initialCapital, feeConfig);
+  let book = initialBook
+    ? structuredClone(initialBook)
+    : newBook(initialCapital, feeConfig);
   const equities = [],
     fills = [];
   let covered = true;
@@ -171,7 +176,10 @@ export function replayStrategy(
     days: equities.length,
     covered,
     reason,
-    totalReturn: book.equityCents / book.initialCashCents - 1,
+    totalReturn:
+      book.equityCents /
+        (initialBook ? initialBook.equityCents : book.initialCashCents) -
+      1,
     maxDrawdown: Math.max(0, ...equities.map((row) => row.drawdown)),
     fillCount: fills.length,
     feesCents: book.feesCents,
@@ -185,18 +193,21 @@ export function validateCandidate(
   candidate,
   initialCapital,
   feeConfig = DEFAULT_FEES,
+  initialBook = null,
 ) {
   const baseline = replayStrategy(
     holdoutPairs,
     base,
     initialCapital,
     feeConfig,
+    initialBook,
   );
   const proposed = replayStrategy(
     holdoutPairs,
     candidate,
     initialCapital,
     feeConfig,
+    initialBook,
   );
   const checks = {
     trainingSize: trainingPairs.length >= 20,

@@ -29,6 +29,13 @@
       "when": 1791557590221,
       "tag": "0003_legal_zombie",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791601373743,
+      "tag": "0004_clear_spirit",
+      "breakpoints": true
     }
   ]
 }
