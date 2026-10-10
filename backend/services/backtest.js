@@ -1,4 +1,9 @@
-import { BASE_STRATEGY, createPlan, newBook } from "../domain/trading.js";
+import {
+  BASE_STRATEGY,
+  createPlan,
+  newBook,
+  totalQuantity,
+} from "../domain/trading.js";
 import {
   openSession,
   advanceSession,
@@ -172,11 +177,15 @@ async function runBacktestInner(
   const datasetId = dataset.id;
   const scores = await store.listScores(datasetId);
   const minuteDates = new Set(await store.listMinuteDates(datasetId));
+  const tradingDates = Array.isArray(dataset.coverage?.tradingDates)
+    ? dataset.coverage.tradingDates
+    : [];
   const succeededDates = Array.isArray(dataset.coverage?.succeededDates)
     ? dataset.coverage.succeededDates
     : [];
+  const adjacencyDates = tradingDates.length ? tradingDates : succeededDates;
   const succeededPosition = new Map(
-    succeededDates.map((date, index) => [date, index]),
+    adjacencyDates.map((date, index) => [date, index]),
   );
   const coverage = {
     executionModel: HISTORICAL_EXECUTION_MODEL,
@@ -192,6 +201,10 @@ async function runBacktestInner(
       "研究回测：MINUTE_SAMPLE_V1 采样价模型，涨跌停边界按上一收盘 ±10% 近似；不含可成交性保证，不代表可执行策略收益",
     ],
   };
+  if (!tradingDates.length)
+    coverage.notes.push(
+      "数据集未记录完整交易日历（旧版本），邻接检查退化为成功日期序列；建议重新导入以启用严格日历邻接",
+    );
   for (let index = 0; index + 1 < scores.length; index++) {
     const signal = scores[index];
     const signalDate = signal.tradeDate;
@@ -311,6 +324,12 @@ async function runBacktestInner(
       cashCents: book.cashCents,
       drawdown,
       positions: book.positions.length,
+      sharesByCode: Object.fromEntries(
+        book.positions.map((position) => [
+          position.code,
+          totalQuantity(position),
+        ]),
+      ),
       sampledCloseTimes,
     };
     coverage.equity.push(equityRow);
@@ -387,7 +406,34 @@ export async function backtestDetail(env, runId) {
         `账本重放终值现金 ${replayCashCents} 与权益终值现金 ${equity.at(-1).cashCents} 不一致`,
       );
   }
+  const positionIssues = [];
+  if (run.initialBook?.initialCashCents) {
+    const shares = {};
+    const ledgerByDate = new Map();
+    for (const row of ledger) {
+      if (!ledgerByDate.has(row.tradeDate)) ledgerByDate.set(row.tradeDate, []);
+      ledgerByDate.get(row.tradeDate).push(row);
+    }
+    for (const equityRow of equity) {
+      for (const row of ledgerByDate.get(equityRow.tradeDate) ?? []) {
+        const delta = row.side === "BUY" ? row.quantity : -Number(row.quantity);
+        shares[row.code] = (shares[row.code] ?? 0) + delta;
+        if (!shares[row.code]) delete shares[row.code];
+      }
+      const recorded = equityRow.sharesByCode ?? null;
+      if (!recorded) continue;
+      const codes = new Set([...Object.keys(shares), ...Object.keys(recorded)]);
+      for (const code of codes) {
+        if ((shares[code] ?? 0) !== (recorded[code] ?? 0)) {
+          positionIssues.push(
+            `${equityRow.tradeDate} ${code} 重放持仓 ${shares[code] ?? 0} 股与权益记录 ${recorded[code] ?? 0} 股不一致（成交被篡改或等价替换）`,
+          );
+        }
+      }
+    }
+  }
   const cashChainMatches = cashIssues.length === 0;
+  const positionsRebuilt = positionIssues.length === 0;
   return {
     run,
     plans,
@@ -398,20 +444,26 @@ export async function backtestDetail(env, runId) {
       ledgerCountMatches,
       cashChainMatches,
       cashIssues: cashIssues.slice(0, 10),
+      positionsRebuilt,
+      positionIssues: positionIssues.slice(0, 10),
       totalReturnMatches:
         recomputedTotalReturn === null ||
         !ledgerCountMatches ||
         !ledger.length ||
-        !cashChainMatches
+        !cashChainMatches ||
+        !positionsRebuilt
           ? false
           : Math.abs(
               (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0),
             ) < 1e-9,
       recomputedTotalReturn,
       note:
-        ledger.length && ledgerCountMatches && cashChainMatches
-          ? "收益核验基于账本独立重放（逐笔现金变动重算 + 逐日现金链）与权益终值"
-          : "账本缺失、行数不符或现金重放不一致，无法核验收益；不得将 totalReturn 视为已验证",
+        ledger.length &&
+        ledgerCountMatches &&
+        cashChainMatches &&
+        positionsRebuilt
+          ? "收益核验基于账本独立重放（逐笔现金变动重算 + 逐日现金链 + 持仓数量重建）与权益终值"
+          : "账本缺失、行数不符、现金重放或持仓重建不一致，无法核验收益；不得将 totalReturn 视为已验证",
     },
   };
 }

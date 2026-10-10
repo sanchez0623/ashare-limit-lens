@@ -130,11 +130,14 @@ export async function runHistoryImport(env, jobId, options = {}) {
 }
 async function runHistoryImportInner(env, job, { jobs, store, options }) {
   const jobId = job.id;
+  const takeoverNotice =
+    "任务已由其他执行器接管，本次执行中止（不覆盖接管方状态）";
   const provider = historyProviders()[job.provider];
   if (!provider) throw new Error("未知历史数据供应商");
   const requestedStart = job.requestedRange.start,
     requestedEnd = job.requestedRange.end;
-  await jobs.updateJob(jobId, { stage: "PROBING" });
+  if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { stage: "PROBING" })))
+    return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
   const capabilities = await provider.capabilities({
     start: requestedStart,
     end: requestedEnd,
@@ -160,6 +163,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   };
   let preservedExecutionModel = null;
   let clonedSourceDates = null;
+  let clonedSourceTradingDates = null;
   let datasetId = job.datasetId;
   if (!datasetId) {
     datasetId = newId("hds");
@@ -179,7 +183,13 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       });
     }
   }
-  await jobs.updateJob(jobId, { stage: "DOWNLOADING", datasetId });
+  if (
+    !(await jobs.progressJob(jobId, EXECUTOR_ID, {
+      stage: "DOWNLOADING",
+      datasetId,
+    }))
+  )
+    return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
   const calendar = await provider.tradingCalendar({
     start: requestedStart,
     end: requestedEnd,
@@ -262,10 +272,12 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         for (const row of normalized) universeCodes.add(row.code);
       }
     }
-    await jobs.updateJob(jobId, { stage: "NORMALIZING" });
+    if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { stage: "NORMALIZING" })))
+      return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
     const weights = options.weights ?? PRESETS.balanced;
     const paramsDigest = await digestOf(weights);
-    await jobs.updateJob(jobId, { stage: "SCORING" });
+    if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { stage: "SCORING" })))
+      return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
     let dailyNormalized = null;
     if (options.withObservationReturns !== false && succeeded.length) {
       try {
@@ -441,15 +453,22 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     }
     const targetDatasetId = options.datasetId ?? job.statusPayload?.datasetId;
     if (targetDatasetId) {
-      const cloned = await store.cloneDatasetForMinutes(targetDatasetId);
+      const cloneSource = job.datasetId ?? targetDatasetId;
+      const cloned = await store.cloneDatasetForMinutes(cloneSource);
       datasetId = cloned.id;
       preservedExecutionModel = cloned.sourceCoverage.executionModel ?? null;
       clonedSourceDates = Array.isArray(cloned.sourceCoverage.succeededDates)
         ? cloned.sourceCoverage.succeededDates
         : [];
-      await jobs.updateJob(jobId, { datasetId });
+      clonedSourceTradingDates = Array.isArray(
+        cloned.sourceCoverage.tradingDates,
+      )
+        ? cloned.sourceCoverage.tradingDates
+        : [];
+      if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { datasetId })))
+        return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
       coverage.notes.push(
-        `分钟数据附加为新数据集版本 ${datasetId}（源：${targetDatasetId}）；源数据集保持发布时状态不被改写`,
+        `分钟数据附加为新数据集版本 ${datasetId}（克隆自 ${cloneSource}，继承已完成分钟数据）；源数据集保持发布时状态不被改写`,
       );
     }
     for (const date of calendar.dates) {
@@ -583,6 +602,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     coverage.succeededDates = [
       ...new Set([...clonedSourceDates, ...coverage.succeededDates]),
     ].sort();
+  coverage.tradingDates = [
+    ...new Set([...(clonedSourceTradingDates ?? []), ...calendar.dates]),
+  ].sort();
   coverage.failedDates = failed;
   coverage.notes.push(
     `联合采集股票池 ${universeCodes.size} 只；失败日期 ${failed.length} 个`,

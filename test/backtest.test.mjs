@@ -263,9 +263,16 @@ test("回测不跨缺失交易日配对执行", async () => {
   const store = openHistoryStore(env);
   const datasetId = await seedDataset(env, store, { minuteOn: DATES });
   try {
+    await store.db
+      .prepare(
+        "DELETE FROM history_scores WHERE dataset_id = ? AND trade_date = '2026-03-03'",
+      )
+      .bind(datasetId)
+      .run();
     await store.updateDatasetCoverage(datasetId, {
       executionModel: "SIX_FACTOR_V1",
       succeededDates: ["2026-03-02", "2026-03-04"],
+      tradingDates: ["2026-03-02", "2026-03-03", "2026-03-04"],
     });
     const run = await runBacktest(env, { datasetId, initialCapital: 1000000 });
     assert.equal(run.stage, "PARTIAL");
@@ -273,6 +280,7 @@ test("回测不跨缺失交易日配对执行", async () => {
       run.coverage.skippedPairs.some((row) =>
         row.reason.includes("不跨缺失日配对"),
       ),
+      "3月3日失败后，3月2日评分不得在3月4日执行",
     );
     assert.equal(run.coverage.executedPairs, 0);
   } finally {
@@ -310,6 +318,57 @@ test("修改账本成交价格后收益核验失败", async () => {
     assert.equal(after.verification.cashChainMatches, false);
     assert.equal(after.verification.totalReturnMatches, false);
     assert.ok(after.verification.cashIssues.length > 0);
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("等价金额替换成交（股数减半价格翻倍）也会被持仓重建发现", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = await seedDataset(env, store, { minuteOn: DATES.slice(1) });
+  try {
+    const run = await runBacktest(env, { datasetId, initialCapital: 1000000 });
+    const rows = await store.db
+      .prepare("SELECT id, payload FROM backtest_ledger WHERE run_id = ?")
+      .bind(run.id)
+      .all();
+    const target = rows.results
+      .map((row) => JSON.parse(row.payload))
+      .filter((row) => row.side === "BUY" && row.quantity >= 200)
+      .at(0);
+    assert.ok(target, "需要一笔可等价替换的买入");
+    const halved = Math.round(target.quantity / 2);
+    if (halved >= 100) {
+      const tampered = {
+        ...target,
+        quantity: halved,
+        priceCents: target.priceCents * 2,
+        cashDeltaCents: -(halved * target.priceCents * 2) - target.feeCents,
+      };
+      const originalRow = rows.results.find(
+        (row) => JSON.parse(row.payload).id === target.id,
+      );
+      await store.db
+        .prepare(
+          "UPDATE backtest_ledger SET payload = ? WHERE run_id = ? AND id = ?",
+        )
+        .bind(JSON.stringify(tampered), run.id, originalRow.id)
+        .run();
+      const after = await backtestDetail(env, run.id);
+      assert.equal(after.verification.positionsRebuilt, false);
+      assert.equal(after.verification.totalReturnMatches, false);
+      assert.ok(
+        after.verification.positionIssues.some((issue) =>
+          issue.includes("重放持仓"),
+        ),
+      );
+    }
   } finally {
     DB.close();
     store.close();

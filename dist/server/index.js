@@ -3772,7 +3772,7 @@ var HistoryJobRepository = class {
       Date.now() - leaseMinutes * 60 * 1e3
     ).toISOString();
     const takeover = await this.db.prepare(
-      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') < ?"
+      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') <= ?"
     ).bind(executorId, now, now, now, id, cutoff).run();
     return takeover.meta.changes > 0;
   }
@@ -3787,6 +3787,23 @@ var HistoryJobRepository = class {
       stage,
       JSON.stringify(job.progress),
       JSON.stringify({ ...job.statusPayload, ...statusPayload ?? {} }),
+      datasetId ?? null,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      id,
+      executorId
+    ).run();
+    if (!result.meta.changes) return null;
+    return this.getJob(id);
+  }
+  async progressJob(id, executorId, { stage, datasetId }) {
+    const job = await this.getJob(id);
+    if (!job) return null;
+    if (stage && !HISTORY_STAGES.includes(stage))
+      throw new Error(`\u5386\u53F2\u4EFB\u52A1\u9636\u6BB5\u65E0\u6548\uFF1A${stage}`);
+    const result = await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = ?, dataset_id = COALESCE(?, dataset_id), updated_at = ? WHERE id = ? AND json_extract(progress, '$.executorId') = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING')"
+    ).bind(
+      stage ?? job.stage,
       datasetId ?? null,
       (/* @__PURE__ */ new Date()).toISOString(),
       id,
@@ -4059,18 +4076,32 @@ var HistoryDatasetStore = class {
       digest: row.digest
     }));
   }
+  async datasetScoreRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, scoring_version, params_digest, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date, scoring_version"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      scoringVersion: row.scoring_version,
+      paramsDigest: row.params_digest,
+      digest: row.digest
+    }));
+  }
   async buildDatasetManifest(datasetId, { executionModel, coverage }) {
     const inputs = await this.listDatasetDates(datasetId);
     const chunkRefs = await this.datasetChunkRefs(datasetId);
     const minuteRefs = await this.datasetMinuteRefs(datasetId);
     const observationRefs = await this.datasetObservationRefs(datasetId);
+    const scoreRefs = await this.datasetScoreRefs(datasetId);
     return {
       executionModel: executionModel ?? null,
       coverage: coverage ?? null,
       chunkRefs,
       inputs,
       minuteRefs,
-      observationRefs
+      observationRefs,
+      scoreRefs
     };
   }
   async datasetIntegrity(datasetId) {
@@ -4084,8 +4115,46 @@ var HistoryDatasetStore = class {
     const issues = [];
     if (recomputedDigest !== dataset.manifestDigest)
       issues.push(
-        "\u6570\u636E\u96C6\u8F93\u5165\uFF08\u65E5\u7EBF/\u5206\u949F/\u89C2\u5BDF\u4EF7\u683C\uFF09\u4E0E\u53D1\u5E03\u65F6\u7684 manifest \u6458\u8981\u4E0D\u4E00\u81F4"
+        "\u6570\u636E\u96C6\u8F93\u5165\uFF08\u65E5\u7EBF/\u5206\u949F/\u89C2\u5BDF\u4EF7\u683C/\u8BC4\u5206\uFF09\u4E0E\u53D1\u5E03\u65F6\u7684 manifest \u6458\u8981\u4E0D\u4E00\u81F4"
       );
+    const contentTables = [
+      {
+        sql: "SELECT trade_date, payload, digest FROM history_daily_inputs WHERE dataset_id = ? ORDER BY trade_date",
+        label: "\u65E5\u7EBF\u8F93\u5165",
+        recompute: (payload) => digestOf(payload)
+      },
+      {
+        sql: "SELECT trade_date, code, payload, digest FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date, code",
+        label: "\u5206\u949F\u91C7\u6837",
+        recompute: (payload) => digestOf(JSON.parse(payload))
+      },
+      {
+        sql: "SELECT trade_date, code, payload, digest FROM history_observation_prices WHERE dataset_id = ? ORDER BY trade_date, code",
+        label: "\u89C2\u5BDF\u65E5\u7EBF",
+        recompute: (payload) => digestOf(JSON.parse(payload))
+      },
+      {
+        sql: "SELECT trade_date, scoring_version, payload, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date, scoring_version",
+        label: "\u5386\u53F2\u8BC4\u5206",
+        recompute: (payload) => digestOf(JSON.parse(payload))
+      }
+    ];
+    for (const table of contentTables) {
+      const rows = (await this.db.prepare(table.sql).bind(datasetId).all()).results;
+      for (const row of rows) {
+        let recomputed;
+        try {
+          recomputed = await table.recompute(row.payload);
+        } catch {
+          issues.push(`${table.label} ${row.trade_date} \u7684\u8F7D\u8377\u4E0D\u662F\u5408\u6CD5 JSON`);
+          continue;
+        }
+        if (recomputed !== row.digest)
+          issues.push(
+            `${table.label} ${row.trade_date}${row.code ? ` ${row.code}` : ""} \u7684\u5185\u5BB9\u6458\u8981\u4E0E\u5B58\u50A8\u6458\u8981\u4E0D\u4E00\u81F4\uFF08\u8F7D\u8377\u88AB\u4FEE\u6539\uFF09`
+          );
+      }
+    }
     const { existsSync, readFileSync } = await import("node:fs");
     const { join, dirname } = await import("node:path");
     for (const ref of manifest.chunkRefs) {
@@ -4211,7 +4280,8 @@ var HistoryDatasetStore = class {
   }
   async saveObservationDaily(datasetId, tradeDate, byCode) {
     await this.ensure();
-    for (const [code, row] of Object.entries(byCode)) {
+    const entries = byCode instanceof Map ? [...byCode.entries()] : Object.entries(byCode ?? {});
+    for (const [code, row] of entries) {
       const payload = JSON.stringify(row);
       await this.db.prepare(
         "INSERT OR REPLACE INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
@@ -4257,6 +4327,9 @@ var HistoryDatasetStore = class {
     ).bind(newId3, sourceId).run();
     await this.db.prepare(
       "INSERT INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) SELECT ?, trade_date, code, payload, digest FROM history_observation_prices WHERE dataset_id = ?"
+    ).bind(newId3, sourceId).run();
+    await this.db.prepare(
+      "INSERT INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) SELECT ?, trade_date, code, payload, digest FROM history_minute_inputs WHERE dataset_id = ?"
     ).bind(newId3, sourceId).run();
     return { id: newId3, sourceCoverage: source.coverage };
   }
@@ -7213,10 +7286,12 @@ async function runHistoryImport(env, jobId, options = {}) {
 }
 async function runHistoryImportInner(env, job, { jobs, store, options }) {
   const jobId = job.id;
+  const takeoverNotice = "\u4EFB\u52A1\u5DF2\u7531\u5176\u4ED6\u6267\u884C\u5668\u63A5\u7BA1\uFF0C\u672C\u6B21\u6267\u884C\u4E2D\u6B62\uFF08\u4E0D\u8986\u76D6\u63A5\u7BA1\u65B9\u72B6\u6001\uFF09";
   const provider = historyProviders()[job.provider];
   if (!provider) throw new Error("\u672A\u77E5\u5386\u53F2\u6570\u636E\u4F9B\u5E94\u5546");
   const requestedStart = job.requestedRange.start, requestedEnd = job.requestedRange.end;
-  await jobs.updateJob(jobId, { stage: "PROBING" });
+  if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { stage: "PROBING" }))
+    return { ...await jobs.getJob(jobId), note: takeoverNotice };
   const capabilities = await provider.capabilities({
     start: requestedStart,
     end: requestedEnd
@@ -7239,6 +7314,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   };
   let preservedExecutionModel = null;
   let clonedSourceDates = null;
+  let clonedSourceTradingDates = null;
   let datasetId = job.datasetId;
   if (!datasetId) {
     datasetId = newId("hds");
@@ -7258,7 +7334,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       });
     }
   }
-  await jobs.updateJob(jobId, { stage: "DOWNLOADING", datasetId });
+  if (!await jobs.progressJob(jobId, EXECUTOR_ID2, {
+    stage: "DOWNLOADING",
+    datasetId
+  }))
+    return { ...await jobs.getJob(jobId), note: takeoverNotice };
   const calendar = await provider.tradingCalendar({
     start: requestedStart,
     end: requestedEnd
@@ -7341,10 +7421,12 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         for (const row of normalized) universeCodes.add(row.code);
       }
     }
-    await jobs.updateJob(jobId, { stage: "NORMALIZING" });
+    if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { stage: "NORMALIZING" }))
+      return { ...await jobs.getJob(jobId), note: takeoverNotice };
     const weights = options.weights ?? PRESETS.balanced;
     const paramsDigest = await digestOf(weights);
-    await jobs.updateJob(jobId, { stage: "SCORING" });
+    if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { stage: "SCORING" }))
+      return { ...await jobs.getJob(jobId), note: takeoverNotice };
     let dailyNormalized = null;
     if (options.withObservationReturns !== false && succeeded.length) {
       try {
@@ -7487,13 +7569,18 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     }
     const targetDatasetId = options.datasetId ?? job.statusPayload?.datasetId;
     if (targetDatasetId) {
-      const cloned = await store.cloneDatasetForMinutes(targetDatasetId);
+      const cloneSource = job.datasetId ?? targetDatasetId;
+      const cloned = await store.cloneDatasetForMinutes(cloneSource);
       datasetId = cloned.id;
       preservedExecutionModel = cloned.sourceCoverage.executionModel ?? null;
       clonedSourceDates = Array.isArray(cloned.sourceCoverage.succeededDates) ? cloned.sourceCoverage.succeededDates : [];
-      await jobs.updateJob(jobId, { datasetId });
+      clonedSourceTradingDates = Array.isArray(
+        cloned.sourceCoverage.tradingDates
+      ) ? cloned.sourceCoverage.tradingDates : [];
+      if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { datasetId }))
+        return { ...await jobs.getJob(jobId), note: takeoverNotice };
       coverage.notes.push(
-        `\u5206\u949F\u6570\u636E\u9644\u52A0\u4E3A\u65B0\u6570\u636E\u96C6\u7248\u672C ${datasetId}\uFF08\u6E90\uFF1A${targetDatasetId}\uFF09\uFF1B\u6E90\u6570\u636E\u96C6\u4FDD\u6301\u53D1\u5E03\u65F6\u72B6\u6001\u4E0D\u88AB\u6539\u5199`
+        `\u5206\u949F\u6570\u636E\u9644\u52A0\u4E3A\u65B0\u6570\u636E\u96C6\u7248\u672C ${datasetId}\uFF08\u514B\u9686\u81EA ${cloneSource}\uFF0C\u7EE7\u627F\u5DF2\u5B8C\u6210\u5206\u949F\u6570\u636E\uFF09\uFF1B\u6E90\u6570\u636E\u96C6\u4FDD\u6301\u53D1\u5E03\u65F6\u72B6\u6001\u4E0D\u88AB\u6539\u5199`
       );
     }
     for (const date of calendar.dates) {
@@ -7627,6 +7714,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     coverage.succeededDates = [
       .../* @__PURE__ */ new Set([...clonedSourceDates, ...coverage.succeededDates])
     ].sort();
+  coverage.tradingDates = [
+    .../* @__PURE__ */ new Set([...clonedSourceTradingDates ?? [], ...calendar.dates])
+  ].sort();
   coverage.failedDates = failed;
   coverage.notes.push(
     `\u8054\u5408\u91C7\u96C6\u80A1\u7968\u6C60 ${universeCodes.size} \u53EA\uFF1B\u5931\u8D25\u65E5\u671F ${failed.length} \u4E2A`
@@ -7858,9 +7948,11 @@ async function runBacktestInner(store, runId, dataset, { strategyParams, feeConf
   const datasetId = dataset.id;
   const scores = await store.listScores(datasetId);
   const minuteDates = new Set(await store.listMinuteDates(datasetId));
+  const tradingDates = Array.isArray(dataset.coverage?.tradingDates) ? dataset.coverage.tradingDates : [];
   const succeededDates = Array.isArray(dataset.coverage?.succeededDates) ? dataset.coverage.succeededDates : [];
+  const adjacencyDates = tradingDates.length ? tradingDates : succeededDates;
   const succeededPosition = new Map(
-    succeededDates.map((date, index) => [date, index])
+    adjacencyDates.map((date, index) => [date, index])
   );
   const coverage = {
     executionModel: HISTORICAL_EXECUTION_MODEL,
@@ -7876,6 +7968,10 @@ async function runBacktestInner(store, runId, dataset, { strategyParams, feeConf
       "\u7814\u7A76\u56DE\u6D4B\uFF1AMINUTE_SAMPLE_V1 \u91C7\u6837\u4EF7\u6A21\u578B\uFF0C\u6DA8\u8DCC\u505C\u8FB9\u754C\u6309\u4E0A\u4E00\u6536\u76D8 \xB110% \u8FD1\u4F3C\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA"
     ]
   };
+  if (!tradingDates.length)
+    coverage.notes.push(
+      "\u6570\u636E\u96C6\u672A\u8BB0\u5F55\u5B8C\u6574\u4EA4\u6613\u65E5\u5386\uFF08\u65E7\u7248\u672C\uFF09\uFF0C\u90BB\u63A5\u68C0\u67E5\u9000\u5316\u4E3A\u6210\u529F\u65E5\u671F\u5E8F\u5217\uFF1B\u5EFA\u8BAE\u91CD\u65B0\u5BFC\u5165\u4EE5\u542F\u7528\u4E25\u683C\u65E5\u5386\u90BB\u63A5"
+    );
   for (let index = 0; index + 1 < scores.length; index++) {
     const signal = scores[index];
     const signalDate = signal.tradeDate;
@@ -7986,6 +8082,12 @@ async function runBacktestInner(store, runId, dataset, { strategyParams, feeConf
       cashCents: book.cashCents,
       drawdown,
       positions: book.positions.length,
+      sharesByCode: Object.fromEntries(
+        book.positions.map((position) => [
+          position.code,
+          totalQuantity(position)
+        ])
+      ),
       sampledCloseTimes
     };
     coverage.equity.push(equityRow);
@@ -8051,7 +8153,34 @@ async function backtestDetail(env, runId) {
         `\u8D26\u672C\u91CD\u653E\u7EC8\u503C\u73B0\u91D1 ${replayCashCents} \u4E0E\u6743\u76CA\u7EC8\u503C\u73B0\u91D1 ${equity.at(-1).cashCents} \u4E0D\u4E00\u81F4`
       );
   }
+  const positionIssues = [];
+  if (run.initialBook?.initialCashCents) {
+    const shares = {};
+    const ledgerByDate = /* @__PURE__ */ new Map();
+    for (const row of ledger) {
+      if (!ledgerByDate.has(row.tradeDate)) ledgerByDate.set(row.tradeDate, []);
+      ledgerByDate.get(row.tradeDate).push(row);
+    }
+    for (const equityRow of equity) {
+      for (const row of ledgerByDate.get(equityRow.tradeDate) ?? []) {
+        const delta = row.side === "BUY" ? row.quantity : -Number(row.quantity);
+        shares[row.code] = (shares[row.code] ?? 0) + delta;
+        if (!shares[row.code]) delete shares[row.code];
+      }
+      const recorded = equityRow.sharesByCode ?? null;
+      if (!recorded) continue;
+      const codes = /* @__PURE__ */ new Set([...Object.keys(shares), ...Object.keys(recorded)]);
+      for (const code of codes) {
+        if ((shares[code] ?? 0) !== (recorded[code] ?? 0)) {
+          positionIssues.push(
+            `${equityRow.tradeDate} ${code} \u91CD\u653E\u6301\u4ED3 ${shares[code] ?? 0} \u80A1\u4E0E\u6743\u76CA\u8BB0\u5F55 ${recorded[code] ?? 0} \u80A1\u4E0D\u4E00\u81F4\uFF08\u6210\u4EA4\u88AB\u7BE1\u6539\u6216\u7B49\u4EF7\u66FF\u6362\uFF09`
+          );
+        }
+      }
+    }
+  }
   const cashChainMatches = cashIssues.length === 0;
+  const positionsRebuilt = positionIssues.length === 0;
   return {
     run,
     plans,
@@ -8062,11 +8191,13 @@ async function backtestDetail(env, runId) {
       ledgerCountMatches,
       cashChainMatches,
       cashIssues: cashIssues.slice(0, 10),
-      totalReturnMatches: recomputedTotalReturn === null || !ledgerCountMatches || !ledger.length || !cashChainMatches ? false : Math.abs(
+      positionsRebuilt,
+      positionIssues: positionIssues.slice(0, 10),
+      totalReturnMatches: recomputedTotalReturn === null || !ledgerCountMatches || !ledger.length || !cashChainMatches || !positionsRebuilt ? false : Math.abs(
         (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0)
       ) < 1e-9,
       recomputedTotalReturn,
-      note: ledger.length && ledgerCountMatches && cashChainMatches ? "\u6536\u76CA\u6838\u9A8C\u57FA\u4E8E\u8D26\u672C\u72EC\u7ACB\u91CD\u653E\uFF08\u9010\u7B14\u73B0\u91D1\u53D8\u52A8\u91CD\u7B97 + \u9010\u65E5\u73B0\u91D1\u94FE\uFF09\u4E0E\u6743\u76CA\u7EC8\u503C" : "\u8D26\u672C\u7F3A\u5931\u3001\u884C\u6570\u4E0D\u7B26\u6216\u73B0\u91D1\u91CD\u653E\u4E0D\u4E00\u81F4\uFF0C\u65E0\u6CD5\u6838\u9A8C\u6536\u76CA\uFF1B\u4E0D\u5F97\u5C06 totalReturn \u89C6\u4E3A\u5DF2\u9A8C\u8BC1"
+      note: ledger.length && ledgerCountMatches && cashChainMatches && positionsRebuilt ? "\u6536\u76CA\u6838\u9A8C\u57FA\u4E8E\u8D26\u672C\u72EC\u7ACB\u91CD\u653E\uFF08\u9010\u7B14\u73B0\u91D1\u53D8\u52A8\u91CD\u7B97 + \u9010\u65E5\u73B0\u91D1\u94FE + \u6301\u4ED3\u6570\u91CF\u91CD\u5EFA\uFF09\u4E0E\u6743\u76CA\u7EC8\u503C" : "\u8D26\u672C\u7F3A\u5931\u3001\u884C\u6570\u4E0D\u7B26\u3001\u73B0\u91D1\u91CD\u653E\u6216\u6301\u4ED3\u91CD\u5EFA\u4E0D\u4E00\u81F4\uFF0C\u65E0\u6CD5\u6838\u9A8C\u6536\u76CA\uFF1B\u4E0D\u5F97\u5C06 totalReturn \u89C6\u4E3A\u5DF2\u9A8C\u8BC1"
     }
   };
 }

@@ -280,6 +280,14 @@ test("历史导入生命周期：READY、断点幂等、评分与观察反馈、
       withObservationReturns: true,
     });
     assert.equal(done.stage, "READY");
+    const observation = await openHistoryStore(env).getObservationDaily(
+      done.statusPayload.datasetId,
+      "2026-03-03",
+    );
+    assert.ok(
+      observation && Object.keys(observation).length >= 3,
+      "真实日线应写入 observation 表（供冷启动训练使用）",
+    );
     const info = await historyImportDetail(env, job.id);
     assert.equal(info.dates.length, 5);
     assert.equal(info.scoreCount, 5);
@@ -552,6 +560,25 @@ test("数据集摘要绑定真实输入与原始下载块引用", async () => {
     const integrityB = await store.datasetIntegrity(probeId);
     assert.equal(integrityB.verified, false);
     assert.equal(integrityB.manifestDigest, integrityA.manifestDigest);
+    await store.updateDatasetCoverage(probeId, {});
+    await store.saveScore(probeId, "2026-03-02", "rules-v1", "p", {
+      tamperedScore: true,
+    });
+    const integrityC = await store.datasetIntegrity(probeId);
+    assert.equal(integrityC.verified, false);
+    await store.db
+      .prepare(
+        "UPDATE history_scores SET payload = ? WHERE dataset_id = ? AND scoring_version = 'rules-v1'",
+      )
+      .bind(JSON.stringify({ tamperedScore: true, extra: 1 }), probeId)
+      .run();
+    const integrityD = await store.datasetIntegrity(probeId);
+    assert.ok(
+      integrityD.issues.some((issue) =>
+        issue.includes("内容摘要与存储摘要不一致"),
+      ),
+      "载荷被修改但保留旧摘要列时也应被发现",
+    );
   } finally {
     stub.restore();
     DB.close();
@@ -745,6 +772,11 @@ test("执行所有权：迟到执行器无法覆盖终态", async () => {
       }),
       null,
     );
+    assert.equal(
+      await jobs.progressJob(job.id, "executor-b", { stage: "SCORING" }),
+      null,
+      "过期接管前的旧执行器不能写中间态",
+    );
     const finished = await jobs.finishJob(job.id, "executor-a", {
       stage: "READY",
       statusPayload: { datasetId: "hds-x" },
@@ -752,6 +784,42 @@ test("执行所有权：迟到执行器无法覆盖终态", async () => {
     assert.equal(finished.stage, "READY");
     assert.equal(finished.statusPayload.datasetId, "hds-x");
     assert.equal(await jobs.claimExecution(job.id, "executor-c"), false);
+  } finally {
+    DB.close();
+  }
+});
+test("过期执行器被接管后无法破坏新执行器的终态", async () => {
+  const DB = localDatabase();
+  const env = { DB };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const jobs = new HistoryJobRepository(env);
+  try {
+    const job = await jobs.createJob({
+      id: "hjob-takeover-test",
+      provider: "tencent-free",
+      kind: "DAILY",
+      start: "2026-03-02",
+      end: "2026-03-04",
+      name: null,
+    });
+    assert.equal(await jobs.claimExecution(job.id, "executor-old"), true);
+    assert.equal(
+      await jobs.claimExecution(job.id, "executor-new", 0),
+      true,
+      "租约过期（0 分钟）后应允许接管",
+    );
+    const finished = await jobs.finishJob(job.id, "executor-new", {
+      stage: "READY",
+      statusPayload: { datasetId: "hds-final" },
+    });
+    assert.equal(finished.stage, "READY");
+    assert.equal(
+      await jobs.progressJob(job.id, "executor-old", { stage: "SCORING" }),
+      null,
+      "旧执行器的迟到写入不得把 READY 改回运行态",
+    );
+    assert.equal((await jobs.getJob(job.id)).stage, "READY");
   } finally {
     DB.close();
   }
@@ -773,11 +841,13 @@ test("评分与分钟导入可组合为同一数据集并回测", async () => {
       "1500 " + baseYuan + " 580",
     ],
   });
+  let failCode = null;
   const stub = installFetchStub({
     tradingDays,
     poolDates: tradingDays,
     minuteQuery: (symbolCode) => {
       const code = symbolCode.match(/\d{6}/)?.[0] ?? "600001";
+      if (failCode && code === failCode) return { data: { [symbolCode]: {} } };
       const index = Number(code.slice(-1)) % 2;
       return {
         data: {
@@ -813,10 +883,32 @@ test("评分与分钟导入可组合为同一数据集并回测", async () => {
       codes: ["600001", "600002"],
       datasetId,
     });
+    failCode = "600002";
+    const firstRun = await runHistoryImport(env, minuteJob.id);
+    assert.equal(firstRun.stage, "PARTIAL");
+    const firstDatasetId = firstRun.statusPayload.datasetId;
+    const partialMinutes = await openHistoryStore(env).listMinuteInputs(
+      firstDatasetId,
+      "2026-03-03",
+    );
+    assert.ok(
+      partialMinutes["600001"],
+      "首次运行成功的股票数据应已写入克隆版本",
+    );
+    failCode = null;
     const minuteDone = await runHistoryImport(env, minuteJob.id);
     assert.equal(minuteDone.stage, "READY");
     const newDatasetId = minuteDone.statusPayload.datasetId;
     assert.notEqual(newDatasetId, datasetId);
+    assert.notEqual(newDatasetId, firstDatasetId);
+    const combinedMinutes = await openHistoryStore(env).listMinuteInputs(
+      newDatasetId,
+      "2026-03-03",
+    );
+    assert.ok(
+      combinedMinutes["600001"] && combinedMinutes["600002"],
+      "重跑版本应继承此前成功的分钟数据并补齐失败股票",
+    );
     const originalDataset = await openHistoryStore(env).getDataset(datasetId);
     assert.ok(
       !originalDataset.coverage.succeededDates.includes("2026-03-04"),

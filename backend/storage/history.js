@@ -165,7 +165,7 @@ export class HistoryJobRepository {
     ).toISOString();
     const takeover = await this.db
       .prepare(
-        "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') < ?",
+        "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') <= ?",
       )
       .bind(executorId, now, now, now, id, cutoff)
       .run();
@@ -184,6 +184,26 @@ export class HistoryJobRepository {
         stage,
         JSON.stringify(job.progress),
         JSON.stringify({ ...job.statusPayload, ...(statusPayload ?? {}) }),
+        datasetId ?? null,
+        new Date().toISOString(),
+        id,
+        executorId,
+      )
+      .run();
+    if (!result.meta.changes) return null;
+    return this.getJob(id);
+  }
+  async progressJob(id, executorId, { stage, datasetId }) {
+    const job = await this.getJob(id);
+    if (!job) return null;
+    if (stage && !HISTORY_STAGES.includes(stage))
+      throw new Error(`历史任务阶段无效：${stage}`);
+    const result = await this.db
+      .prepare(
+        "UPDATE history_import_jobs SET stage = ?, dataset_id = COALESCE(?, dataset_id), updated_at = ? WHERE id = ? AND json_extract(progress, '$.executorId') = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING')",
+      )
+      .bind(
+        stage ?? job.stage,
         datasetId ?? null,
         new Date().toISOString(),
         id,
@@ -488,11 +508,27 @@ export class HistoryDatasetStore {
       digest: row.digest,
     }));
   }
+  async datasetScoreRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT trade_date, scoring_version, params_digest, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date, scoring_version",
+      )
+      .bind(datasetId)
+      .all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      scoringVersion: row.scoring_version,
+      paramsDigest: row.params_digest,
+      digest: row.digest,
+    }));
+  }
   async buildDatasetManifest(datasetId, { executionModel, coverage }) {
     const inputs = await this.listDatasetDates(datasetId);
     const chunkRefs = await this.datasetChunkRefs(datasetId);
     const minuteRefs = await this.datasetMinuteRefs(datasetId);
     const observationRefs = await this.datasetObservationRefs(datasetId);
+    const scoreRefs = await this.datasetScoreRefs(datasetId);
     return {
       executionModel: executionModel ?? null,
       coverage: coverage ?? null,
@@ -500,6 +536,7 @@ export class HistoryDatasetStore {
       inputs,
       minuteRefs,
       observationRefs,
+      scoreRefs,
     };
   }
   async datasetIntegrity(datasetId) {
@@ -514,8 +551,47 @@ export class HistoryDatasetStore {
     const issues = [];
     if (recomputedDigest !== dataset.manifestDigest)
       issues.push(
-        "数据集输入（日线/分钟/观察价格）与发布时的 manifest 摘要不一致",
+        "数据集输入（日线/分钟/观察价格/评分）与发布时的 manifest 摘要不一致",
       );
+    const contentTables = [
+      {
+        sql: "SELECT trade_date, payload, digest FROM history_daily_inputs WHERE dataset_id = ? ORDER BY trade_date",
+        label: "日线输入",
+        recompute: (payload) => digestOf(payload),
+      },
+      {
+        sql: "SELECT trade_date, code, payload, digest FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date, code",
+        label: "分钟采样",
+        recompute: (payload) => digestOf(JSON.parse(payload)),
+      },
+      {
+        sql: "SELECT trade_date, code, payload, digest FROM history_observation_prices WHERE dataset_id = ? ORDER BY trade_date, code",
+        label: "观察日线",
+        recompute: (payload) => digestOf(JSON.parse(payload)),
+      },
+      {
+        sql: "SELECT trade_date, scoring_version, payload, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date, scoring_version",
+        label: "历史评分",
+        recompute: (payload) => digestOf(JSON.parse(payload)),
+      },
+    ];
+    for (const table of contentTables) {
+      const rows = (await this.db.prepare(table.sql).bind(datasetId).all())
+        .results;
+      for (const row of rows) {
+        let recomputed;
+        try {
+          recomputed = await table.recompute(row.payload);
+        } catch {
+          issues.push(`${table.label} ${row.trade_date} 的载荷不是合法 JSON`);
+          continue;
+        }
+        if (recomputed !== row.digest)
+          issues.push(
+            `${table.label} ${row.trade_date}${row.code ? ` ${row.code}` : ""} 的内容摘要与存储摘要不一致（载荷被修改）`,
+          );
+      }
+    }
     const { existsSync, readFileSync } = await import("node:fs");
     const { join, dirname } = await import("node:path");
     for (const ref of manifest.chunkRefs) {
@@ -674,7 +750,11 @@ export class HistoryDatasetStore {
   }
   async saveObservationDaily(datasetId, tradeDate, byCode) {
     await this.ensure();
-    for (const [code, row] of Object.entries(byCode)) {
+    const entries =
+      byCode instanceof Map
+        ? [...byCode.entries()]
+        : Object.entries(byCode ?? {});
+    for (const [code, row] of entries) {
       const payload = JSON.stringify(row);
       await this.db
         .prepare(
@@ -736,6 +816,12 @@ export class HistoryDatasetStore {
     await this.db
       .prepare(
         "INSERT INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) SELECT ?, trade_date, code, payload, digest FROM history_observation_prices WHERE dataset_id = ?",
+      )
+      .bind(newId, sourceId)
+      .run();
+    await this.db
+      .prepare(
+        "INSERT INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) SELECT ?, trade_date, code, payload, digest FROM history_minute_inputs WHERE dataset_id = ?",
       )
       .bind(newId, sourceId)
       .run();
