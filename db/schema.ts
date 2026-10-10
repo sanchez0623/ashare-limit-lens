@@ -217,3 +217,18 @@ export const researchReports = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.experimentId, table.stage] })],
 );
+export const historyImportJobs = sqliteTable("history_import_jobs", {
+  id: text("id").primaryKey(),
+  namespace: text("namespace").notNull(),
+  provider: text("provider").notNull(),
+  kind: text("kind").notNull(),
+  requestedStart: text("requested_start").notNull(),
+  requestedEnd: text("requested_end").notNull(),
+  name: text("name"),
+  stage: text("stage").notNull(),
+  progress: text("progress").notNull().default("{}"),
+  statusPayload: text("status_payload").notNull().default("{}"),
+  datasetId: text("dataset_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});

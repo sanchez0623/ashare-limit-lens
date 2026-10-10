@@ -160,7 +160,8 @@ export function replayStrategy(
       fills.push(...result.ledger);
       if (
         !result.equity.complete ||
-        result.equity.missingMinuteOrders ||
+        (pair.dataset.executionMode === "realtime" &&
+          result.equity.missingMinuteOrders) ||
         result.outcomes.some((order) =>
           /缺少日期|可能除权/.test(order.reason || ""),
         )

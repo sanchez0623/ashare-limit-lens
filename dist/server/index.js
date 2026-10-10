@@ -3323,7 +3323,7 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
       book = result.book;
       equities.push(result.equity);
       fills.push(...result.ledger);
-      if (!result.equity.complete || result.equity.missingMinuteOrders || result.outcomes.some(
+      if (!result.equity.complete || pair.dataset.executionMode === "realtime" && result.equity.missingMinuteOrders || result.outcomes.some(
         (order) => /缺少日期|可能除权/.test(order.reason || "")
       ))
         covered = false;
@@ -3623,6 +3623,1192 @@ function validateCandidatePatch({
   };
 }
 
+// backend/domain/historical-input.js
+var REQUIRED_LIMIT_FIELDS = [
+  "code",
+  "name",
+  "sector",
+  "price",
+  "amount",
+  "seal",
+  "turnover",
+  "first",
+  "last",
+  "breaks",
+  "height"
+];
+function assessFieldCoverage(rows, requiredFields = REQUIRED_LIMIT_FIELDS) {
+  if (!rows.length)
+    return { covered: 0, missing: requiredFields, ratio: 0, complete: false };
+  const missing = new Map(requiredFields.map((field) => [field, 0]));
+  for (const row of rows)
+    for (const field of requiredFields)
+      if (row[field] === null || row[field] === void 0)
+        missing.set(field, missing.get(field) + 1);
+  const covered = requiredFields.length * rows.length;
+  const holes = [...missing.values()].reduce((a, b) => a + b, 0);
+  return {
+    covered: covered - holes,
+    missing: [...missing.entries()].filter(([, count]) => count > 0).map(([field, count]) => `${field}(${count})`),
+    ratio: Math.round((covered - holes) / covered * 100),
+    complete: holes === 0
+  };
+}
+function classifyExecutionModel(coverageRatio, hasLimitFeatures) {
+  if (hasLimitFeatures && coverageRatio >= 80) return "SIX_FACTOR_V1";
+  return "DAILY_OBSERVATION_V1";
+}
+function finiteOrThrow(value, field) {
+  const number = Number(value);
+  if (!Number.isFinite(number))
+    throw new Error(`\u5386\u53F2\u8F93\u5165\u5B57\u6BB5 ${field} \u4E0D\u662F\u6709\u9650\u6570\u503C`);
+  return number;
+}
+function normalizeLimitFeatureRow(raw, { origin = "HISTORICAL_RECONSTRUCTED", provider = "unknown", fetchedAt } = {}) {
+  if (!raw || typeof raw !== "object") throw new Error("\u5386\u53F2\u6DA8\u505C\u7279\u5F81\u884C\u65E0\u6548");
+  const code = String(raw.code ?? "").trim();
+  if (!/^\d{6}$/.test(code)) throw new Error("\u5386\u53F2\u6DA8\u505C\u7279\u5F81\u7F3A\u5C11\u5408\u6CD5\u8BC1\u5238\u4EE3\u7801");
+  const breaks = raw.breaks === null || raw.breaks === void 0 ? null : finiteOrThrow(raw.breaks, "breaks");
+  if (breaks !== null && breaks < 0)
+    throw new Error("\u70B8\u677F\u6B21\u6570\u4E0D\u80FD\u4E3A\u8D1F\u6570\uFF08\u7F3A\u5931\u8BF7\u8BB0\u4E3A null\uFF0C\u800C\u975E 0\uFF09");
+  const row = {
+    code,
+    name: String(raw.name ?? "").trim() || null,
+    sector: String(raw.sector ?? "").trim() || "\u672A\u5206\u7C7B",
+    price: raw.price === null || raw.price === void 0 ? null : finiteOrThrow(raw.price, "price"),
+    change: raw.change === null || raw.change === void 0 ? null : finiteOrThrow(raw.change, "change"),
+    amount: raw.amount === null || raw.amount === void 0 ? null : finiteOrThrow(raw.amount, "amount"),
+    floatCap: raw.floatCap === null || raw.floatCap === void 0 ? null : finiteOrThrow(raw.floatCap, "floatCap"),
+    seal: raw.seal === null || raw.seal === void 0 ? null : finiteOrThrow(raw.seal, "seal"),
+    turnover: raw.turnover === null || raw.turnover === void 0 ? null : finiteOrThrow(raw.turnover, "turnover"),
+    first: raw.first === null || raw.first === void 0 ? null : finiteOrThrow(raw.first, "first"),
+    last: raw.last === null || raw.last === void 0 ? null : finiteOrThrow(raw.last, "last"),
+    breaks,
+    height: raw.height === null || raw.height === void 0 ? null : finiteOrThrow(raw.height, "height")
+  };
+  if (row.price !== null && row.price <= 0)
+    throw new Error("\u5386\u53F2\u4EF7\u683C\u5FC5\u987B\u4E3A\u6B63\u6570");
+  const coverage = assessFieldCoverage([row]);
+  return {
+    row,
+    provenance: {
+      origin,
+      provider,
+      providerSchemaVersion: raw.providerSchemaVersion ?? "unknown",
+      taxonomyId: raw.taxonomyId ?? null,
+      tradeDate: raw.tradeDate ?? null,
+      fetchedAt: fetchedAt ?? null,
+      effectiveAt: raw.effectiveAt ?? raw.tradeDate ?? null,
+      availabilityEstimatedAt: raw.availabilityEstimatedAt ?? null,
+      pointInTimeConfidence: raw.pointInTimeConfidence ?? "SOURCE_REPORTED",
+      fieldCoverage: coverage,
+      note: "\u7F3A\u5931\u5B57\u6BB5\u4FDD\u6301 null\uFF0C\u4E0D\u586B 0 \u6216\u5747\u503C\u51D1\u8986\u76D6"
+    }
+  };
+}
+function normalizeDailyBarRow(raw) {
+  if (!raw || typeof raw !== "object") throw new Error("\u5386\u53F2\u65E5\u7EBF\u884C\u65E0\u6548");
+  const code = String(raw.code ?? "").trim();
+  if (!/^\d{6}$/.test(code)) throw new Error("\u5386\u53F2\u65E5\u7EBF\u7F3A\u5C11\u5408\u6CD5\u8BC1\u5238\u4EE3\u7801");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(raw.tradeDate ?? "")))
+    throw new Error("\u5386\u53F2\u65E5\u7EBF\u7F3A\u5C11\u5408\u6CD5\u4EA4\u6613\u65E5\u671F");
+  const toCentsFromYuan = (value, field) => {
+    if (value === null || value === void 0) return null;
+    const cents = Math.round(Number(value) * 100);
+    if (!Number.isFinite(cents) || cents <= 0)
+      throw new Error(`\u5386\u53F2\u65E5\u7EBF\u5B57\u6BB5 ${field} \u5FC5\u987B\u4E3A\u6B63\u6570\uFF08\u5355\u4F4D\uFF1A\u5143\uFF09`);
+    return cents;
+  };
+  const row = {
+    code,
+    tradeDate: String(raw.tradeDate),
+    openCents: toCentsFromYuan(raw.openYuan, "openYuan"),
+    closeCents: toCentsFromYuan(raw.closeYuan, "closeYuan"),
+    highCents: toCentsFromYuan(raw.highYuan, "highYuan"),
+    lowCents: toCentsFromYuan(raw.lowYuan, "lowYuan"),
+    volumeShares: raw.volumeShares === null || raw.volumeShares === void 0 ? null : Math.round(finiteOrThrow(raw.volumeShares, "volumeShares"))
+  };
+  if (row.highCents !== null && row.lowCents !== null && row.highCents < row.lowCents)
+    throw new Error("\u5386\u53F2\u65E5\u7EBF\u6700\u9AD8\u4EF7\u4F4E\u4E8E\u6700\u4F4E\u4EF7");
+  return row;
+}
+async function buildSampleProvenance({
+  origin = "HISTORICAL_RECONSTRUCTED",
+  provider,
+  providerSchemaVersion = "unknown",
+  taxonomyId = null,
+  tradeDate,
+  fetchedAt,
+  pointInTimeConfidence = "SOURCE_REPORTED",
+  fieldCoverage,
+  rawPayload,
+  normalizedPayload
+}) {
+  return {
+    origin,
+    provider,
+    providerSchemaVersion,
+    taxonomyId,
+    tradeDate,
+    fetchedAt,
+    effectiveAt: tradeDate,
+    availabilityEstimatedAt: null,
+    pointInTimeConfidence,
+    fieldCoverage,
+    rawDigest: await digestOf(rawPayload),
+    normalizedDigest: await digestOf(normalizedPayload)
+  };
+}
+function sanitizeMinuteSeries(rows, date) {
+  const inSession2 = [];
+  const anomalies = [];
+  let previousTime = null;
+  for (const row of rows ?? []) {
+    const time = String(row?.time ?? "");
+    const price = Number(row?.priceCents);
+    const volume = Number(row?.volumeShares);
+    if (!/^\d{2}:\d{2}$/.test(time)) {
+      anomalies.push({ time, reason: "\u65F6\u95F4\u683C\u5F0F\u65E0\u6548" });
+      continue;
+    }
+    if (time < "09:30" || time > "15:00") {
+      anomalies.push({ time, reason: "\u65F6\u6BB5\u5916\u8BB0\u5F55\uFF08\u7ADE\u4EF7\u6216\u76D8\u540E\uFF09" });
+      continue;
+    }
+    if (time > "11:30" && time < "13:00") {
+      anomalies.push({ time, reason: "\u5348\u4F11\u65F6\u6BB5\u8BB0\u5F55" });
+      continue;
+    }
+    if (!(price > 0)) {
+      anomalies.push({ time, reason: "\u4EF7\u683C\u975E\u6B63\u6570" });
+      continue;
+    }
+    if (previousTime !== null && time <= previousTime) {
+      anomalies.push({ time, reason: "\u65F6\u95F4\u5012\u5E8F\u6216\u91CD\u590D" });
+      continue;
+    }
+    if (!(volume >= 0) || !Number.isFinite(volume)) {
+      anomalies.push({ time, reason: "\u6210\u4EA4\u91CF\u65E0\u6548" });
+      continue;
+    }
+    inSession2.push({ ...row, time, date });
+    previousTime = time;
+  }
+  return { inSession: inSession2, anomalies };
+}
+function mergeSegmentedDates(segments, { start, end }) {
+  const dates = /* @__PURE__ */ new Set();
+  const issues = [];
+  for (const segment of segments) {
+    for (const date of segment.dates ?? []) {
+      if (date < start || date > end) {
+        issues.push(`\u5206\u6BB5 ${segment.requestRange} \u8FD4\u56DE\u8303\u56F4\u5916\u65E5\u671F ${date}`);
+        continue;
+      }
+      dates.add(date);
+    }
+  }
+  const ordered = [...dates].sort();
+  return { dates: ordered, issues };
+}
+function tradingAdjacency(coverage) {
+  const tradingDates = Array.isArray(coverage?.tradingDates) ? coverage.tradingDates : [];
+  const succeededDates = Array.isArray(coverage?.succeededDates) ? coverage.succeededDates : [];
+  const adjacencyDates = tradingDates.length ? tradingDates : succeededDates;
+  const position = new Map(adjacencyDates.map((date, index) => [date, index]));
+  return {
+    tradingDates,
+    succeededDates,
+    adjacencyDates,
+    strict: tradingDates.length > 0,
+    position
+  };
+}
+function isAdjacentTradingDay(adjacency, signalDate, tradeDate) {
+  const position = adjacency.position.get(tradeDate);
+  if (position === void 0 || position === 0) return false;
+  return adjacency.adjacencyDates[position - 1] === signalDate;
+}
+
+// backend/storage/history.js
+var RESEARCH_NAMESPACE = "main";
+var HISTORY_STAGES = [
+  "PLANNED",
+  "PROBING",
+  "DOWNLOADING",
+  "NORMALIZING",
+  "SCORING",
+  "READY",
+  "PARTIAL",
+  "BLOCKED",
+  "FAILED"
+];
+function historySqliteAdapter(sqlite) {
+  function prepare(sql) {
+    return {
+      args: [],
+      bind(...args) {
+        this.args = args;
+        return this;
+      },
+      async first() {
+        return sqlite.prepare(sql).get(...this.args) || null;
+      },
+      async all() {
+        return { results: sqlite.prepare(sql).all(...this.args) };
+      },
+      async run() {
+        const result = sqlite.prepare(sql).run(...this.args);
+        return { meta: { changes: Number(result.changes) } };
+      },
+      _run() {
+        const result = sqlite.prepare(sql).run(...this.args);
+        return { meta: { changes: Number(result.changes) } };
+      }
+    };
+  }
+  return {
+    prepare,
+    exec: (sql) => sqlite.exec(sql),
+    async batch(statements) {
+      sqlite.exec("BEGIN IMMEDIATE");
+      try {
+        const results = statements.map((statement) => statement._run());
+        sqlite.exec("COMMIT");
+        return results;
+      } catch (error) {
+        sqlite.exec("ROLLBACK");
+        throw error;
+      }
+    },
+    transactionQueue: Promise.resolve(),
+    async transaction(fn) {
+      const run = this.transactionQueue.then(async () => {
+        sqlite.exec("BEGIN IMMEDIATE");
+        try {
+          const result = await fn();
+          sqlite.exec("COMMIT");
+          return result;
+        } catch (error) {
+          sqlite.exec("ROLLBACK");
+          throw error;
+        }
+      });
+      this.transactionQueue = run.then(
+        () => void 0,
+        () => void 0
+      );
+      return run;
+    },
+    close() {
+      sqlite.close();
+    }
+  };
+}
+var HistoryJobRepository = class {
+  constructor(env) {
+    this.db = database(env);
+  }
+  async createJob({ id, provider, kind, start, end, name }) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT INTO history_import_jobs (id, namespace, provider, kind, requested_start, requested_end, name, stage, progress, status_payload, dataset_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'PLANNED', '{}', '{}', NULL, ?, ?)"
+    ).bind(
+      id,
+      RESEARCH_NAMESPACE,
+      provider,
+      kind,
+      start,
+      end,
+      name ?? null,
+      now,
+      now
+    ).run();
+    return this.getJob(id);
+  }
+  async getJob(id) {
+    const row = await this.db.prepare("SELECT * FROM history_import_jobs WHERE id = ?").bind(id).first();
+    return row ? this.mapJob(row) : null;
+  }
+  mapJob(row) {
+    return {
+      id: row.id,
+      namespace: row.namespace,
+      provider: row.provider,
+      kind: row.kind,
+      requestedRange: { start: row.requested_start, end: row.requested_end },
+      name: row.name,
+      stage: row.stage,
+      progress: JSON.parse(row.progress || "{}"),
+      statusPayload: JSON.parse(row.status_payload || "{}"),
+      datasetId: row.dataset_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+  async listJobs(limit = 20) {
+    const result = await this.db.prepare(
+      "SELECT * FROM history_import_jobs ORDER BY created_at DESC, id DESC LIMIT ?"
+    ).bind(limit).all();
+    return result.results.map((row) => this.mapJob(row));
+  }
+  async updateJob(id, { stage, progress, statusPayload, datasetId }) {
+    const job = await this.getJob(id);
+    if (!job) throw new Error("\u5386\u53F2\u5BFC\u5165\u4EFB\u52A1\u4E0D\u5B58\u5728");
+    if (stage && !HISTORY_STAGES.includes(stage))
+      throw new Error(`\u5386\u53F2\u4EFB\u52A1\u9636\u6BB5\u65E0\u6548\uFF1A${stage}`);
+    await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = ?, progress = ?, status_payload = ?, dataset_id = ?, updated_at = ? WHERE id = ?"
+    ).bind(
+      stage ?? job.stage,
+      JSON.stringify(progress ?? job.progress),
+      JSON.stringify({ ...job.statusPayload, ...statusPayload ?? {} }),
+      datasetId ?? job.datasetId,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      id
+    ).run();
+    return this.getJob(id);
+  }
+  async claimExecution(id, executorId, leaseMinutes = 30) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const fresh = await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'claimRound', COALESCE(json_extract(progress, '$.claimRound'), 0) + 1), updated_at = ? WHERE id = ? AND stage IN ('PLANNED','PARTIAL','FAILED','BLOCKED') RETURNING json_extract(progress, '$.claimRound') AS claim_round"
+    ).bind(executorId, now, now, id).first();
+    if (fresh) return { executorId, round: Number(fresh.claim_round) };
+    const cutoff = new Date(
+      Date.now() - leaseMinutes * 60 * 1e3
+    ).toISOString();
+    const takeover = await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?, 'claimRound', COALESCE(json_extract(progress, '$.claimRound'), 0) + 1), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') <= ? RETURNING json_extract(progress, '$.claimRound') AS claim_round"
+    ).bind(executorId, now, now, now, id, cutoff).first();
+    if (takeover) return { executorId, round: Number(takeover.claim_round) };
+    return null;
+  }
+  async finishJob(id, executorId, { stage, statusPayload, datasetId }) {
+    if (!HISTORY_STAGES.includes(stage))
+      throw new Error(`\u5386\u53F2\u4EFB\u52A1\u9636\u6BB5\u65E0\u6548\uFF1A${stage}`);
+    const job = await this.getJob(id);
+    if (!job) throw new Error("\u5386\u53F2\u5BFC\u5165\u4EFB\u52A1\u4E0D\u5B58\u5728");
+    const result = await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = ?, progress = ?, status_payload = ?, dataset_id = COALESCE(?, dataset_id), updated_at = ? WHERE id = ? AND json_extract(progress, '$.executorId') = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING')"
+    ).bind(
+      stage,
+      JSON.stringify(job.progress),
+      JSON.stringify({ ...job.statusPayload, ...statusPayload ?? {} }),
+      datasetId ?? null,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      id,
+      executorId
+    ).run();
+    if (!result.meta.changes) return null;
+    return this.getJob(id);
+  }
+  async progressJob(id, executorId, { stage, datasetId }) {
+    const job = await this.getJob(id);
+    if (!job) return null;
+    if (stage && !HISTORY_STAGES.includes(stage))
+      throw new Error(`\u5386\u53F2\u4EFB\u52A1\u9636\u6BB5\u65E0\u6548\uFF1A${stage}`);
+    const result = await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = ?, dataset_id = COALESCE(?, dataset_id), updated_at = ? WHERE id = ? AND json_extract(progress, '$.executorId') = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING')"
+    ).bind(
+      stage ?? job.stage,
+      datasetId ?? null,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      id,
+      executorId
+    ).run();
+    if (!result.meta.changes) return null;
+    return this.getJob(id);
+  }
+  async claimDataset(id, datasetId) {
+    const result = await this.db.prepare(
+      "UPDATE history_import_jobs SET dataset_id = ?, updated_at = ? WHERE id = ? AND dataset_id IS NULL"
+    ).bind(datasetId, (/* @__PURE__ */ new Date()).toISOString(), id).run();
+    return result.meta.changes > 0;
+  }
+  async stillOwner(id, executorId) {
+    const row = await this.db.prepare(
+      "SELECT 1 AS ok FROM history_import_jobs WHERE id = ? AND json_extract(progress, '$.executorId') = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING')"
+    ).bind(id, executorId).first();
+    return Boolean(row);
+  }
+};
+var HistoryDatasetStore = class {
+  constructor(path) {
+    this.path = path;
+    this.db = null;
+    this.ready = false;
+  }
+  async ensure() {
+    if (this.ready) return;
+    const [{ DatabaseSync }, { mkdirSync }, { dirname }] = await Promise.all([
+      import("node:sqlite"),
+      import("node:fs"),
+      import("node:path")
+    ]);
+    mkdirSync(dirname(this.path), { recursive: true });
+    const sqlite = new DatabaseSync(this.path);
+    sqlite.exec("PRAGMA busy_timeout=5000;");
+    this.db = historySqliteAdapter(sqlite);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS history_dataset_versions (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        execution_model TEXT NOT NULL,
+        requested_start TEXT NOT NULL,
+        requested_end TEXT NOT NULL,
+        observed_start TEXT,
+        observed_end TEXT,
+        coverage_payload TEXT NOT NULL,
+        manifest_digest TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS history_daily_inputs (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date)
+      );
+      CREATE TABLE IF NOT EXISTS history_scores (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        scoring_version TEXT NOT NULL,
+        params_digest TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, scoring_version, params_digest)
+      );
+      CREATE TABLE IF NOT EXISTS history_reviews (
+        dataset_id TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        label_end_date TEXT NOT NULL,
+        review_version TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, signal_date, label_end_date, review_version)
+      );
+      CREATE TABLE IF NOT EXISTS history_chunks (
+        job_id TEXT NOT NULL,
+        chunk_key TEXT NOT NULL,
+        dataset_id TEXT,
+        request_range TEXT NOT NULL,
+        actual_range TEXT,
+        rows INTEGER NOT NULL,
+        stage TEXT NOT NULL,
+        raw_digest TEXT,
+        artifact_ref TEXT,
+        PRIMARY KEY (job_id, chunk_key)
+      );
+      CREATE TABLE IF NOT EXISTS history_minute_inputs (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        code TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, code)
+      );
+      CREATE TABLE IF NOT EXISTS history_observation_prices (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        code TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, code)
+      );
+      CREATE TABLE IF NOT EXISTS history_dataset_owners (
+        dataset_id TEXT PRIMARY KEY,
+        job_id TEXT,
+        executor_id TEXT NOT NULL,
+        generation INTEGER NOT NULL DEFAULT 1,
+        round INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS backtest_runs (
+        id TEXT PRIMARY KEY,
+        dataset_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        strategy_version TEXT NOT NULL,
+        strategy_params TEXT NOT NULL,
+        params_digest TEXT NOT NULL,
+        fee_config TEXT NOT NULL,
+        fee_digest TEXT NOT NULL,
+        execution_model TEXT NOT NULL,
+        execution_version TEXT NOT NULL,
+        initial_book TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        coverage_payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS backtest_plans (
+        run_id TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (run_id, signal_date)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_ledger (
+        run_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        PRIMARY KEY (run_id, id)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_equity (
+        run_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (run_id, trade_date)
+      );
+    `);
+    const chunkColumns = (await this.db.prepare("SELECT name FROM pragma_table_info('history_chunks')").all()).results;
+    if (!chunkColumns.some((column) => column.name === "dataset_id"))
+      this.db.exec("ALTER TABLE history_chunks ADD COLUMN dataset_id TEXT;");
+    const ownerColumns = (await this.db.prepare("SELECT name FROM pragma_table_info('history_dataset_owners')").all()).results;
+    if (!ownerColumns.some((column) => column.name === "round"))
+      this.db.exec(
+        "ALTER TABLE history_dataset_owners ADD COLUMN round INTEGER NOT NULL DEFAULT 0;"
+      );
+    this.rawDir = `${dirname(this.path)}/history-chunks`;
+    mkdirSync(this.rawDir, { recursive: true });
+    this.ready = true;
+  }
+  async acquireDatasetOwnership(datasetId, owner, jobId = null) {
+    await this.ensure();
+    if (!datasetId) throw new Error("\u6570\u636E\u96C6\u6240\u6709\u6743\u9700\u8981 datasetId");
+    const executorId = owner?.executorId;
+    const round = Number(owner?.round ?? 0);
+    if (!executorId) throw new Error("\u6570\u636E\u96C6\u6240\u6709\u6743\u9700\u8981 executorId");
+    return this.db.transaction(async () => {
+      const row = await this.db.prepare(
+        "SELECT job_id, executor_id, round FROM history_dataset_owners WHERE dataset_id = ?"
+      ).bind(datasetId).first();
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const existingRound = row ? Number(row.round) : null;
+      if (row && row.executor_id === executorId && existingRound === round) {
+        if (jobId)
+          await this.db.prepare(
+            "UPDATE history_dataset_owners SET job_id = ?, updated_at = ? WHERE dataset_id = ?"
+          ).bind(jobId, now, datasetId).run();
+        return { granted: true, datasetId, executorId, round };
+      }
+      if (row && existingRound > round)
+        return {
+          granted: false,
+          datasetId,
+          executorId: row.executor_id,
+          round: existingRound
+        };
+      await this.db.prepare(
+        "INSERT INTO history_dataset_owners (dataset_id, job_id, executor_id, round, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (dataset_id) DO UPDATE SET job_id = excluded.job_id, executor_id = excluded.executor_id, round = excluded.round, updated_at = excluded.updated_at"
+      ).bind(datasetId, jobId ?? null, executorId, round, now).run();
+      return { granted: true, datasetId, executorId, round };
+    });
+  }
+  async _applyGuarded(datasetId, owner, apply) {
+    await this.ensure();
+    return this.db.transaction(async () => {
+      if (!datasetId) {
+        if (owner) return { applied: false };
+        apply();
+        return { applied: true };
+      }
+      const row = await this.db.prepare(
+        "SELECT executor_id, round FROM history_dataset_owners WHERE dataset_id = ?"
+      ).bind(datasetId).first();
+      if (row) {
+        if (!owner || row.executor_id !== owner.executorId || Number(row.round) !== Number(owner.round))
+          return { applied: false };
+      } else if (owner) {
+        return { applied: false };
+      }
+      apply();
+      return { applied: true };
+    });
+  }
+  async createDatasetVersion({
+    id,
+    provider,
+    kind,
+    executionModel,
+    requestedStart,
+    requestedEnd,
+    coverage
+  }) {
+    await this.ensure();
+    const manifest = await this.buildDatasetManifest(id, {
+      executionModel: executionModel ?? null,
+      coverage
+    });
+    const digest2 = await digestOf(manifest);
+    await this.db.prepare(
+      "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      id,
+      provider,
+      kind,
+      executionModel,
+      requestedStart,
+      requestedEnd,
+      coverage.observedStart ?? null,
+      coverage.observedEnd ?? null,
+      JSON.stringify(coverage),
+      digest2,
+      (/* @__PURE__ */ new Date()).toISOString()
+    ).run();
+    return { id, manifestDigest: digest2 };
+  }
+  async updateDatasetCoverage(id, coverage, owner = null) {
+    await this.ensure();
+    const manifest = await this.buildDatasetManifest(id, {
+      executionModel: coverage.executionModel ?? null,
+      coverage
+    });
+    const digest2 = await digestOf(manifest);
+    const result = await this._applyGuarded(id, owner, () => {
+      this.db.prepare(
+        "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?"
+      ).bind(
+        JSON.stringify(coverage),
+        digest2,
+        coverage.observedStart ?? null,
+        coverage.observedEnd ?? null,
+        coverage.executionModel ?? "PENDING",
+        id
+      )._run();
+    });
+    return { applied: result.applied, manifest, manifestDigest: digest2 };
+  }
+  async saveChunk(jobId, {
+    chunkKey,
+    datasetId,
+    requestRange,
+    actualRange,
+    rows,
+    stage,
+    rawDigest,
+    raw,
+    artifactRef
+  }, owner = null) {
+    await this.ensure();
+    let storedRef = artifactRef ?? null;
+    if (raw !== void 0 && stage === "DONE") {
+      rawDigest = await digestOf(raw);
+      const dirSegment = datasetId || jobId;
+      const dir = `${this.rawDir}/${dirSegment}`;
+      const { mkdirSync, writeFileSync } = await import("node:fs");
+      mkdirSync(dir, { recursive: true });
+      const fileName = `${rawDigest}.json`;
+      writeFileSync(`${dir}/${fileName}`, JSON.stringify(raw), "utf8");
+      storedRef = `history-chunks/${dirSegment}/${fileName}`;
+    }
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT INTO history_chunks (job_id, chunk_key, dataset_id, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows, dataset_id = excluded.dataset_id, raw_digest = excluded.raw_digest, artifact_ref = excluded.artifact_ref"
+      ).bind(
+        jobId,
+        chunkKey,
+        datasetId ?? null,
+        requestRange,
+        actualRange ?? null,
+        rows ?? 0,
+        stage,
+        rawDigest ?? null,
+        storedRef
+      )._run();
+    });
+    return { applied: result.applied };
+  }
+  async completedChunkKeys(jobId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT chunk_key FROM history_chunks WHERE job_id = ? AND stage IN ('DONE','EMPTY')"
+    ).bind(jobId).all();
+    return new Set(result.results.map((row) => row.chunk_key));
+  }
+  async datasetChunkRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT job_id, chunk_key, raw_digest, artifact_ref FROM history_chunks WHERE dataset_id = ? AND stage = 'DONE' AND raw_digest IS NOT NULL ORDER BY chunk_key, job_id"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      jobId: row.job_id,
+      chunkKey: row.chunk_key,
+      rawDigest: row.raw_digest,
+      artifactRef: row.artifact_ref
+    }));
+  }
+  async datasetMinuteRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, code, digest FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date, code"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      code: row.code,
+      digest: row.digest
+    }));
+  }
+  async datasetObservationRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, code, digest FROM history_observation_prices WHERE dataset_id = ? ORDER BY trade_date, code"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      code: row.code,
+      digest: row.digest
+    }));
+  }
+  async datasetScoreRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, scoring_version, params_digest, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date, scoring_version"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      scoringVersion: row.scoring_version,
+      paramsDigest: row.params_digest,
+      digest: row.digest
+    }));
+  }
+  async buildDatasetManifest(datasetId, { executionModel, coverage }) {
+    const inputs = await this.listDatasetDates(datasetId);
+    const chunkRefs = await this.datasetChunkRefs(datasetId);
+    const minuteRefs = await this.datasetMinuteRefs(datasetId);
+    const observationRefs = await this.datasetObservationRefs(datasetId);
+    const scoreRefs = await this.datasetScoreRefs(datasetId);
+    return {
+      executionModel: executionModel ?? null,
+      coverage: coverage ?? null,
+      chunkRefs,
+      inputs,
+      minuteRefs,
+      observationRefs,
+      scoreRefs
+    };
+  }
+  async datasetIntegrity(datasetId) {
+    const dataset = await this.getDataset(datasetId);
+    if (!dataset) return null;
+    const manifest = await this.buildDatasetManifest(datasetId, {
+      executionModel: dataset.executionModel === "PENDING" ? null : dataset.executionModel,
+      coverage: dataset.coverage
+    });
+    const recomputedDigest = await digestOf(manifest);
+    const issues = [];
+    if (recomputedDigest !== dataset.manifestDigest)
+      issues.push(
+        "\u6570\u636E\u96C6\u8F93\u5165\uFF08\u65E5\u7EBF/\u5206\u949F/\u89C2\u5BDF\u4EF7\u683C/\u8BC4\u5206\uFF09\u4E0E\u53D1\u5E03\u65F6\u7684 manifest \u6458\u8981\u4E0D\u4E00\u81F4"
+      );
+    const contentTables = [
+      {
+        sql: "SELECT trade_date, payload, digest FROM history_daily_inputs WHERE dataset_id = ? ORDER BY trade_date",
+        label: "\u65E5\u7EBF\u8F93\u5165",
+        recompute: (payload) => digestOf(payload)
+      },
+      {
+        sql: "SELECT trade_date, code, payload, digest FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date, code",
+        label: "\u5206\u949F\u91C7\u6837",
+        recompute: (payload) => digestOf(JSON.parse(payload))
+      },
+      {
+        sql: "SELECT trade_date, code, payload, digest FROM history_observation_prices WHERE dataset_id = ? ORDER BY trade_date, code",
+        label: "\u89C2\u5BDF\u65E5\u7EBF",
+        recompute: (payload) => digestOf(JSON.parse(payload))
+      },
+      {
+        sql: "SELECT trade_date, scoring_version, payload, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date, scoring_version",
+        label: "\u5386\u53F2\u8BC4\u5206",
+        recompute: (payload) => digestOf(JSON.parse(payload))
+      }
+    ];
+    for (const table of contentTables) {
+      const rows = (await this.db.prepare(table.sql).bind(datasetId).all()).results;
+      for (const row of rows) {
+        let recomputed;
+        try {
+          recomputed = await table.recompute(row.payload);
+        } catch {
+          issues.push(`${table.label} ${row.trade_date} \u7684\u8F7D\u8377\u4E0D\u662F\u5408\u6CD5 JSON`);
+          continue;
+        }
+        if (recomputed !== row.digest)
+          issues.push(
+            `${table.label} ${row.trade_date}${row.code ? ` ${row.code}` : ""} \u7684\u5185\u5BB9\u6458\u8981\u4E0E\u5B58\u50A8\u6458\u8981\u4E0D\u4E00\u81F4\uFF08\u8F7D\u8377\u88AB\u4FEE\u6539\uFF09`
+          );
+      }
+    }
+    const { existsSync, readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    for (const ref of manifest.chunkRefs) {
+      if (!ref.artifactRef) {
+        issues.push(`\u4E0B\u8F7D\u5757 ${ref.chunkKey} \u7F3A\u5C11\u539F\u59CB\u5F52\u6863\u5F15\u7528`);
+        continue;
+      }
+      const artifactPath = join(dirname(this.path), ref.artifactRef);
+      if (!existsSync(artifactPath)) {
+        issues.push(
+          `\u4E0B\u8F7D\u5757 ${ref.chunkKey} \u7684\u539F\u59CB\u5F52\u6863\u6587\u4EF6\u7F3A\u5931\uFF1A${ref.artifactRef}`
+        );
+        continue;
+      }
+      const archivedDigest = await digestOf(
+        JSON.parse(readFileSync(artifactPath, "utf8"))
+      );
+      if (archivedDigest !== ref.rawDigest)
+        issues.push(`\u4E0B\u8F7D\u5757 ${ref.chunkKey} \u7684\u539F\u59CB\u5F52\u6863\u5185\u5BB9\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4`);
+    }
+    return {
+      datasetId,
+      verified: issues.length === 0,
+      issues,
+      manifestDigest: dataset.manifestDigest,
+      recomputedDigest,
+      manifest
+    };
+  }
+  async saveDailyInputs(datasetId, tradeDate, { normalized, provenance }, owner = null) {
+    await this.ensure();
+    const payload = JSON.stringify({ normalized, provenance });
+    const digest2 = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT OR REPLACE INTO history_daily_inputs (dataset_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)"
+      ).bind(datasetId, tradeDate, payload, digest2)._run();
+    });
+    return { applied: result.applied };
+  }
+  async saveScore(datasetId, tradeDate, scoringVersion, paramsDigest, payload, owner = null) {
+    await this.ensure();
+    const payloadText = JSON.stringify(payload);
+    const digest2 = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT OR IGNORE INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(
+        datasetId,
+        tradeDate,
+        scoringVersion,
+        paramsDigest,
+        payloadText,
+        digest2
+      )._run();
+    });
+    return { applied: result.applied };
+  }
+  async saveReview(datasetId, signalDate, labelEndDate, reviewVersion, payload, owner = null) {
+    await this.ensure();
+    const payloadText = JSON.stringify(payload);
+    const digest2 = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT OR IGNORE INTO history_reviews (dataset_id, signal_date, label_end_date, review_version, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(
+        datasetId,
+        signalDate,
+        labelEndDate,
+        reviewVersion,
+        payloadText,
+        digest2
+      )._run();
+    });
+    return { applied: result.applied };
+  }
+  async getDataset(id) {
+    await this.ensure();
+    const row = await this.db.prepare("SELECT * FROM history_dataset_versions WHERE id = ?").bind(id).first();
+    if (!row) return null;
+    return {
+      id: row.id,
+      provider: row.provider,
+      kind: row.kind,
+      executionModel: row.execution_model,
+      requestedRange: { start: row.requested_start, end: row.requested_end },
+      observedRange: { start: row.observed_start, end: row.observed_end },
+      coverage: JSON.parse(row.coverage_payload),
+      manifestDigest: row.manifest_digest,
+      createdAt: row.created_at
+    };
+  }
+  async listDatasetDates(id) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, digest FROM history_daily_inputs WHERE dataset_id = ? ORDER BY trade_date"
+    ).bind(id).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      digest: row.digest
+    }));
+  }
+  async getDailyInput(datasetId, tradeDate) {
+    await this.ensure();
+    const row = await this.db.prepare(
+      "SELECT payload FROM history_daily_inputs WHERE dataset_id = ? AND trade_date = ?"
+    ).bind(datasetId, tradeDate).first();
+    return row ? JSON.parse(row.payload) : null;
+  }
+  async saveMinuteInputs(datasetId, tradeDate, code, payload, owner = null) {
+    await this.ensure();
+    const payloadText = JSON.stringify(payload);
+    const digest2 = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT OR REPLACE INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
+      ).bind(datasetId, tradeDate, code, payloadText, digest2)._run();
+    });
+    return { applied: result.applied };
+  }
+  async listMinuteInputs(datasetId, tradeDate) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT code, payload FROM history_minute_inputs WHERE dataset_id = ? AND trade_date = ?"
+    ).bind(datasetId, tradeDate).all();
+    return Object.fromEntries(
+      result.results.map((row) => [row.code, JSON.parse(row.payload)])
+    );
+  }
+  async listMinuteDates(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT DISTINCT trade_date FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date"
+    ).bind(datasetId).all();
+    return result.results.map((row) => row.trade_date);
+  }
+  async saveObservationDaily(datasetId, tradeDate, byCode, owner = null) {
+    await this.ensure();
+    const entries = byCode instanceof Map ? [...byCode.entries()] : Object.entries(byCode ?? {});
+    const prepared = [];
+    for (const [code, row] of entries)
+      prepared.push({
+        code,
+        payload: JSON.stringify(row),
+        digest: await digestOf(row)
+      });
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      for (const item of prepared) {
+        this.db.prepare(
+          "INSERT OR REPLACE INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
+        ).bind(datasetId, tradeDate, item.code, item.payload, item.digest)._run();
+      }
+    });
+    return { applied: result.applied };
+  }
+  async getObservationDaily(datasetId, tradeDate) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT code, payload FROM history_observation_prices WHERE dataset_id = ? AND trade_date = ? ORDER BY code"
+    ).bind(datasetId, tradeDate).all();
+    if (!result.results.length) return null;
+    return Object.fromEntries(
+      result.results.map((row) => [row.code, JSON.parse(row.payload)])
+    );
+  }
+  async cloneDatasetForMinutes(sourceId) {
+    await this.ensure();
+    const source = await this.getDataset(sourceId);
+    if (!source) throw new Error(`\u8981\u9644\u52A0\u5206\u949F\u6570\u636E\u7684\u6570\u636E\u96C6\u4E0D\u5B58\u5728\uFF1A${sourceId}`);
+    const newId3 = `hds-${crypto.randomUUID()}`;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      newId3,
+      source.provider,
+      source.kind,
+      source.executionModel,
+      source.requestedRange.start,
+      source.requestedRange.end,
+      source.observedRange.start,
+      source.observedRange.end,
+      JSON.stringify(source.coverage),
+      source.manifestDigest,
+      now
+    ).run();
+    await this.db.prepare(
+      "INSERT INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) SELECT ?, trade_date, scoring_version, params_digest, payload, digest FROM history_scores WHERE dataset_id = ?"
+    ).bind(newId3, sourceId).run();
+    await this.db.prepare(
+      "INSERT INTO history_daily_inputs (dataset_id, trade_date, payload, digest) SELECT ?, trade_date, payload, digest FROM history_daily_inputs WHERE dataset_id = ?"
+    ).bind(newId3, sourceId).run();
+    await this.db.prepare(
+      "INSERT INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) SELECT ?, trade_date, code, payload, digest FROM history_observation_prices WHERE dataset_id = ?"
+    ).bind(newId3, sourceId).run();
+    await this.db.prepare(
+      "INSERT INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) SELECT ?, trade_date, code, payload, digest FROM history_minute_inputs WHERE dataset_id = ?"
+    ).bind(newId3, sourceId).run();
+    return { id: newId3, sourceCoverage: source.coverage };
+  }
+  async createBacktestRun({
+    id,
+    datasetId,
+    name,
+    strategyVersion,
+    strategyParams,
+    paramsDigest,
+    feeConfig,
+    feeDigest,
+    executionModel,
+    executionVersion,
+    initialBook
+  }) {
+    await this.ensure();
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT INTO backtest_runs (id, dataset_id, name, strategy_version, strategy_params, params_digest, fee_config, fee_digest, execution_model, execution_version, initial_book, stage, coverage_payload, digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', '{}', ?, ?)"
+    ).bind(
+      id,
+      datasetId,
+      name,
+      strategyVersion,
+      JSON.stringify(strategyParams),
+      paramsDigest,
+      JSON.stringify(feeConfig),
+      feeDigest,
+      executionModel,
+      executionVersion,
+      JSON.stringify(initialBook),
+      await digestOf({ initialBook, datasetId, strategyParams }),
+      now
+    ).run();
+    return this.getBacktestRun(id);
+  }
+  async saveBacktestPlan(runId, signalDate, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO backtest_plans (run_id, signal_date, payload, digest) VALUES (?, ?, ?, ?)"
+    ).bind(runId, signalDate, JSON.stringify(payload), await digestOf(payload)).run();
+  }
+  async appendBacktestLedger(runId, tradeDate, rows) {
+    await this.ensure();
+    for (const row of rows)
+      await this.db.prepare(
+        "INSERT OR IGNORE INTO backtest_ledger (run_id, id, trade_date, payload) VALUES (?, ?, ?, ?)"
+      ).bind(runId, row.id, tradeDate, JSON.stringify(row)).run();
+  }
+  async saveBacktestEquity(runId, tradeDate, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR REPLACE INTO backtest_equity (run_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)"
+    ).bind(runId, tradeDate, JSON.stringify(payload), await digestOf(payload)).run();
+  }
+  async finishBacktestRun(id, stage, coverage) {
+    await this.ensure();
+    const digest2 = await digestOf(coverage);
+    await this.db.prepare(
+      "UPDATE backtest_runs SET stage = ?, coverage_payload = ?, digest = ? WHERE id = ?"
+    ).bind(stage, JSON.stringify(coverage), digest2, id).run();
+    return this.getBacktestRun(id);
+  }
+  async getBacktestRun(id) {
+    await this.ensure();
+    const row = await this.db.prepare("SELECT * FROM backtest_runs WHERE id = ?").bind(id).first();
+    if (!row) return null;
+    return {
+      id: row.id,
+      datasetId: row.dataset_id,
+      name: row.name,
+      strategyVersion: row.strategy_version,
+      strategyParams: JSON.parse(row.strategy_params),
+      paramsDigest: row.params_digest,
+      feeConfig: JSON.parse(row.fee_config),
+      feeDigest: row.fee_digest,
+      executionModel: row.execution_model,
+      executionVersion: row.execution_version,
+      initialBook: JSON.parse(row.initial_book),
+      stage: row.stage,
+      coverage: JSON.parse(row.coverage_payload),
+      digest: row.digest,
+      createdAt: row.created_at
+    };
+  }
+  async listBacktestLedger(runId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT id, trade_date, payload FROM backtest_ledger WHERE run_id = ? ORDER BY trade_date, id"
+    ).bind(runId).all();
+    return result.results.map((row) => ({
+      id: row.id,
+      tradeDate: row.trade_date,
+      ...JSON.parse(row.payload)
+    }));
+  }
+  async listBacktestEquity(runId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, payload, digest FROM backtest_equity WHERE run_id = ? ORDER BY trade_date"
+    ).bind(runId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      ...JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
+  async listBacktestRuns(limit = 20) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT id, dataset_id, name, stage, execution_model, coverage_payload, created_at FROM backtest_runs ORDER BY created_at DESC, id DESC LIMIT ?"
+    ).bind(limit).all();
+    return result.results.map((row) => ({
+      id: row.id,
+      datasetId: row.dataset_id,
+      name: row.name,
+      stage: row.stage,
+      executionModel: row.execution_model,
+      coverage: JSON.parse(row.coverage_payload),
+      createdAt: row.created_at
+    }));
+  }
+  async listBacktestPlans(runId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT signal_date, payload, digest FROM backtest_plans WHERE run_id = ? ORDER BY signal_date"
+    ).bind(runId).all();
+    return result.results.map((row) => ({
+      signalDate: row.signal_date,
+      ...JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
+  async listScores(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, scoring_version, params_digest, payload, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      scoringVersion: row.scoring_version,
+      paramsDigest: row.params_digest,
+      payload: JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
+  async listReviews(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT signal_date, label_end_date, review_version, payload, digest FROM history_reviews WHERE dataset_id = ? ORDER BY signal_date"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      signalDate: row.signal_date,
+      labelEndDate: row.label_end_date,
+      reviewVersion: row.review_version,
+      payload: JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
+  close() {
+    if (this.db) this.db.close();
+  }
+};
+function openHistoryStore(env) {
+  const path = env?.LOCAL_RESEARCH_DB_PATH;
+  if (!path) return null;
+  return new HistoryDatasetStore(path);
+}
+
 // backend/domain/research-windows.js
 function selectResearchWindows(pairs, policy) {
   const total = policy.trainDays + policy.histTestDays;
@@ -3684,7 +4870,7 @@ var RESEARCH_TERMINAL_STAGES = /* @__PURE__ */ new Set([
 ]);
 
 // backend/storage/research.js
-var RESEARCH_NAMESPACE = "main";
+var RESEARCH_NAMESPACE2 = "main";
 var mapRow = (row) => row ? {
   id: row.id,
   namespace: row.namespace,
@@ -3693,6 +4879,7 @@ var mapRow = (row) => row ? {
   policyId: row.policy_id,
   stage: row.stage,
   revision: row.revision,
+  kind: row.kind ?? "ROLLING",
   frozenAt: row.frozen_at,
   reservationPayload: JSON.parse(row.reservation_payload || "{}"),
   proposalManifest: row.proposal_manifest ? JSON.parse(row.proposal_manifest) : null,
@@ -3702,7 +4889,7 @@ var mapRow = (row) => row ? {
 var ResearchRepository = class {
   constructor(env) {
     this.db = database(env);
-    this.namespace = RESEARCH_NAMESPACE;
+    this.namespace = RESEARCH_NAMESPACE2;
   }
   async ensureRegistry() {
     let row = await this.db.prepare("SELECT * FROM research_registry WHERE namespace = ?").bind(this.namespace).first();
@@ -3815,6 +5002,7 @@ var ResearchRepository = class {
       legacyCutoff: row.legacy_cutoff,
       selectionCutoff: row.selection_cutoff,
       lastRunId: row.last_run_id,
+      bootstrapDone: (row.bootstrap_done ?? 0) === 1,
       payload: JSON.parse(row.payload || "{}")
     };
   }
@@ -3890,6 +5078,26 @@ var ResearchRepository = class {
         throw new Error(`\u65E5\u671F ${date} \u5DF2\u4F5C\u4E3A\u6D4B\u8BD5\u6570\u636E\u4E00\u6B21\u6027\u767B\u8BB0\uFF0C\u4E0D\u80FD\u590D\u7528`);
     }
     return registry;
+  }
+  async assertTrainingDatesUsable(trainingDates) {
+    if (!Array.isArray(trainingDates) || !trainingDates.length)
+      throw new Error("\u51B7\u542F\u52A8\u8BAD\u7EC3\u65E5\u671F\u6E05\u5355\u4E3A\u7A7A");
+    for (const date of trainingDates) {
+      const claimed = await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM research_test_claims WHERE namespace = ? AND outcome_date = ?"
+      ).bind(this.namespace, date).first();
+      if (claimed.n)
+        throw new Error(
+          `\u65E5\u671F ${date} \u5DF2\u767B\u8BB0\u4E3A\u524D\u77BB\u6D4B\u8BD5\u6570\u636E\uFF0C\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u51B7\u542F\u52A8\u8BAD\u7EC3\u6570\u636E\uFF08\u9632\u6B62\u6570\u636E\u6CC4\u6F0F\uFF09`
+        );
+      const tested = await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM research_sample_uses WHERE namespace = ? AND outcome_date = ? AND role <> 'HISTORICAL_TRAIN'"
+      ).bind(this.namespace, date).first();
+      if (tested.n)
+        throw new Error(
+          `\u65E5\u671F ${date} \u5DF2\u88AB\u5386\u53F2\u6D4B\u8BD5\u6216\u9A8C\u8BC1\u5360\u7528\uFF0C\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u51B7\u542F\u52A8\u8BAD\u7EC3\u6570\u636E\uFF08\u9632\u6B62\u6570\u636E\u6CC4\u6F0F\uFF09`
+        );
+    }
   }
   async assertFreshOutcomeDates(dates) {
     return this.assertReservationFreshness(dates);
@@ -4023,6 +5231,189 @@ var ResearchRepository = class {
       });
     return attempt();
   }
+  async reserveBootstrapAttempt({
+    policy,
+    month,
+    parentVersion,
+    windowPayload,
+    trainingDates,
+    samples,
+    datasetId,
+    datasetManifestDigest
+  }) {
+    const attempt = async () => {
+      await this.assertTrainingDatesUsable(trainingDates);
+      const registryRow = await this.db.prepare(
+        "SELECT revision, attempt_sequence, bootstrap_done FROM research_registry WHERE namespace = ?"
+      ).bind(this.namespace).first();
+      if (!registryRow || registryRow.bootstrap_done === 1) return null;
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const nonce = crypto.randomUUID();
+      const experimentId = `exp-${crypto.randomUUID()}`;
+      const attemptSequence = registryRow.attempt_sequence + 1;
+      const reservation = {
+        experimentId,
+        namespace: this.namespace,
+        kind: "BOOTSTRAP",
+        attemptSequence,
+        parentVersion,
+        trainingDates,
+        testDates: [],
+        datasetId,
+        datasetManifestDigest,
+        policyId: policy.id,
+        policyDigest: policy.digest,
+        reservedAt: now
+      };
+      const reservationDigest = await digestOf(reservation);
+      const guardArgs = [this.namespace, registryRow.revision + 1, nonce];
+      const guarded = (sql, args) => this.db.prepare(
+        `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`
+      ).bind(...args, ...guardArgs);
+      const event = {
+        sequence: 1,
+        eventType: "BOOTSTRAP_RESERVED",
+        createdAt: now,
+        payload: { reservation, reservationDigest },
+        previousDigest: null
+      };
+      const statements = [
+        this.db.prepare(
+          "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, bootstrap_done = 1, last_run_id = ? WHERE namespace = ? AND revision = ? AND bootstrap_done = 0"
+        ).bind(nonce, this.namespace, registryRow.revision),
+        guarded(
+          "INSERT INTO research_active_slots (namespace, experiment_id, window_payload, created_at) SELECT ?, ?, ?, ?",
+          [
+            this.namespace,
+            experimentId,
+            JSON.stringify({ ...windowPayload, policyId: policy.id }),
+            now
+          ]
+        ),
+        guarded(
+          "INSERT INTO research_budget_slots (namespace, month, slot, experiment_id, created_at) SELECT ?, ?, 1, ?, ?",
+          [this.namespace, month, experimentId, now]
+        ),
+        ...samples.map(
+          (sample) => guarded(
+            "INSERT INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) SELECT ?, ?, 'HISTORICAL_TRAIN', ?, ?, ?, ?",
+            [
+              this.namespace,
+              experimentId,
+              sample.date,
+              sampleKey({
+                namespace: this.namespace,
+                experimentId,
+                role: "HISTORICAL_TRAIN",
+                outcomeDate: sample.date
+              }),
+              JSON.stringify(sample.payload),
+              sample.digest
+            ]
+          )
+        ),
+        guarded(
+          "INSERT INTO research_experiments (id, namespace, parent_version, candidate_version, policy_id, kind, stage, revision, frozen_at, reservation_payload, proposal_manifest, proposal_digest, created_at) SELECT ?, ?, ?, NULL, ?, 'BOOTSTRAP', 'PROPOSING', 0, NULL, ?, NULL, NULL, ?",
+          [
+            experimentId,
+            this.namespace,
+            parentVersion,
+            policy.id,
+            JSON.stringify(reservation),
+            now
+          ]
+        ),
+        guarded(
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+          [
+            experimentId,
+            event.sequence,
+            event.eventType,
+            event.createdAt,
+            JSON.stringify(event.payload),
+            event.previousDigest,
+            await eventDigest(event)
+          ]
+        )
+      ];
+      await this.executeReservation(statements);
+      const trainCount = (await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM research_sample_uses WHERE experiment_id = ?"
+      ).bind(experimentId).first()).n;
+      if (trainCount !== samples.length)
+        throw new Error(
+          "\u51B7\u542F\u52A8\u8BAD\u7EC3\u6837\u672C\u767B\u8BB0\u4E0D\u5B8C\u6574\uFF08\u9884\u7559\u5B88\u536B\u672A\u751F\u6548\uFF09\uFF0C\u9884\u7559\u5DF2\u7EC8\u6B62"
+        );
+      const after = await this.db.prepare(
+        "SELECT revision, last_run_id, bootstrap_done FROM research_registry WHERE namespace = ?"
+      ).bind(this.namespace).first();
+      if (after.revision !== registryRow.revision + 1 || after.last_run_id !== nonce || after.bootstrap_done !== 1)
+        return null;
+      return { experimentId, reservation, reservationDigest, attemptSequence };
+    };
+    if (typeof this.db.transaction === "function")
+      return this.db.transaction(async () => {
+        this.inTransaction = true;
+        try {
+          return await attempt();
+        } finally {
+          this.inTransaction = false;
+        }
+      });
+    return attempt();
+  }
+  async concludeBootstrap(experimentId, versionId, { report, reason }) {
+    const experiment = mapRow(
+      await this.db.prepare("SELECT * FROM research_experiments WHERE id = ?").bind(experimentId).first()
+    );
+    if (!experiment || experiment.stage !== "PROPOSING")
+      throw new Error("\u5B9E\u9A8C\u4E0D\u5728\u63D0\u6848\u9636\u6BB5");
+    const stage = "AWAITING_SHADOW";
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const reportDigest = await digestOf(report);
+    const previous = await this.lastEvent(experimentId);
+    const event = {
+      sequence: (previous?.sequence ?? 0) + 1,
+      eventType: "BOOTSTRAP_SCREENED",
+      createdAt: now,
+      payload: { reportDigest, reason },
+      previousDigest: previous?.digest ?? null
+    };
+    const statements = [
+      this.db.prepare(
+        "INSERT OR IGNORE INTO research_reports (experiment_id, stage, payload, digest, created_at) VALUES (?, 'dev_screen', ?, ?, ?)"
+      ).bind(experimentId, JSON.stringify(report), reportDigest, now),
+      this.db.prepare(
+        "UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? AND stage = 'PROPOSING'"
+      ).bind(stage, experimentId),
+      this.db.prepare(
+        "UPDATE strategy_versions SET status = 'SHADOW_PENDING' WHERE id = ? AND status = 'PROPOSING'"
+      ).bind(versionId),
+      this.db.prepare(
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)"
+      ).bind(
+        experimentId,
+        event.sequence,
+        event.eventType,
+        event.createdAt,
+        JSON.stringify(event.payload),
+        event.previousDigest,
+        await eventDigest(event),
+        experimentId,
+        stage
+      ),
+      this.db.prepare(
+        "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)"
+      ).bind(this.namespace, experimentId, experimentId, stage)
+    ];
+    await this.db.batch(statements);
+    const after = mapRow(
+      await this.db.prepare("SELECT * FROM research_experiments WHERE id = ?").bind(experimentId).first()
+    );
+    if (after?.stage !== stage)
+      throw new Error("\u5B9E\u9A8C\u72B6\u6001\u63A8\u8FDB\u5931\u8D25\uFF1A\u72B6\u6001\u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8");
+    return { stage, reportDigest };
+  }
   async executeReservation(statements) {
     if (this.inTransaction) {
       for (const statement of statements) await statement.run();
@@ -4082,7 +5473,7 @@ var ResearchRepository = class {
     initialCashCents,
     executionVersion,
     scoringVersion
-  }) {
+  }, targetStage = "HISTORICAL_CHECK") {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const manifest = {
       experimentId,
@@ -4118,16 +5509,17 @@ var ResearchRepository = class {
     };
     await this.db.batch([
       this.db.prepare(
-        "UPDATE research_experiments SET candidate_version = ?, frozen_at = ?, stage = 'HISTORICAL_CHECK', revision = revision + 1, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'"
+        "UPDATE research_experiments SET candidate_version = ?, frozen_at = ?, stage = ?, revision = revision + 1, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'"
       ).bind(
         versionId,
         now,
+        targetStage,
         JSON.stringify(manifest),
         manifestDigest,
         experimentId
       ),
       this.db.prepare(
-        "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK')"
+        "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)"
       ).bind(
         versionId,
         now,
@@ -4138,10 +5530,11 @@ var ResearchRepository = class {
           rationale,
           parentVersion
         }),
-        experimentId
+        experimentId,
+        targetStage
       ),
       this.db.prepare(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK')"
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)"
       ).bind(
         experimentId,
         event.sequence,
@@ -4150,13 +5543,14 @@ var ResearchRepository = class {
         JSON.stringify(event.payload),
         event.previousDigest,
         await eventDigest(event),
-        experimentId
+        experimentId,
+        targetStage
       )
     ]);
     const row = mapRow(
       await this.db.prepare("SELECT * FROM research_experiments WHERE id = ?").bind(experimentId).first()
     );
-    if (row?.stage !== "HISTORICAL_CHECK")
+    if (row?.stage !== targetStage)
       throw new Error("\u5019\u9009\u51BB\u7ED3\u5931\u8D25\uFF1A\u5B9E\u9A8C\u72B6\u6001\u5DF2\u53D8\u5316");
     return { manifest, manifestDigest };
   }
@@ -4745,7 +6139,13 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
       testDates: windows.testDates,
       samples
     });
-  } catch {
+  } catch (error) {
+    const reason = String(error?.message ?? error);
+    if (reason.includes("\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u51B7\u542F\u52A8\u8BAD\u7EC3\u6570\u636E"))
+      return {
+        status: "NEED_DATA",
+        reason: `\u8BAD\u7EC3\u65E5\u671F\u4E0E\u5DF2\u7528\u6D4B\u8BD5\u6570\u636E\u51B2\u7A81\uFF0C\u672A\u6D88\u8017\u51B7\u542F\u52A8\u8D44\u683C\uFF1A${reason}`
+      };
     return { status: "BUSY", reason: "\u5E76\u53D1\u9884\u7559\u51B2\u7A81\uFF0C\u672C\u6B21\u672A\u53D1\u8D77\u6A21\u578B\u8C03\u7528" };
   }
   if (!reserved)
@@ -4833,6 +6233,275 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
     };
   }
 }
+async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, propose = requestProposal) {
+  const research = new ResearchRepository(env);
+  const policy = await research.getPolicy();
+  const minTrainingDays = policy.payload.bootstrapMinTrainingDays ?? 20;
+  if (!aiConfig(env).configured)
+    return {
+      status: "NOT_CONFIGURED",
+      reason: "\u914D\u7F6E\u670D\u52A1\u7AEF\u5927\u6A21\u578B\u5BC6\u94A5\u540E\u542F\u7528 AI \u51B7\u542F\u52A8\u521D\u59CB\u5316"
+    };
+  const account = await repository.account();
+  const registry = await research.ensureRegistry();
+  if (registry.bootstrapDone)
+    return {
+      status: "BOOTSTRAP_DONE",
+      reason: "AI \u51B7\u542F\u52A8\u521D\u59CB\u5316\u5168\u5C40\u4EC5\u4E00\u6B21\uFF1B\u5931\u8D25\u4E0E\u9519\u8BEF\u540C\u6837\u89C6\u4E3A\u5DF2\u6D88\u8017"
+    };
+  const store = openHistoryStore(env);
+  const dataset = store && datasetId ? await store.getDataset(datasetId) : null;
+  if (!dataset)
+    return {
+      status: "NEED_DATA",
+      reason: store ? "\u8BF7\u6307\u5B9A\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09" : "AI \u51B7\u542F\u52A8\u8BAD\u7EC3\u4F9D\u8D56\u672C\u673A\u5386\u53F2\u7814\u7A76\u5B58\u50A8\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u8FD0\u884C"
+    };
+  if (dataset.executionModel !== "SIX_FACTOR_V1")
+    return {
+      status: "NEED_DATA",
+      reason: "\u51B7\u542F\u52A8\u8BAD\u7EC3\u9700\u8981\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6"
+    };
+  const integrity = await store.datasetIntegrity(datasetId);
+  if (integrity && !integrity.verified)
+    return {
+      status: "NEED_DATA",
+      reason: "\u6570\u636E\u96C6 manifest \u6821\u9A8C\u5931\u8D25\uFF1A\u8F93\u5165\u4E0E\u53D1\u5E03\u65F6\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u4FEE\u6539\uFF09\uFF0C\u62D2\u7EDD\u7528\u4E8E\u51B7\u542F\u52A8\u8BAD\u7EC3"
+    };
+  const scores = await store.listScores(datasetId);
+  const trainingPairs = [];
+  const trainingDates = [];
+  const samples = [];
+  const adjacency = tradingAdjacency(dataset.coverage);
+  for (let index = 0; index + 1 < scores.length; index++) {
+    const signal = scores[index];
+    const nextDate = scores[index + 1].tradeDate;
+    if (!isAdjacentTradingDay(adjacency, signal.tradeDate, nextDate)) continue;
+    const nextBars = await store.getObservationDaily(datasetId, nextDate);
+    const signalBars = await store.getObservationDaily(
+      datasetId,
+      signal.tradeDate
+    );
+    if (!nextBars || !Object.keys(nextBars).length) continue;
+    const quotes = {};
+    for (const [code, bar] of Object.entries(nextBars)) {
+      const previousBar = signalBars ? signalBars[code] : null;
+      if (!previousBar || !(previousBar.closeCents > 0)) continue;
+      const previousCloseCents = previousBar.closeCents;
+      if (bar.closeCents === null || bar.closeCents === void 0) continue;
+      quotes[code] = {
+        date: nextDate,
+        previousCloseCents,
+        openCents: bar.openCents ?? previousCloseCents,
+        closeCents: bar.closeCents,
+        highCents: bar.highCents ?? bar.closeCents,
+        lowCents: bar.lowCents ?? bar.closeCents,
+        volumeShares: bar.volumeShares ?? null,
+        limitUpCents: Math.round(previousCloseCents * 1.1),
+        limitDownCents: Math.round(previousCloseCents * 0.9),
+        timestamp: `${nextDate}T15:00:00+08:00`
+      };
+    }
+    if (!Object.keys(quotes).length) continue;
+    trainingPairs.push({
+      snapshot: signal.payload,
+      dataset: {
+        date: nextDate,
+        previousTradingDate: signal.tradeDate,
+        quotes,
+        minutes: {},
+        source: `\u5386\u53F2\u51B7\u542F\u52A8\uFF08${dataset.provider}\uFF0C\u771F\u5B9E\u524D\u590D\u6743\u65E5\u7EBF\uFF09`,
+        fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    });
+    trainingDates.push(nextDate);
+    samples.push({
+      date: nextDate,
+      payload: {
+        role: "HISTORICAL_TRAIN",
+        signalDate: signal.tradeDate,
+        datasetId,
+        datasetManifestDigest: dataset.manifestDigest,
+        scoreDigest: signal.digest
+      },
+      digest: await digestOf({
+        scoreDigest: signal.digest,
+        nextDate,
+        datasetManifestDigest: dataset.manifestDigest
+      })
+    });
+  }
+  if (trainingPairs.length < minTrainingDays)
+    return {
+      status: "NEED_DATA",
+      days: trainingPairs.length,
+      required: minTrainingDays,
+      reason: `\u5386\u53F2\u8BAD\u7EC3\u5BF9\u4E0D\u8DB3\uFF08\u9700\u8981\u81F3\u5C11 ${minTrainingDays} \u4E2A\u4FE1\u53F7-\u6B21\u65E5\u5BF9\uFF09`
+    };
+  const active = await research.activeExperiment();
+  if (active)
+    return {
+      status: "BUSY",
+      experimentId: active.experimentId,
+      reason: "\u5B58\u5728\u8FDB\u884C\u4E2D\u7684\u7814\u7A76\u5B9E\u9A8C\uFF08\u51B7\u542F\u52A8\u4E0E\u6EDA\u52A8\u63D0\u6848\u5171\u7528\u6D3B\u52A8\u69FD\uFF09"
+    };
+  const month = beijingMonth();
+  const used = await research.monthUsage(month);
+  if (used >= policy.payload.monthlyProposalLimit)
+    return {
+      status: "BUDGET_EXHAUSTED",
+      month,
+      used,
+      limit: policy.payload.monthlyProposalLimit,
+      reason: "\u672C\u6708\u63D0\u6848\u6B21\u6570\u5DF2\u7528\u5B8C\uFF1B\u51B7\u542F\u52A8\u540C\u6837\u6D88\u8017\u9884\u7B97"
+    };
+  const base = await repository.strategy(account.book);
+  const feeConfig = feesForBook(account.book);
+  const dryRun = replayStrategy(
+    trainingPairs,
+    base,
+    account.book.initialCashCents / 100,
+    feeConfig
+  );
+  if (dryRun.covered === false || !dryRun.days)
+    return {
+      status: "NEED_DATA",
+      days: trainingPairs.length,
+      replayDays: dryRun.days,
+      reason: `\u5386\u53F2\u8BAD\u7EC3\u7A97\u53E3\u65E0\u6CD5\u91CD\u653E\uFF08${dryRun.reason ?? "\u65E0\u6709\u6548\u91CD\u653E\u65E5"}\uFF09\uFF1B\u672A\u6D88\u8017\u51B7\u542F\u52A8\u8D44\u683C`
+    };
+  let reserved;
+  try {
+    reserved = await research.reserveBootstrapAttempt({
+      policy,
+      month,
+      parentVersion: account.book.activeStrategy,
+      windowPayload: {
+        kind: "BOOTSTRAP",
+        datasetId,
+        datasetManifestDigest: dataset.manifestDigest,
+        trainingDays: trainingPairs.length,
+        note: "AI \u51B7\u542F\u52A8\u4E00\u6B21\u6027\u521D\u59CB\u5316\uFF1B\u8BAD\u7EC3\u65E5\u671F\u767B\u8BB0\u4E3A HISTORICAL_TRAIN\uFF0C\u4E0D\u518D\u7528\u4E8E\u672A\u6765\u524D\u77BB\u6D4B\u8BD5"
+      },
+      trainingDates,
+      samples,
+      datasetId,
+      datasetManifestDigest: dataset.manifestDigest
+    });
+  } catch {
+    return { status: "BUSY", reason: "\u5E76\u53D1\u9884\u7559\u51B2\u7A81\uFF0C\u672C\u6B21\u672A\u53D1\u8D77\u6A21\u578B\u8C03\u7528" };
+  }
+  if (!reserved)
+    return { status: "BOOTSTRAP_DONE", reason: "\u51B7\u542F\u52A8\u8D44\u683C\u5DF2\u88AB\u5E76\u53D1\u6D41\u7A0B\u6D88\u8017" };
+  const experimentId = reserved.experimentId;
+  await research.appendEvent(experimentId, "REQUEST_ISSUED", {
+    attemptSequence: reserved.attemptSequence,
+    executorId: EXECUTOR_ID,
+    requestIssuedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    trainingDates,
+    datasetId,
+    datasetManifestDigest: dataset.manifestDigest,
+    note: "\u51B7\u542F\u52A8\u63D0\u6848\u53EA\u643A\u5E26\u5386\u53F2\u8BAD\u7EC3\u7A97\u53E3\uFF1B\u65E0\u4E00\u6B21\u6027\u6D4B\u8BD5\u65E5\u671F\u6D88\u8D39"
+  });
+  let versionId = null;
+  try {
+    const proposal = await propose(
+      env,
+      base,
+      trainingPairs,
+      account.book.initialCashCents / 100,
+      feeConfig
+    );
+    const candidate = validateCandidatePatch({
+      proposal,
+      parentParams: base,
+      frozenPolicy: policy.payload
+    });
+    versionId = experimentId;
+    await research.freezeCandidate(
+      experimentId,
+      {
+        versionId,
+        params: candidate.params,
+        patch: candidate.patch,
+        rationale: candidate.rationale,
+        policyId: policy.id,
+        modelAlias: aiConfig(env).model,
+        modelVersionReported: null,
+        promptDigest: proposal.requestDigest ?? await digestOf({
+          modelAlias: aiConfig(env).model,
+          trainingDates,
+          evidenceDigest: proposal.evidenceDigest ?? null
+        }),
+        output: { rationale: candidate.rationale, patch: candidate.patch },
+        trainingDates,
+        testDates: [],
+        parentVersion: account.book.activeStrategy,
+        parentParamsDigest: await digestOf(base),
+        feeConfig,
+        feeConfigDigest: await digestOf(feeConfig),
+        initialCashCents: account.book.initialCashCents,
+        executionVersion: EXECUTION_VERSION,
+        scoringVersion: SCORING_VERSION
+      },
+      "PROPOSING"
+    );
+    const baselineReplay = replayStrategy(
+      trainingPairs,
+      base,
+      account.book.initialCashCents / 100,
+      feeConfig
+    );
+    const candidateReplay = replayStrategy(
+      trainingPairs,
+      candidate.params,
+      account.book.initialCashCents / 100,
+      feeConfig
+    );
+    const { stage } = await research.concludeBootstrap(
+      experimentId,
+      versionId,
+      {
+        report: {
+          experimentId,
+          attemptSequence: reserved.attemptSequence,
+          kind: "BOOTSTRAP",
+          datasetId,
+          datasetManifestDigest: dataset.manifestDigest,
+          trainingDates,
+          screen: {
+            baseline: {
+              totalReturn: baselineReplay.totalReturn,
+              maxDrawdown: baselineReplay.maxDrawdown,
+              fillCount: baselineReplay.fillCount
+            },
+            candidate: {
+              totalReturn: candidateReplay.totalReturn,
+              maxDrawdown: candidateReplay.maxDrawdown,
+              fillCount: candidateReplay.fillCount
+            },
+            note: "\u5F00\u53D1\u5C4F\u5E55\u4EC5\u4E3A\u8BB0\u5F55\u6027\u6307\u6807\uFF0C\u4E0D\u6784\u6210\u9A8C\u8BC1\u6216\u542F\u7528\u8D44\u683C\uFF1B\u5019\u9009\u7B49\u5F85\u672A\u6765\u524D\u77BB\u5F71\u5B50\u9A8C\u8BC1"
+          }
+        },
+        reason: "\u51B7\u542F\u52A8\u5019\u9009\u5DF2\u51BB\u7ED3\u5E76\u767B\u8BB0\u4E3A\u7B49\u5F85\u524D\u77BB\u5F71\u5B50\u9A8C\u8BC1"
+      }
+    );
+    return {
+      status: stage === "AWAITING_SHADOW" ? "AWAITING_SHADOW" : "ERROR",
+      experimentId,
+      version: versionId,
+      attemptSequence: reserved.attemptSequence,
+      reason: "\u51B7\u542F\u52A8\u5019\u9009\u5DF2\u51BB\u7ED3\uFF0C\u76F4\u63A5\u8FDB\u5165\u524D\u77BB\u5F71\u5B50\u961F\u5217\uFF1B\u671F\u95F4\u4E0D\u63D0\u4F9B\u4EFB\u4F55\u542F\u7528\u8D44\u683C"
+    };
+  } catch (error) {
+    await research.recordError(experimentId, versionId, safeError(error)).catch(() => {
+    });
+    return {
+      status: "ERROR",
+      experimentId,
+      reason: `\u51B7\u542F\u52A8\u63D0\u6848\u5931\u8D25\uFF08${safeError(error)}\uFF09\uFF1B\u4E00\u6B21\u6027\u8D44\u683C\u4E0E\u9884\u7B97\u5DF2\u6D88\u8017\uFF0C\u539F\u7B56\u7565\u7EE7\u7EED\u8FD0\u884C`
+    };
+  }
+}
 async function promoteCandidate(repository, env, id) {
   const research = new ResearchRepository(env);
   if (/^ai-\d{4}-\d{2}-\d{2}$/.test(id))
@@ -4857,6 +6526,7 @@ async function researchStatus(env) {
   const experiments = await research.listExperiments(20);
   return {
     namespace: registry.namespace,
+    bootstrapDone: registry.bootstrapDone,
     policy: {
       id: policy.id,
       digest: policy.digest,
@@ -5425,6 +7095,1345 @@ async function paperOverview(env, attempt = 0) {
   };
 }
 
+// backend/services/historical-providers.js
+var KLINE_MAX_ROWS = 80;
+var KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get";
+function addDays(date, days) {
+  const next = /* @__PURE__ */ new Date(`${date}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+function prevDay(date) {
+  return addDays(date, -1);
+}
+async function fetchKlineWindow(symbolCode, start, end, rows) {
+  const url = new URL(KLINE_URL);
+  url.searchParams.set(
+    "param",
+    `${symbolCode},day,${start},${end},${rows},qfq`
+  );
+  const response = await publicFetch(url, 12e3);
+  if (!response.ok) throw new Error(`\u5386\u53F2\u65E5\u7EBF\u8BF7\u6C42\u5931\u8D25 HTTP ${response.status}`);
+  const body = await response.json();
+  const item = body.data?.[symbolCode];
+  if (!item) throw new Error(`\u5386\u53F2\u65E5\u7EBF\u7F3A\u5C11 ${symbolCode} \u6570\u636E`);
+  const list = item.day || item.qfqday || [];
+  return list.map((row) => ({
+    date: row[0],
+    openYuan: Number(row[1]),
+    closeYuan: Number(row[2]),
+    highYuan: Number(row[3]),
+    lowYuan: Number(row[4]),
+    volumeHands: Number(row[5])
+  })).filter((row) => row.date >= start && row.date <= end).sort((a, b) => a.date < b.date ? -1 : 1);
+}
+function createTencentHistoricalProvider(options = {}) {
+  const maxRows = options.maxRows ?? KLINE_MAX_ROWS;
+  return {
+    id: "tencent-free",
+    providerSchemaVersion: "tencent-v1",
+    taxonomyId: "\u4E1C\u8D22\u884C\u4E1A\u5206\u7C7B\uFF08\u8FD1\u671F\uFF09/\u672A\u5206\u7C7B\uFF08\u5386\u53F2\u65E5\u7EBF\uFF09",
+    notes: [
+      "\u817E\u8BAF\u65E5\u7EBF\u63A5\u53E3\u6309\u7A97\u53E3\u8FD4\u56DE\uFF0C\u6700\u591A\u7EA6 80 \u6761\uFF1B\u8D85\u8FC7\u8303\u56F4\u9700\u5206\u6BB5\u56DE\u6EAF",
+      "\u4E1C\u65B9\u8D22\u5BCC\u6DA8\u505C\u6C60\u4EC5\u4FDD\u8BC1\u8FD1\u671F\u65E5\u671F\uFF1B\u5386\u53F2\u65E5\u671F\u4F1A\u88AB\u6765\u6E90\u65E5\u671F\u6821\u9A8C\u62D2\u7EDD",
+      "\u817E\u8BAF\u5206\u65F6\u6570\u636E\u4EC5\u8986\u76D6\u8FD1\u671F\u4EA4\u6613\u65E5\uFF0C\u4E14\u5B58\u5728\u65F6\u6BB5\u5916\u8BB0\u5F55\uFF0C\u9700\u9694\u79BB"
+    ],
+    async capabilities({ start, end }) {
+      const probe = {
+        provider: "tencent-free",
+        probedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        requestedRange: { start, end },
+        limitFeatures: { available: null, availableFrom: null, rejections: [] },
+        dailyPrices: { available: null, observedFrom: null, observedTo: null },
+        minuteBars: { recentOnly: true, notes: "\u4EC5\u8FD1\u671F\u4EA4\u6613\u65E5\uFF0C\u5B58\u5728\u65F6\u6BB5\u5916\u8BB0\u5F55" },
+        notes: this.notes
+      };
+      const mid = addDays(
+        start,
+        Math.floor((Date.parse(end) - Date.parse(start)) / 864e5 / 2)
+      );
+      for (const date of [end, mid, start]) {
+        try {
+          await this.limitFeatures({ date });
+          if (probe.limitFeatures.availableFrom === null || date < probe.limitFeatures.availableFrom)
+            probe.limitFeatures.availableFrom = date;
+          probe.limitFeatures.available = true;
+        } catch (error) {
+          probe.limitFeatures.rejections.push({
+            date,
+            reason: String(error.message ?? error).slice(0, 120)
+          });
+        }
+      }
+      if (probe.limitFeatures.availableFrom !== null)
+        probe.limitFeatures.available = true;
+      try {
+        const calendar = await this.tradingCalendar({ start, end });
+        probe.dailyPrices.available = calendar.dates.length > 0;
+        probe.dailyPrices.observedFrom = calendar.dates[0] ?? null;
+        probe.dailyPrices.observedTo = calendar.dates.at(-1) ?? null;
+        probe.dailyPrices.segmentCount = calendar.segments.length;
+        probe.dailyPrices.coverageIssues = calendar.issues;
+      } catch (error) {
+        probe.dailyPrices.available = false;
+        probe.dailyPrices.reason = String(error.message ?? error).slice(0, 120);
+      }
+      return probe;
+    },
+    async tradingCalendar({ start, end }) {
+      const segments = [];
+      let cursor = end;
+      const dates = /* @__PURE__ */ new Set();
+      let guard = 0;
+      while (cursor >= start && guard < 60) {
+        guard++;
+        const windowStart = addDays(cursor, -(maxRows * 2));
+        const rows = await fetchKlineWindow(
+          "sh000001",
+          windowStart,
+          cursor,
+          maxRows
+        );
+        const inRange = rows.filter((row) => row.date >= start);
+        const segment = {
+          requestRange: `${windowStart}..${cursor}`,
+          actualRange: inRange.length ? `${inRange[0].date}..${inRange.at(-1).date}` : null,
+          rows: inRange.length,
+          dates: inRange.map((row) => row.date)
+        };
+        segments.push(segment);
+        for (const row of inRange) dates.add(row.date);
+        const earliest = rows.length ? rows[0].date : null;
+        if (!earliest || earliest <= start) break;
+        if (rows.length < maxRows) break;
+        cursor = prevDay(earliest);
+      }
+      const merged = mergeSegmentedDates(segments, { start, end });
+      return {
+        dates: merged.dates,
+        segments,
+        issues: merged.issues,
+        complete: merged.issues.length === 0
+      };
+    },
+    async dailyPrices({ codes, start, end }) {
+      const results = {};
+      const segments = [];
+      for (const code of codes) {
+        const symbolCode = symbol(code);
+        const rows = [];
+        const codeSegments = [];
+        let cursor = end;
+        let guard = 0;
+        while (cursor >= start && guard < 60) {
+          guard++;
+          const windowStart = addDays(cursor, -(maxRows * 2));
+          const window = await fetchKlineWindow(
+            symbolCode,
+            windowStart,
+            cursor,
+            maxRows
+          );
+          const inRange = window.filter((row) => row.date >= start);
+          codeSegments.push({
+            requestRange: `${windowStart}..${cursor}`,
+            actualRange: inRange.length ? `${inRange[0].date}..${inRange.at(-1).date}` : null,
+            rows: inRange.length
+          });
+          for (const row of inRange)
+            rows.push({
+              code,
+              tradeDate: row.date,
+              openYuan: row.openYuan,
+              closeYuan: row.closeYuan,
+              highYuan: row.highYuan,
+              lowYuan: row.lowYuan,
+              volumeShares: Math.round(row.volumeHands * 100)
+            });
+          const earliest = window.length ? window[0].date : null;
+          if (!earliest || earliest <= start) break;
+          if (window.length < maxRows) break;
+          cursor = prevDay(earliest);
+        }
+        const seen = /* @__PURE__ */ new Set();
+        rows.sort((a, b) => a.tradeDate < b.tradeDate ? -1 : 1);
+        const deduped = rows.filter((row) => {
+          if (seen.has(row.tradeDate)) return false;
+          seen.add(row.tradeDate);
+          return true;
+        });
+        results[code] = deduped;
+        segments.push({ code, segments: codeSegments, rows: deduped.length });
+      }
+      return {
+        rows: results,
+        segments,
+        adjustment: "QFQ",
+        adjustmentNote: "\u817E\u8BAF\u65E5\u7EBF\u4F7F\u7528\u524D\u590D\u6743\uFF08QFQ\uFF09\u4EF7\u683C\uFF1A\u9002\u5408\u89C2\u5BDF\u7814\u7A76\u7279\u5F81\uFF1B\u5386\u53F2\u6570\u503C\u4F1A\u968F\u672A\u6765\u9664\u6743\u4FEE\u8BA2\uFF0C\u4E0D\u80FD\u76F4\u63A5\u4EE3\u5165\u672A\u590D\u6743\u8D44\u91D1\u8D26\u672C"
+      };
+    },
+    async limitFeatures({ date }) {
+      const [main, broken] = await Promise.allSettled([
+        getPool("getTopicZTPool", date),
+        getPool("getTopicZBPool", date)
+      ]);
+      if (main.status === "rejected") throw main.reason;
+      return {
+        date,
+        rows: main.value.pool,
+        broken: broken.status === "fulfilled" ? broken.value.pool.length : null,
+        sourceDate: main.value.sourceDate,
+        fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+    },
+    async minuteSeries({ code, date }) {
+      const bars = await minuteBars(code, date);
+      return sanitizeMinuteSeries(bars, date);
+    }
+  };
+}
+
+// backend/services/history.js
+var SCORING_VERSION2 = "rules-v1-historical";
+var TAKEOVER_NOTICE = "\u4EFB\u52A1\u5DF2\u7531\u5176\u4ED6\u6267\u884C\u5668\u63A5\u7BA1\uFF0C\u672C\u6B21\u6267\u884C\u4E2D\u6B62\uFF08\u4E0D\u8986\u76D6\u63A5\u7BA1\u65B9\u72B6\u6001\uFF09";
+var ExecutorLostError = class extends Error {
+  constructor() {
+    super(TAKEOVER_NOTICE);
+    this.name = "ExecutorLostError";
+  }
+};
+function newId(prefix) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+function historyProviders() {
+  return { "tencent-free": createTencentHistoricalProvider() };
+}
+async function probeHistoryCapabilities(env, { start, end }) {
+  const provider = createTencentHistoricalProvider();
+  return provider.capabilities({ start, end });
+}
+async function createHistoryImport(env, { provider = "tencent-free", kind, start, end, name, codes, datasetId }) {
+  if (!["LIMIT_FEATURES", "DAILY", "MINUTES"].includes(kind))
+    throw new Error("\u5386\u53F2\u5BFC\u5165\u7C7B\u578B\u65E0\u6548\uFF08LIMIT_FEATURES\u3001DAILY \u6216 MINUTES\uFF09");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end))
+    throw new Error("\u5386\u53F2\u5BFC\u5165\u65E5\u671F\u8303\u56F4\u65E0\u6548");
+  if (start > end) throw new Error("\u5386\u53F2\u5BFC\u5165\u8D77\u59CB\u65E5\u671F\u665A\u4E8E\u7ED3\u675F\u65E5\u671F");
+  const declaredCodes = Array.isArray(codes) ? [...new Set(codes.map((code) => String(code).trim()))] : [];
+  if (declaredCodes.some((code) => !/^\d{6}$/.test(code)) || !declaredCodes.length && codes !== void 0)
+    throw new Error("\u80A1\u7968\u6C60 codes \u5FC5\u987B\u4E3A\u516D\u4F4D\u6570\u5B57\u4EE3\u7801\u6570\u7EC4");
+  if (["DAILY", "MINUTES"].includes(kind) && !declaredCodes.length)
+    throw new Error(
+      `${kind} \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08codes\uFF0C\u516D\u4F4D\u6570\u5B57\u4EE3\u7801\u6570\u7EC4\uFF09`
+    );
+  const providers = historyProviders();
+  if (!providers[provider]) throw new Error("\u672A\u77E5\u5386\u53F2\u6570\u636E\u4F9B\u5E94\u5546");
+  const jobs = new HistoryJobRepository(env);
+  const job = await jobs.createJob({
+    id: newId("hjob"),
+    provider,
+    kind,
+    start,
+    end,
+    name
+  });
+  const statusPayload = {};
+  if (declaredCodes.length) statusPayload.codes = declaredCodes;
+  if (datasetId) {
+    if (kind !== "MINUTES")
+      throw new Error("\u4EC5 MINUTES \u5BFC\u5165\u652F\u6301\u9644\u52A0\u5230\u5DF2\u6709\u6570\u636E\u96C6\uFF08datasetId\uFF09");
+    statusPayload.datasetId = datasetId;
+  }
+  if (Object.keys(statusPayload).length)
+    return jobs.updateJob(job.id, { statusPayload });
+  return job;
+}
+function orNull(value) {
+  return value === null || value === void 0 || value === "" ? null : value;
+}
+function emRowToCanonical(raw) {
+  return {
+    code: String(raw.c ?? ""),
+    name: orNull(raw.n),
+    sector: String(raw.hybk ?? "\u672A\u5206\u7C7B"),
+    price: orNull(raw.p) === null ? null : Number(raw.p) / 1e3,
+    change: orNull(raw.zdp) === null ? null : Number(raw.zdp),
+    amount: orNull(raw.amount) === null ? null : Number(raw.amount),
+    floatCap: orNull(raw.ltsz) === null ? null : Number(raw.ltsz),
+    seal: orNull(raw.fund) === null ? null : Number(raw.fund),
+    turnover: orNull(raw.hs) === null ? null : Number(raw.hs),
+    first: orNull(raw.fbt) === null ? null : Number(raw.fbt),
+    last: orNull(raw.lbt) === null ? null : Number(raw.lbt),
+    breaks: orNull(raw.zbc) === null ? null : Number(raw.zbc),
+    height: orNull(raw.lbc) === null ? null : Number(raw.lbc)
+  };
+}
+async function runHistoryImport(env, jobId, options = {}) {
+  const jobs = new HistoryJobRepository(env);
+  const job = await jobs.getJob(jobId);
+  if (!job) throw new Error("\u5386\u53F2\u5BFC\u5165\u4EFB\u52A1\u4E0D\u5B58\u5728");
+  if (job.stage === "READY" && options.withObservationReturns !== true)
+    return job;
+  const store = openHistoryStore(env);
+  if (!store) {
+    return jobs.updateJob(jobId, {
+      stage: "BLOCKED",
+      statusPayload: {
+        reason: "\u5386\u53F2\u7814\u7A76\u5B58\u50A8\u4EC5\u672C\u673A\u53EF\u7528\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u5E38\u9A7B\u5B9E\u4F8B\u8FD0\u884C\u5BFC\u5165"
+      }
+    });
+  }
+  const executorId = `history-${crypto.randomUUID()}`;
+  const claim = await jobs.claimExecution(jobId, executorId);
+  if (!claim)
+    return {
+      ...job,
+      note: "\u53E6\u4E00\u4E2A\u6267\u884C\u5668\u6B63\u5728\u8FD0\u884C\u6B64\u5BFC\u5165\u4EFB\u52A1\uFF0C\u672C\u6B21\u672A\u63A5\u7BA1\uFF08\u907F\u514D\u5E76\u53D1\u8986\u76D6\uFF09"
+    };
+  try {
+    return await runHistoryImportInner(env, job, {
+      jobs,
+      store,
+      options,
+      executorId: claim.executorId,
+      round: claim.round
+    });
+  } catch (error) {
+    if (error instanceof ExecutorLostError)
+      return { ...await jobs.getJob(jobId), note: TAKEOVER_NOTICE };
+    const reason = String(error?.message ?? error).slice(0, 300);
+    const failedJob = await jobs.finishJob(jobId, claim.executorId, {
+      stage: "FAILED",
+      statusPayload: {
+        error: reason,
+        note: "\u5BFC\u5165\u8FC7\u7A0B\u4E2D\u53D1\u751F\u672A\u9884\u671F\u9519\u8BEF\uFF1B\u5DF2\u5B8C\u6210\u7684\u4E0B\u8F7D\u5757\u4FDD\u7559\uFF0C\u53EF\u91CD\u8BD5\u7EED\u4F20"
+      }
+    });
+    if (failedJob) return failedJob;
+    return {
+      ...await jobs.getJob(jobId),
+      note: "\u4EFB\u52A1\u5DF2\u7531\u5176\u4ED6\u6267\u884C\u5668\u63A5\u7BA1\u6216\u8FDB\u5165\u7EC8\u6001\uFF0C\u672C\u6B21\u9519\u8BEF\u672A\u5199\u5165"
+    };
+  }
+}
+async function runHistoryImportInner(env, job, { jobs, store, options, executorId, round }) {
+  const jobId = job.id;
+  const takeoverNotice = TAKEOVER_NOTICE;
+  const guardOwnership = async () => {
+    if (!await jobs.stillOwner(jobId, executorId))
+      throw new ExecutorLostError();
+  };
+  const requireApplied = (result) => {
+    if (result && result.applied === false) throw new ExecutorLostError();
+    return result;
+  };
+  const requireGranted = (result) => {
+    if (!result || result.granted === false) throw new ExecutorLostError();
+    return { executorId: result.executorId, round: Number(result.round) };
+  };
+  const provider = historyProviders()[job.provider];
+  if (!provider) throw new Error("\u672A\u77E5\u5386\u53F2\u6570\u636E\u4F9B\u5E94\u5546");
+  const requestedStart = job.requestedRange.start, requestedEnd = job.requestedRange.end;
+  if (!await jobs.progressJob(jobId, executorId, { stage: "PROBING" }))
+    return { ...await jobs.getJob(jobId), note: takeoverNotice };
+  const capabilities = await provider.capabilities({
+    start: requestedStart,
+    end: requestedEnd
+  });
+  await guardOwnership();
+  if (job.kind === "LIMIT_FEATURES" && capabilities.limitFeatures.availableFrom === null) {
+    return jobs.finishJob(jobId, executorId, {
+      stage: "BLOCKED",
+      statusPayload: {
+        capabilities,
+        reason: "\u80FD\u529B\u63A2\u6D4B\u663E\u793A\u8BF7\u6C42\u8303\u56F4\u5185\u6DA8\u505C\u7279\u5F81\u4E0D\u53EF\u7528\uFF0C\u672A\u5F00\u59CB\u4E0B\u8F7D"
+      }
+    });
+  }
+  const coverage = {
+    observedStart: null,
+    observedEnd: null,
+    succeededDates: [],
+    failedDates: [],
+    notes: []
+  };
+  let preservedExecutionModel = null;
+  let clonedSourceDates = null;
+  let clonedSourceTradingDates = null;
+  let datasetId = job.datasetId;
+  let datasetOwner = null;
+  if (!datasetId) {
+    await guardOwnership();
+    datasetId = newId("hds");
+    const claimed = await jobs.claimDataset(jobId, datasetId);
+    if (!claimed) {
+      const current = await jobs.getJob(jobId);
+      datasetId = current.datasetId;
+    } else {
+      await store.createDatasetVersion({
+        id: datasetId,
+        provider: job.provider,
+        kind: job.kind,
+        executionModel: "PENDING",
+        requestedStart,
+        requestedEnd,
+        coverage
+      });
+    }
+  }
+  if (!await jobs.progressJob(jobId, executorId, {
+    stage: "DOWNLOADING",
+    datasetId
+  }))
+    return { ...await jobs.getJob(jobId), note: takeoverNotice };
+  datasetOwner = requireGranted(
+    await store.acquireDatasetOwnership(
+      datasetId,
+      { executorId, round },
+      jobId
+    )
+  );
+  const calendar = await provider.tradingCalendar({
+    start: requestedStart,
+    end: requestedEnd
+  });
+  await guardOwnership();
+  if (calendar.issues.length)
+    coverage.notes.push(
+      ...calendar.issues.map((issue) => `\u4EA4\u6613\u65E5\u5386\uFF1A${issue}`)
+    );
+  const doneChunks = await store.completedChunkKeys(jobId);
+  const succeeded = [];
+  const failed = [];
+  const universeCodes = /* @__PURE__ */ new Set();
+  if (job.kind === "LIMIT_FEATURES") {
+    for (const date of calendar.dates) {
+      const chunkKey = `limit:${date}`;
+      let normalized = null;
+      let broken = null;
+      if (doneChunks.has(chunkKey) && job.datasetId) {
+        const stored = await store.getDailyInput(datasetId, date);
+        if (stored) {
+          normalized = stored.normalized;
+          broken = stored.provenance?.broken ?? null;
+        }
+      }
+      if (!normalized) {
+        try {
+          const features = await provider.limitFeatures({ date });
+          await guardOwnership();
+          normalized = [];
+          for (const raw of features.rows) {
+            const { row } = normalizeLimitFeatureRow(emRowToCanonical(raw), {
+              origin: "LIVE_ARCHIVED",
+              provider: job.provider,
+              fetchedAt: features.fetchedAt
+            });
+            normalized.push(row);
+          }
+          broken = features.broken;
+          const provenance = await buildSampleProvenance({
+            origin: "LIVE_ARCHIVED",
+            provider: job.provider,
+            tradeDate: date,
+            fetchedAt: features.fetchedAt,
+            pointInTimeConfidence: "SOURCE_REPORTED",
+            fieldCoverage: assessFieldCoverage(normalized),
+            rawPayload: features,
+            normalizedPayload: normalized
+          });
+          requireApplied(
+            await store.saveDailyInputs(
+              datasetId,
+              date,
+              { normalized, provenance: { ...provenance, broken } },
+              datasetOwner
+            )
+          );
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: date,
+                rows: normalized.length,
+                stage: "DONE",
+                rawDigest: await digestOf(features),
+                raw: features
+              },
+              datasetOwner
+            )
+          );
+        } catch (error) {
+          if (error instanceof ExecutorLostError) throw error;
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: null,
+                rows: 0,
+                stage: "FAILED",
+                artifactRef: String(error.message ?? error).slice(0, 160)
+              },
+              datasetOwner
+            )
+          );
+          failed.push({
+            date,
+            reason: String(error.message ?? error).slice(0, 160)
+          });
+          continue;
+        }
+      }
+      if (normalized) {
+        succeeded.push({ date, normalized, broken });
+        for (const row of normalized) universeCodes.add(row.code);
+      }
+    }
+    if (!await jobs.progressJob(jobId, executorId, { stage: "NORMALIZING" }))
+      return { ...await jobs.getJob(jobId), note: takeoverNotice };
+    const weights = options.weights ?? PRESETS.balanced;
+    const paramsDigest = await digestOf(weights);
+    if (!await jobs.progressJob(jobId, executorId, { stage: "SCORING" }))
+      return { ...await jobs.getJob(jobId), note: takeoverNotice };
+    let dailyNormalized = null;
+    if (options.withObservationReturns !== false && succeeded.length) {
+      try {
+        const daily = await provider.dailyPrices({
+          codes: [...universeCodes],
+          start: succeeded[0].date,
+          end: requestedEnd
+        });
+        dailyNormalized = /* @__PURE__ */ new Map();
+        for (const code of Object.keys(daily.rows))
+          for (const row of daily.rows[code]) {
+            let normalized;
+            try {
+              normalized = normalizeDailyBarRow(row);
+            } catch {
+              continue;
+            }
+            if (!dailyNormalized.has(normalized.tradeDate))
+              dailyNormalized.set(normalized.tradeDate, /* @__PURE__ */ new Map());
+            dailyNormalized.get(normalized.tradeDate).set(code, normalized);
+          }
+      } catch (error) {
+        dailyNormalized = null;
+        coverage.notes.push(
+          `\u89C2\u5BDF\u53CD\u9988\u65E5\u7EBF\u4E0B\u8F7D\u5931\u8D25\uFF0C\u672C\u6B21\u4E0D\u751F\u6210\u6B21\u65E5\u89C2\u5BDF\u6536\u76CA\uFF1A${String(error.message ?? error).slice(0, 120)}`
+        );
+      }
+      if (dailyNormalized) {
+        await guardOwnership();
+        for (const [obsDate, byCode] of dailyNormalized)
+          requireApplied(
+            await store.saveObservationDaily(
+              datasetId,
+              obsDate,
+              byCode,
+              datasetOwner
+            )
+          );
+      }
+    }
+    const dateIndex = new Map(
+      calendar.dates.map((date, index) => [date, index])
+    );
+    for (const entry of succeeded) {
+      await guardOwnership();
+      const previousEntry = succeeded.slice(0, succeeded.indexOf(entry)).at(-1) ?? null;
+      const a = analyze(
+        entry.normalized,
+        entry.broken ?? null,
+        previousEntry ? previousEntry.normalized : null,
+        weights
+      );
+      entry.scoresByCode = new Map(
+        a.stocks.map((stock) => [stock.code, stock.score])
+      );
+      entry.nextUniverse = a.stocks.length;
+      const scoreResult = await store.saveScore(
+        datasetId,
+        entry.date,
+        SCORING_VERSION2,
+        paramsDigest,
+        {
+          date: entry.date,
+          createdAt: `${entry.date}T07:05:00.000Z`,
+          weights,
+          source: `\u5386\u53F2\u91CD\u6784\uFF08${job.provider}\uFF09`,
+          modelVersion: SCORING_VERSION2,
+          judgment: "\u5386\u53F2\u91CD\u6784\u8BC4\u5206\uFF1A\u7531\u4F9B\u5E94\u5546\u6863\u6848\u91CD\u5EFA\u5F53\u65E5\u6DA8\u505C\u7279\u5F81\u540E\u6309\u540C\u4E00\u89C4\u5219\u6A21\u578B\u8BA1\u7B97\uFF1B\u975E\u4E8B\u524D\u91C7\u96C6\uFF0C\u4E0D\u6784\u6210\u4E8B\u524D\u5224\u65AD\uFF1BcreatedAt \u91C7\u7528\u8BC4\u5206\u65E5\u76D8\u524D\u865A\u62DF\u65F6\u95F4\u4EE5\u4FDD\u8BC1\u53EF\u91CD\u653E\u6027",
+          stocks: a.stocks,
+          sectors: a.sectors,
+          emotion: a.emotion,
+          origin: "HISTORICAL_RECONSTRUCTED"
+        },
+        datasetOwner
+      );
+      requireApplied(scoreResult);
+      const nextTradingDate = calendar.dates[dateIndex.get(entry.date) + 1] ?? null;
+      const nextEntry = nextTradingDate === null ? null : succeeded.find((row) => row.date === nextTradingDate) ?? null;
+      if (!nextEntry) {
+        coverage.notes.push(
+          `${entry.date} \u7684\u76F8\u90BB\u4EA4\u6613\u65E5 ${nextTradingDate ?? "\uFF08\u8303\u56F4\u5185\u65E0\uFF09"} \u6570\u636E\u7F3A\u5931\uFF0C\u672A\u751F\u6210\u6B21\u65E5\u89C2\u5BDF\u53CD\u9988\uFF08\u4E0D\u8DE8\u8D8A\u7F3A\u5931\u65E5\uFF09`
+        );
+        continue;
+      }
+      const dailyByCode = dailyNormalized?.get(entry.date) ?? null;
+      const nextQuotes = dailyNormalized?.get(nextTradingDate) ?? null;
+      const nextFeatures = new Map(
+        (nextEntry.normalized ?? []).map((row) => [row.code, row])
+      );
+      const universe = entry.normalized.map((row) => {
+        const nextDaily = nextQuotes ? nextQuotes.get(row.code) ?? null : null;
+        const dailyPrev = dailyByCode ? dailyByCode.get(row.code) ?? null : null;
+        const quoteCents = dailyPrev ? dailyPrev.closeCents : null;
+        const returnPct = (cents) => nextDaily && quoteCents !== null ? (cents - quoteCents) / quoteCents * 100 : null;
+        const openReturnPct = nextDaily ? returnPct(nextDaily.openCents) : null;
+        const closeReturnPct = nextDaily ? returnPct(nextDaily.closeCents) : null;
+        let continued = null;
+        if (row.height !== null && nextEntry.normalized !== null) {
+          const nextFeature = nextFeatures.get(row.code);
+          if (!nextFeature) continued = false;
+          else if (nextFeature.height !== null)
+            continued = nextFeature.height > row.height;
+        }
+        return {
+          code: row.code,
+          name: row.name,
+          score: entry.scoresByCode?.get(row.code) ?? null,
+          continued,
+          openReturnPct: openReturnPct !== null && Number.isFinite(openReturnPct) ? openReturnPct : null,
+          closeReturnPct: closeReturnPct !== null && Number.isFinite(closeReturnPct) ? closeReturnPct : null
+        };
+      });
+      const withReturns = universe.filter((row) => row.openReturnPct !== null);
+      const decidable = universe.filter((row) => row.continued !== null);
+      const continuedCount = decidable.filter((row) => row.continued).length;
+      const topQuantile = withReturns.length && withReturns.some((row) => row.score !== null) ? withReturns.filter((row) => row.score !== null).sort((a2, b) => (b.score ?? -1) - (a2.score ?? -1)).slice(0, Math.max(1, Math.ceil(withReturns.length / 5))) : [];
+      const mean2 = (values) => values.length ? values.reduce((a2, b) => a2 + b, 0) / values.length : null;
+      const reviewResult = await store.saveReview(
+        datasetId,
+        entry.date,
+        nextTradingDate,
+        SCORING_VERSION2,
+        {
+          signalDate: entry.date,
+          labelEndDate: nextTradingDate,
+          universeCount: universe.length,
+          continuedDecidableCount: decidable.length,
+          continuedUnknownCount: universe.length - decidable.length,
+          continuedCount,
+          continuationRate: decidable.length ? continuedCount / decidable.length : null,
+          observationCoverage: withReturns.length,
+          topOpenReturnPct: mean2(topQuantile.map((row) => row.openReturnPct)),
+          topCloseReturnPct: mean2(topQuantile.map((row) => row.closeReturnPct)),
+          allOpenReturnPct: mean2(withReturns.map((row) => row.openReturnPct)),
+          allCloseReturnPct: mean2(withReturns.map((row) => row.closeReturnPct)),
+          priceBasis: "\u4FE1\u53F7\u65E5\u57FA\u51C6\u4EF7\u53D6\u540C\u6E90\u524D\u590D\u6743\u65E5\u7EBF\u6536\u76D8\uFF08QFQ\uFF09\uFF1B\u4FE1\u53F7\u65E5\u65E5\u7EBF\u7F3A\u5931\u65F6\u4E0D\u8BA1\u7B97\u6536\u76CA\uFF0C\u4E0D\u4E0E\u6DA8\u505C\u6C60\u672A\u590D\u6743\u4EF7\u683C\u6DF7\u7528",
+          note: "\u5386\u53F2\u89C2\u5BDF\u53CD\u9988\uFF1A\u57FA\u4E8E\u76F8\u90BB\u4EA4\u6613\u65E5\u65E5\u7EBF\u6536\u76D8\u6570\u636E\u7684\u89C2\u5BDF\u6536\u76CA\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA",
+          universe: universe.slice(0, 200)
+        },
+        datasetOwner
+      );
+      requireApplied(reviewResult);
+    }
+  } else if (job.kind === "MINUTES") {
+    const codes = options.codes ?? job.statusPayload?.codes ?? [];
+    if (!codes.length) {
+      return jobs.finishJob(jobId, executorId, {
+        stage: "BLOCKED",
+        statusPayload: {
+          capabilities,
+          reason: "MINUTES \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08codes\uFF09"
+        }
+      });
+    }
+    const targetDatasetId = options.datasetId ?? job.statusPayload?.datasetId;
+    if (targetDatasetId) {
+      await guardOwnership();
+      const cloneSource = job.datasetId ?? targetDatasetId;
+      const cloned = await store.cloneDatasetForMinutes(cloneSource);
+      datasetId = cloned.id;
+      preservedExecutionModel = cloned.sourceCoverage.executionModel ?? null;
+      clonedSourceDates = Array.isArray(cloned.sourceCoverage.succeededDates) ? cloned.sourceCoverage.succeededDates : [];
+      clonedSourceTradingDates = Array.isArray(
+        cloned.sourceCoverage.tradingDates
+      ) ? cloned.sourceCoverage.tradingDates : [];
+      if (!await jobs.progressJob(jobId, executorId, { datasetId }))
+        return { ...await jobs.getJob(jobId), note: takeoverNotice };
+      datasetOwner = requireGranted(
+        await store.acquireDatasetOwnership(
+          datasetId,
+          { executorId, round },
+          jobId
+        )
+      );
+      coverage.notes.push(
+        `\u5206\u949F\u6570\u636E\u9644\u52A0\u4E3A\u65B0\u6570\u636E\u96C6\u7248\u672C ${datasetId}\uFF08\u514B\u9686\u81EA ${cloneSource}\uFF0C\u7EE7\u627F\u5DF2\u5B8C\u6210\u5206\u949F\u6570\u636E\uFF09\uFF1B\u6E90\u6570\u636E\u96C6\u4FDD\u6301\u53D1\u5E03\u65F6\u72B6\u6001\u4E0D\u88AB\u6539\u5199`
+      );
+    }
+    for (const date of calendar.dates) {
+      let dayRows = 0;
+      let dayFailures = 0;
+      for (const code of codes) {
+        const chunkKey = `minute:${date}:${code}`;
+        if (doneChunks.has(chunkKey) && job.datasetId) {
+          dayRows++;
+          continue;
+        }
+        try {
+          const series = await provider.minuteSeries({ code, date });
+          await guardOwnership();
+          requireApplied(
+            await store.saveMinuteInputs(
+              datasetId,
+              date,
+              code,
+              {
+                bars: series.inSession,
+                anomalies: series.anomalies.slice(0, 5),
+                sampled: true,
+                note: "\u5206\u949F\u91C7\u6837\u4EF7\u5E8F\u5217\uFF08MINUTE_SAMPLE_V1\uFF09\uFF0C\u975E\u5B8C\u6574 OHLC"
+              },
+              datasetOwner
+            )
+          );
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: date,
+                rows: series.inSession.length,
+                stage: "DONE",
+                rawDigest: await digestOf(series),
+                raw: series
+              },
+              datasetOwner
+            )
+          );
+          dayRows++;
+        } catch (error) {
+          if (error instanceof ExecutorLostError) throw error;
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: null,
+                rows: 0,
+                stage: "FAILED",
+                artifactRef: String(error.message ?? error).slice(0, 160)
+              },
+              datasetOwner
+            )
+          );
+          dayFailures++;
+        }
+      }
+      if (dayFailures === 0 && dayRows > 0) {
+        succeeded.push({ date });
+        for (const code of codes) universeCodes.add(code);
+      } else if (dayRows > 0) {
+        succeeded.push({ date });
+        failed.push({
+          date,
+          reason: `\u5206\u949F\u91C7\u6837\u90E8\u5206\u7F3A\u5931\uFF1A${dayFailures}/${codes.length} \u53EA\u5931\u8D25`
+        });
+      } else {
+        failed.push({ date, reason: "\u5206\u949F\u91C7\u6837\u5168\u90E8\u5931\u8D25" });
+      }
+    }
+  } else if (job.kind === "DAILY") {
+    if (!await jobs.progressJob(jobId, executorId, { stage: "DOWNLOADING" }))
+      return { ...await jobs.getJob(jobId), note: takeoverNotice };
+    const codes = options.codes ?? job.statusPayload?.codes ?? [];
+    if (!codes.length) {
+      return jobs.finishJob(jobId, executorId, {
+        stage: "BLOCKED",
+        statusPayload: {
+          capabilities,
+          reason: "DAILY \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08codes\uFF09"
+        }
+      });
+    }
+    const daily = await provider.dailyPrices({
+      codes,
+      start: requestedStart,
+      end: requestedEnd
+    });
+    await guardOwnership();
+    const dates = /* @__PURE__ */ new Set();
+    for (const code of Object.keys(daily.rows))
+      for (const row of daily.rows[code]) dates.add(row.tradeDate);
+    for (const calendarDate of calendar.dates)
+      if (!dates.has(calendarDate))
+        failed.push({
+          date: calendarDate,
+          reason: "\u4EA4\u6613\u65E5\u5386\u4E2D\u7684\u65E5\u671F\u7F3A\u5C11\u4EFB\u4F55\u80A1\u7968\u7684\u65E5\u7EBF\u6570\u636E"
+        });
+    for (const date of [...dates].sort()) {
+      await guardOwnership();
+      const perCode = {};
+      for (const code of codes) {
+        const row = daily.rows[code]?.find((item) => item.tradeDate === date);
+        if (!row) {
+          failed.push({
+            date,
+            reason: `\u7F3A\u5C11\u65E5\u7EBF\u6570\u636E\uFF1A${code}`
+          });
+          continue;
+        }
+        try {
+          perCode[code] = normalizeDailyBarRow(row);
+        } catch (error) {
+          failed.push({
+            date,
+            reason: `\u65E5\u7EBF\u884C\u89C4\u8303\u5316\u5931\u8D25\uFF08${code}\uFF09\uFF1A${String(error.message ?? error).slice(0, 120)}`
+          });
+        }
+      }
+      if (Object.keys(perCode).length) {
+        requireApplied(
+          await store.saveDailyInputs(
+            datasetId,
+            date,
+            {
+              normalized: perCode,
+              provenance: {
+                origin: "HISTORICAL_RECONSTRUCTED",
+                provider: job.provider,
+                adjustedPrice: "QFQ",
+                note: "\u65E5\u7EBF\u89C2\u5BDF\u8F93\u5165\uFF08\u524D\u590D\u6743\uFF09\uFF1B\u65E0\u6DA8\u505C\u7279\u5F81\uFF0C\u4E0D\u80FD\u91CD\u5EFA\u516D\u56E0\u5B50\u8BC4\u5206"
+              }
+            },
+            datasetOwner
+          )
+        );
+        requireApplied(
+          await store.saveChunk(
+            jobId,
+            {
+              chunkKey: `daily:${date}`,
+              datasetId,
+              requestRange: date,
+              actualRange: date,
+              rows: Object.keys(perCode).length,
+              stage: "DONE",
+              rawDigest: await digestOf(perCode),
+              raw: perCode
+            },
+            datasetOwner
+          )
+        );
+        succeeded.push({ date });
+      }
+      for (const code of codes) universeCodes.add(code);
+    }
+  }
+  coverage.observedStart = succeeded.length ? succeeded[0].date : null;
+  coverage.observedEnd = succeeded.length ? succeeded.at(-1).date : null;
+  coverage.succeededDates = succeeded.map((entry) => entry.date);
+  if (clonedSourceDates)
+    coverage.succeededDates = [
+      .../* @__PURE__ */ new Set([...clonedSourceDates, ...coverage.succeededDates])
+    ].sort();
+  coverage.tradingDates = [
+    .../* @__PURE__ */ new Set([...clonedSourceTradingDates ?? [], ...calendar.dates])
+  ].sort();
+  coverage.failedDates = failed;
+  coverage.notes.push(
+    `\u8054\u5408\u91C7\u96C6\u80A1\u7968\u6C60 ${universeCodes.size} \u53EA\uFF1B\u5931\u8D25\u65E5\u671F ${failed.length} \u4E2A`
+  );
+  const allNormalizedRows = [];
+  for (const entry of succeeded)
+    if (entry.normalized) allNormalizedRows.push(...entry.normalized);
+  const coverageCheck = assessFieldCoverage(allNormalizedRows);
+  coverage.coverage = coverageCheck;
+  const executionModel = preservedExecutionModel ?? classifyExecutionModel(
+    coverageCheck.ratio,
+    job.kind === "LIMIT_FEATURES" && allNormalizedRows.length > 0
+  );
+  coverage.executionModel = executionModel;
+  await guardOwnership();
+  const finalCoverage = requireApplied(
+    await store.updateDatasetCoverage(datasetId, coverage, datasetOwner)
+  );
+  if (!succeeded.length)
+    return jobs.finishJob(jobId, executorId, {
+      stage: "FAILED",
+      statusPayload: {
+        capabilities,
+        datasetId,
+        executionModel,
+        coverage,
+        manifestDigest: finalCoverage.manifestDigest,
+        error: "\u8BF7\u6C42\u8303\u56F4\u5185\u6CA1\u6709\u4EFB\u4F55\u6210\u529F\u65E5\u671F\uFF0C\u4E0D\u80FD\u53D1\u5E03\u4E3A\u5C31\u7EEA\u6570\u636E\u96C6"
+      }
+    });
+  const finalStage = failed.length ? "PARTIAL" : "READY";
+  const finished = await jobs.finishJob(jobId, executorId, {
+    stage: finalStage,
+    datasetId,
+    statusPayload: {
+      capabilities,
+      datasetId,
+      executionModel,
+      coverage,
+      manifestDigest: finalCoverage.manifestDigest,
+      note: executionModel === "DAILY_OBSERVATION_V1" ? "\u65E5\u7EBF\u89C2\u5BDF\u6570\u636E\u96C6\uFF1A\u65E0\u5C01\u677F\u7279\u5F81\uFF0C\u4E0D\u80FD\u91CD\u5EFA\u516D\u56E0\u5B50\u8BC4\u5206\uFF0C\u4EC5\u7528\u4E8E\u89C2\u5BDF\u7814\u7A76" : "\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\u5C31\u7EEA"
+    }
+  });
+  if (finished) return finished;
+  return {
+    ...await jobs.getJob(jobId),
+    note: "\u4EFB\u52A1\u7EC8\u6001\u5DF2\u7531\u5176\u4ED6\u6267\u884C\u5668\u5199\u5165\uFF0C\u672C\u6B21\u7ED3\u679C\u672A\u8986\u76D6"
+  };
+}
+async function historyImportDetail(env, jobId) {
+  const jobs = new HistoryJobRepository(env);
+  const job = await jobs.getJob(jobId);
+  if (!job) return null;
+  const store = openHistoryStore(env);
+  const dataset = store && job.datasetId ? await store.getDataset(job.datasetId) : null;
+  const integrity = store && job.datasetId ? await store.datasetIntegrity(job.datasetId) : null;
+  const dates = store && job.datasetId ? await store.listDatasetDates(job.datasetId) : [];
+  const scores = store && job.datasetId ? await store.listScores(job.datasetId) : [];
+  const reviews = store && job.datasetId ? await store.listReviews(job.datasetId) : [];
+  return {
+    job,
+    dataset,
+    integrity: integrity ? {
+      verified: integrity.verified,
+      manifestDigest: integrity.manifestDigest,
+      chunkCount: integrity.manifest.chunkRefs.length,
+      note: integrity.verified ? "\u6570\u636E\u96C6 manifest \u4E0E\u5F53\u524D\u8F93\u5165\u4E00\u81F4" : "\u8B66\u544A\uFF1A\u6570\u636E\u96C6\u8F93\u5165\u4E0E\u53D1\u5E03\u65F6\u7684 manifest \u6458\u8981\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u4FEE\u6539\uFF09\uFF0C\u56DE\u6D4B\u4E0E\u8BAD\u7EC3\u5C06\u62D2\u7EDD\u4F7F\u7528"
+    } : null,
+    dates,
+    scoreCount: scores.length,
+    reviewCount: reviews.length,
+    scores: scores.slice(-10),
+    reviews: reviews.slice(-10)
+  };
+}
+
+// backend/domain/historical-execution.js
+var HISTORICAL_EXECUTION_VERSION = "minute-sample-v1";
+var HISTORICAL_EXECUTION_MODEL = "MINUTE_SAMPLE_V1";
+function assertCausalObservations(observations) {
+  for (let index = 1; index < observations.length; index++) {
+    if (new Date(observations[index].observedAt) <= new Date(observations[index - 1].observedAt))
+      throw new Error("\u7814\u7A76\u89C2\u6D4B\u65F6\u95F4\u975E\u4E25\u683C\u9012\u589E\uFF0C\u8FDD\u53CD\u56E0\u679C\u987A\u5E8F");
+  }
+  return true;
+}
+
+// backend/services/backtest.js
+function newId2(prefix) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+function buildQuoteTemplates({ book, snapshot }) {
+  const templates = {};
+  for (const position of book.positions) {
+    templates[position.code] = {
+      date: null,
+      name: position.name,
+      previousCloseCents: position.markCents,
+      openCents: null,
+      limitUpCents: Math.round(position.markCents * 1.1),
+      limitDownCents: Math.round(position.markCents * 0.9),
+      volumeShares: 0
+    };
+  }
+  for (const stock of snapshot.stocks ?? []) {
+    if (templates[stock.code] || stock.price === null) continue;
+    const previousCloseCents = Math.round(stock.price * 100);
+    templates[stock.code] = {
+      date: null,
+      name: stock.name,
+      previousCloseCents,
+      openCents: null,
+      limitUpCents: Math.round(previousCloseCents * 1.1),
+      limitDownCents: Math.round(previousCloseCents * 0.9),
+      volumeShares: 0
+    };
+  }
+  return templates;
+}
+function inSessionTime(time) {
+  return time >= "09:30" && time <= "11:30" || time >= "13:00" && time < "14:57";
+}
+function buildTimeline(minuteByCode) {
+  const times = /* @__PURE__ */ new Set();
+  for (const series of Object.values(minuteByCode))
+    for (const bar of series.bars ?? []) times.add(bar.time);
+  return [...times].filter(inSessionTime).sort();
+}
+function observationsForDay({ date, minuteByCode, templates }) {
+  const timeline = buildTimeline(minuteByCode);
+  const observations = [];
+  const cumulative = Object.fromEntries(
+    Object.keys(templates).map((code) => [code, 0])
+  );
+  for (const time of timeline) {
+    const quotes = {};
+    for (const [code, series] of Object.entries(minuteByCode)) {
+      const template = templates[code];
+      if (!template) continue;
+      const bar = (series.bars ?? []).find((bar2) => bar2.time === time);
+      if (!bar) continue;
+      cumulative[code] += Math.max(0, Math.round(bar.volumeShares));
+      quotes[code] = {
+        ...template,
+        date,
+        closeCents: bar.priceCents,
+        volumeShares: cumulative[code],
+        timestamp: `${date}T${time}:00+08:00`
+      };
+    }
+    if (!Object.keys(quotes).length) continue;
+    observations.push({
+      observedAt: (/* @__PURE__ */ new Date(`${date}T${time}:00+08:00`)).toISOString(),
+      pollIntervalSeconds: 60,
+      quotes
+    });
+  }
+  return observations;
+}
+function endOfDayQuotes({ date, minuteByCode, templates }) {
+  const quotes = {};
+  const sampledCloseTimes = {};
+  for (const [code, series] of Object.entries(minuteByCode)) {
+    const template = templates[code];
+    const bars = series.bars ?? [];
+    const last = bars.at(-1);
+    if (!template || !last) continue;
+    sampledCloseTimes[code] = last.time;
+    quotes[code] = {
+      ...template,
+      date,
+      closeCents: last.priceCents,
+      volumeShares: last.volumeShares,
+      timestamp: `${date}T15:00:00+08:00`,
+      sampledCloseTime: last.time,
+      sampledCloseNote: last.time === "15:00" ? null : `\u6536\u76D8\u4EF7\u4EE5\u91C7\u6837\u672B\u7AEF ${last.time} \u8FD1\u4F3C\uFF08\u91C7\u6837\u672A\u8986\u76D6\u6536\u76D8\u65F6\u6BB5\uFF09`
+    };
+  }
+  return { quotes, sampledCloseTimes };
+}
+async function runBacktest(env, { datasetId, name, strategy, initialCapital, weights, fees }) {
+  const store = openHistoryStore(env);
+  if (!store)
+    throw new Error(
+      "\u5386\u53F2\u7814\u7A76\u5B58\u50A8\u4EC5\u672C\u673A\u53EF\u7528\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u5E38\u9A7B\u5B9E\u4F8B\u8FD0\u884C\u56DE\u6D4B"
+    );
+  const integrity = await store.datasetIntegrity(datasetId);
+  if (integrity && !integrity.verified)
+    throw new Error(
+      `\u5386\u53F2\u6570\u636E\u96C6 manifest \u6821\u9A8C\u5931\u8D25\uFF1A${(integrity.issues ?? []).join("\uFF1B")}\uFF1B\u62D2\u7EDD\u7528\u4E8E\u56DE\u6D4B`
+    );
+  const dataset = await store.getDataset(datasetId);
+  if (!dataset) throw new Error("\u5386\u53F2\u6570\u636E\u96C6\u4E0D\u5B58\u5728");
+  if (dataset.executionModel !== "SIX_FACTOR_V1")
+    throw new Error("\u56DE\u6D4B\u9700\u8981\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09");
+  const strategyParams = strategy ?? BASE_STRATEGY;
+  const feeConfig = fees ? normalizeFees(fees) : DEFAULT_FEES;
+  const runId = newId2("bt");
+  let book = newBook(initialCapital ?? 1e6, feeConfig);
+  const paramsDigest = await digestOf(strategyParams);
+  const feeDigest = await digestOf(feeConfig);
+  await store.createBacktestRun({
+    id: runId,
+    datasetId,
+    name: name ?? "\u5386\u53F2\u56DE\u6D4B",
+    strategyVersion: dataset.id,
+    strategyParams,
+    paramsDigest,
+    feeConfig,
+    feeDigest,
+    executionModel: HISTORICAL_EXECUTION_MODEL,
+    executionVersion: HISTORICAL_EXECUTION_VERSION,
+    initialBook: { initialCashCents: book.initialCashCents }
+  });
+  try {
+    return await runBacktestInner(store, runId, dataset, {
+      strategyParams,
+      feeConfig,
+      book
+    });
+  } catch (error) {
+    const reason = String(error?.message ?? error).slice(0, 300);
+    await store.finishBacktestRun(runId, "FAILED", {
+      executionModel: HISTORICAL_EXECUTION_MODEL,
+      error: reason,
+      note: "\u56DE\u6D4B\u8FC7\u7A0B\u53D1\u751F\u672A\u9884\u671F\u9519\u8BEF\uFF08\u5982\u6301\u4ED3\u7F3A\u5C11\u6536\u76D8\u62A5\u4EF7\uFF09\uFF0C\u4EFB\u52A1\u8BB0\u5F55\u4E3A FAILED\uFF1B\u53EF\u4FEE\u6B63\u6570\u636E\u540E\u91CD\u8BD5"
+    });
+    throw error;
+  }
+}
+async function runBacktestInner(store, runId, dataset, { strategyParams, feeConfig, book }) {
+  const datasetId = dataset.id;
+  const scores = await store.listScores(datasetId);
+  const minuteDates = new Set(await store.listMinuteDates(datasetId));
+  const adjacency = tradingAdjacency(dataset.coverage);
+  const tradingDates = adjacency.tradingDates;
+  const coverage = {
+    executionModel: HISTORICAL_EXECUTION_MODEL,
+    plannedPairs: 0,
+    executedPairs: 0,
+    skippedPairs: [],
+    equity: [],
+    totalReturn: null,
+    maxDrawdown: null,
+    fillCount: 0,
+    feesCents: null,
+    notes: [
+      "\u7814\u7A76\u56DE\u6D4B\uFF1AMINUTE_SAMPLE_V1 \u91C7\u6837\u4EF7\u6A21\u578B\uFF0C\u6DA8\u8DCC\u505C\u8FB9\u754C\u6309\u4E0A\u4E00\u6536\u76D8 \xB110% \u8FD1\u4F3C\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA"
+    ]
+  };
+  if (!tradingDates.length)
+    coverage.notes.push(
+      "\u6570\u636E\u96C6\u672A\u8BB0\u5F55\u5B8C\u6574\u4EA4\u6613\u65E5\u5386\uFF08\u65E7\u7248\u672C\uFF09\uFF0C\u90BB\u63A5\u68C0\u67E5\u9000\u5316\u4E3A\u6210\u529F\u65E5\u671F\u5E8F\u5217\uFF1B\u5EFA\u8BAE\u91CD\u65B0\u5BFC\u5165\u4EE5\u542F\u7528\u4E25\u683C\u65E5\u5386\u90BB\u63A5"
+    );
+  for (let index = 0; index + 1 < scores.length; index++) {
+    const signal = scores[index];
+    const signalDate = signal.tradeDate;
+    const tradeDate = scores[index + 1].tradeDate;
+    coverage.plannedPairs++;
+    if (!isAdjacentTradingDay(adjacency, signalDate, tradeDate)) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: "\u8BC4\u5206\u65E5\u4E0E\u6267\u884C\u65E5\u4E4B\u95F4\u6709\u7F3A\u5931\u4EA4\u6613\u65E5\uFF0C\u4E0D\u8DE8\u7F3A\u5931\u65E5\u914D\u5BF9\u6267\u884C"
+      });
+      continue;
+    }
+    if (!minuteDates.has(tradeDate)) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: "\u7F3A\u5C11\u6B21\u65E5\u5206\u949F\u91C7\u6837\u6570\u636E"
+      });
+      continue;
+    }
+    const snapshot = signal.payload;
+    let plan;
+    try {
+      plan = createPlan(
+        snapshot,
+        book,
+        strategyParams,
+        `backtest-${runId}`,
+        `${signalDate}T07:10:00.000Z`
+      );
+    } catch (error) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: `\u8BA1\u5212\u751F\u6210\u5931\u8D25\uFF1A${String(error.message ?? error).slice(0, 120)}`
+      });
+      continue;
+    }
+    await store.saveBacktestPlan(runId, signalDate, plan);
+    const minuteByCode = await store.listMinuteInputs(datasetId, tradeDate);
+    const templates = buildQuoteTemplates({ book, snapshot });
+    const observations = observationsForDay({
+      date: tradeDate,
+      minuteByCode,
+      templates
+    });
+    if (!observations.length) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: "\u5206\u949F\u91C7\u6837\u672A\u4EA7\u751F\u6709\u6548\u89C2\u6D4B"
+      });
+      continue;
+    }
+    assertCausalObservations(observations);
+    let session;
+    try {
+      session = openSession({ ...book, lastDate: signalDate }, plan, tradeDate);
+    } catch (error) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: `\u4F1A\u8BDD\u5F00\u542F\u5931\u8D25\uFF1A${String(error.message ?? error).slice(0, 120)}`
+      });
+      continue;
+    }
+    const dayLedger = [];
+    for (const observation of observations) {
+      const result = advanceSession(book, session, observation);
+      book = result.book;
+      session = result.session;
+      dayLedger.push(
+        ...result.ledger.map((row, offset) => ({
+          ...row,
+          id: row.id ?? `${tradeDate}:${observation.observedAt}:${offset}`
+        }))
+      );
+    }
+    const { quotes: eodQuotes, sampledCloseTimes } = endOfDayQuotes({
+      date: tradeDate,
+      minuteByCode,
+      templates
+    });
+    const closed = closeSession(book, session, {
+      date: tradeDate,
+      quotes: eodQuotes,
+      source: "\u5386\u53F2\u7814\u7A76\uFF08\u91C7\u6837\u6536\u76D8\uFF09"
+    });
+    book = closed.book;
+    coverage.executedPairs++;
+    if (dayLedger.length)
+      await store.appendBacktestLedger(runId, tradeDate, dayLedger);
+    const drawdown = book.peakEquityCents ? 1 - book.equityCents / book.peakEquityCents : 0;
+    const sampledCloseIncomplete = Object.values(sampledCloseTimes).some(
+      (time) => time !== "15:00"
+    );
+    if (sampledCloseIncomplete) {
+      coverage.sampledCloseIncomplete = true;
+      coverage.notes.push(
+        `${tradeDate} \u6536\u76D8\u4EF7\u4EE5\u5206\u949F\u91C7\u6837\u672B\u7AEF ${Object.entries(sampledCloseTimes).filter(([, time]) => time !== "15:00").map(([code, time]) => `${code}@${time}`).join("\u3001")} \u8FD1\u4F3C\uFF0C\u672A\u8986\u76D6\u771F\u5B9E\u6536\u76D8\u65F6\u6BB5`
+      );
+    }
+    const equityRow = {
+      tradeDate,
+      equityCents: book.equityCents,
+      cashCents: book.cashCents,
+      drawdown,
+      positions: book.positions.length,
+      sharesByCode: Object.fromEntries(
+        book.positions.map((position) => [
+          position.code,
+          totalQuantity(position)
+        ])
+      ),
+      sampledCloseTimes
+    };
+    coverage.equity.push(equityRow);
+    await store.saveBacktestEquity(runId, tradeDate, equityRow);
+  }
+  coverage.totalReturn = book.equityCents / book.initialCashCents - 1;
+  coverage.maxDrawdown = Math.max(
+    0,
+    ...coverage.equity.map((row) => row.drawdown)
+  );
+  const ledgerRows = await store.listBacktestLedger(runId);
+  coverage.fillCount = ledgerRows.length;
+  coverage.feesCents = book.feesCents;
+  const stage = coverage.executedPairs > 0 && coverage.skippedPairs.length === 0 && !coverage.sampledCloseIncomplete ? "READY" : "PARTIAL";
+  const run = await store.finishBacktestRun(runId, stage, coverage);
+  return run;
+}
+async function backtestDetail(env, runId) {
+  const store = openHistoryStore(env);
+  if (!store)
+    throw new Error(
+      "\u5386\u53F2\u7814\u7A76\u5B58\u50A8\u4EC5\u672C\u673A\u53EF\u7528\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u5E38\u9A7B\u5B9E\u4F8B\u67E5\u770B\u56DE\u6D4B"
+    );
+  const run = await store.getBacktestRun(runId);
+  if (!run) return null;
+  const [plans, ledger, equity] = await Promise.all([
+    store.listBacktestPlans(runId),
+    store.listBacktestLedger(runId),
+    store.listBacktestEquity(runId)
+  ]);
+  const recomputedTotalReturn = equity.length && run.initialBook?.initialCashCents ? equity.at(-1).equityCents / run.initialBook.initialCashCents - 1 : null;
+  const ledgerCountMatches = ledger.length === (run.coverage?.fillCount ?? -1);
+  const cashIssues = [];
+  if (run.initialBook?.initialCashCents) {
+    let replayCashCents = run.initialBook.initialCashCents;
+    const ledgerByDate = /* @__PURE__ */ new Map();
+    for (const row of ledger) {
+      const recomputedDelta = row.side === "BUY" ? -(row.quantity * row.priceCents) - row.feeCents : row.quantity * row.priceCents - row.feeCents;
+      if (recomputedDelta !== row.cashDeltaCents)
+        cashIssues.push(
+          `${row.tradeDate} ${row.code} ${row.side} \u73B0\u91D1\u53D8\u52A8 ${row.cashDeltaCents} \u4E0E\u6570\u91CF\xD7\u4EF7\u683C\xD7\u8D39\u7528\u91CD\u7B97\u503C ${recomputedDelta} \u4E0D\u4E00\u81F4`
+        );
+      if (!ledgerByDate.has(row.tradeDate)) ledgerByDate.set(row.tradeDate, []);
+      ledgerByDate.get(row.tradeDate).push(row);
+      replayCashCents += recomputedDelta;
+    }
+    for (const equityRow of equity) {
+      const dayRows = ledgerByDate.get(equityRow.tradeDate) ?? [];
+      if (dayRows.length) {
+        const lastAfter = dayRows.at(-1).cashAfterCents;
+        if (lastAfter !== equityRow.cashCents)
+          cashIssues.push(
+            `${equityRow.tradeDate} \u6743\u76CA\u8BB0\u5F55\u73B0\u91D1 ${equityRow.cashCents} \u4E0E\u8D26\u672C\u672B\u7B14\u73B0\u91D1 ${lastAfter} \u4E0D\u4E00\u81F4`
+          );
+      } else if (equityRow.cashCents !== replayCashCents) {
+        cashIssues.push(
+          `${equityRow.tradeDate} \u65E0\u6210\u4EA4\u65E5\u73B0\u91D1 ${equityRow.cashCents} \u4E0E\u91CD\u653E\u73B0\u91D1 ${replayCashCents} \u4E0D\u4E00\u81F4`
+        );
+      }
+    }
+    if (equity.length && replayCashCents !== equity.at(-1).cashCents)
+      cashIssues.push(
+        `\u8D26\u672C\u91CD\u653E\u7EC8\u503C\u73B0\u91D1 ${replayCashCents} \u4E0E\u6743\u76CA\u7EC8\u503C\u73B0\u91D1 ${equity.at(-1).cashCents} \u4E0D\u4E00\u81F4`
+      );
+  }
+  const positionIssues = [];
+  if (run.initialBook?.initialCashCents) {
+    const shares = {};
+    const ledgerByDate = /* @__PURE__ */ new Map();
+    for (const row of ledger) {
+      if (!ledgerByDate.has(row.tradeDate)) ledgerByDate.set(row.tradeDate, []);
+      ledgerByDate.get(row.tradeDate).push(row);
+    }
+    for (const equityRow of equity) {
+      for (const row of ledgerByDate.get(equityRow.tradeDate) ?? []) {
+        const delta = row.side === "BUY" ? row.quantity : -Number(row.quantity);
+        shares[row.code] = (shares[row.code] ?? 0) + delta;
+        if (!shares[row.code]) delete shares[row.code];
+      }
+      const recorded = equityRow.sharesByCode ?? null;
+      if (!recorded) continue;
+      const codes = /* @__PURE__ */ new Set([...Object.keys(shares), ...Object.keys(recorded)]);
+      for (const code of codes) {
+        if ((shares[code] ?? 0) !== (recorded[code] ?? 0)) {
+          positionIssues.push(
+            `${equityRow.tradeDate} ${code} \u91CD\u653E\u6301\u4ED3 ${shares[code] ?? 0} \u80A1\u4E0E\u6743\u76CA\u8BB0\u5F55 ${recorded[code] ?? 0} \u80A1\u4E0D\u4E00\u81F4\uFF08\u6210\u4EA4\u88AB\u7BE1\u6539\u6216\u7B49\u4EF7\u66FF\u6362\uFF09`
+          );
+        }
+      }
+    }
+  }
+  const cashChainMatches = cashIssues.length === 0;
+  const positionsRebuilt = positionIssues.length === 0;
+  return {
+    run,
+    plans,
+    ledger: ledger.slice(-100),
+    ledgerCount: ledger.length,
+    equity,
+    verification: {
+      ledgerCountMatches,
+      cashChainMatches,
+      cashIssues: cashIssues.slice(0, 10),
+      positionsRebuilt,
+      positionIssues: positionIssues.slice(0, 10),
+      totalReturnMatches: recomputedTotalReturn === null || !ledgerCountMatches || !ledger.length || !cashChainMatches || !positionsRebuilt ? false : Math.abs(
+        (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0)
+      ) < 1e-9,
+      recomputedTotalReturn,
+      note: ledger.length && ledgerCountMatches && cashChainMatches && positionsRebuilt ? "\u6536\u76CA\u6838\u9A8C\u57FA\u4E8E\u8D26\u672C\u72EC\u7ACB\u91CD\u653E\uFF08\u9010\u7B14\u73B0\u91D1\u53D8\u52A8\u91CD\u7B97 + \u9010\u65E5\u73B0\u91D1\u94FE + \u6301\u4ED3\u6570\u91CF\u91CD\u5EFA\uFF09\u4E0E\u6743\u76CA\u7EC8\u503C" : "\u8D26\u672C\u7F3A\u5931\u3001\u884C\u6570\u4E0D\u7B26\u3001\u73B0\u91D1\u91CD\u653E\u6216\u6301\u4ED3\u91CD\u5EFA\u4E0D\u4E00\u81F4\uFF0C\u65E0\u6CD5\u6838\u9A8C\u6536\u76CA\uFF1B\u4E0D\u5F97\u5C06 totalReturn \u89C6\u4E3A\u5DF2\u9A8C\u8BC1"
+    }
+  };
+}
+
 // backend/routes/api.js
 async function runDaily(env) {
   const date = beijingDate();
@@ -5484,13 +8493,23 @@ async function api(request, env) {
     "/api/paper/export": ["GET"],
     "/api/paper/verify": ["GET"],
     "/api/paper/improve": ["POST"],
+    "/api/research/bootstrap": ["POST"],
     "/api/paper/activate": ["POST"],
     "/api/paper/live": ["GET"],
     "/api/paper/poll": ["POST"],
-    "/api/research/status": ["GET"]
+    "/api/research/status": ["GET"],
+    "/api/history/capabilities": ["GET"],
+    "/api/history/imports": ["GET", "POST"],
+    "/api/backtests": ["GET", "POST"]
   };
-  if (!methods[path]) return json({ error: "\u63A5\u53E3\u4E0D\u5B58\u5728" }, 404);
-  if (!methods[path].includes(request.method))
+  const historyImportMatch = path.match(
+    /^\/api\/history\/imports\/([a-z0-9-]+)(\/run)?$/
+  );
+  const backtestMatch = path.match(/^\/api\/backtests\/([a-z0-9-]+)$/);
+  if (!methods[path] && !historyImportMatch && !backtestMatch)
+    return json({ error: "\u63A5\u53E3\u4E0D\u5B58\u5728" }, 404);
+  const allowedMethods = methods[path] ?? ["GET", "POST"];
+  if (!allowedMethods.includes(request.method))
     return json({ error: "\u4E0D\u652F\u6301\u6B64\u8BF7\u6C42\u65B9\u6CD5" }, 405);
   if (request.method === "POST" && (request.headers.get("Origin") && request.headers.get("Origin") !== url.origin || request.headers.get("Sec-Fetch-Site") === "cross-site"))
     return json({ error: "\u4E0D\u63A5\u53D7\u8DE8\u7AD9\u5199\u5165\u8BF7\u6C42" }, 403);
@@ -5513,6 +8532,65 @@ async function api(request, env) {
     }
     if (path === "/api/history") return json(await historyList(env));
     if (path === "/api/research/status") return json(await researchStatus(env));
+    if (path === "/api/history/capabilities") {
+      const start = url.searchParams.get("start");
+      const end = url.searchParams.get("end");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(start ?? "") || !/^\d{4}-\d{2}-\d{2}$/.test(end ?? ""))
+        return json({ error: "\u8BF7\u63D0\u4F9B start \u4E0E end \u65E5\u671F\uFF08YYYY-MM-DD\uFF09" }, 400);
+      return json(await probeHistoryCapabilities(env, { start, end }));
+    }
+    if (path === "/api/history/imports") {
+      if (request.method === "GET")
+        return json({
+          imports: await new HistoryJobRepository(env).listJobs(20)
+        });
+      const body2 = await readJson(request);
+      const job = await createHistoryImport(env, {
+        provider: body2.provider,
+        kind: body2.kind,
+        start: body2.start,
+        end: body2.end,
+        name: body2.name,
+        codes: body2.codes,
+        datasetId: body2.datasetId
+      });
+      return json({ job });
+    }
+    if (historyImportMatch) {
+      const [, importId, action] = historyImportMatch;
+      if (request.method === "GET")
+        return json(
+          await historyImportDetail(env, importId) ?? {
+            error: "\u5386\u53F2\u5BFC\u5165\u4EFB\u52A1\u4E0D\u5B58\u5728"
+          }
+        );
+      if (action === "/run") return json(await runHistoryImport(env, importId));
+      return json({ error: "\u4E0D\u652F\u6301\u6B64\u64CD\u4F5C" }, 405);
+    }
+    if (path === "/api/backtests") {
+      if (request.method === "GET") {
+        const store = openHistoryStore(env);
+        return json({
+          backtests: store ? await store.listBacktestRuns(20) : [],
+          note: store ? void 0 : "\u5386\u53F2\u7814\u7A76\u5B58\u50A8\u4EC5\u672C\u673A\u53EF\u7528\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u67E5\u770B"
+        });
+      }
+      const body2 = await readJson(request);
+      const run = await runBacktest(env, {
+        datasetId: body2.datasetId,
+        name: body2.name,
+        strategy: body2.strategy,
+        initialCapital: body2.initialCapital,
+        fees: body2.fees
+      });
+      return json({ run });
+    }
+    if (backtestMatch) {
+      if (request.method !== "GET")
+        return json({ error: "\u4E0D\u652F\u6301\u6B64\u8BF7\u6C42\u65B9\u6CD5" }, 405);
+      const detail = await backtestDetail(env, backtestMatch[1]);
+      return json(detail ?? { error: "\u56DE\u6D4B\u4E0D\u5B58\u5728" });
+    }
     if (path === "/api/review") {
       const date = url.searchParams.get("date") || beijingDate();
       if (!validDate(date)) return json({ error: "\u65E5\u671F\u683C\u5F0F\u65E0\u6548" }, 400);
@@ -5615,6 +8693,14 @@ async function api(request, env) {
     await repository.initialize(await readWeights(env));
     if (path === "/api/paper/improve")
       return json(await proposeImprovement(repository, env));
+    if (path === "/api/research/bootstrap") {
+      const body2 = await readJson(request);
+      return json(
+        await proposeBootstrapImprovement(repository, env, {
+          datasetId: body2.datasetId
+        })
+      );
+    }
     const body = await readJson(request);
     if (typeof body.id !== "string" || !/^(?:ai-\d{4}-\d{2}-\d{2}|exp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(
       body.id

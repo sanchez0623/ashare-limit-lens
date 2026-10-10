@@ -341,15 +341,6 @@ test("模型错误同样占用预算与尝试序号；同月第二次提案被�
   try {
     const first = await proposeImprovement(repository, env);
     assert.equal(first.status, "ERROR");
-    const debugResearch = new ResearchRepository(env);
-    console.error(
-      "DEBUG after first:",
-      JSON.stringify({
-        firstReason: first.reason,
-        stage: (await debugResearch.getExperiment(first.experimentId)).stage,
-        active: (await debugResearch.activeExperiment())?.experimentId ?? null,
-      }),
-    );
     const status = await researchStatus(env);
     assert.equal(status.registry.attemptSequence, 1);
     const second = await proposeImprovement(repository, env);
@@ -621,13 +612,6 @@ test("提案中断恢复：请求发出后停机记为 ERROR 且预算保留；�
       testDates: resumedTest,
       samples: resumedSamples,
     });
-    console.error(
-      "DEBUG after reserve:",
-      JSON.stringify({
-        id: refrozen?.experimentId ?? null,
-        active: (await research.activeExperiment())?.experimentId ?? null,
-      }),
-    );
     const account = await repository.account();
     await research.freezeCandidate(refrozen.experimentId, {
       versionId: refrozen.experimentId,
@@ -1001,16 +985,6 @@ test("报价清单摘要绑定完整有序报价内容，内容变化可被识�
               .first()
           ).payload,
         );
-      console.error(
-        "DEBUG volumes:",
-        (await lastTick(first.DB)).quotes["600001"].volumeShares,
-        (await lastTick(second.DB)).quotes["600001"].volumeShares,
-      );
-      console.error(
-        "DEBUG manifests:",
-        sample61.payload.quoteManifestDigest,
-        sample61Second.payload.quoteManifestDigest,
-      );
       assert.equal(
         sample61Second.payload.snapshotDigest,
         sample61.payload.snapshotDigest,
