@@ -22,6 +22,7 @@ import {
   SCORING_VERSION,
 } from "../backend/domain/research-lineage.js";
 import { PaperRepository } from "../backend/storage/paper.js";
+import { DEFAULT_FEES, feesForBook } from "../shared/fees.js";
 import { api } from "../backend/routes/api.js";
 import { localDatabase } from "../scripts/local-db.mjs";
 import { pairs, dateAt } from "./fixtures/trading.mjs";
@@ -35,7 +36,8 @@ async function seedRepository(count = 80) {
   };
   const repository = new PaperRepository(env);
   await repository.initialize();
-  for (const pair of pairs(count)) {
+  const all = pairs(count);
+  for (const pair of all) {
     pair.snapshot.stocks[1].score = 81;
     pair.snapshot.stocks[1].factors = pair.snapshot.stocks[1].factors.map(
       (factor) => ({ value: 81 }),
@@ -56,7 +58,7 @@ async function seedRepository(count = 80) {
       .run();
   }
   await new ResearchRepository(env).ensureRegistry();
-  return { DB, env, repository };
+  return { DB, env, repository, all };
 }
 function stubProposal(patch = { minScore: 82 }) {
   let calls = 0;
@@ -116,7 +118,7 @@ function minimalSamples({ trainingDates, testDates }) {
     })),
   ];
 }
-function makeRealtime(pair) {
+function makeRealtime(pair, tickPriceCents = null, lastTickVolumeExtra = 0) {
   const day = pair.dataset;
   const baseQuotes = JSON.parse(JSON.stringify(day.quotes));
   const seconds = [];
@@ -132,10 +134,14 @@ function makeRealtime(pair) {
       quotes[code] = {
         ...quote,
         timestamp,
+        closeCents: tickPriceCents ?? quote.closeCents,
         volumeShares: 100000 + tickIndex * 5000000,
       };
     return { observedAt: new Date(timestamp).toISOString(), quotes };
   });
+  if (lastTickVolumeExtra)
+    for (const quote of Object.values(observations.at(-1).quotes))
+      quote.volumeShares += lastTickVolumeExtra;
   day.executionMode = "realtime";
   const lastVolume = 100000 + (seconds.length - 1) * 5000000;
   const closingQuotes = {};
@@ -366,6 +372,16 @@ test("并发提案只有一次预留和一次模型调用", async () => {
         statuses.includes("BUDGET_EXHAUSTED") ||
         statuses.includes("COLLECTING"),
     );
+    const winner =
+      first.status === "AWAITING_SHADOW"
+        ? first.experimentId
+        : second.experimentId;
+    const research = new ResearchRepository(env);
+    assert.equal(
+      (await research.getExperiment(winner)).stage,
+      "AWAITING_SHADOW",
+    );
+    assert.notEqual((await repository.account()).book.activeStrategy, winner);
   } finally {
     stub.restore();
     DB.close();
@@ -440,7 +456,11 @@ test("启用闸门：历史通过不启用；新旧启用入口统一被前瞻�
     DB.close();
   }
 });
-async function seedRealtimeRepository(withTicks) {
+async function seedRealtimeRepository(
+  withTicks,
+  tickPriceCents = null,
+  lastTickVolumeExtra = 0,
+) {
   const DB = localDatabase();
   const env = {
     DB,
@@ -456,8 +476,8 @@ async function seedRealtimeRepository(withTicks) {
       (factor) => ({ value: 81 }),
     );
     let observations = null;
-    if (index >= 61) {
-      observations = makeRealtime(pair);
+    if (index >= 60) {
+      observations = makeRealtime(pair, tickPriceCents, lastTickVolumeExtra);
       if (!withTicks) observations = null;
     }
     await DB.prepare(
@@ -518,7 +538,7 @@ test("实时报价参与历史筛查：缺失则拒绝，恢复加载后通过",
   }
 });
 test("提案中断恢复：请求发出后停机记为 ERROR 且预算保留；冻结后停机幂等续验且不再调用模型", async () => {
-  const { DB, env, repository } = await seedRepository(100);
+  const { DB, env, repository, all } = await seedRepository(100);
   await setCutoff(DB, dateAt(20));
   const research = new ResearchRepository(env);
   const policy = await research.getPolicy();
@@ -535,6 +555,19 @@ test("提案中断恢复：请求发出后停机记为 ERROR 且预算保留；�
   await research.appendEvent(stuck.experimentId, "REQUEST_ISSUED", {});
   const stub = stubProposal();
   try {
+    const inFlight = await proposeImprovement(repository, env);
+    assert.equal(inFlight.status, "BUSY");
+    assert.match(inFlight.reason, /租约/);
+    assert.equal(stub.calls(), 0);
+    assert.equal(
+      (await research.getExperiment(stuck.experimentId)).stage,
+      "PROPOSING",
+    );
+    await DB.prepare(
+      "UPDATE research_events SET created_at = '2020-01-01T00:00:00.000Z' WHERE experiment_id = ? AND event_type = 'REQUEST_ISSUED'",
+    )
+      .bind(stuck.experimentId)
+      .run();
     const afterCrash = await proposeImprovement(repository, env);
     assert.equal(afterCrash.status, "BUDGET_EXHAUSTED");
     assert.equal(stub.calls(), 0);
@@ -548,27 +581,46 @@ test("提案中断恢复：请求发出后停机记为 ERROR 且预算保留；�
       resumedTraining.push(dateAt(index));
     const resumedTest = [];
     for (let index = 81; index <= 90; index++) resumedTest.push(dateAt(index));
+    const resumedSamples = [];
+    for (const [index, pair] of all.entries()) {
+      const role = index >= 80 ? "HISTORICAL_TEST" : "TRAIN";
+      const payload = {
+        decisionDate: pair.snapshot.date,
+        tradeDate: pair.dataset.date,
+        labelEndDate: pair.dataset.date,
+        availableAt: pair.dataset.date,
+        role,
+        snapshotDigest: await digestOf(pair.snapshot),
+        marketDigest: await digestOf(pair.dataset),
+        quoteManifestDigest: await digestOf({
+          date: pair.dataset.date,
+          count: 0,
+          ticks: [],
+        }),
+      };
+      resumedSamples.push({
+        date: pair.dataset.date,
+        role,
+        payload,
+        digest: await digestOf(payload),
+      });
+    }
     const refrozen = await research.reserveAttempt({
       policy,
       month: "2099-02",
       parentVersion: "baseline-v1",
       windowPayload: {},
       testDates: resumedTest,
-      samples: [
-        ...resumedTraining.map((date) => ({
-          date,
-          role: "TRAIN",
-          payload: { tradeDate: date },
-          digest: `train-${date}`,
-        })),
-        ...resumedTest.map((date) => ({
-          date,
-          role: "HISTORICAL_TEST",
-          payload: { tradeDate: date },
-          digest: `test-${date}`,
-        })),
-      ],
+      samples: resumedSamples,
     });
+    console.error(
+      "DEBUG after reserve:",
+      JSON.stringify({
+        id: refrozen?.experimentId ?? null,
+        active: (await research.activeExperiment())?.experimentId ?? null,
+      }),
+    );
+    const account = await repository.account();
     await research.freezeCandidate(refrozen.experimentId, {
       versionId: refrozen.experimentId,
       params: { ...BASE_STRATEGY, minScore: 82 },
@@ -580,9 +632,12 @@ test("提案中断恢复：请求发出后停机记为 ERROR 且预算保留；�
       promptDigest: "prompt",
       output: {},
       trainingDates: resumedTraining,
+      testDates: resumedTest,
       parentVersion: "baseline-v1",
-      parentParamsDigest: "parent",
-      feeConfigDigest: "fees",
+      parentParamsDigest: await digestOf(BASE_STRATEGY),
+      feeConfig: feesForBook(account.book),
+      feeConfigDigest: await digestOf(feesForBook(account.book)),
+      initialCashCents: account.book.initialCashCents,
       executionVersion: EXECUTION_VERSION,
       scoringVersion: SCORING_VERSION,
     });
@@ -699,5 +754,247 @@ test("存储层在预留事务内拒绝把已用训练日期改成测试日期",
   );
   const registryAfter = await research.ensureRegistry();
   assert.equal(registryAfter.revision, registryBefore.revision);
+  DB.close();
+});
+async function seedFrozenExperiment(env, all) {
+  const research = new ResearchRepository(env);
+  const policy = await research.getPolicy();
+  const { trainingDates, testDates } = windowDates();
+  const samples = [];
+  for (const [index, pair] of all.entries()) {
+    const role = index >= 60 ? "HISTORICAL_TEST" : "TRAIN";
+    const payload = {
+      decisionDate: pair.snapshot.date,
+      tradeDate: pair.dataset.date,
+      labelEndDate: pair.dataset.date,
+      availableAt: pair.dataset.date,
+      role,
+      snapshotDigest: await digestOf(pair.snapshot),
+      marketDigest: await digestOf(pair.dataset),
+      quoteManifestDigest: await digestOf({
+        date: pair.dataset.date,
+        count: 0,
+        ticks: [],
+      }),
+    };
+    samples.push({
+      date: pair.dataset.date,
+      role,
+      payload,
+      digest: await digestOf(payload),
+    });
+  }
+  const reserved = await research.reserveAttempt({
+    policy,
+    month: beijingMonth(),
+    parentVersion: "baseline-v1",
+    windowPayload: {},
+    testDates,
+    samples,
+  });
+  const account = await new PaperRepository(env).account();
+  await research.freezeCandidate(reserved.experimentId, {
+    versionId: reserved.experimentId,
+    params: { ...BASE_STRATEGY, minScore: 82 },
+    patch: { minScore: 82 },
+    rationale: "冻结后中断",
+    policyId: policy.id,
+    modelAlias: "test",
+    modelVersionReported: null,
+    promptDigest: "prompt",
+    output: {},
+    trainingDates,
+    testDates,
+    parentVersion: "baseline-v1",
+    parentParamsDigest: await digestOf(BASE_STRATEGY),
+    feeConfig: feesForBook(account.book),
+    feeConfigDigest: await digestOf(feesForBook(account.book)),
+    initialCashCents: account.book.initialCashCents,
+    executionVersion: EXECUTION_VERSION,
+    scoringVersion: SCORING_VERSION,
+  });
+  return { research, reserved, policy };
+}
+test("恢复验证使用冻结输入：手续费或快照变化判 INVALIDATED 且释放窗口", async () => {
+  const feeDb = localDatabase();
+  const feeEnv = { DB: feeDb, AI_API_KEY: "x" };
+  const feeRepository = new PaperRepository(feeEnv);
+  await feeRepository.initialize();
+  const feePairs = pairs(80);
+  for (const pair of feePairs) {
+    pair.snapshot.stocks[1].score = 81;
+    pair.snapshot.stocks[1].factors = pair.snapshot.stocks[1].factors.map(
+      (factor) => ({ value: 81 }),
+    );
+    await feeDb
+      .prepare(
+        "INSERT OR IGNORE INTO snapshots (trade_date,created_at,payload) VALUES (?,?,?)",
+      )
+      .bind(
+        pair.snapshot.date,
+        pair.snapshot.createdAt,
+        JSON.stringify(pair.snapshot),
+      )
+      .run();
+    await feeDb
+      .prepare(
+        "INSERT INTO paper_market_days (trade_date,payload,digest) VALUES (?,?,?)",
+      )
+      .bind(pair.dataset.date, JSON.stringify(pair.dataset), "fixture")
+      .run();
+  }
+  await setCutoff(feeDb, dateAt(20));
+  await seedFrozenExperiment(feeEnv, feePairs);
+  await feeRepository.configure({
+    fees: { ...DEFAULT_FEES, commission_min: 5000 },
+  });
+  const stubFees = stubProposal();
+  try {
+    const result = await proposeImprovement(feeRepository, feeEnv);
+    assert.equal(result.status, "INVALIDATED");
+    assert.match(result.reason, /手续费/);
+    const research = new ResearchRepository(feeEnv);
+    const experiments = await research.listExperiments(3);
+    assert.equal(
+      experiments.find((experiment) => experiment.stage === "INVALIDATED")
+        .stage,
+      "INVALIDATED",
+    );
+    assert.equal(await research.activeExperiment(), null);
+  } finally {
+    stubFees.restore();
+    feeDb.close();
+  }
+  const tamperDb = localDatabase();
+  const tamperEnv = { DB: tamperDb, AI_API_KEY: "x" };
+  const tamperRepository = new PaperRepository(tamperEnv);
+  await tamperRepository.initialize();
+  const tamperPairs = pairs(80);
+  for (const pair of tamperPairs) {
+    pair.snapshot.stocks[1].score = 81;
+    pair.snapshot.stocks[1].factors = pair.snapshot.stocks[1].factors.map(
+      (factor) => ({ value: 81 }),
+    );
+    await tamperDb
+      .prepare(
+        "INSERT OR IGNORE INTO snapshots (trade_date,created_at,payload) VALUES (?,?,?)",
+      )
+      .bind(
+        pair.snapshot.date,
+        pair.snapshot.createdAt,
+        JSON.stringify(pair.snapshot),
+      )
+      .run();
+    await tamperDb
+      .prepare(
+        "INSERT INTO paper_market_days (trade_date,payload,digest) VALUES (?,?,?)",
+      )
+      .bind(pair.dataset.date, JSON.stringify(pair.dataset), "fixture")
+      .run();
+  }
+  await setCutoff(tamperDb, dateAt(20));
+  await seedFrozenExperiment(tamperEnv, tamperPairs);
+  await tamperDb
+    .prepare(
+      "UPDATE snapshots SET payload = json_set(payload, '$.stocks[0].score', 99) WHERE trade_date = ?",
+    )
+    .bind(dateAt(70))
+    .run();
+  const stubTamper = stubProposal();
+  try {
+    const result = await proposeImprovement(tamperRepository, tamperEnv);
+    assert.equal(result.status, "INVALIDATED");
+    assert.match(result.reason, /摘要不一致/);
+  } finally {
+    stubTamper.restore();
+    tamperDb.close();
+  }
+});
+test("报价清单摘要绑定完整有序报价内容，内容变化可被识别", async () => {
+  const first = await seedRealtimeRepository(true);
+  const stubFirst = stubProposal();
+  try {
+    const result = await proposeImprovement(first.repository, first.env);
+    assert.equal(result.status, "AWAITING_SHADOW");
+    const research = new ResearchRepository(first.env);
+    const samples = await research.experimentSamples(result.experimentId);
+    const sample61 = samples.find(
+      (sample) => sample.outcomeDate === dateAt(61),
+    );
+    assert.ok(sample61.payload.quoteManifestDigest);
+    const second = await seedRealtimeRepository(true, null, 1);
+    const stubSecond = stubProposal();
+    try {
+      const resultSecond = await proposeImprovement(
+        second.repository,
+        second.env,
+      );
+      assert.equal(resultSecond.status, "AWAITING_SHADOW");
+      const researchSecond = new ResearchRepository(second.env);
+      const samplesSecond = await researchSecond.experimentSamples(
+        resultSecond.experimentId,
+      );
+      const sample61Second = samplesSecond.find(
+        (sample) => sample.outcomeDate === dateAt(61),
+      );
+      const lastTick = async (db) =>
+        JSON.parse(
+          (
+            await db
+              .prepare(
+                "SELECT payload FROM paper_live_ticks WHERE trade_date = ? ORDER BY sequence DESC LIMIT 1",
+              )
+              .bind(dateAt(61))
+              .first()
+          ).payload,
+        );
+      console.error(
+        "DEBUG volumes:",
+        (await lastTick(first.DB)).quotes["600001"].volumeShares,
+        (await lastTick(second.DB)).quotes["600001"].volumeShares,
+      );
+      console.error(
+        "DEBUG manifests:",
+        sample61.payload.quoteManifestDigest,
+        sample61Second.payload.quoteManifestDigest,
+      );
+      assert.equal(
+        sample61Second.payload.snapshotDigest,
+        sample61.payload.snapshotDigest,
+      );
+      assert.notEqual(
+        sample61Second.payload.quoteManifestDigest,
+        sample61.payload.quoteManifestDigest,
+      );
+      assert.equal(
+        sample61Second.digest,
+        await digestOf(sample61Second.payload),
+      );
+    } finally {
+      stubSecond.restore();
+      second.DB.close();
+    }
+  } finally {
+    stubFirst.restore();
+    first.DB.close();
+  }
+});
+test("新鲜度触发器在数据库层面拦截过期测试日期直接写入", async () => {
+  const { DB, env } = await seedRepository(80);
+  await setCutoff(DB, dateAt(20));
+  await assert.rejects(
+    async () =>
+      await DB.prepare(
+        "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) VALUES (?, ?, ?, 'HISTORICAL_TEST', ?)",
+      )
+        .bind(RESEARCH_NAMESPACE, dateAt(15), "direct-attack", "now")
+        .run(),
+    /not fresh/,
+  );
+  await DB.prepare(
+    "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) VALUES (?, ?, ?, 'HISTORICAL_TEST', ?)",
+  )
+    .bind(RESEARCH_NAMESPACE, dateAt(200), "direct-ok", "now")
+    .run();
   DB.close();
 });

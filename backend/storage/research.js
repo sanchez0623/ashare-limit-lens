@@ -49,19 +49,15 @@ export class ResearchRepository {
       const cutoff = await this.db
         .prepare(
           `SELECT MAX(d) AS cutoff FROM (
-        SELECT MAX(trade_date) AS d FROM snapshots
-        UNION ALL SELECT MAX(trade_date) FROM paper_market_days
-        UNION ALL SELECT MAX(trade_date) FROM reviews
-        UNION ALL SELECT MAX(snapshot_date) FROM reviews
-        UNION ALL SELECT MAX(trade_date) FROM paper_runs
-        UNION ALL SELECT MAX(substr(created_at, 1, 10)) FROM strategy_versions
+        SELECT json_extract(evidence, '$.validationEnd') AS d FROM strategy_versions WHERE id <> 'baseline-v1' AND json_valid(evidence)
+        UNION ALL SELECT json_extract(state, '$.lastDate') AS d FROM paper_accounts WHERE json_valid(state)
       )`,
         )
         .first();
       const payload = {
         legacyIncomplete: true,
         backfilledAt: new Date().toISOString(),
-        note: "迁移未初始化时的兜底路径；截止线由已知数据日期建立，尝试次数为已知下界",
+        note: "迁移未初始化时的兜底路径；截止线由旧验证窗口终点与账户结算日构成，已知训练日期记为未知",
       };
       await this.db
         .prepare(
@@ -93,6 +89,12 @@ export class ResearchRepository {
         .all()
     ).results;
     if (!rows.length) return null;
+    await this.db
+      .prepare(
+        "UPDATE research_registry SET payload = json_set(payload, '$.legacyBackfillActive', 1) WHERE namespace = ?",
+      )
+      .bind(this.namespace)
+      .run();
     for (const row of rows) {
       const evidence = JSON.parse(row.evidence);
       const days = (
@@ -158,6 +160,7 @@ export class ResearchRepository {
       .bind(
         JSON.stringify({
           ...registry.payload,
+          legacyBackfillActive: 0,
           legacyBackfillDone: true,
           backfilledLegacyVersions: rows.length,
         }),
@@ -348,10 +351,23 @@ export class ResearchRepository {
           [this.namespace, month, experimentId, now],
         ),
         ...testDates.map((date) =>
-          guarded(
-            "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ?",
-            [this.namespace, date, experimentId, now],
-          ),
+          this.db
+            .prepare(
+              `INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ? WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?) AND NOT EXISTS (SELECT 1 FROM research_sample_uses WHERE namespace = ? AND outcome_date = ?) AND NOT EXISTS (SELECT 1 FROM research_test_claims WHERE namespace = ? AND outcome_date = ?) AND NOT EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND legacy_cutoff IS NOT NULL AND ? <= legacy_cutoff)`,
+            )
+            .bind(
+              this.namespace,
+              date,
+              experimentId,
+              now,
+              ...guardArgs,
+              this.namespace,
+              date,
+              this.namespace,
+              date,
+              this.namespace,
+              date,
+            ),
         ),
         ...samples.map((sample) =>
           guarded(
@@ -482,10 +498,12 @@ export class ResearchRepository {
       promptDigest,
       output,
       trainingDates,
+      testDates,
       parentVersion,
       parentParamsDigest,
       feeConfig,
       feeConfigDigest,
+      initialCashCents,
       executionVersion,
       scoringVersion,
     },
@@ -503,10 +521,12 @@ export class ResearchRepository {
       promptDigest,
       validatedResponse: output,
       trainingDates,
+      testDates,
       parentVersion,
       parentParamsDigest,
       feeConfig,
       feeConfigDigest,
+      initialCashCents,
       executionVersion,
       scoringVersion,
       frozenAt: now,
@@ -650,33 +670,73 @@ export class ResearchRepository {
       throw new Error("实验状态推进失败：状态已被其他流程改变");
     return { stage, reportDigest };
   }
-  async recordError(experimentId, versionId, reason) {
+  async recordError(experimentId, versionId, reason, expectedRevision = null) {
+    return this.recordTerminal(experimentId, {
+      stage: "ERROR",
+      eventType: "ERROR",
+      versionId,
+      versionStatus: "ERROR",
+      reason,
+      expectedRevision,
+    });
+  }
+  async recordInvalidated(
+    experimentId,
+    versionId,
+    reason,
+    expectedRevision = null,
+  ) {
+    return this.recordTerminal(experimentId, {
+      stage: "INVALIDATED",
+      eventType: "INVALIDATED",
+      versionId,
+      versionStatus: "INVALIDATED",
+      reason,
+      expectedRevision,
+    });
+  }
+  async recordTerminal(
+    experimentId,
+    {
+      stage,
+      eventType,
+      versionId,
+      versionStatus,
+      reason,
+      expectedRevision = null,
+    },
+  ) {
     const experiment = mapRow(
       await this.db
         .prepare("SELECT * FROM research_experiments WHERE id = ?")
         .bind(experimentId)
         .first(),
     );
-    if (!experiment) return;
-    if (RESEARCH_TERMINAL_STAGES.has(experiment.stage)) return;
+    if (!experiment) return false;
+    if (RESEARCH_TERMINAL_STAGES.has(experiment.stage)) return false;
     const now = new Date().toISOString();
     const previous = await this.lastEvent(experimentId);
     const event = {
       sequence: (previous?.sequence ?? 0) + 1,
-      eventType: "ERROR",
+      eventType,
       createdAt: now,
       payload: { reason },
       previousDigest: previous?.digest ?? null,
     };
+    const revisionGuard =
+      expectedRevision === null
+        ? "AND stage NOT IN ('REJECTED','ERROR','INCONCLUSIVE','INVALIDATED','PROMOTED')"
+        : "AND revision = ?";
+    const revisionArgs = expectedRevision === null ? [] : [expectedRevision];
     const statements = [
       this.db
         .prepare(
-          "UPDATE research_experiments SET stage = 'ERROR', revision = revision + 1 WHERE id = ? AND stage NOT IN ('REJECTED','ERROR','INCONCLUSIVE','INVALIDATED','PROMOTED')",
+          `UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? ${revisionGuard}`,
         )
-        .bind(experimentId),
+        .bind(stage, experimentId, ...revisionArgs),
       this.db
         .prepare(
-          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'ERROR')",
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)",
         )
         .bind(
           experimentId,
@@ -687,6 +747,7 @@ export class ResearchRepository {
           event.previousDigest,
           await eventDigest(event),
           experimentId,
+          stage,
         ),
       this.db
         .prepare(
@@ -698,11 +759,20 @@ export class ResearchRepository {
       statements.push(
         this.db
           .prepare(
-            "UPDATE strategy_versions SET status = 'ERROR' WHERE id = ? AND status = 'PROPOSING'",
+            "UPDATE strategy_versions SET status = ? WHERE id = ? AND status = 'PROPOSING'",
           )
-          .bind(versionId),
+          .bind(versionStatus, versionId),
       );
     await this.db.batch(statements);
+    const after = mapRow(
+      await this.db
+        .prepare("SELECT * FROM research_experiments WHERE id = ?")
+        .bind(experimentId)
+        .first(),
+    );
+    if (after?.stage !== stage)
+      throw new Error("终态写入失败：实验状态已被其他流程改变");
+    return true;
   }
   async getExperiment(id) {
     return mapRow(

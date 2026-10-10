@@ -15,6 +15,9 @@ import {
 import { ResearchRepository } from "../storage/research.js";
 import { safeError } from "../http.js";
 
+const EXECUTOR_ID = crypto.randomUUID();
+const REQUEST_LEASE_MS = 120000;
+
 async function collectPairs(repository) {
   const dataRows = await repository.history("paper_market_days", 400);
   const snapshotRows = await repository.history("snapshots", 400);
@@ -41,13 +44,15 @@ async function collectPairs(repository) {
   return pairs;
 }
 async function buildSample(pair, role) {
-  const ticks = pair.observations ?? [];
-  const quoteManifest = {
-    date: pair.dataset.date,
-    tickCount: ticks.length,
-    firstObservedAt: ticks[0]?.observedAt ?? null,
-    lastObservedAt: ticks.at(-1)?.observedAt ?? null,
-  };
+  const quoteLedger = (pair.observations ?? []).map((tick) => ({
+    t: tick?.observedAt ?? null,
+    q: Object.fromEntries(
+      Object.entries(tick?.quotes ?? {}).map(([code, quote]) => [
+        code,
+        { c: quote?.closeCents ?? null, v: quote?.volumeShares ?? null },
+      ]),
+    ),
+  }));
   const payload = {
     decisionDate: pair.snapshot.date,
     tradeDate: pair.dataset.date,
@@ -56,7 +61,11 @@ async function buildSample(pair, role) {
     role,
     snapshotDigest: await digestOf(pair.snapshot),
     marketDigest: await digestOf(pair.dataset),
-    quoteManifestDigest: await digestOf(quoteManifest),
+    quoteManifestDigest: await digestOf({
+      date: pair.dataset.date,
+      count: quoteLedger.length,
+      ticks: quoteLedger,
+    }),
   };
   return {
     date: pair.dataset.date,
@@ -84,6 +93,7 @@ async function evaluateAndConclude({
   candidateParams,
   account,
   feeConfig,
+  initialCapitalCents = null,
   attemptSequence,
   recovered = false,
 }) {
@@ -92,7 +102,9 @@ async function evaluateAndConclude({
     holdout,
     base,
     candidateParams,
-    account.book.initialCashCents / 100,
+    initialCapitalCents !== null
+      ? initialCapitalCents / 100
+      : account.book.initialCashCents / 100,
     feeConfig,
   );
   const report = {
@@ -116,7 +128,7 @@ async function evaluateAndConclude({
       days: validation.candidate.days,
     },
     feeConfig,
-    initialCashCents: account.book.initialCashCents,
+    initialCashCents: initialCapitalCents ?? account.book.initialCashCents,
     recovered,
     method:
       "历史筛查只提供进入影子阶段的资格；通过不代表可启用，前瞻影子验证由后续批次实施",
@@ -137,12 +149,27 @@ async function recoverExperiment(repository, env, research, active) {
   const experiment = active.experiment;
   if (!experiment) return { outcome: "BUSY_BLOCKED" };
   if (experiment.stage === "PROPOSING") {
-    await research.recordError(
-      experiment.id,
-      null,
-      "提案在响应持久化前中断；按错误处理，不重新调用模型挑选参数，预算与日期占用保留",
-    );
-    return { outcome: "ERROR", experimentId: experiment.id };
+    const events = await research.experimentEvents(experiment.id);
+    const issued = events.find((event) => event.eventType === "REQUEST_ISSUED");
+    if (issued) {
+      const issuedAt = Date.parse(
+        issued.payload?.requestIssuedAt ?? issued.createdAt,
+      );
+      const leaseMs = Number(env.RESEARCH_REQUEST_LEASE_MS ?? REQUEST_LEASE_MS);
+      if (Number.isFinite(issuedAt) && Date.now() - issuedAt < leaseMs)
+        return { outcome: "IN_FLIGHT", experimentId: experiment.id };
+    }
+    try {
+      await research.recordError(
+        experiment.id,
+        null,
+        "提案在响应持久化前中断且已超出请求租约；按错误处理，不重新调用模型挑选参数，预算与日期占用保留",
+        experiment.revision,
+      );
+      return { outcome: "ERROR", experimentId: experiment.id };
+    } catch {
+      return { outcome: "BUSY_BLOCKED", experimentId: experiment.id };
+    }
   }
   if (experiment.stage === "HISTORICAL_CHECK") {
     const manifest = experiment.proposalManifest;
@@ -152,40 +179,119 @@ async function recoverExperiment(repository, env, research, active) {
         experiment.id,
         versionId ?? null,
         "冻结清单不完整，无法恢复历史验证",
+        experiment.revision,
       );
       return { outcome: "ERROR", experimentId: experiment.id };
+    }
+    const frozenTrainingDates =
+      manifest.trainingDates ??
+      experiment.reservationPayload.trainingDates ??
+      [];
+    const frozenTestDates =
+      manifest.testDates ?? experiment.reservationPayload.testDates ?? [];
+    const account = await repository.account();
+    const currentFees = feesForBook(account.book);
+    if (manifest.feeConfigDigest !== (await digestOf(currentFees))) {
+      await research.recordInvalidated(
+        experiment.id,
+        versionId,
+        "手续费配置自冻结后变更，恢复验证判定失效",
+        experiment.revision,
+      );
+      return {
+        outcome: "INVALIDATED",
+        experimentId: experiment.id,
+        reason: "手续费配置自冻结后变更",
+      };
+    }
+    if (
+      manifest.initialCashCents !== undefined &&
+      manifest.initialCashCents !== account.book.initialCashCents
+    ) {
+      await research.recordInvalidated(
+        experiment.id,
+        versionId,
+        "初始资金自冻结后变更，恢复验证判定失效",
+        experiment.revision,
+      );
+      return {
+        outcome: "INVALIDATED",
+        experimentId: experiment.id,
+        reason: "初始资金自冻结后变更",
+      };
+    }
+    const base = await research.parentParams(experiment.parentVersion);
+    if (!base || manifest.parentParamsDigest !== (await digestOf(base))) {
+      await research.recordInvalidated(
+        experiment.id,
+        versionId,
+        "父策略参数与冻结清单不一致，恢复验证判定失效",
+        experiment.revision,
+      );
+      return {
+        outcome: "INVALIDATED",
+        experimentId: experiment.id,
+        reason: "父策略参数与冻结清单不一致",
+      };
     }
     const pairs = await collectPairs(repository);
     const byDate = new Map(pairs.map((pair) => [pair.dataset.date, pair]));
-    const training = (experiment.reservationPayload.trainingDates ?? []).map(
-      (date) => byDate.get(date),
+    const storedSamples = await research.experimentSamples(experiment.id);
+    const storedByDate = new Map(
+      storedSamples.map((sample) => [sample.outcomeDate, sample]),
     );
-    const holdout = (experiment.reservationPayload.testDates ?? []).map(
-      (date) => byDate.get(date),
-    );
-    if (
-      !holdout.length ||
-      training.some((pair) => !pair) ||
-      holdout.some((pair) => !pair)
-    ) {
+    const training = [];
+    const holdout = [];
+    for (const [dates, role, target] of [
+      [frozenTrainingDates, "TRAIN", training],
+      [frozenTestDates, "HISTORICAL_TEST", holdout],
+    ]) {
+      for (const date of dates) {
+        const pair = byDate.get(date);
+        if (!pair) {
+          await research.recordInvalidated(
+            experiment.id,
+            versionId,
+            `恢复验证所需日期 ${date} 的行情或快照缺失`,
+            experiment.revision,
+          );
+          return {
+            outcome: "INVALIDATED",
+            experimentId: experiment.id,
+            reason: `恢复验证所需日期 ${date} 的行情或快照缺失`,
+          };
+        }
+        const recomputed = await buildSample(pair, role);
+        const stored = storedByDate.get(date);
+        if (
+          !stored ||
+          stored.role !== role ||
+          stored.digest !== recomputed.digest
+        ) {
+          await research.recordInvalidated(
+            experiment.id,
+            versionId,
+            `日期 ${date} 的快照、行情或报价内容与冻结样本摘要不一致`,
+            experiment.revision,
+          );
+          return {
+            outcome: "INVALIDATED",
+            experimentId: experiment.id,
+            reason: `日期 ${date} 的快照、行情或报价内容与冻结样本摘要不一致`,
+          };
+        }
+        target.push(pair);
+      }
+    }
+    if (!holdout.length) {
       await research.recordError(
         experiment.id,
         versionId,
-        "恢复验证所需的行情或快照缺失，无法重放",
+        "冻结清单缺少测试日期，无法恢复历史验证",
+        experiment.revision,
       );
       return { outcome: "ERROR", experimentId: experiment.id };
     }
-    const base = await research.parentParams(experiment.parentVersion);
-    if (!base) {
-      await research.recordError(
-        experiment.id,
-        versionId,
-        "父策略参数缺失，无法恢复历史验证",
-      );
-      return { outcome: "ERROR", experimentId: experiment.id };
-    }
-    const account = await repository.account();
-    const feeConfig = feesForBook(account.book);
     const { stage, validation } = await evaluateAndConclude({
       research,
       experimentId: experiment.id,
@@ -196,7 +302,8 @@ async function recoverExperiment(repository, env, research, active) {
       base,
       candidateParams: manifest.candidateParams,
       account,
-      feeConfig,
+      feeConfig: manifest.feeConfig,
+      initialCapitalCents: manifest.initialCashCents,
       attemptSequence: experiment.reservationPayload.attemptSequence ?? null,
       recovered: true,
     });
@@ -237,7 +344,16 @@ export async function proposeImprovement(
     };
   const active = await research.activeExperiment();
   if (active) {
-    const recovery = await recoverExperiment(repository, env, research, active);
+    let recovery;
+    try {
+      recovery = await recoverExperiment(repository, env, research, active);
+    } catch {
+      return {
+        status: "BUSY",
+        experimentId: active.experimentId,
+        reason: "恢复权竞争失败，请稍后重试",
+      };
+    }
     if (recovery.outcome === "AWAITING_SHADOW")
       return {
         status: "AWAITING_SHADOW",
@@ -252,6 +368,18 @@ export async function proposeImprovement(
         experimentId: recovery.experimentId,
         checks: recovery.checks,
         reason: "中断的历史验证已恢复并判定未通过，原策略继续运行",
+      };
+    if (recovery.outcome === "INVALIDATED")
+      return {
+        status: "INVALIDATED",
+        experimentId: recovery.experimentId,
+        reason: recovery.reason ?? "冻结输入已变化，恢复验证判定失效",
+      };
+    if (recovery.outcome === "IN_FLIGHT")
+      return {
+        status: "BUSY",
+        experimentId: active.experimentId,
+        reason: "提案请求进行中（租约未到期），不判定为停机",
       };
     if (recovery.outcome === "BUSY_BLOCKED")
       return {
@@ -307,8 +435,11 @@ export async function proposeImprovement(
   if (!reserved)
     return { status: "BUSY", reason: "并发预留冲突，本次未发起模型调用" };
   const experimentId = reserved.experimentId;
+  const requestIssuedAt = new Date().toISOString();
   await research.appendEvent(experimentId, "REQUEST_ISSUED", {
     attemptSequence: reserved.attemptSequence,
+    executorId: EXECUTOR_ID,
+    requestIssuedAt,
     trainingDates: windows.trainingDates,
     sampleManifestDigest: await digestOf(
       samples.map(({ payload, digest }) => ({ payload, digest })),
@@ -330,11 +461,13 @@ export async function proposeImprovement(
       frozenPolicy: policy.payload,
     });
     versionId = experimentId;
-    const promptDigest = await digestOf({
-      modelAlias: aiConfig(env).model,
-      trainingDates: windows.trainingDates,
-      evidenceDigest: proposal.evidenceDigest ?? null,
-    });
+    const promptDigest =
+      proposal.requestDigest ??
+      (await digestOf({
+        modelAlias: aiConfig(env).model,
+        trainingDates: windows.trainingDates,
+        evidenceDigest: proposal.evidenceDigest ?? null,
+      }));
     await research.freezeCandidate(experimentId, {
       versionId,
       params: candidate.params,
@@ -346,10 +479,12 @@ export async function proposeImprovement(
       promptDigest,
       output: { rationale: candidate.rationale, patch: candidate.patch },
       trainingDates: windows.trainingDates,
+      testDates: windows.testDates,
       parentVersion: account.book.activeStrategy,
       parentParamsDigest: await digestOf(base),
       feeConfig,
       feeConfigDigest: await digestOf(feeConfig),
+      initialCashCents: account.book.initialCashCents,
       executionVersion: EXECUTION_VERSION,
       scoringVersion: SCORING_VERSION,
     });
