@@ -3951,20 +3951,8 @@ var ResearchRepository = class {
         ),
         ...testDates.map(
           (date) => this.db.prepare(
-            `INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ? WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?) AND NOT EXISTS (SELECT 1 FROM research_sample_uses WHERE namespace = ? AND outcome_date = ?) AND NOT EXISTS (SELECT 1 FROM research_test_claims WHERE namespace = ? AND outcome_date = ?) AND NOT EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND legacy_cutoff IS NOT NULL AND ? <= legacy_cutoff)`
-          ).bind(
-            this.namespace,
-            date,
-            experimentId,
-            now,
-            ...guardArgs,
-            this.namespace,
-            date,
-            this.namespace,
-            date,
-            this.namespace,
-            date
-          )
+            `INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ? WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`
+          ).bind(this.namespace, date, experimentId, now, ...guardArgs)
         ),
         ...samples.map(
           (sample) => guarded(
@@ -4010,6 +3998,13 @@ var ResearchRepository = class {
         )
       ];
       await this.executeReservation(statements);
+      const claimCount = (await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM research_test_claims WHERE experiment_id = ?"
+      ).bind(experimentId).first()).n;
+      if (claimCount !== testDates.length)
+        throw new Error(
+          "\u6D4B\u8BD5\u65E5\u671F\u767B\u8BB0\u4E0D\u5B8C\u6574\uFF08\u7814\u7A76\u89E6\u53D1\u5668\u7F3A\u5931\u6216\u8FC1\u79FB\u672A\u5B8C\u6210\uFF09\uFF0C\u9884\u7559\u5DF2\u7EC8\u6B62"
+        );
       const after = await this.db.prepare(
         "SELECT revision, last_run_id FROM research_registry WHERE namespace = ?"
       ).bind(this.namespace).first();
@@ -4265,12 +4260,16 @@ var ResearchRepository = class {
     };
     const revisionGuard = expectedRevision === null ? "AND stage NOT IN ('REJECTED','ERROR','INCONCLUSIVE','INVALIDATED','PROMOTED')" : "AND revision = ?";
     const revisionArgs = expectedRevision === null ? [] : [expectedRevision];
+    const adoptedRevision = experiment.revision + 1;
+    const adopted = expectedRevision === null ? `EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)` : `EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)`;
+    const adoptedArgs = expectedRevision === null ? [experimentId, stage] : [experimentId, stage, adoptedRevision];
+    const adoptedEventArgs = expectedRevision === null ? [experimentId, stage, experiment.revision + 1] : [experimentId, stage, adoptedRevision];
     const statements = [
       this.db.prepare(
         `UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? ${revisionGuard}`
       ).bind(stage, experimentId, ...revisionArgs),
       this.db.prepare(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)"
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)"
       ).bind(
         experimentId,
         event.sequence,
@@ -4279,18 +4278,17 @@ var ResearchRepository = class {
         JSON.stringify(event.payload),
         event.previousDigest,
         await eventDigest(event),
-        experimentId,
-        stage
+        ...adoptedEventArgs
       ),
       this.db.prepare(
-        "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ?"
-      ).bind(this.namespace, experimentId)
+        "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)"
+      ).bind(this.namespace, experimentId, ...adoptedEventArgs)
     ];
     if (versionId)
       statements.push(
         this.db.prepare(
-          "UPDATE strategy_versions SET status = ? WHERE id = ? AND status = 'PROPOSING'"
-        ).bind(versionStatus, versionId)
+          "UPDATE strategy_versions SET status = ? WHERE id = ? AND status = 'PROPOSING' AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)"
+        ).bind(versionStatus, versionId, ...adoptedEventArgs)
       );
     await this.db.batch(statements);
     const after = mapRow(
@@ -4378,15 +4376,7 @@ async function collectPairs(repository) {
   return pairs;
 }
 async function buildSample(pair, role) {
-  const quoteLedger = (pair.observations ?? []).map((tick) => ({
-    t: tick?.observedAt ?? null,
-    q: Object.fromEntries(
-      Object.entries(tick?.quotes ?? {}).map(([code, quote]) => [
-        code,
-        { c: quote?.closeCents ?? null, v: quote?.volumeShares ?? null }
-      ])
-    )
-  }));
+  const observations = pair.observations ?? [];
   const payload = {
     decisionDate: pair.snapshot.date,
     tradeDate: pair.dataset.date,
@@ -4397,8 +4387,25 @@ async function buildSample(pair, role) {
     marketDigest: await digestOf(pair.dataset),
     quoteManifestDigest: await digestOf({
       date: pair.dataset.date,
-      count: quoteLedger.length,
-      ticks: quoteLedger
+      count: observations.length,
+      observations: observations.map((tick) => ({
+        observedAt: tick?.observedAt ?? null,
+        pollIntervalSeconds: tick?.pollIntervalSeconds ?? null,
+        quotes: Object.fromEntries(
+          Object.entries(tick?.quotes ?? {}).map(([code, quote]) => [
+            code,
+            {
+              timestamp: quote?.timestamp ?? null,
+              previousCloseCents: quote?.previousCloseCents ?? null,
+              openCents: quote?.openCents ?? null,
+              closeCents: quote?.closeCents ?? null,
+              limitUpCents: quote?.limitUpCents ?? null,
+              limitDownCents: quote?.limitDownCents ?? null,
+              volumeShares: quote?.volumeShares ?? null
+            }
+          ])
+        )
+      }))
     })
   };
   return {
@@ -4478,19 +4485,16 @@ async function recoverExperiment(repository, env, research, active) {
   if (experiment.stage === "PROPOSING") {
     const events = await research.experimentEvents(experiment.id);
     const issued = events.find((event) => event.eventType === "REQUEST_ISSUED");
-    if (issued) {
-      const issuedAt = Date.parse(
-        issued.payload?.requestIssuedAt ?? issued.createdAt
-      );
-      const leaseMs = Number(env.RESEARCH_REQUEST_LEASE_MS ?? REQUEST_LEASE_MS);
-      if (Number.isFinite(issuedAt) && Date.now() - issuedAt < leaseMs)
-        return { outcome: "IN_FLIGHT", experimentId: experiment.id };
-    }
+    const leaseStart = issued?.payload?.requestIssuedAt ?? issued?.createdAt ?? experiment.reservationPayload?.reservedAt ?? experiment.createdAt;
+    const leaseMs = Number(env.RESEARCH_REQUEST_LEASE_MS ?? REQUEST_LEASE_MS);
+    const leaseElapsed = Date.now() - Date.parse(leaseStart);
+    if (Number.isFinite(leaseElapsed) && leaseElapsed < leaseMs)
+      return { outcome: "IN_FLIGHT", experimentId: experiment.id };
     try {
       await research.recordError(
         experiment.id,
         null,
-        "\u63D0\u6848\u5728\u54CD\u5E94\u6301\u4E45\u5316\u524D\u4E2D\u65AD\u4E14\u5DF2\u8D85\u51FA\u8BF7\u6C42\u79DF\u7EA6\uFF1B\u6309\u9519\u8BEF\u5904\u7406\uFF0C\u4E0D\u91CD\u65B0\u8C03\u7528\u6A21\u578B\u6311\u9009\u53C2\u6570\uFF0C\u9884\u7B97\u4E0E\u65E5\u671F\u5360\u7528\u4FDD\u7559",
+        issued ? "\u63D0\u6848\u5728\u54CD\u5E94\u6301\u4E45\u5316\u524D\u4E2D\u65AD\u4E14\u5DF2\u8D85\u51FA\u8BF7\u6C42\u79DF\u7EA6\uFF1B\u6309\u9519\u8BEF\u5904\u7406\uFF0C\u4E0D\u91CD\u65B0\u8C03\u7528\u6A21\u578B\u6311\u9009\u53C2\u6570\uFF0C\u9884\u7B97\u4E0E\u65E5\u671F\u5360\u7528\u4FDD\u7559" : "\u9884\u7559\u540E\u672A\u53D1\u51FA\u8BF7\u6C42\u5373\u4E2D\u65AD\u4E14\u5DF2\u8D85\u51FA\u9884\u7559\u79DF\u7EA6\uFF1B\u6309\u9519\u8BEF\u5904\u7406\uFF0C\u9884\u7B97\u4E0E\u65E5\u671F\u5360\u7528\u4FDD\u7559",
         experiment.revision
       );
       return { outcome: "ERROR", experimentId: experiment.id };

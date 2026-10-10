@@ -44,15 +44,7 @@ async function collectPairs(repository) {
   return pairs;
 }
 async function buildSample(pair, role) {
-  const quoteLedger = (pair.observations ?? []).map((tick) => ({
-    t: tick?.observedAt ?? null,
-    q: Object.fromEntries(
-      Object.entries(tick?.quotes ?? {}).map(([code, quote]) => [
-        code,
-        { c: quote?.closeCents ?? null, v: quote?.volumeShares ?? null },
-      ]),
-    ),
-  }));
+  const observations = pair.observations ?? [];
   const payload = {
     decisionDate: pair.snapshot.date,
     tradeDate: pair.dataset.date,
@@ -63,8 +55,25 @@ async function buildSample(pair, role) {
     marketDigest: await digestOf(pair.dataset),
     quoteManifestDigest: await digestOf({
       date: pair.dataset.date,
-      count: quoteLedger.length,
-      ticks: quoteLedger,
+      count: observations.length,
+      observations: observations.map((tick) => ({
+        observedAt: tick?.observedAt ?? null,
+        pollIntervalSeconds: tick?.pollIntervalSeconds ?? null,
+        quotes: Object.fromEntries(
+          Object.entries(tick?.quotes ?? {}).map(([code, quote]) => [
+            code,
+            {
+              timestamp: quote?.timestamp ?? null,
+              previousCloseCents: quote?.previousCloseCents ?? null,
+              openCents: quote?.openCents ?? null,
+              closeCents: quote?.closeCents ?? null,
+              limitUpCents: quote?.limitUpCents ?? null,
+              limitDownCents: quote?.limitDownCents ?? null,
+              volumeShares: quote?.volumeShares ?? null,
+            },
+          ]),
+        ),
+      })),
     }),
   };
   return {
@@ -151,19 +160,22 @@ async function recoverExperiment(repository, env, research, active) {
   if (experiment.stage === "PROPOSING") {
     const events = await research.experimentEvents(experiment.id);
     const issued = events.find((event) => event.eventType === "REQUEST_ISSUED");
-    if (issued) {
-      const issuedAt = Date.parse(
-        issued.payload?.requestIssuedAt ?? issued.createdAt,
-      );
-      const leaseMs = Number(env.RESEARCH_REQUEST_LEASE_MS ?? REQUEST_LEASE_MS);
-      if (Number.isFinite(issuedAt) && Date.now() - issuedAt < leaseMs)
-        return { outcome: "IN_FLIGHT", experimentId: experiment.id };
-    }
+    const leaseStart =
+      issued?.payload?.requestIssuedAt ??
+      issued?.createdAt ??
+      experiment.reservationPayload?.reservedAt ??
+      experiment.createdAt;
+    const leaseMs = Number(env.RESEARCH_REQUEST_LEASE_MS ?? REQUEST_LEASE_MS);
+    const leaseElapsed = Date.now() - Date.parse(leaseStart);
+    if (Number.isFinite(leaseElapsed) && leaseElapsed < leaseMs)
+      return { outcome: "IN_FLIGHT", experimentId: experiment.id };
     try {
       await research.recordError(
         experiment.id,
         null,
-        "提案在响应持久化前中断且已超出请求租约；按错误处理，不重新调用模型挑选参数，预算与日期占用保留",
+        issued
+          ? "提案在响应持久化前中断且已超出请求租约；按错误处理，不重新调用模型挑选参数，预算与日期占用保留"
+          : "预留后未发出请求即中断且已超出预留租约；按错误处理，预算与日期占用保留",
         experiment.revision,
       );
       return { outcome: "ERROR", experimentId: experiment.id };

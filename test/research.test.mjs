@@ -321,7 +321,7 @@ test("测试日期全历史一次性占用；截止线、训练占用与超出�
             testDates: [dateAt(61)],
           }),
         }),
-      /UNIQUE|PRIMARY|占用/,
+      /UNIQUE|PRIMARY|占用|not fresh/,
     );
     const status = await researchStatus(env);
     assert.equal(status.registry.attemptSequence, 1);
@@ -341,6 +341,15 @@ test("模型错误同样占用预算与尝试序号；同月第二次提案被�
   try {
     const first = await proposeImprovement(repository, env);
     assert.equal(first.status, "ERROR");
+    const debugResearch = new ResearchRepository(env);
+    console.error(
+      "DEBUG after first:",
+      JSON.stringify({
+        firstReason: first.reason,
+        stage: (await debugResearch.getExperiment(first.experimentId)).stage,
+        active: (await debugResearch.activeExperiment())?.experimentId ?? null,
+      }),
+    );
     const status = await researchStatus(env);
     assert.equal(status.registry.attemptSequence, 1);
     const second = await proposeImprovement(repository, env);
@@ -552,19 +561,18 @@ test("提案中断恢复：请求发出后停机记为 ERROR 且预算保留；�
     testDates,
     samples,
   });
-  await research.appendEvent(stuck.experimentId, "REQUEST_ISSUED", {});
   const stub = stubProposal();
   try {
-    const inFlight = await proposeImprovement(repository, env);
-    assert.equal(inFlight.status, "BUSY");
-    assert.match(inFlight.reason, /租约/);
+    const reservedWithoutEvent = await proposeImprovement(repository, env);
+    assert.equal(reservedWithoutEvent.status, "BUSY");
+    assert.match(reservedWithoutEvent.reason, /租约/);
     assert.equal(stub.calls(), 0);
     assert.equal(
       (await research.getExperiment(stuck.experimentId)).stage,
       "PROPOSING",
     );
     await DB.prepare(
-      "UPDATE research_events SET created_at = '2020-01-01T00:00:00.000Z' WHERE experiment_id = ? AND event_type = 'REQUEST_ISSUED'",
+      "UPDATE research_experiments SET reservation_payload = json_set(reservation_payload, '$.reservedAt', '2020-01-01T00:00:00.000Z') WHERE id = ?",
     )
       .bind(stuck.experimentId)
       .run();
@@ -595,7 +603,7 @@ test("提案中断恢复：请求发出后停机记为 ERROR 且预算保留；�
         quoteManifestDigest: await digestOf({
           date: pair.dataset.date,
           count: 0,
-          ticks: [],
+          observations: [],
         }),
       };
       resumedSamples.push({
@@ -677,6 +685,28 @@ test("迁移回填旧验证日期并固定截止线；新安装截止线为空�
   const status = await researchStatus(env);
   assert.equal(status.registry.legacyBackfillDone, true);
   assert.equal(status.registry.legacyCutoff, dateAt(45));
+  await setCutoff(DB, dateAt(50));
+  await DB.prepare(
+    "INSERT INTO strategy_versions (id, created_at, status, params, evidence) VALUES (?,?,?,?,?)",
+  )
+    .bind(
+      "ai-2026-01-20",
+      `${dateAt(20)}T08:00:00.000Z`,
+      "LEGACY_VALIDATED",
+      JSON.stringify(BASE_STRATEGY),
+      JSON.stringify({
+        validationStart: dateAt(5),
+        validationEnd: dateAt(20),
+        baseVersion: "baseline-v1",
+      }),
+    )
+    .run();
+  const afterLower = await researchStatus(env);
+  assert.equal(afterLower.registry.legacyCutoff, dateAt(50));
+  await assert.rejects(
+    () => research.assertFreshOutcomeDates([dateAt(12)]),
+    /截止线/,
+  );
   await assert.rejects(
     () => research.assertFreshOutcomeDates([dateAt(12)]),
     /截止线/,
@@ -750,7 +780,7 @@ test("存储层在预留事务内拒绝把已用训练日期改成测试日期",
           },
         ],
       }),
-    /占用/,
+    /占用|not fresh/,
   );
   const registryAfter = await research.ensureRegistry();
   assert.equal(registryAfter.revision, registryBefore.revision);
@@ -774,7 +804,7 @@ async function seedFrozenExperiment(env, all) {
       quoteManifestDigest: await digestOf({
         date: pair.dataset.date,
         count: 0,
-        ticks: [],
+        observations: [],
       }),
     };
     samples.push({
@@ -893,7 +923,30 @@ test("恢复验证使用冻结输入：手续费或快照变化判 INVALIDATED �
       .run();
   }
   await setCutoff(tamperDb, dateAt(20));
-  await seedFrozenExperiment(tamperEnv, tamperPairs);
+  const { research: tamperResearch, reserved: tamperReserved } =
+    await seedFrozenExperiment(tamperEnv, tamperPairs);
+  const beforeStale = await tamperResearch.getExperiment(
+    tamperReserved.experimentId,
+  );
+  await assert.rejects(
+    () =>
+      tamperResearch.recordError(
+        tamperReserved.experimentId,
+        tamperReserved.experimentId,
+        "过时恢复尝试",
+        beforeStale.revision - 1,
+      ),
+    /终态写入失败/,
+  );
+  const afterStale = await tamperResearch.getExperiment(
+    tamperReserved.experimentId,
+  );
+  assert.equal(afterStale.stage, "HISTORICAL_CHECK");
+  assert.equal(afterStale.revision, beforeStale.revision);
+  assert.equal(
+    (await tamperResearch.activeExperiment()).experimentId,
+    tamperReserved.experimentId,
+  );
   await tamperDb
     .prepare(
       "UPDATE snapshots SET payload = json_set(payload, '$.stocks[0].score', 99) WHERE trade_date = ?",

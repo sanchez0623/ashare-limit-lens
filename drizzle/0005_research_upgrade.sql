@@ -15,11 +15,12 @@ WHERE NOT EXISTS (SELECT 1 FROM `research_registry` WHERE `namespace` = 'main');
 UPDATE `research_registry`
 SET `legacy_cutoff` = (
   SELECT MAX(d) FROM (
-    SELECT json_extract(`evidence`, '$.validationEnd') AS d FROM `strategy_versions` WHERE `id` <> 'baseline-v1' AND json_valid(`evidence`)
+    SELECT `legacy_cutoff` AS d FROM `research_registry` WHERE `namespace` = 'main'
+    UNION ALL SELECT json_extract(`evidence`, '$.validationEnd') AS d FROM `strategy_versions` WHERE `id` <> 'baseline-v1' AND json_valid(`evidence`)
     UNION ALL SELECT json_extract(`state`, '$.lastDate') AS d FROM `paper_accounts` WHERE json_valid(`state`)
   )
 ),
-`payload` = json_set(`payload`, '$.backfill', '0005-upgrade', '$.note', '0005 升级时按旧验证窗口终点与账户结算日重新固定截止线')
+`payload` = json_set(`payload`, '$.backfill', '0005-upgrade', '$.note', '0005 升级时补齐旧验证窗口终点与账户结算日；已有保守截止线只进不退')
 WHERE `namespace` = 'main';--> statement-breakpoint
 INSERT INTO `research_test_claims` (`namespace`, `outcome_date`, `experiment_id`, `role`, `reserved_at`)
 SELECT 'main', `md`.`trade_date`, `sv`.`id`, 'HISTORICAL_TEST', `sv`.`created_at`

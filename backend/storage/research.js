@@ -353,21 +353,9 @@ export class ResearchRepository {
         ...testDates.map((date) =>
           this.db
             .prepare(
-              `INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ? WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?) AND NOT EXISTS (SELECT 1 FROM research_sample_uses WHERE namespace = ? AND outcome_date = ?) AND NOT EXISTS (SELECT 1 FROM research_test_claims WHERE namespace = ? AND outcome_date = ?) AND NOT EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND legacy_cutoff IS NOT NULL AND ? <= legacy_cutoff)`,
+              `INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ? WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`,
             )
-            .bind(
-              this.namespace,
-              date,
-              experimentId,
-              now,
-              ...guardArgs,
-              this.namespace,
-              date,
-              this.namespace,
-              date,
-              this.namespace,
-              date,
-            ),
+            .bind(this.namespace, date, experimentId, now, ...guardArgs),
         ),
         ...samples.map((sample) =>
           guarded(
@@ -413,6 +401,18 @@ export class ResearchRepository {
         ),
       ];
       await this.executeReservation(statements);
+      const claimCount = (
+        await this.db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM research_test_claims WHERE experiment_id = ?",
+          )
+          .bind(experimentId)
+          .first()
+      ).n;
+      if (claimCount !== testDates.length)
+        throw new Error(
+          "测试日期登记不完整（研究触发器缺失或迁移未完成），预留已终止",
+        );
       const after = await this.db
         .prepare(
           "SELECT revision, last_run_id FROM research_registry WHERE namespace = ?",
@@ -728,6 +728,19 @@ export class ResearchRepository {
         ? "AND stage NOT IN ('REJECTED','ERROR','INCONCLUSIVE','INVALIDATED','PROMOTED')"
         : "AND revision = ?";
     const revisionArgs = expectedRevision === null ? [] : [expectedRevision];
+    const adoptedRevision = experiment.revision + 1;
+    const adopted =
+      expectedRevision === null
+        ? `EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)`
+        : `EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)`;
+    const adoptedArgs =
+      expectedRevision === null
+        ? [experimentId, stage]
+        : [experimentId, stage, adoptedRevision];
+    const adoptedEventArgs =
+      expectedRevision === null
+        ? [experimentId, stage, experiment.revision + 1]
+        : [experimentId, stage, adoptedRevision];
     const statements = [
       this.db
         .prepare(
@@ -736,7 +749,7 @@ export class ResearchRepository {
         .bind(stage, experimentId, ...revisionArgs),
       this.db
         .prepare(
-          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)",
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)",
         )
         .bind(
           experimentId,
@@ -746,22 +759,21 @@ export class ResearchRepository {
           JSON.stringify(event.payload),
           event.previousDigest,
           await eventDigest(event),
-          experimentId,
-          stage,
+          ...adoptedEventArgs,
         ),
       this.db
         .prepare(
-          "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ?",
+          "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)",
         )
-        .bind(this.namespace, experimentId),
+        .bind(this.namespace, experimentId, ...adoptedEventArgs),
     ];
     if (versionId)
       statements.push(
         this.db
           .prepare(
-            "UPDATE strategy_versions SET status = ? WHERE id = ? AND status = 'PROPOSING'",
+            "UPDATE strategy_versions SET status = ? WHERE id = ? AND status = 'PROPOSING' AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)",
           )
-          .bind(versionStatus, versionId),
+          .bind(versionStatus, versionId, ...adoptedEventArgs),
       );
     await this.db.batch(statements);
     const after = mapRow(
