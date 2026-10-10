@@ -258,3 +258,25 @@ export function mergeSegmentedDates(segments, { start, end }) {
   const ordered = [...dates].sort();
   return { dates: ordered, issues };
 }
+export function tradingAdjacency(coverage) {
+  const tradingDates = Array.isArray(coverage?.tradingDates)
+    ? coverage.tradingDates
+    : [];
+  const succeededDates = Array.isArray(coverage?.succeededDates)
+    ? coverage.succeededDates
+    : [];
+  const adjacencyDates = tradingDates.length ? tradingDates : succeededDates;
+  const position = new Map(adjacencyDates.map((date, index) => [date, index]));
+  return {
+    tradingDates,
+    succeededDates,
+    adjacencyDates,
+    strict: tradingDates.length > 0,
+    position,
+  };
+}
+export function isAdjacentTradingDay(adjacency, signalDate, tradeDate) {
+  const position = adjacency.position.get(tradeDate);
+  if (position === undefined || position === 0) return false;
+  return adjacency.adjacencyDates[position - 1] === signalDate;
+}

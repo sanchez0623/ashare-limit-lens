@@ -3,6 +3,10 @@ import { feesForBook } from "../../shared/fees.js";
 import { requestProposal } from "./improvement.js";
 import { replayStrategy, validateCandidate } from "../domain/validation.js";
 import { validateCandidatePatch } from "../domain/research-policy.js";
+import {
+  isAdjacentTradingDay,
+  tradingAdjacency,
+} from "../domain/historical-input.js";
 import { openHistoryStore } from "../storage/history.js";
 import {
   selectResearchWindows,
@@ -588,22 +592,11 @@ export async function proposeBootstrapImprovement(
   const trainingPairs = [];
   const trainingDates = [];
   const samples = [];
-  const succeededDates = Array.isArray(dataset.coverage?.succeededDates)
-    ? dataset.coverage.succeededDates
-    : [];
-  const succeededPosition = new Map(
-    succeededDates.map((date, index) => [date, index]),
-  );
+  const adjacency = tradingAdjacency(dataset.coverage);
   for (let index = 0; index + 1 < scores.length; index++) {
     const signal = scores[index];
     const nextDate = scores[index + 1].tradeDate;
-    const nextPosition = succeededPosition.get(nextDate);
-    if (
-      nextPosition === undefined ||
-      nextPosition === 0 ||
-      succeededDates[nextPosition - 1] !== signal.tradeDate
-    )
-      continue;
+    if (!isAdjacentTradingDay(adjacency, signal.tradeDate, nextDate)) continue;
     const nextBars = await store.getObservationDaily(datasetId, nextDate);
     const signalBars = await store.getObservationDaily(
       datasetId,

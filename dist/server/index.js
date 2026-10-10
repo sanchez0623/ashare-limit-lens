@@ -3623,6 +3623,213 @@ function validateCandidatePatch({
   };
 }
 
+// backend/domain/historical-input.js
+var REQUIRED_LIMIT_FIELDS = [
+  "code",
+  "name",
+  "sector",
+  "price",
+  "amount",
+  "seal",
+  "turnover",
+  "first",
+  "last",
+  "breaks",
+  "height"
+];
+function assessFieldCoverage(rows, requiredFields = REQUIRED_LIMIT_FIELDS) {
+  if (!rows.length)
+    return { covered: 0, missing: requiredFields, ratio: 0, complete: false };
+  const missing = new Map(requiredFields.map((field) => [field, 0]));
+  for (const row of rows)
+    for (const field of requiredFields)
+      if (row[field] === null || row[field] === void 0)
+        missing.set(field, missing.get(field) + 1);
+  const covered = requiredFields.length * rows.length;
+  const holes = [...missing.values()].reduce((a, b) => a + b, 0);
+  return {
+    covered: covered - holes,
+    missing: [...missing.entries()].filter(([, count]) => count > 0).map(([field, count]) => `${field}(${count})`),
+    ratio: Math.round((covered - holes) / covered * 100),
+    complete: holes === 0
+  };
+}
+function classifyExecutionModel(coverageRatio, hasLimitFeatures) {
+  if (hasLimitFeatures && coverageRatio >= 80) return "SIX_FACTOR_V1";
+  return "DAILY_OBSERVATION_V1";
+}
+function finiteOrThrow(value, field) {
+  const number = Number(value);
+  if (!Number.isFinite(number))
+    throw new Error(`\u5386\u53F2\u8F93\u5165\u5B57\u6BB5 ${field} \u4E0D\u662F\u6709\u9650\u6570\u503C`);
+  return number;
+}
+function normalizeLimitFeatureRow(raw, { origin = "HISTORICAL_RECONSTRUCTED", provider = "unknown", fetchedAt } = {}) {
+  if (!raw || typeof raw !== "object") throw new Error("\u5386\u53F2\u6DA8\u505C\u7279\u5F81\u884C\u65E0\u6548");
+  const code = String(raw.code ?? "").trim();
+  if (!/^\d{6}$/.test(code)) throw new Error("\u5386\u53F2\u6DA8\u505C\u7279\u5F81\u7F3A\u5C11\u5408\u6CD5\u8BC1\u5238\u4EE3\u7801");
+  const breaks = raw.breaks === null || raw.breaks === void 0 ? null : finiteOrThrow(raw.breaks, "breaks");
+  if (breaks !== null && breaks < 0)
+    throw new Error("\u70B8\u677F\u6B21\u6570\u4E0D\u80FD\u4E3A\u8D1F\u6570\uFF08\u7F3A\u5931\u8BF7\u8BB0\u4E3A null\uFF0C\u800C\u975E 0\uFF09");
+  const row = {
+    code,
+    name: String(raw.name ?? "").trim() || null,
+    sector: String(raw.sector ?? "").trim() || "\u672A\u5206\u7C7B",
+    price: raw.price === null || raw.price === void 0 ? null : finiteOrThrow(raw.price, "price"),
+    change: raw.change === null || raw.change === void 0 ? null : finiteOrThrow(raw.change, "change"),
+    amount: raw.amount === null || raw.amount === void 0 ? null : finiteOrThrow(raw.amount, "amount"),
+    floatCap: raw.floatCap === null || raw.floatCap === void 0 ? null : finiteOrThrow(raw.floatCap, "floatCap"),
+    seal: raw.seal === null || raw.seal === void 0 ? null : finiteOrThrow(raw.seal, "seal"),
+    turnover: raw.turnover === null || raw.turnover === void 0 ? null : finiteOrThrow(raw.turnover, "turnover"),
+    first: raw.first === null || raw.first === void 0 ? null : finiteOrThrow(raw.first, "first"),
+    last: raw.last === null || raw.last === void 0 ? null : finiteOrThrow(raw.last, "last"),
+    breaks,
+    height: raw.height === null || raw.height === void 0 ? null : finiteOrThrow(raw.height, "height")
+  };
+  if (row.price !== null && row.price <= 0)
+    throw new Error("\u5386\u53F2\u4EF7\u683C\u5FC5\u987B\u4E3A\u6B63\u6570");
+  const coverage = assessFieldCoverage([row]);
+  return {
+    row,
+    provenance: {
+      origin,
+      provider,
+      providerSchemaVersion: raw.providerSchemaVersion ?? "unknown",
+      taxonomyId: raw.taxonomyId ?? null,
+      tradeDate: raw.tradeDate ?? null,
+      fetchedAt: fetchedAt ?? null,
+      effectiveAt: raw.effectiveAt ?? raw.tradeDate ?? null,
+      availabilityEstimatedAt: raw.availabilityEstimatedAt ?? null,
+      pointInTimeConfidence: raw.pointInTimeConfidence ?? "SOURCE_REPORTED",
+      fieldCoverage: coverage,
+      note: "\u7F3A\u5931\u5B57\u6BB5\u4FDD\u6301 null\uFF0C\u4E0D\u586B 0 \u6216\u5747\u503C\u51D1\u8986\u76D6"
+    }
+  };
+}
+function normalizeDailyBarRow(raw) {
+  if (!raw || typeof raw !== "object") throw new Error("\u5386\u53F2\u65E5\u7EBF\u884C\u65E0\u6548");
+  const code = String(raw.code ?? "").trim();
+  if (!/^\d{6}$/.test(code)) throw new Error("\u5386\u53F2\u65E5\u7EBF\u7F3A\u5C11\u5408\u6CD5\u8BC1\u5238\u4EE3\u7801");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(raw.tradeDate ?? "")))
+    throw new Error("\u5386\u53F2\u65E5\u7EBF\u7F3A\u5C11\u5408\u6CD5\u4EA4\u6613\u65E5\u671F");
+  const toCentsFromYuan = (value, field) => {
+    if (value === null || value === void 0) return null;
+    const cents = Math.round(Number(value) * 100);
+    if (!Number.isFinite(cents) || cents <= 0)
+      throw new Error(`\u5386\u53F2\u65E5\u7EBF\u5B57\u6BB5 ${field} \u5FC5\u987B\u4E3A\u6B63\u6570\uFF08\u5355\u4F4D\uFF1A\u5143\uFF09`);
+    return cents;
+  };
+  const row = {
+    code,
+    tradeDate: String(raw.tradeDate),
+    openCents: toCentsFromYuan(raw.openYuan, "openYuan"),
+    closeCents: toCentsFromYuan(raw.closeYuan, "closeYuan"),
+    highCents: toCentsFromYuan(raw.highYuan, "highYuan"),
+    lowCents: toCentsFromYuan(raw.lowYuan, "lowYuan"),
+    volumeShares: raw.volumeShares === null || raw.volumeShares === void 0 ? null : Math.round(finiteOrThrow(raw.volumeShares, "volumeShares"))
+  };
+  if (row.highCents !== null && row.lowCents !== null && row.highCents < row.lowCents)
+    throw new Error("\u5386\u53F2\u65E5\u7EBF\u6700\u9AD8\u4EF7\u4F4E\u4E8E\u6700\u4F4E\u4EF7");
+  return row;
+}
+async function buildSampleProvenance({
+  origin = "HISTORICAL_RECONSTRUCTED",
+  provider,
+  providerSchemaVersion = "unknown",
+  taxonomyId = null,
+  tradeDate,
+  fetchedAt,
+  pointInTimeConfidence = "SOURCE_REPORTED",
+  fieldCoverage,
+  rawPayload,
+  normalizedPayload
+}) {
+  return {
+    origin,
+    provider,
+    providerSchemaVersion,
+    taxonomyId,
+    tradeDate,
+    fetchedAt,
+    effectiveAt: tradeDate,
+    availabilityEstimatedAt: null,
+    pointInTimeConfidence,
+    fieldCoverage,
+    rawDigest: await digestOf(rawPayload),
+    normalizedDigest: await digestOf(normalizedPayload)
+  };
+}
+function sanitizeMinuteSeries(rows, date) {
+  const inSession2 = [];
+  const anomalies = [];
+  let previousTime = null;
+  for (const row of rows ?? []) {
+    const time = String(row?.time ?? "");
+    const price = Number(row?.priceCents);
+    const volume = Number(row?.volumeShares);
+    if (!/^\d{2}:\d{2}$/.test(time)) {
+      anomalies.push({ time, reason: "\u65F6\u95F4\u683C\u5F0F\u65E0\u6548" });
+      continue;
+    }
+    if (time < "09:30" || time > "15:00") {
+      anomalies.push({ time, reason: "\u65F6\u6BB5\u5916\u8BB0\u5F55\uFF08\u7ADE\u4EF7\u6216\u76D8\u540E\uFF09" });
+      continue;
+    }
+    if (time > "11:30" && time < "13:00") {
+      anomalies.push({ time, reason: "\u5348\u4F11\u65F6\u6BB5\u8BB0\u5F55" });
+      continue;
+    }
+    if (!(price > 0)) {
+      anomalies.push({ time, reason: "\u4EF7\u683C\u975E\u6B63\u6570" });
+      continue;
+    }
+    if (previousTime !== null && time <= previousTime) {
+      anomalies.push({ time, reason: "\u65F6\u95F4\u5012\u5E8F\u6216\u91CD\u590D" });
+      continue;
+    }
+    if (!(volume >= 0) || !Number.isFinite(volume)) {
+      anomalies.push({ time, reason: "\u6210\u4EA4\u91CF\u65E0\u6548" });
+      continue;
+    }
+    inSession2.push({ ...row, time, date });
+    previousTime = time;
+  }
+  return { inSession: inSession2, anomalies };
+}
+function mergeSegmentedDates(segments, { start, end }) {
+  const dates = /* @__PURE__ */ new Set();
+  const issues = [];
+  for (const segment of segments) {
+    for (const date of segment.dates ?? []) {
+      if (date < start || date > end) {
+        issues.push(`\u5206\u6BB5 ${segment.requestRange} \u8FD4\u56DE\u8303\u56F4\u5916\u65E5\u671F ${date}`);
+        continue;
+      }
+      dates.add(date);
+    }
+  }
+  const ordered = [...dates].sort();
+  return { dates: ordered, issues };
+}
+function tradingAdjacency(coverage) {
+  const tradingDates = Array.isArray(coverage?.tradingDates) ? coverage.tradingDates : [];
+  const succeededDates = Array.isArray(coverage?.succeededDates) ? coverage.succeededDates : [];
+  const adjacencyDates = tradingDates.length ? tradingDates : succeededDates;
+  const position = new Map(adjacencyDates.map((date, index) => [date, index]));
+  return {
+    tradingDates,
+    succeededDates,
+    adjacencyDates,
+    strict: tradingDates.length > 0,
+    position
+  };
+}
+function isAdjacentTradingDay(adjacency, signalDate, tradeDate) {
+  const position = adjacency.position.get(tradeDate);
+  if (position === void 0 || position === 0) return false;
+  return adjacency.adjacencyDates[position - 1] === signalDate;
+}
+
 // backend/storage/history.js
 var RESEARCH_NAMESPACE = "main";
 var HISTORY_STAGES = [
@@ -3817,6 +4024,12 @@ var HistoryJobRepository = class {
       "UPDATE history_import_jobs SET dataset_id = ?, updated_at = ? WHERE id = ? AND dataset_id IS NULL"
     ).bind(datasetId, (/* @__PURE__ */ new Date()).toISOString(), id).run();
     return result.meta.changes > 0;
+  }
+  async stillOwner(id, executorId) {
+    const row = await this.db.prepare(
+      "SELECT 1 AS ok FROM history_import_jobs WHERE id = ? AND json_extract(progress, '$.executorId') = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING')"
+    ).bind(id, executorId).first();
+    return Boolean(row);
   }
 };
 var HistoryDatasetStore = class {
@@ -5962,16 +6175,11 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
   const trainingPairs = [];
   const trainingDates = [];
   const samples = [];
-  const succeededDates = Array.isArray(dataset.coverage?.succeededDates) ? dataset.coverage.succeededDates : [];
-  const succeededPosition = new Map(
-    succeededDates.map((date, index) => [date, index])
-  );
+  const adjacency = tradingAdjacency(dataset.coverage);
   for (let index = 0; index + 1 < scores.length; index++) {
     const signal = scores[index];
     const nextDate = scores[index + 1].tradeDate;
-    const nextPosition = succeededPosition.get(nextDate);
-    if (nextPosition === void 0 || nextPosition === 0 || succeededDates[nextPosition - 1] !== signal.tradeDate)
-      continue;
+    if (!isAdjacentTradingDay(adjacency, signal.tradeDate, nextDate)) continue;
     const nextBars = await store.getObservationDaily(datasetId, nextDate);
     const signalBars = await store.getObservationDaily(
       datasetId,
@@ -6791,195 +6999,6 @@ async function paperOverview(env, attempt = 0) {
   };
 }
 
-// backend/domain/historical-input.js
-var REQUIRED_LIMIT_FIELDS = [
-  "code",
-  "name",
-  "sector",
-  "price",
-  "amount",
-  "seal",
-  "turnover",
-  "first",
-  "last",
-  "breaks",
-  "height"
-];
-function assessFieldCoverage(rows, requiredFields = REQUIRED_LIMIT_FIELDS) {
-  if (!rows.length)
-    return { covered: 0, missing: requiredFields, ratio: 0, complete: false };
-  const missing = new Map(requiredFields.map((field) => [field, 0]));
-  for (const row of rows)
-    for (const field of requiredFields)
-      if (row[field] === null || row[field] === void 0)
-        missing.set(field, missing.get(field) + 1);
-  const covered = requiredFields.length * rows.length;
-  const holes = [...missing.values()].reduce((a, b) => a + b, 0);
-  return {
-    covered: covered - holes,
-    missing: [...missing.entries()].filter(([, count]) => count > 0).map(([field, count]) => `${field}(${count})`),
-    ratio: Math.round((covered - holes) / covered * 100),
-    complete: holes === 0
-  };
-}
-function classifyExecutionModel(coverageRatio, hasLimitFeatures) {
-  if (hasLimitFeatures && coverageRatio >= 80) return "SIX_FACTOR_V1";
-  return "DAILY_OBSERVATION_V1";
-}
-function finiteOrThrow(value, field) {
-  const number = Number(value);
-  if (!Number.isFinite(number))
-    throw new Error(`\u5386\u53F2\u8F93\u5165\u5B57\u6BB5 ${field} \u4E0D\u662F\u6709\u9650\u6570\u503C`);
-  return number;
-}
-function normalizeLimitFeatureRow(raw, { origin = "HISTORICAL_RECONSTRUCTED", provider = "unknown", fetchedAt } = {}) {
-  if (!raw || typeof raw !== "object") throw new Error("\u5386\u53F2\u6DA8\u505C\u7279\u5F81\u884C\u65E0\u6548");
-  const code = String(raw.code ?? "").trim();
-  if (!/^\d{6}$/.test(code)) throw new Error("\u5386\u53F2\u6DA8\u505C\u7279\u5F81\u7F3A\u5C11\u5408\u6CD5\u8BC1\u5238\u4EE3\u7801");
-  const breaks = raw.breaks === null || raw.breaks === void 0 ? null : finiteOrThrow(raw.breaks, "breaks");
-  if (breaks !== null && breaks < 0)
-    throw new Error("\u70B8\u677F\u6B21\u6570\u4E0D\u80FD\u4E3A\u8D1F\u6570\uFF08\u7F3A\u5931\u8BF7\u8BB0\u4E3A null\uFF0C\u800C\u975E 0\uFF09");
-  const row = {
-    code,
-    name: String(raw.name ?? "").trim() || null,
-    sector: String(raw.sector ?? "").trim() || "\u672A\u5206\u7C7B",
-    price: raw.price === null || raw.price === void 0 ? null : finiteOrThrow(raw.price, "price"),
-    change: raw.change === null || raw.change === void 0 ? null : finiteOrThrow(raw.change, "change"),
-    amount: raw.amount === null || raw.amount === void 0 ? null : finiteOrThrow(raw.amount, "amount"),
-    floatCap: raw.floatCap === null || raw.floatCap === void 0 ? null : finiteOrThrow(raw.floatCap, "floatCap"),
-    seal: raw.seal === null || raw.seal === void 0 ? null : finiteOrThrow(raw.seal, "seal"),
-    turnover: raw.turnover === null || raw.turnover === void 0 ? null : finiteOrThrow(raw.turnover, "turnover"),
-    first: raw.first === null || raw.first === void 0 ? null : finiteOrThrow(raw.first, "first"),
-    last: raw.last === null || raw.last === void 0 ? null : finiteOrThrow(raw.last, "last"),
-    breaks,
-    height: raw.height === null || raw.height === void 0 ? null : finiteOrThrow(raw.height, "height")
-  };
-  if (row.price !== null && row.price <= 0)
-    throw new Error("\u5386\u53F2\u4EF7\u683C\u5FC5\u987B\u4E3A\u6B63\u6570");
-  const coverage = assessFieldCoverage([row]);
-  return {
-    row,
-    provenance: {
-      origin,
-      provider,
-      providerSchemaVersion: raw.providerSchemaVersion ?? "unknown",
-      taxonomyId: raw.taxonomyId ?? null,
-      tradeDate: raw.tradeDate ?? null,
-      fetchedAt: fetchedAt ?? null,
-      effectiveAt: raw.effectiveAt ?? raw.tradeDate ?? null,
-      availabilityEstimatedAt: raw.availabilityEstimatedAt ?? null,
-      pointInTimeConfidence: raw.pointInTimeConfidence ?? "SOURCE_REPORTED",
-      fieldCoverage: coverage,
-      note: "\u7F3A\u5931\u5B57\u6BB5\u4FDD\u6301 null\uFF0C\u4E0D\u586B 0 \u6216\u5747\u503C\u51D1\u8986\u76D6"
-    }
-  };
-}
-function normalizeDailyBarRow(raw) {
-  if (!raw || typeof raw !== "object") throw new Error("\u5386\u53F2\u65E5\u7EBF\u884C\u65E0\u6548");
-  const code = String(raw.code ?? "").trim();
-  if (!/^\d{6}$/.test(code)) throw new Error("\u5386\u53F2\u65E5\u7EBF\u7F3A\u5C11\u5408\u6CD5\u8BC1\u5238\u4EE3\u7801");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(raw.tradeDate ?? "")))
-    throw new Error("\u5386\u53F2\u65E5\u7EBF\u7F3A\u5C11\u5408\u6CD5\u4EA4\u6613\u65E5\u671F");
-  const toCentsFromYuan = (value, field) => {
-    if (value === null || value === void 0) return null;
-    const cents = Math.round(Number(value) * 100);
-    if (!Number.isFinite(cents) || cents <= 0)
-      throw new Error(`\u5386\u53F2\u65E5\u7EBF\u5B57\u6BB5 ${field} \u5FC5\u987B\u4E3A\u6B63\u6570\uFF08\u5355\u4F4D\uFF1A\u5143\uFF09`);
-    return cents;
-  };
-  const row = {
-    code,
-    tradeDate: String(raw.tradeDate),
-    openCents: toCentsFromYuan(raw.openYuan, "openYuan"),
-    closeCents: toCentsFromYuan(raw.closeYuan, "closeYuan"),
-    highCents: toCentsFromYuan(raw.highYuan, "highYuan"),
-    lowCents: toCentsFromYuan(raw.lowYuan, "lowYuan"),
-    volumeShares: raw.volumeShares === null || raw.volumeShares === void 0 ? null : Math.round(finiteOrThrow(raw.volumeShares, "volumeShares"))
-  };
-  if (row.highCents !== null && row.lowCents !== null && row.highCents < row.lowCents)
-    throw new Error("\u5386\u53F2\u65E5\u7EBF\u6700\u9AD8\u4EF7\u4F4E\u4E8E\u6700\u4F4E\u4EF7");
-  return row;
-}
-async function buildSampleProvenance({
-  origin = "HISTORICAL_RECONSTRUCTED",
-  provider,
-  providerSchemaVersion = "unknown",
-  taxonomyId = null,
-  tradeDate,
-  fetchedAt,
-  pointInTimeConfidence = "SOURCE_REPORTED",
-  fieldCoverage,
-  rawPayload,
-  normalizedPayload
-}) {
-  return {
-    origin,
-    provider,
-    providerSchemaVersion,
-    taxonomyId,
-    tradeDate,
-    fetchedAt,
-    effectiveAt: tradeDate,
-    availabilityEstimatedAt: null,
-    pointInTimeConfidence,
-    fieldCoverage,
-    rawDigest: await digestOf(rawPayload),
-    normalizedDigest: await digestOf(normalizedPayload)
-  };
-}
-function sanitizeMinuteSeries(rows, date) {
-  const inSession2 = [];
-  const anomalies = [];
-  let previousTime = null;
-  for (const row of rows ?? []) {
-    const time = String(row?.time ?? "");
-    const price = Number(row?.priceCents);
-    const volume = Number(row?.volumeShares);
-    if (!/^\d{2}:\d{2}$/.test(time)) {
-      anomalies.push({ time, reason: "\u65F6\u95F4\u683C\u5F0F\u65E0\u6548" });
-      continue;
-    }
-    if (time < "09:30" || time > "15:00") {
-      anomalies.push({ time, reason: "\u65F6\u6BB5\u5916\u8BB0\u5F55\uFF08\u7ADE\u4EF7\u6216\u76D8\u540E\uFF09" });
-      continue;
-    }
-    if (time > "11:30" && time < "13:00") {
-      anomalies.push({ time, reason: "\u5348\u4F11\u65F6\u6BB5\u8BB0\u5F55" });
-      continue;
-    }
-    if (!(price > 0)) {
-      anomalies.push({ time, reason: "\u4EF7\u683C\u975E\u6B63\u6570" });
-      continue;
-    }
-    if (previousTime !== null && time <= previousTime) {
-      anomalies.push({ time, reason: "\u65F6\u95F4\u5012\u5E8F\u6216\u91CD\u590D" });
-      continue;
-    }
-    if (!(volume >= 0) || !Number.isFinite(volume)) {
-      anomalies.push({ time, reason: "\u6210\u4EA4\u91CF\u65E0\u6548" });
-      continue;
-    }
-    inSession2.push({ ...row, time, date });
-    previousTime = time;
-  }
-  return { inSession: inSession2, anomalies };
-}
-function mergeSegmentedDates(segments, { start, end }) {
-  const dates = /* @__PURE__ */ new Set();
-  const issues = [];
-  for (const segment of segments) {
-    for (const date of segment.dates ?? []) {
-      if (date < start || date > end) {
-        issues.push(`\u5206\u6BB5 ${segment.requestRange} \u8FD4\u56DE\u8303\u56F4\u5916\u65E5\u671F ${date}`);
-        continue;
-      }
-      dates.add(date);
-    }
-  }
-  const ordered = [...dates].sort();
-  return { dates: ordered, issues };
-}
-
 // backend/services/historical-providers.js
 var KLINE_MAX_ROWS = 80;
 var KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get";
@@ -7181,6 +7200,13 @@ function createTencentHistoricalProvider(options = {}) {
 // backend/services/history.js
 var SCORING_VERSION2 = "rules-v1-historical";
 var EXECUTOR_ID2 = `history-${crypto.randomUUID()}`;
+var TAKEOVER_NOTICE = "\u4EFB\u52A1\u5DF2\u7531\u5176\u4ED6\u6267\u884C\u5668\u63A5\u7BA1\uFF0C\u672C\u6B21\u6267\u884C\u4E2D\u6B62\uFF08\u4E0D\u8986\u76D6\u63A5\u7BA1\u65B9\u72B6\u6001\uFF09";
+var ExecutorLostError = class extends Error {
+  constructor() {
+    super(TAKEOVER_NOTICE);
+    this.name = "ExecutorLostError";
+  }
+};
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -7269,6 +7295,8 @@ async function runHistoryImport(env, jobId, options = {}) {
   try {
     return await runHistoryImportInner(env, job, { jobs, store, options });
   } catch (error) {
+    if (error instanceof ExecutorLostError)
+      return { ...await jobs.getJob(jobId), note: TAKEOVER_NOTICE };
     const reason = String(error?.message ?? error).slice(0, 300);
     const failedJob = await jobs.finishJob(jobId, EXECUTOR_ID2, {
       stage: "FAILED",
@@ -7286,7 +7314,11 @@ async function runHistoryImport(env, jobId, options = {}) {
 }
 async function runHistoryImportInner(env, job, { jobs, store, options }) {
   const jobId = job.id;
-  const takeoverNotice = "\u4EFB\u52A1\u5DF2\u7531\u5176\u4ED6\u6267\u884C\u5668\u63A5\u7BA1\uFF0C\u672C\u6B21\u6267\u884C\u4E2D\u6B62\uFF08\u4E0D\u8986\u76D6\u63A5\u7BA1\u65B9\u72B6\u6001\uFF09";
+  const takeoverNotice = TAKEOVER_NOTICE;
+  const guardOwnership = async () => {
+    if (!await jobs.stillOwner(jobId, EXECUTOR_ID2))
+      throw new ExecutorLostError();
+  };
   const provider = historyProviders()[job.provider];
   if (!provider) throw new Error("\u672A\u77E5\u5386\u53F2\u6570\u636E\u4F9B\u5E94\u5546");
   const requestedStart = job.requestedRange.start, requestedEnd = job.requestedRange.end;
@@ -7296,6 +7328,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     start: requestedStart,
     end: requestedEnd
   });
+  await guardOwnership();
   if (job.kind === "LIMIT_FEATURES" && capabilities.limitFeatures.availableFrom === null) {
     return jobs.finishJob(jobId, EXECUTOR_ID2, {
       stage: "BLOCKED",
@@ -7317,6 +7350,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   let clonedSourceTradingDates = null;
   let datasetId = job.datasetId;
   if (!datasetId) {
+    await guardOwnership();
     datasetId = newId("hds");
     const claimed = await jobs.claimDataset(jobId, datasetId);
     if (!claimed) {
@@ -7343,6 +7377,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     start: requestedStart,
     end: requestedEnd
   });
+  await guardOwnership();
   if (calendar.issues.length)
     coverage.notes.push(
       ...calendar.issues.map((issue) => `\u4EA4\u6613\u65E5\u5386\uFF1A${issue}`)
@@ -7366,6 +7401,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       if (!normalized) {
         try {
           const features = await provider.limitFeatures({ date });
+          await guardOwnership();
           normalized = [];
           for (const raw of features.rows) {
             const { row } = normalizeLimitFeatureRow(emRowToCanonical(raw), {
@@ -7401,6 +7437,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
             raw: features
           });
         } catch (error) {
+          if (error instanceof ExecutorLostError) throw error;
           await store.saveChunk(jobId, {
             chunkKey,
             requestRange: date,
@@ -7454,14 +7491,17 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           `\u89C2\u5BDF\u53CD\u9988\u65E5\u7EBF\u4E0B\u8F7D\u5931\u8D25\uFF0C\u672C\u6B21\u4E0D\u751F\u6210\u6B21\u65E5\u89C2\u5BDF\u6536\u76CA\uFF1A${String(error.message ?? error).slice(0, 120)}`
         );
       }
-      if (dailyNormalized)
+      if (dailyNormalized) {
+        await guardOwnership();
         for (const [obsDate, byCode] of dailyNormalized)
           await store.saveObservationDaily(datasetId, obsDate, byCode);
+      }
     }
     const dateIndex = new Map(
       calendar.dates.map((date, index) => [date, index])
     );
     for (const entry of succeeded) {
+      await guardOwnership();
       const previousEntry = succeeded.slice(0, succeeded.indexOf(entry)).at(-1) ?? null;
       const a = analyze(
         entry.normalized,
@@ -7569,6 +7609,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     }
     const targetDatasetId = options.datasetId ?? job.statusPayload?.datasetId;
     if (targetDatasetId) {
+      await guardOwnership();
       const cloneSource = job.datasetId ?? targetDatasetId;
       const cloned = await store.cloneDatasetForMinutes(cloneSource);
       datasetId = cloned.id;
@@ -7594,6 +7635,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         }
         try {
           const series = await provider.minuteSeries({ code, date });
+          await guardOwnership();
           await store.saveMinuteInputs(datasetId, date, code, {
             bars: series.inSession,
             anomalies: series.anomalies.slice(0, 5),
@@ -7612,6 +7654,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           });
           dayRows++;
         } catch (error) {
+          if (error instanceof ExecutorLostError) throw error;
           await store.saveChunk(jobId, {
             chunkKey,
             requestRange: date,
@@ -7637,7 +7680,8 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       }
     }
   } else if (job.kind === "DAILY") {
-    await jobs.updateJob(jobId, { stage: "DOWNLOADING" });
+    if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { stage: "DOWNLOADING" }))
+      return { ...await jobs.getJob(jobId), note: takeoverNotice };
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
       return jobs.finishJob(jobId, EXECUTOR_ID2, {
@@ -7653,6 +7697,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       start: requestedStart,
       end: requestedEnd
     });
+    await guardOwnership();
     const dates = /* @__PURE__ */ new Set();
     for (const code of Object.keys(daily.rows))
       for (const row of daily.rows[code]) dates.add(row.tradeDate);
@@ -7663,6 +7708,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           reason: "\u4EA4\u6613\u65E5\u5386\u4E2D\u7684\u65E5\u671F\u7F3A\u5C11\u4EFB\u4F55\u80A1\u7968\u7684\u65E5\u7EBF\u6570\u636E"
         });
     for (const date of [...dates].sort()) {
+      await guardOwnership();
       const perCode = {};
       for (const code of codes) {
         const row = daily.rows[code]?.find((item) => item.tradeDate === date);
@@ -7731,6 +7777,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     job.kind === "LIMIT_FEATURES" && allNormalizedRows.length > 0
   );
   coverage.executionModel = executionModel;
+  await guardOwnership();
   const finalCoverage = await store.updateDatasetCoverage(datasetId, coverage);
   if (!succeeded.length)
     return jobs.finishJob(jobId, EXECUTOR_ID2, {
@@ -7948,12 +7995,8 @@ async function runBacktestInner(store, runId, dataset, { strategyParams, feeConf
   const datasetId = dataset.id;
   const scores = await store.listScores(datasetId);
   const minuteDates = new Set(await store.listMinuteDates(datasetId));
-  const tradingDates = Array.isArray(dataset.coverage?.tradingDates) ? dataset.coverage.tradingDates : [];
-  const succeededDates = Array.isArray(dataset.coverage?.succeededDates) ? dataset.coverage.succeededDates : [];
-  const adjacencyDates = tradingDates.length ? tradingDates : succeededDates;
-  const succeededPosition = new Map(
-    adjacencyDates.map((date, index) => [date, index])
-  );
+  const adjacency = tradingAdjacency(dataset.coverage);
+  const tradingDates = adjacency.tradingDates;
   const coverage = {
     executionModel: HISTORICAL_EXECUTION_MODEL,
     plannedPairs: 0,
@@ -7977,8 +8020,7 @@ async function runBacktestInner(store, runId, dataset, { strategyParams, feeConf
     const signalDate = signal.tradeDate;
     const tradeDate = scores[index + 1].tradeDate;
     coverage.plannedPairs++;
-    const tradePosition = succeededPosition.get(tradeDate);
-    if (tradePosition === void 0 || tradePosition === 0 || succeededDates[tradePosition - 1] !== signalDate) {
+    if (!isAdjacentTradingDay(adjacency, signalDate, tradeDate)) {
       coverage.skippedPairs.push({
         signalDate,
         tradeDate,

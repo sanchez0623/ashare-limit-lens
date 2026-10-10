@@ -238,6 +238,58 @@ test("训练窗口无法重放（0 天）时返回 NEED_DATA 且不消耗资格"
     } catch {}
   }
 });
+test("缺失交易日不跨日配对：严格交易日历下训练对不足返回 NEED_DATA 且不消耗资格", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-boot-${crypto.randomUUID()}.sqlite`;
+  const env = {
+    DB,
+    LOCAL_RESEARCH_DB_PATH: researchPath,
+    AI_API_KEY: "test-only-secret",
+    AI_BASE_URL: "https://api.deepseek.com/v1",
+    AI_MODEL: "test-model",
+  };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const store = openHistoryStore(env);
+  const stub = stubProposal();
+  try {
+    const dates = tradeDays(22);
+    const datasetId = await seedDataset(env, store, 22);
+    const missingDate = dates[11];
+    await store.db
+      .prepare(
+        "DELETE FROM history_scores WHERE dataset_id = ? AND trade_date = ?",
+      )
+      .bind(datasetId, missingDate)
+      .run();
+    await store.updateDatasetCoverage(datasetId, {
+      observedStart: dates[0],
+      observedEnd: dates.at(-1),
+      executionModel: "SIX_FACTOR_V1",
+      succeededDates: dates.filter((date) => date !== missingDate),
+      tradingDates: dates,
+      failedDates: [{ date: missingDate, reason: "缺失交易日" }],
+    });
+    const integrity = await store.datasetIntegrity(datasetId);
+    assert.equal(integrity.verified, true);
+    const result = await proposeBootstrapImprovement(repository, env, {
+      datasetId,
+    });
+    assert.equal(result.status, "NEED_DATA");
+    assert.equal(result.days, 19);
+    assert.equal(stub.calls(), 0);
+    const research = new ResearchRepository(env);
+    const registry = await research.ensureRegistry();
+    assert.equal(registry.bootstrapDone, false);
+  } finally {
+    stub.restore();
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
 test("模型失败同样消耗一次性资格", async () => {
   const DB = localDatabase();
   const researchPath = `.sites-runtime/test-boot-${crypto.randomUUID()}.sqlite`;

@@ -222,6 +222,15 @@ export class HistoryJobRepository {
       .run();
     return result.meta.changes > 0;
   }
+  async stillOwner(id, executorId) {
+    const row = await this.db
+      .prepare(
+        "SELECT 1 AS ok FROM history_import_jobs WHERE id = ? AND json_extract(progress, '$.executorId') = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING')",
+      )
+      .bind(id, executorId)
+      .first();
+    return Boolean(row);
+  }
 }
 export class HistoryDatasetStore {
   constructor(path) {

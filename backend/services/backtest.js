@@ -16,6 +16,10 @@ import {
   HISTORICAL_EXECUTION_VERSION,
   assertCausalObservations,
 } from "../domain/historical-execution.js";
+import {
+  isAdjacentTradingDay,
+  tradingAdjacency,
+} from "../domain/historical-input.js";
 import { openHistoryStore } from "../storage/history.js";
 
 function newId(prefix) {
@@ -177,16 +181,8 @@ async function runBacktestInner(
   const datasetId = dataset.id;
   const scores = await store.listScores(datasetId);
   const minuteDates = new Set(await store.listMinuteDates(datasetId));
-  const tradingDates = Array.isArray(dataset.coverage?.tradingDates)
-    ? dataset.coverage.tradingDates
-    : [];
-  const succeededDates = Array.isArray(dataset.coverage?.succeededDates)
-    ? dataset.coverage.succeededDates
-    : [];
-  const adjacencyDates = tradingDates.length ? tradingDates : succeededDates;
-  const succeededPosition = new Map(
-    adjacencyDates.map((date, index) => [date, index]),
-  );
+  const adjacency = tradingAdjacency(dataset.coverage);
+  const tradingDates = adjacency.tradingDates;
   const coverage = {
     executionModel: HISTORICAL_EXECUTION_MODEL,
     plannedPairs: 0,
@@ -210,12 +206,7 @@ async function runBacktestInner(
     const signalDate = signal.tradeDate;
     const tradeDate = scores[index + 1].tradeDate;
     coverage.plannedPairs++;
-    const tradePosition = succeededPosition.get(tradeDate);
-    if (
-      tradePosition === undefined ||
-      tradePosition === 0 ||
-      succeededDates[tradePosition - 1] !== signalDate
-    ) {
+    if (!isAdjacentTradingDay(adjacency, signalDate, tradeDate)) {
       coverage.skippedPairs.push({
         signalDate,
         tradeDate,

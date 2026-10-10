@@ -60,6 +60,7 @@ function installFetchStub({
   dailySkipCodes = [],
   dailySkipDates = [],
   minuteQuery = null,
+  onDailyPrices = null,
 }) {
   const calls = [];
   const fetchBefore = globalThis.fetch;
@@ -108,6 +109,8 @@ function installFetchStub({
       const isIndex = symbolCode.startsWith("sh000001");
       if (code && !isIndex && dailySkipCodes.includes(code))
         return Response.json({ data: { [symbolCode]: {} } });
+      if (code && !isIndex && onDailyPrices)
+        await onDailyPrices({ code, symbolCode });
       const rows = tradingDays
         .filter(
           (date) =>
@@ -822,6 +825,96 @@ test("过期执行器被接管后无法破坏新执行器的终态", async () =>
     assert.equal((await jobs.getJob(job.id)).stage, "READY");
   } finally {
     DB.close();
+  }
+});
+test("迟到下载执行器无法改写已发布数据与完整性", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const tradingDays = weekdays("2026-01-01", "2026-03-31");
+  const jobs = new HistoryJobRepository(env);
+  const store = openHistoryStore(env);
+  const code = "600001";
+  const publishedDate = "2026-03-02";
+  let tookOver = false;
+  let jobId = null;
+  const bar = (closeCents) => ({
+    code,
+    tradeDate: publishedDate,
+    openCents: closeCents - 10,
+    closeCents,
+    highCents: closeCents + 10,
+    lowCents: closeCents - 20,
+    volumeShares: 1000,
+  });
+  const stub = installFetchStub({
+    tradingDays,
+    poolDates: tradingDays,
+    dailyCloseYuan: "13.00",
+    onDailyPrices: async () => {
+      if (tookOver) return;
+      tookOver = true;
+      await jobs.db
+        .prepare(
+          "UPDATE history_import_jobs SET progress = json_set(progress, '$.claimedAt', '2000-01-01T00:00:00.000Z') WHERE id = ?",
+        )
+        .bind(jobId)
+        .run();
+      assert.equal(await jobs.claimExecution(jobId, "executor-new", 0), true);
+      const datasetId = (await jobs.getJob(jobId)).datasetId;
+      await store.saveDailyInputs(datasetId, publishedDate, {
+        normalized: { [code]: bar(1000) },
+        provenance: { origin: "HISTORICAL_RECONSTRUCTED" },
+      });
+      await store.updateDatasetCoverage(datasetId, {
+        observedStart: publishedDate,
+        observedEnd: publishedDate,
+        executionModel: "DAILY_OBSERVATION_V1",
+        succeededDates: [publishedDate],
+        tradingDates: tradingDays,
+        failedDates: [],
+      });
+      const finished = await jobs.finishJob(jobId, "executor-new", {
+        stage: "READY",
+        datasetId,
+        statusPayload: {
+          datasetId,
+          executionModel: "DAILY_OBSERVATION_V1",
+        },
+      });
+      assert.equal(finished.stage, "READY");
+    },
+  });
+  try {
+    const job = await createHistoryImport(env, {
+      kind: "DAILY",
+      start: "2026-03-02",
+      end: "2026-03-04",
+      codes: [code],
+    });
+    jobId = job.id;
+    const result = await runHistoryImport(env, job.id);
+    assert.ok(String(result.note ?? "").includes("接管"));
+    const finalJob = await jobs.getJob(job.id);
+    assert.equal(finalJob.stage, "READY");
+    const datasetId = finalJob.datasetId;
+    const stored = await store.getDailyInput(datasetId, publishedDate);
+    assert.equal(
+      stored.normalized[code].closeCents,
+      1000,
+      "迟到执行器不得把已发布收盘价从 10 元改为 13 元",
+    );
+    const integrity = await store.datasetIntegrity(datasetId);
+    assert.equal(integrity.verified, true);
+  } finally {
+    stub.restore();
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
   }
 });
 test("评分与分钟导入可组合为同一数据集并回测", async () => {

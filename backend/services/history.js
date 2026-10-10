@@ -16,6 +16,14 @@ import {
 
 const SCORING_VERSION = "rules-v1-historical";
 const EXECUTOR_ID = `history-${crypto.randomUUID()}`;
+const TAKEOVER_NOTICE =
+  "任务已由其他执行器接管，本次执行中止（不覆盖接管方状态）";
+class ExecutorLostError extends Error {
+  constructor() {
+    super(TAKEOVER_NOTICE);
+    this.name = "ExecutorLostError";
+  }
+}
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -113,6 +121,8 @@ export async function runHistoryImport(env, jobId, options = {}) {
   try {
     return await runHistoryImportInner(env, job, { jobs, store, options });
   } catch (error) {
+    if (error instanceof ExecutorLostError)
+      return { ...(await jobs.getJob(jobId)), note: TAKEOVER_NOTICE };
     const reason = String(error?.message ?? error).slice(0, 300);
     const failedJob = await jobs.finishJob(jobId, EXECUTOR_ID, {
       stage: "FAILED",
@@ -130,8 +140,11 @@ export async function runHistoryImport(env, jobId, options = {}) {
 }
 async function runHistoryImportInner(env, job, { jobs, store, options }) {
   const jobId = job.id;
-  const takeoverNotice =
-    "任务已由其他执行器接管，本次执行中止（不覆盖接管方状态）";
+  const takeoverNotice = TAKEOVER_NOTICE;
+  const guardOwnership = async () => {
+    if (!(await jobs.stillOwner(jobId, EXECUTOR_ID)))
+      throw new ExecutorLostError();
+  };
   const provider = historyProviders()[job.provider];
   if (!provider) throw new Error("未知历史数据供应商");
   const requestedStart = job.requestedRange.start,
@@ -142,6 +155,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     start: requestedStart,
     end: requestedEnd,
   });
+  await guardOwnership();
   if (
     job.kind === "LIMIT_FEATURES" &&
     capabilities.limitFeatures.availableFrom === null
@@ -166,6 +180,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   let clonedSourceTradingDates = null;
   let datasetId = job.datasetId;
   if (!datasetId) {
+    await guardOwnership();
     datasetId = newId("hds");
     const claimed = await jobs.claimDataset(jobId, datasetId);
     if (!claimed) {
@@ -194,6 +209,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     start: requestedStart,
     end: requestedEnd,
   });
+  await guardOwnership();
   if (calendar.issues.length)
     coverage.notes.push(
       ...calendar.issues.map((issue) => `交易日历：${issue}`),
@@ -217,6 +233,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       if (!normalized) {
         try {
           const features = await provider.limitFeatures({ date });
+          await guardOwnership();
           normalized = [];
           for (const raw of features.rows) {
             const { row } = normalizeLimitFeatureRow(emRowToCanonical(raw), {
@@ -252,6 +269,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
             raw: features,
           });
         } catch (error) {
+          if (error instanceof ExecutorLostError) throw error;
           await store.saveChunk(jobId, {
             chunkKey,
             requestRange: date,
@@ -305,14 +323,17 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           `观察反馈日线下载失败，本次不生成次日观察收益：${String(error.message ?? error).slice(0, 120)}`,
         );
       }
-      if (dailyNormalized)
+      if (dailyNormalized) {
+        await guardOwnership();
         for (const [obsDate, byCode] of dailyNormalized)
           await store.saveObservationDaily(datasetId, obsDate, byCode);
+      }
     }
     const dateIndex = new Map(
       calendar.dates.map((date, index) => [date, index]),
     );
     for (const entry of succeeded) {
+      await guardOwnership();
       const previousEntry =
         succeeded.slice(0, succeeded.indexOf(entry)).at(-1) ?? null;
       const a = analyze(
@@ -453,6 +474,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     }
     const targetDatasetId = options.datasetId ?? job.statusPayload?.datasetId;
     if (targetDatasetId) {
+      await guardOwnership();
       const cloneSource = job.datasetId ?? targetDatasetId;
       const cloned = await store.cloneDatasetForMinutes(cloneSource);
       datasetId = cloned.id;
@@ -482,6 +504,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         }
         try {
           const series = await provider.minuteSeries({ code, date });
+          await guardOwnership();
           await store.saveMinuteInputs(datasetId, date, code, {
             bars: series.inSession,
             anomalies: series.anomalies.slice(0, 5),
@@ -500,6 +523,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           });
           dayRows++;
         } catch (error) {
+          if (error instanceof ExecutorLostError) throw error;
           await store.saveChunk(jobId, {
             chunkKey,
             requestRange: date,
@@ -525,7 +549,8 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       }
     }
   } else if (job.kind === "DAILY") {
-    await jobs.updateJob(jobId, { stage: "DOWNLOADING" });
+    if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { stage: "DOWNLOADING" })))
+      return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
       return jobs.finishJob(jobId, EXECUTOR_ID, {
@@ -541,6 +566,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       start: requestedStart,
       end: requestedEnd,
     });
+    await guardOwnership();
     const dates = new Set();
     for (const code of Object.keys(daily.rows))
       for (const row of daily.rows[code]) dates.add(row.tradeDate);
@@ -551,6 +577,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           reason: "交易日历中的日期缺少任何股票的日线数据",
         });
     for (const date of [...dates].sort()) {
+      await guardOwnership();
       const perCode = {};
       for (const code of codes) {
         const row = daily.rows[code]?.find((item) => item.tradeDate === date);
@@ -621,6 +648,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       job.kind === "LIMIT_FEATURES" && allNormalizedRows.length > 0,
     );
   coverage.executionModel = executionModel;
+  await guardOwnership();
   const finalCoverage = await store.updateDatasetCoverage(datasetId, coverage);
   if (!succeeded.length)
     return jobs.finishJob(jobId, EXECUTOR_ID, {
