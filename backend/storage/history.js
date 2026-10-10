@@ -316,6 +316,13 @@ export class HistoryDatasetStore {
         digest TEXT NOT NULL,
         PRIMARY KEY (dataset_id, trade_date, code)
       );
+      CREATE TABLE IF NOT EXISTS history_dataset_owners (
+        dataset_id TEXT PRIMARY KEY,
+        job_id TEXT,
+        executor_id TEXT NOT NULL,
+        generation INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS backtest_runs (
         id TEXT PRIMARY KEY,
         dataset_id TEXT NOT NULL,
@@ -366,6 +373,65 @@ export class HistoryDatasetStore {
     mkdirSync(this.rawDir, { recursive: true });
     this.ready = true;
   }
+  async acquireDatasetOwnership(datasetId, executorId, jobId = null) {
+    await this.ensure();
+    if (!datasetId) throw new Error("数据集所有权需要 datasetId");
+    return this.db.transaction(async () => {
+      const row = await this.db
+        .prepare(
+          "SELECT job_id, executor_id, generation FROM history_dataset_owners WHERE dataset_id = ?",
+        )
+        .bind(datasetId)
+        .first();
+      const now = new Date().toISOString();
+      if (row && row.executor_id === executorId) {
+        if (jobId)
+          await this.db
+            .prepare(
+              "UPDATE history_dataset_owners SET job_id = ?, updated_at = ? WHERE dataset_id = ?",
+            )
+            .bind(jobId, now, datasetId)
+            .run();
+        return { datasetId, executorId, generation: Number(row.generation) };
+      }
+      const generation = row ? Number(row.generation) + 1 : 1;
+      await this.db
+        .prepare(
+          "INSERT INTO history_dataset_owners (dataset_id, job_id, executor_id, generation, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (dataset_id) DO UPDATE SET job_id = excluded.job_id, executor_id = excluded.executor_id, generation = excluded.generation, updated_at = excluded.updated_at",
+        )
+        .bind(datasetId, jobId ?? null, executorId, generation, now)
+        .run();
+      return { datasetId, executorId, generation };
+    });
+  }
+  async _applyGuarded(datasetId, owner, apply) {
+    await this.ensure();
+    return this.db.transaction(async () => {
+      if (!datasetId) {
+        if (owner) return { applied: false };
+        apply();
+        return { applied: true };
+      }
+      const row = await this.db
+        .prepare(
+          "SELECT executor_id, generation FROM history_dataset_owners WHERE dataset_id = ?",
+        )
+        .bind(datasetId)
+        .first();
+      if (row) {
+        if (
+          !owner ||
+          row.executor_id !== owner.executorId ||
+          Number(row.generation) !== Number(owner.generation)
+        )
+          return { applied: false };
+      } else if (owner) {
+        return { applied: false };
+      }
+      apply();
+      return { applied: true };
+    });
+  }
   async createDatasetVersion({
     id,
     provider,
@@ -401,27 +467,29 @@ export class HistoryDatasetStore {
       .run();
     return { id, manifestDigest: digest };
   }
-  async updateDatasetCoverage(id, coverage) {
+  async updateDatasetCoverage(id, coverage, owner = null) {
     await this.ensure();
     const manifest = await this.buildDatasetManifest(id, {
       executionModel: coverage.executionModel ?? null,
       coverage,
     });
     const digest = await digestOf(manifest);
-    await this.db
-      .prepare(
-        "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?",
-      )
-      .bind(
-        JSON.stringify(coverage),
-        digest,
-        coverage.observedStart ?? null,
-        coverage.observedEnd ?? null,
-        coverage.executionModel ?? "PENDING",
-        id,
-      )
-      .run();
-    return { manifest, manifestDigest: digest };
+    const result = await this._applyGuarded(id, owner, () => {
+      this.db
+        .prepare(
+          "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?",
+        )
+        .bind(
+          JSON.stringify(coverage),
+          digest,
+          coverage.observedStart ?? null,
+          coverage.observedEnd ?? null,
+          coverage.executionModel ?? "PENDING",
+          id,
+        )
+        ._run();
+    });
+    return { applied: result.applied, manifest, manifestDigest: digest };
   }
   async saveChunk(
     jobId,
@@ -436,33 +504,39 @@ export class HistoryDatasetStore {
       raw,
       artifactRef,
     },
+    owner = null,
   ) {
     await this.ensure();
     let storedRef = artifactRef ?? null;
     if (raw !== undefined && stage === "DONE") {
       const safeKey = chunkKey.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const artifactPath = `${this.rawDir}/${jobId}__${safeKey}.json`;
+      const suffix = owner ? `__g${owner.generation}` : "";
+      const fileName = `${jobId}__${safeKey}${suffix}.json`;
+      const artifactPath = `${this.rawDir}/${fileName}`;
       const { writeFileSync } = await import("node:fs");
       writeFileSync(artifactPath, JSON.stringify(raw), "utf8");
-      storedRef = `history-chunks/${jobId}__${safeKey}.json`;
+      storedRef = `history-chunks/${fileName}`;
       rawDigest = await digestOf(raw);
     }
-    await this.db
-      .prepare(
-        "INSERT INTO history_chunks (job_id, chunk_key, dataset_id, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows, dataset_id = excluded.dataset_id, raw_digest = excluded.raw_digest, artifact_ref = excluded.artifact_ref",
-      )
-      .bind(
-        jobId,
-        chunkKey,
-        datasetId ?? null,
-        requestRange,
-        actualRange ?? null,
-        rows ?? 0,
-        stage,
-        rawDigest ?? null,
-        storedRef,
-      )
-      .run();
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db
+        .prepare(
+          "INSERT INTO history_chunks (job_id, chunk_key, dataset_id, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows, dataset_id = excluded.dataset_id, raw_digest = excluded.raw_digest, artifact_ref = excluded.artifact_ref",
+        )
+        .bind(
+          jobId,
+          chunkKey,
+          datasetId ?? null,
+          requestRange,
+          actualRange ?? null,
+          rows ?? 0,
+          stage,
+          rawDigest ?? null,
+          storedRef,
+        )
+        ._run();
+    });
+    return { applied: result.applied };
   }
   async completedChunkKeys(jobId) {
     await this.ensure();
@@ -630,31 +704,52 @@ export class HistoryDatasetStore {
       manifest,
     };
   }
-  async saveDailyInputs(datasetId, tradeDate, { normalized, provenance }) {
+  async saveDailyInputs(
+    datasetId,
+    tradeDate,
+    { normalized, provenance },
+    owner = null,
+  ) {
     await this.ensure();
     const payload = JSON.stringify({ normalized, provenance });
-    await this.db
-      .prepare(
-        "INSERT OR REPLACE INTO history_daily_inputs (dataset_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)",
-      )
-      .bind(datasetId, tradeDate, payload, await digestOf(payload))
-      .run();
+    const digest = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db
+        .prepare(
+          "INSERT OR REPLACE INTO history_daily_inputs (dataset_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)",
+        )
+        .bind(datasetId, tradeDate, payload, digest)
+        ._run();
+    });
+    return { applied: result.applied };
   }
-  async saveScore(datasetId, tradeDate, scoringVersion, paramsDigest, payload) {
+  async saveScore(
+    datasetId,
+    tradeDate,
+    scoringVersion,
+    paramsDigest,
+    payload,
+    owner = null,
+  ) {
     await this.ensure();
-    await this.db
-      .prepare(
-        "INSERT OR IGNORE INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .bind(
-        datasetId,
-        tradeDate,
-        scoringVersion,
-        paramsDigest,
-        JSON.stringify(payload),
-        await digestOf(payload),
-      )
-      .run();
+    const payloadText = JSON.stringify(payload);
+    const digest = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db
+        .prepare(
+          "INSERT OR IGNORE INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          datasetId,
+          tradeDate,
+          scoringVersion,
+          paramsDigest,
+          payloadText,
+          digest,
+        )
+        ._run();
+    });
+    return { applied: result.applied };
   }
   async saveReview(
     datasetId,
@@ -662,21 +757,27 @@ export class HistoryDatasetStore {
     labelEndDate,
     reviewVersion,
     payload,
+    owner = null,
   ) {
     await this.ensure();
-    await this.db
-      .prepare(
-        "INSERT OR IGNORE INTO history_reviews (dataset_id, signal_date, label_end_date, review_version, payload, digest) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .bind(
-        datasetId,
-        signalDate,
-        labelEndDate,
-        reviewVersion,
-        JSON.stringify(payload),
-        await digestOf(payload),
-      )
-      .run();
+    const payloadText = JSON.stringify(payload);
+    const digest = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db
+        .prepare(
+          "INSERT OR IGNORE INTO history_reviews (dataset_id, signal_date, label_end_date, review_version, payload, digest) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          datasetId,
+          signalDate,
+          labelEndDate,
+          reviewVersion,
+          payloadText,
+          digest,
+        )
+        ._run();
+    });
+    return { applied: result.applied };
   }
   async getDataset(id) {
     await this.ensure();
@@ -720,20 +821,19 @@ export class HistoryDatasetStore {
       .first();
     return row ? JSON.parse(row.payload) : null;
   }
-  async saveMinuteInputs(datasetId, tradeDate, code, payload) {
+  async saveMinuteInputs(datasetId, tradeDate, code, payload, owner = null) {
     await this.ensure();
-    await this.db
-      .prepare(
-        "INSERT OR REPLACE INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)",
-      )
-      .bind(
-        datasetId,
-        tradeDate,
-        code,
-        JSON.stringify(payload),
-        await digestOf(payload),
-      )
-      .run();
+    const payloadText = JSON.stringify(payload);
+    const digest = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db
+        .prepare(
+          "INSERT OR REPLACE INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(datasetId, tradeDate, code, payloadText, digest)
+        ._run();
+    });
+    return { applied: result.applied };
   }
   async listMinuteInputs(datasetId, tradeDate) {
     await this.ensure();
@@ -757,21 +857,30 @@ export class HistoryDatasetStore {
       .all();
     return result.results.map((row) => row.trade_date);
   }
-  async saveObservationDaily(datasetId, tradeDate, byCode) {
+  async saveObservationDaily(datasetId, tradeDate, byCode, owner = null) {
     await this.ensure();
     const entries =
       byCode instanceof Map
         ? [...byCode.entries()]
         : Object.entries(byCode ?? {});
-    for (const [code, row] of entries) {
-      const payload = JSON.stringify(row);
-      await this.db
-        .prepare(
-          "INSERT OR REPLACE INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(datasetId, tradeDate, code, payload, await digestOf(row))
-        .run();
-    }
+    const prepared = [];
+    for (const [code, row] of entries)
+      prepared.push({
+        code,
+        payload: JSON.stringify(row),
+        digest: await digestOf(row),
+      });
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      for (const item of prepared) {
+        this.db
+          .prepare(
+            "INSERT OR REPLACE INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)",
+          )
+          .bind(datasetId, tradeDate, item.code, item.payload, item.digest)
+          ._run();
+      }
+    });
+    return { applied: result.applied };
   }
   async getObservationDaily(datasetId, tradeDate) {
     await this.ensure();

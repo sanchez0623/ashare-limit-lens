@@ -4116,6 +4116,13 @@ var HistoryDatasetStore = class {
         digest TEXT NOT NULL,
         PRIMARY KEY (dataset_id, trade_date, code)
       );
+      CREATE TABLE IF NOT EXISTS history_dataset_owners (
+        dataset_id TEXT PRIMARY KEY,
+        job_id TEXT,
+        executor_id TEXT NOT NULL,
+        generation INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS backtest_runs (
         id TEXT PRIMARY KEY,
         dataset_id TEXT NOT NULL,
@@ -4162,6 +4169,49 @@ var HistoryDatasetStore = class {
     mkdirSync(this.rawDir, { recursive: true });
     this.ready = true;
   }
+  async acquireDatasetOwnership(datasetId, executorId, jobId = null) {
+    await this.ensure();
+    if (!datasetId) throw new Error("\u6570\u636E\u96C6\u6240\u6709\u6743\u9700\u8981 datasetId");
+    return this.db.transaction(async () => {
+      const row = await this.db.prepare(
+        "SELECT job_id, executor_id, generation FROM history_dataset_owners WHERE dataset_id = ?"
+      ).bind(datasetId).first();
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      if (row && row.executor_id === executorId) {
+        if (jobId)
+          await this.db.prepare(
+            "UPDATE history_dataset_owners SET job_id = ?, updated_at = ? WHERE dataset_id = ?"
+          ).bind(jobId, now, datasetId).run();
+        return { datasetId, executorId, generation: Number(row.generation) };
+      }
+      const generation = row ? Number(row.generation) + 1 : 1;
+      await this.db.prepare(
+        "INSERT INTO history_dataset_owners (dataset_id, job_id, executor_id, generation, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (dataset_id) DO UPDATE SET job_id = excluded.job_id, executor_id = excluded.executor_id, generation = excluded.generation, updated_at = excluded.updated_at"
+      ).bind(datasetId, jobId ?? null, executorId, generation, now).run();
+      return { datasetId, executorId, generation };
+    });
+  }
+  async _applyGuarded(datasetId, owner, apply) {
+    await this.ensure();
+    return this.db.transaction(async () => {
+      if (!datasetId) {
+        if (owner) return { applied: false };
+        apply();
+        return { applied: true };
+      }
+      const row = await this.db.prepare(
+        "SELECT executor_id, generation FROM history_dataset_owners WHERE dataset_id = ?"
+      ).bind(datasetId).first();
+      if (row) {
+        if (!owner || row.executor_id !== owner.executorId || Number(row.generation) !== Number(owner.generation))
+          return { applied: false };
+      } else if (owner) {
+        return { applied: false };
+      }
+      apply();
+      return { applied: true };
+    });
+  }
   async createDatasetVersion({
     id,
     provider,
@@ -4194,24 +4244,26 @@ var HistoryDatasetStore = class {
     ).run();
     return { id, manifestDigest: digest2 };
   }
-  async updateDatasetCoverage(id, coverage) {
+  async updateDatasetCoverage(id, coverage, owner = null) {
     await this.ensure();
     const manifest = await this.buildDatasetManifest(id, {
       executionModel: coverage.executionModel ?? null,
       coverage
     });
     const digest2 = await digestOf(manifest);
-    await this.db.prepare(
-      "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?"
-    ).bind(
-      JSON.stringify(coverage),
-      digest2,
-      coverage.observedStart ?? null,
-      coverage.observedEnd ?? null,
-      coverage.executionModel ?? "PENDING",
-      id
-    ).run();
-    return { manifest, manifestDigest: digest2 };
+    const result = await this._applyGuarded(id, owner, () => {
+      this.db.prepare(
+        "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?"
+      ).bind(
+        JSON.stringify(coverage),
+        digest2,
+        coverage.observedStart ?? null,
+        coverage.observedEnd ?? null,
+        coverage.executionModel ?? "PENDING",
+        id
+      )._run();
+    });
+    return { applied: result.applied, manifest, manifestDigest: digest2 };
   }
   async saveChunk(jobId, {
     chunkKey,
@@ -4223,30 +4275,35 @@ var HistoryDatasetStore = class {
     rawDigest,
     raw,
     artifactRef
-  }) {
+  }, owner = null) {
     await this.ensure();
     let storedRef = artifactRef ?? null;
     if (raw !== void 0 && stage === "DONE") {
       const safeKey = chunkKey.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const artifactPath = `${this.rawDir}/${jobId}__${safeKey}.json`;
+      const suffix = owner ? `__g${owner.generation}` : "";
+      const fileName = `${jobId}__${safeKey}${suffix}.json`;
+      const artifactPath = `${this.rawDir}/${fileName}`;
       const { writeFileSync } = await import("node:fs");
       writeFileSync(artifactPath, JSON.stringify(raw), "utf8");
-      storedRef = `history-chunks/${jobId}__${safeKey}.json`;
+      storedRef = `history-chunks/${fileName}`;
       rawDigest = await digestOf(raw);
     }
-    await this.db.prepare(
-      "INSERT INTO history_chunks (job_id, chunk_key, dataset_id, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows, dataset_id = excluded.dataset_id, raw_digest = excluded.raw_digest, artifact_ref = excluded.artifact_ref"
-    ).bind(
-      jobId,
-      chunkKey,
-      datasetId ?? null,
-      requestRange,
-      actualRange ?? null,
-      rows ?? 0,
-      stage,
-      rawDigest ?? null,
-      storedRef
-    ).run();
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT INTO history_chunks (job_id, chunk_key, dataset_id, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows, dataset_id = excluded.dataset_id, raw_digest = excluded.raw_digest, artifact_ref = excluded.artifact_ref"
+      ).bind(
+        jobId,
+        chunkKey,
+        datasetId ?? null,
+        requestRange,
+        actualRange ?? null,
+        rows ?? 0,
+        stage,
+        rawDigest ?? null,
+        storedRef
+      )._run();
+    });
+    return { applied: result.applied };
   }
   async completedChunkKeys(jobId) {
     await this.ensure();
@@ -4397,38 +4454,52 @@ var HistoryDatasetStore = class {
       manifest
     };
   }
-  async saveDailyInputs(datasetId, tradeDate, { normalized, provenance }) {
+  async saveDailyInputs(datasetId, tradeDate, { normalized, provenance }, owner = null) {
     await this.ensure();
     const payload = JSON.stringify({ normalized, provenance });
-    await this.db.prepare(
-      "INSERT OR REPLACE INTO history_daily_inputs (dataset_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)"
-    ).bind(datasetId, tradeDate, payload, await digestOf(payload)).run();
+    const digest2 = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT OR REPLACE INTO history_daily_inputs (dataset_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)"
+      ).bind(datasetId, tradeDate, payload, digest2)._run();
+    });
+    return { applied: result.applied };
   }
-  async saveScore(datasetId, tradeDate, scoringVersion, paramsDigest, payload) {
+  async saveScore(datasetId, tradeDate, scoringVersion, paramsDigest, payload, owner = null) {
     await this.ensure();
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(
-      datasetId,
-      tradeDate,
-      scoringVersion,
-      paramsDigest,
-      JSON.stringify(payload),
-      await digestOf(payload)
-    ).run();
+    const payloadText = JSON.stringify(payload);
+    const digest2 = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT OR IGNORE INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(
+        datasetId,
+        tradeDate,
+        scoringVersion,
+        paramsDigest,
+        payloadText,
+        digest2
+      )._run();
+    });
+    return { applied: result.applied };
   }
-  async saveReview(datasetId, signalDate, labelEndDate, reviewVersion, payload) {
+  async saveReview(datasetId, signalDate, labelEndDate, reviewVersion, payload, owner = null) {
     await this.ensure();
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO history_reviews (dataset_id, signal_date, label_end_date, review_version, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(
-      datasetId,
-      signalDate,
-      labelEndDate,
-      reviewVersion,
-      JSON.stringify(payload),
-      await digestOf(payload)
-    ).run();
+    const payloadText = JSON.stringify(payload);
+    const digest2 = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT OR IGNORE INTO history_reviews (dataset_id, signal_date, label_end_date, review_version, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(
+        datasetId,
+        signalDate,
+        labelEndDate,
+        reviewVersion,
+        payloadText,
+        digest2
+      )._run();
+    });
+    return { applied: result.applied };
   }
   async getDataset(id) {
     await this.ensure();
@@ -4463,17 +4534,16 @@ var HistoryDatasetStore = class {
     ).bind(datasetId, tradeDate).first();
     return row ? JSON.parse(row.payload) : null;
   }
-  async saveMinuteInputs(datasetId, tradeDate, code, payload) {
+  async saveMinuteInputs(datasetId, tradeDate, code, payload, owner = null) {
     await this.ensure();
-    await this.db.prepare(
-      "INSERT OR REPLACE INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
-    ).bind(
-      datasetId,
-      tradeDate,
-      code,
-      JSON.stringify(payload),
-      await digestOf(payload)
-    ).run();
+    const payloadText = JSON.stringify(payload);
+    const digest2 = await digestOf(payload);
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      this.db.prepare(
+        "INSERT OR REPLACE INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
+      ).bind(datasetId, tradeDate, code, payloadText, digest2)._run();
+    });
+    return { applied: result.applied };
   }
   async listMinuteInputs(datasetId, tradeDate) {
     await this.ensure();
@@ -4491,15 +4561,24 @@ var HistoryDatasetStore = class {
     ).bind(datasetId).all();
     return result.results.map((row) => row.trade_date);
   }
-  async saveObservationDaily(datasetId, tradeDate, byCode) {
+  async saveObservationDaily(datasetId, tradeDate, byCode, owner = null) {
     await this.ensure();
     const entries = byCode instanceof Map ? [...byCode.entries()] : Object.entries(byCode ?? {});
-    for (const [code, row] of entries) {
-      const payload = JSON.stringify(row);
-      await this.db.prepare(
-        "INSERT OR REPLACE INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
-      ).bind(datasetId, tradeDate, code, payload, await digestOf(row)).run();
-    }
+    const prepared = [];
+    for (const [code, row] of entries)
+      prepared.push({
+        code,
+        payload: JSON.stringify(row),
+        digest: await digestOf(row)
+      });
+    const result = await this._applyGuarded(datasetId, owner, () => {
+      for (const item of prepared) {
+        this.db.prepare(
+          "INSERT OR REPLACE INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
+        ).bind(datasetId, tradeDate, item.code, item.payload, item.digest)._run();
+      }
+    });
+    return { applied: result.applied };
   }
   async getObservationDaily(datasetId, tradeDate) {
     await this.ensure();
@@ -7319,6 +7398,10 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     if (!await jobs.stillOwner(jobId, EXECUTOR_ID2))
       throw new ExecutorLostError();
   };
+  const requireApplied = (result) => {
+    if (result && result.applied === false) throw new ExecutorLostError();
+    return result;
+  };
   const provider = historyProviders()[job.provider];
   if (!provider) throw new Error("\u672A\u77E5\u5386\u53F2\u6570\u636E\u4F9B\u5E94\u5546");
   const requestedStart = job.requestedRange.start, requestedEnd = job.requestedRange.end;
@@ -7349,6 +7432,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   let clonedSourceDates = null;
   let clonedSourceTradingDates = null;
   let datasetId = job.datasetId;
+  let datasetOwner = null;
   if (!datasetId) {
     await guardOwnership();
     datasetId = newId("hds");
@@ -7373,6 +7457,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     datasetId
   }))
     return { ...await jobs.getJob(jobId), note: takeoverNotice };
+  datasetOwner = await store.acquireDatasetOwnership(
+    datasetId,
+    EXECUTOR_ID2,
+    jobId
+  );
   const calendar = await provider.tradingCalendar({
     start: requestedStart,
     end: requestedEnd
@@ -7422,30 +7511,47 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
             rawPayload: features,
             normalizedPayload: normalized
           });
-          await store.saveDailyInputs(datasetId, date, {
-            normalized,
-            provenance: { ...provenance, broken }
-          });
-          await store.saveChunk(jobId, {
-            chunkKey,
-            datasetId,
-            requestRange: date,
-            actualRange: date,
-            rows: normalized.length,
-            stage: "DONE",
-            rawDigest: await digestOf(features),
-            raw: features
-          });
+          requireApplied(
+            await store.saveDailyInputs(
+              datasetId,
+              date,
+              { normalized, provenance: { ...provenance, broken } },
+              datasetOwner
+            )
+          );
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: date,
+                rows: normalized.length,
+                stage: "DONE",
+                rawDigest: await digestOf(features),
+                raw: features
+              },
+              datasetOwner
+            )
+          );
         } catch (error) {
           if (error instanceof ExecutorLostError) throw error;
-          await store.saveChunk(jobId, {
-            chunkKey,
-            requestRange: date,
-            actualRange: null,
-            rows: 0,
-            stage: "FAILED",
-            artifactRef: String(error.message ?? error).slice(0, 160)
-          });
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: null,
+                rows: 0,
+                stage: "FAILED",
+                artifactRef: String(error.message ?? error).slice(0, 160)
+              },
+              datasetOwner
+            )
+          );
           failed.push({
             date,
             reason: String(error.message ?? error).slice(0, 160)
@@ -7494,7 +7600,14 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       if (dailyNormalized) {
         await guardOwnership();
         for (const [obsDate, byCode] of dailyNormalized)
-          await store.saveObservationDaily(datasetId, obsDate, byCode);
+          requireApplied(
+            await store.saveObservationDaily(
+              datasetId,
+              obsDate,
+              byCode,
+              datasetOwner
+            )
+          );
       }
     }
     const dateIndex = new Map(
@@ -7513,7 +7626,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         a.stocks.map((stock) => [stock.code, stock.score])
       );
       entry.nextUniverse = a.stocks.length;
-      await store.saveScore(
+      const scoreResult = await store.saveScore(
         datasetId,
         entry.date,
         SCORING_VERSION2,
@@ -7529,8 +7642,10 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           sectors: a.sectors,
           emotion: a.emotion,
           origin: "HISTORICAL_RECONSTRUCTED"
-        }
+        },
+        datasetOwner
       );
+      requireApplied(scoreResult);
       const nextTradingDate = calendar.dates[dateIndex.get(entry.date) + 1] ?? null;
       const nextEntry = nextTradingDate === null ? null : succeeded.find((row) => row.date === nextTradingDate) ?? null;
       if (!nextEntry) {
@@ -7572,7 +7687,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       const continuedCount = decidable.filter((row) => row.continued).length;
       const topQuantile = withReturns.length && withReturns.some((row) => row.score !== null) ? withReturns.filter((row) => row.score !== null).sort((a2, b) => (b.score ?? -1) - (a2.score ?? -1)).slice(0, Math.max(1, Math.ceil(withReturns.length / 5))) : [];
       const mean2 = (values) => values.length ? values.reduce((a2, b) => a2 + b, 0) / values.length : null;
-      await store.saveReview(
+      const reviewResult = await store.saveReview(
         datasetId,
         entry.date,
         nextTradingDate,
@@ -7593,8 +7708,10 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           priceBasis: "\u4FE1\u53F7\u65E5\u57FA\u51C6\u4EF7\u53D6\u540C\u6E90\u524D\u590D\u6743\u65E5\u7EBF\u6536\u76D8\uFF08QFQ\uFF09\uFF1B\u4FE1\u53F7\u65E5\u65E5\u7EBF\u7F3A\u5931\u65F6\u4E0D\u8BA1\u7B97\u6536\u76CA\uFF0C\u4E0D\u4E0E\u6DA8\u505C\u6C60\u672A\u590D\u6743\u4EF7\u683C\u6DF7\u7528",
           note: "\u5386\u53F2\u89C2\u5BDF\u53CD\u9988\uFF1A\u57FA\u4E8E\u76F8\u90BB\u4EA4\u6613\u65E5\u65E5\u7EBF\u6536\u76D8\u6570\u636E\u7684\u89C2\u5BDF\u6536\u76CA\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA",
           universe: universe.slice(0, 200)
-        }
+        },
+        datasetOwner
       );
+      requireApplied(reviewResult);
     }
   } else if (job.kind === "MINUTES") {
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
@@ -7620,6 +7737,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       ) ? cloned.sourceCoverage.tradingDates : [];
       if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { datasetId }))
         return { ...await jobs.getJob(jobId), note: takeoverNotice };
+      datasetOwner = await store.acquireDatasetOwnership(
+        datasetId,
+        EXECUTOR_ID2,
+        jobId
+      );
       coverage.notes.push(
         `\u5206\u949F\u6570\u636E\u9644\u52A0\u4E3A\u65B0\u6570\u636E\u96C6\u7248\u672C ${datasetId}\uFF08\u514B\u9686\u81EA ${cloneSource}\uFF0C\u7EE7\u627F\u5DF2\u5B8C\u6210\u5206\u949F\u6570\u636E\uFF09\uFF1B\u6E90\u6570\u636E\u96C6\u4FDD\u6301\u53D1\u5E03\u65F6\u72B6\u6001\u4E0D\u88AB\u6539\u5199`
       );
@@ -7636,33 +7758,54 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         try {
           const series = await provider.minuteSeries({ code, date });
           await guardOwnership();
-          await store.saveMinuteInputs(datasetId, date, code, {
-            bars: series.inSession,
-            anomalies: series.anomalies.slice(0, 5),
-            sampled: true,
-            note: "\u5206\u949F\u91C7\u6837\u4EF7\u5E8F\u5217\uFF08MINUTE_SAMPLE_V1\uFF09\uFF0C\u975E\u5B8C\u6574 OHLC"
-          });
-          await store.saveChunk(jobId, {
-            chunkKey,
-            datasetId,
-            requestRange: date,
-            actualRange: date,
-            rows: series.inSession.length,
-            stage: "DONE",
-            rawDigest: await digestOf(series),
-            raw: series
-          });
+          requireApplied(
+            await store.saveMinuteInputs(
+              datasetId,
+              date,
+              code,
+              {
+                bars: series.inSession,
+                anomalies: series.anomalies.slice(0, 5),
+                sampled: true,
+                note: "\u5206\u949F\u91C7\u6837\u4EF7\u5E8F\u5217\uFF08MINUTE_SAMPLE_V1\uFF09\uFF0C\u975E\u5B8C\u6574 OHLC"
+              },
+              datasetOwner
+            )
+          );
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: date,
+                rows: series.inSession.length,
+                stage: "DONE",
+                rawDigest: await digestOf(series),
+                raw: series
+              },
+              datasetOwner
+            )
+          );
           dayRows++;
         } catch (error) {
           if (error instanceof ExecutorLostError) throw error;
-          await store.saveChunk(jobId, {
-            chunkKey,
-            requestRange: date,
-            actualRange: null,
-            rows: 0,
-            stage: "FAILED",
-            artifactRef: String(error.message ?? error).slice(0, 160)
-          });
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: null,
+                rows: 0,
+                stage: "FAILED",
+                artifactRef: String(error.message ?? error).slice(0, 160)
+              },
+              datasetOwner
+            )
+          );
           dayFailures++;
         }
       }
@@ -7729,25 +7872,38 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         }
       }
       if (Object.keys(perCode).length) {
-        await store.saveDailyInputs(datasetId, date, {
-          normalized: perCode,
-          provenance: {
-            origin: "HISTORICAL_RECONSTRUCTED",
-            provider: job.provider,
-            adjustedPrice: "QFQ",
-            note: "\u65E5\u7EBF\u89C2\u5BDF\u8F93\u5165\uFF08\u524D\u590D\u6743\uFF09\uFF1B\u65E0\u6DA8\u505C\u7279\u5F81\uFF0C\u4E0D\u80FD\u91CD\u5EFA\u516D\u56E0\u5B50\u8BC4\u5206"
-          }
-        });
-        await store.saveChunk(jobId, {
-          chunkKey: `daily:${date}`,
-          datasetId,
-          requestRange: date,
-          actualRange: date,
-          rows: Object.keys(perCode).length,
-          stage: "DONE",
-          rawDigest: await digestOf(perCode),
-          raw: perCode
-        });
+        requireApplied(
+          await store.saveDailyInputs(
+            datasetId,
+            date,
+            {
+              normalized: perCode,
+              provenance: {
+                origin: "HISTORICAL_RECONSTRUCTED",
+                provider: job.provider,
+                adjustedPrice: "QFQ",
+                note: "\u65E5\u7EBF\u89C2\u5BDF\u8F93\u5165\uFF08\u524D\u590D\u6743\uFF09\uFF1B\u65E0\u6DA8\u505C\u7279\u5F81\uFF0C\u4E0D\u80FD\u91CD\u5EFA\u516D\u56E0\u5B50\u8BC4\u5206"
+              }
+            },
+            datasetOwner
+          )
+        );
+        requireApplied(
+          await store.saveChunk(
+            jobId,
+            {
+              chunkKey: `daily:${date}`,
+              datasetId,
+              requestRange: date,
+              actualRange: date,
+              rows: Object.keys(perCode).length,
+              stage: "DONE",
+              rawDigest: await digestOf(perCode),
+              raw: perCode
+            },
+            datasetOwner
+          )
+        );
         succeeded.push({ date });
       }
       for (const code of codes) universeCodes.add(code);
@@ -7778,7 +7934,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   );
   coverage.executionModel = executionModel;
   await guardOwnership();
-  const finalCoverage = await store.updateDatasetCoverage(datasetId, coverage);
+  const finalCoverage = requireApplied(
+    await store.updateDatasetCoverage(datasetId, coverage, datasetOwner)
+  );
   if (!succeeded.length)
     return jobs.finishJob(jobId, EXECUTOR_ID2, {
       stage: "FAILED",

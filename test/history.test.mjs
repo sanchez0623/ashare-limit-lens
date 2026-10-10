@@ -61,6 +61,7 @@ function installFetchStub({
   dailySkipDates = [],
   minuteQuery = null,
   onDailyPrices = null,
+  onPoolFetch = null,
 }) {
   const calls = [];
   const fetchBefore = globalThis.fetch;
@@ -70,6 +71,10 @@ function installFetchStub({
     if (url.includes("push2ex.eastmoney.com")) {
       const date = new URL(url).searchParams.get("date");
       const formatted = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+      if (onPoolFetch) {
+        const custom = await onPoolFetch({ date, formatted, url });
+        if (custom) return custom;
+      }
       if (poolFailureDates.includes(formatted))
         return Response.json({ rc: 1, data: null });
       if (!poolDates.includes(formatted))
@@ -864,18 +869,32 @@ test("迟到下载执行器无法改写已发布数据与完整性", async () =>
         .run();
       assert.equal(await jobs.claimExecution(jobId, "executor-new", 0), true);
       const datasetId = (await jobs.getJob(jobId)).datasetId;
-      await store.saveDailyInputs(datasetId, publishedDate, {
-        normalized: { [code]: bar(1000) },
-        provenance: { origin: "HISTORICAL_RECONSTRUCTED" },
-      });
-      await store.updateDatasetCoverage(datasetId, {
-        observedStart: publishedDate,
-        observedEnd: publishedDate,
-        executionModel: "DAILY_OBSERVATION_V1",
-        succeededDates: [publishedDate],
-        tradingDates: tradingDays,
-        failedDates: [],
-      });
+      const owner = await store.acquireDatasetOwnership(
+        datasetId,
+        "executor-new",
+        jobId,
+      );
+      await store.saveDailyInputs(
+        datasetId,
+        publishedDate,
+        {
+          normalized: { [code]: bar(1000) },
+          provenance: { origin: "HISTORICAL_RECONSTRUCTED" },
+        },
+        owner,
+      );
+      await store.updateDatasetCoverage(
+        datasetId,
+        {
+          observedStart: publishedDate,
+          observedEnd: publishedDate,
+          executionModel: "DAILY_OBSERVATION_V1",
+          succeededDates: [publishedDate],
+          tradingDates: tradingDays,
+          failedDates: [],
+        },
+        owner,
+      );
       const finished = await jobs.finishJob(jobId, "executor-new", {
         stage: "READY",
         datasetId,
@@ -911,6 +930,214 @@ test("迟到下载执行器无法改写已发布数据与完整性", async () =>
   } finally {
     stub.restore();
     DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("被接管后旧执行器的失败分支无法把新执行器的 DONE 记录改写为 FAILED", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const tradingDays = weekdays("2026-01-01", "2026-03-31");
+  const jobs = new HistoryJobRepository(env);
+  const store = openHistoryStore(env);
+  const publishedDate = "2026-03-02";
+  let tookOver = false;
+  let jobId = null;
+  const stub = installFetchStub({
+    tradingDays,
+    poolDates: tradingDays,
+    onPoolFetch: async ({ formatted, url }) => {
+      // 仅在下载阶段、且仅对涨停池主请求触发一次接管：
+      // 规避能力探测（PROBING）期的池请求，以及并发请求造成的重复接管。
+      if (tookOver || !url.includes("getTopicZTPool")) return null;
+      const current = await jobs.getJob(jobId);
+      if (current?.stage !== "DOWNLOADING") return null;
+      tookOver = true;
+      const datasetId = current.datasetId;
+      await jobs.db
+        .prepare(
+          "UPDATE history_import_jobs SET progress = json_set(progress, '$.claimedAt', '2000-01-01T00:00:00.000Z') WHERE id = ?",
+        )
+        .bind(jobId)
+        .run();
+      assert.equal(await jobs.claimExecution(jobId, "executor-new", 0), true);
+      const owner = await store.acquireDatasetOwnership(
+        datasetId,
+        "executor-new",
+        jobId,
+      );
+      await store.saveDailyInputs(
+        datasetId,
+        formatted,
+        {
+          normalized: {},
+          provenance: { origin: "HISTORICAL_RECONSTRUCTED" },
+        },
+        owner,
+      );
+      await store.saveChunk(
+        jobId,
+        {
+          chunkKey: `limit:${formatted}`,
+          datasetId,
+          requestRange: formatted,
+          actualRange: formatted,
+          rows: 0,
+          stage: "DONE",
+          raw: [],
+        },
+        owner,
+      );
+      await store.updateDatasetCoverage(
+        datasetId,
+        {
+          observedStart: formatted,
+          observedEnd: formatted,
+          executionModel: "SIX_FACTOR_V1",
+          succeededDates: [formatted],
+          tradingDates: tradingDays,
+          failedDates: [],
+        },
+        owner,
+      );
+      const finished = await jobs.finishJob(jobId, "executor-new", {
+        stage: "READY",
+        datasetId,
+        statusPayload: { datasetId, executionModel: "SIX_FACTOR_V1" },
+      });
+      assert.equal(finished.stage, "READY");
+      // 旧执行器随后拿到 HTTP 503，进入失败分支尝试写 FAILED
+      return new Response("pool unavailable", { status: 503 });
+    },
+  });
+  try {
+    const job = await createHistoryImport(env, {
+      kind: "LIMIT_FEATURES",
+      start: "2026-03-02",
+      end: "2026-03-04",
+    });
+    jobId = job.id;
+    const result = await runHistoryImport(env, job.id);
+    assert.ok(String(result.note ?? "").includes("接管"));
+    const finalJob = await jobs.getJob(job.id);
+    assert.equal(finalJob.stage, "READY");
+    const datasetId = finalJob.datasetId;
+    const chunk = await store.db
+      .prepare(
+        "SELECT stage, dataset_id FROM history_chunks WHERE job_id = ? AND chunk_key = ?",
+      )
+      .bind(jobId, `limit:${publishedDate}`)
+      .first();
+    assert.equal(
+      chunk.stage,
+      "DONE",
+      "旧执行器的 503 失败分支不得把新执行器已完成的下载块改写为 FAILED",
+    );
+    assert.equal(chunk.dataset_id, datasetId);
+    const integrity = await store.datasetIntegrity(datasetId);
+    assert.equal(integrity.verified, true);
+  } finally {
+    stub.restore();
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("存储层代次守卫：被接管后旧执行器的迟到写入被拒绝", async () => {
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const store = new HistoryDatasetStore(researchPath);
+  try {
+    await store.ensure();
+    const datasetId = "hds-generation-guard";
+    const code = "600001";
+    const date = "2026-03-02";
+    const bar = (closeCents) => ({
+      code,
+      tradeDate: date,
+      openCents: closeCents - 10,
+      closeCents,
+      highCents: closeCents + 10,
+      lowCents: closeCents - 20,
+      volumeShares: 1000,
+    });
+    const coverage = {
+      observedStart: date,
+      observedEnd: date,
+      executionModel: "DAILY_OBSERVATION_V1",
+      succeededDates: [date],
+      tradingDates: [date],
+      failedDates: [],
+    };
+    await store.createDatasetVersion({
+      id: datasetId,
+      provider: "tencent-free",
+      kind: "DAILY",
+      executionModel: "DAILY_OBSERVATION_V1",
+      requestedStart: date,
+      requestedEnd: date,
+      coverage,
+    });
+    const ownerOld = await store.acquireDatasetOwnership(
+      datasetId,
+      "executor-old",
+      "hjob-1",
+    );
+    const ownerNew = await store.acquireDatasetOwnership(
+      datasetId,
+      "executor-new",
+      "hjob-1",
+    );
+    assert.equal(ownerOld.generation, 1);
+    assert.equal(ownerNew.generation, 2, "接管后应推进到下一代次");
+    assert.equal(
+      (
+        await store.saveObservationDaily(
+          datasetId,
+          date,
+          new Map([[code, bar(1000)]]),
+          ownerNew,
+        )
+      ).applied,
+      true,
+    );
+    assert.equal(
+      (await store.updateDatasetCoverage(datasetId, coverage, ownerNew))
+        .applied,
+      true,
+    );
+    const late = await store.saveObservationDaily(
+      datasetId,
+      date,
+      new Map([[code, bar(1300)]]),
+      ownerOld,
+    );
+    assert.equal(late.applied, false, "旧执行器的迟到数据写入应被代次守卫拒绝");
+    const latePublish = await store.updateDatasetCoverage(
+      datasetId,
+      { ...coverage, observedEnd: date },
+      ownerOld,
+    );
+    assert.equal(
+      latePublish.applied,
+      false,
+      "旧执行器不得改写已发布的覆盖度与摘要",
+    );
+    const stored = await store.getObservationDaily(datasetId, date);
+    assert.equal(
+      stored[code].closeCents,
+      1000,
+      "已发布价格不得被旧执行器从 10 元改为 13 元",
+    );
+    const integrity = await store.datasetIntegrity(datasetId);
+    assert.equal(integrity.verified, true);
+  } finally {
     store.close();
     try {
       unlinkSync(researchPath);

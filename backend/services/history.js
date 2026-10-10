@@ -145,6 +145,10 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     if (!(await jobs.stillOwner(jobId, EXECUTOR_ID)))
       throw new ExecutorLostError();
   };
+  const requireApplied = (result) => {
+    if (result && result.applied === false) throw new ExecutorLostError();
+    return result;
+  };
   const provider = historyProviders()[job.provider];
   if (!provider) throw new Error("未知历史数据供应商");
   const requestedStart = job.requestedRange.start,
@@ -179,6 +183,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   let clonedSourceDates = null;
   let clonedSourceTradingDates = null;
   let datasetId = job.datasetId;
+  let datasetOwner = null;
   if (!datasetId) {
     await guardOwnership();
     datasetId = newId("hds");
@@ -205,6 +210,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     }))
   )
     return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
+  datasetOwner = await store.acquireDatasetOwnership(
+    datasetId,
+    EXECUTOR_ID,
+    jobId,
+  );
   const calendar = await provider.tradingCalendar({
     start: requestedStart,
     end: requestedEnd,
@@ -254,30 +264,47 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
             rawPayload: features,
             normalizedPayload: normalized,
           });
-          await store.saveDailyInputs(datasetId, date, {
-            normalized,
-            provenance: { ...provenance, broken },
-          });
-          await store.saveChunk(jobId, {
-            chunkKey,
-            datasetId,
-            requestRange: date,
-            actualRange: date,
-            rows: normalized.length,
-            stage: "DONE",
-            rawDigest: await digestOf(features),
-            raw: features,
-          });
+          requireApplied(
+            await store.saveDailyInputs(
+              datasetId,
+              date,
+              { normalized, provenance: { ...provenance, broken } },
+              datasetOwner,
+            ),
+          );
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: date,
+                rows: normalized.length,
+                stage: "DONE",
+                rawDigest: await digestOf(features),
+                raw: features,
+              },
+              datasetOwner,
+            ),
+          );
         } catch (error) {
           if (error instanceof ExecutorLostError) throw error;
-          await store.saveChunk(jobId, {
-            chunkKey,
-            requestRange: date,
-            actualRange: null,
-            rows: 0,
-            stage: "FAILED",
-            artifactRef: String(error.message ?? error).slice(0, 160),
-          });
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: null,
+                rows: 0,
+                stage: "FAILED",
+                artifactRef: String(error.message ?? error).slice(0, 160),
+              },
+              datasetOwner,
+            ),
+          );
           failed.push({
             date,
             reason: String(error.message ?? error).slice(0, 160),
@@ -326,7 +353,14 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       if (dailyNormalized) {
         await guardOwnership();
         for (const [obsDate, byCode] of dailyNormalized)
-          await store.saveObservationDaily(datasetId, obsDate, byCode);
+          requireApplied(
+            await store.saveObservationDaily(
+              datasetId,
+              obsDate,
+              byCode,
+              datasetOwner,
+            ),
+          );
       }
     }
     const dateIndex = new Map(
@@ -346,7 +380,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         a.stocks.map((stock) => [stock.code, stock.score]),
       );
       entry.nextUniverse = a.stocks.length;
-      await store.saveScore(
+      const scoreResult = await store.saveScore(
         datasetId,
         entry.date,
         SCORING_VERSION,
@@ -364,7 +398,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           emotion: a.emotion,
           origin: "HISTORICAL_RECONSTRUCTED",
         },
+        datasetOwner,
       );
+      requireApplied(scoreResult);
       const nextTradingDate =
         calendar.dates[dateIndex.get(entry.date) + 1] ?? null;
       const nextEntry =
@@ -434,7 +470,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         values.length
           ? values.reduce((a, b) => a + b, 0) / values.length
           : null;
-      await store.saveReview(
+      const reviewResult = await store.saveReview(
         datasetId,
         entry.date,
         nextTradingDate,
@@ -459,7 +495,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           note: "历史观察反馈：基于相邻交易日日线收盘数据的观察收益；不含可成交性保证，不代表可执行策略收益",
           universe: universe.slice(0, 200),
         },
+        datasetOwner,
       );
+      requireApplied(reviewResult);
     }
   } else if (job.kind === "MINUTES") {
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
@@ -489,6 +527,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         : [];
       if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { datasetId })))
         return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
+      datasetOwner = await store.acquireDatasetOwnership(
+        datasetId,
+        EXECUTOR_ID,
+        jobId,
+      );
       coverage.notes.push(
         `分钟数据附加为新数据集版本 ${datasetId}（克隆自 ${cloneSource}，继承已完成分钟数据）；源数据集保持发布时状态不被改写`,
       );
@@ -505,33 +548,54 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         try {
           const series = await provider.minuteSeries({ code, date });
           await guardOwnership();
-          await store.saveMinuteInputs(datasetId, date, code, {
-            bars: series.inSession,
-            anomalies: series.anomalies.slice(0, 5),
-            sampled: true,
-            note: "分钟采样价序列（MINUTE_SAMPLE_V1），非完整 OHLC",
-          });
-          await store.saveChunk(jobId, {
-            chunkKey,
-            datasetId,
-            requestRange: date,
-            actualRange: date,
-            rows: series.inSession.length,
-            stage: "DONE",
-            rawDigest: await digestOf(series),
-            raw: series,
-          });
+          requireApplied(
+            await store.saveMinuteInputs(
+              datasetId,
+              date,
+              code,
+              {
+                bars: series.inSession,
+                anomalies: series.anomalies.slice(0, 5),
+                sampled: true,
+                note: "分钟采样价序列（MINUTE_SAMPLE_V1），非完整 OHLC",
+              },
+              datasetOwner,
+            ),
+          );
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: date,
+                rows: series.inSession.length,
+                stage: "DONE",
+                rawDigest: await digestOf(series),
+                raw: series,
+              },
+              datasetOwner,
+            ),
+          );
           dayRows++;
         } catch (error) {
           if (error instanceof ExecutorLostError) throw error;
-          await store.saveChunk(jobId, {
-            chunkKey,
-            requestRange: date,
-            actualRange: null,
-            rows: 0,
-            stage: "FAILED",
-            artifactRef: String(error.message ?? error).slice(0, 160),
-          });
+          requireApplied(
+            await store.saveChunk(
+              jobId,
+              {
+                chunkKey,
+                datasetId,
+                requestRange: date,
+                actualRange: null,
+                rows: 0,
+                stage: "FAILED",
+                artifactRef: String(error.message ?? error).slice(0, 160),
+              },
+              datasetOwner,
+            ),
+          );
           dayFailures++;
         }
       }
@@ -598,25 +662,38 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         }
       }
       if (Object.keys(perCode).length) {
-        await store.saveDailyInputs(datasetId, date, {
-          normalized: perCode,
-          provenance: {
-            origin: "HISTORICAL_RECONSTRUCTED",
-            provider: job.provider,
-            adjustedPrice: "QFQ",
-            note: "日线观察输入（前复权）；无涨停特征，不能重建六因子评分",
-          },
-        });
-        await store.saveChunk(jobId, {
-          chunkKey: `daily:${date}`,
-          datasetId,
-          requestRange: date,
-          actualRange: date,
-          rows: Object.keys(perCode).length,
-          stage: "DONE",
-          rawDigest: await digestOf(perCode),
-          raw: perCode,
-        });
+        requireApplied(
+          await store.saveDailyInputs(
+            datasetId,
+            date,
+            {
+              normalized: perCode,
+              provenance: {
+                origin: "HISTORICAL_RECONSTRUCTED",
+                provider: job.provider,
+                adjustedPrice: "QFQ",
+                note: "日线观察输入（前复权）；无涨停特征，不能重建六因子评分",
+              },
+            },
+            datasetOwner,
+          ),
+        );
+        requireApplied(
+          await store.saveChunk(
+            jobId,
+            {
+              chunkKey: `daily:${date}`,
+              datasetId,
+              requestRange: date,
+              actualRange: date,
+              rows: Object.keys(perCode).length,
+              stage: "DONE",
+              rawDigest: await digestOf(perCode),
+              raw: perCode,
+            },
+            datasetOwner,
+          ),
+        );
         succeeded.push({ date });
       }
       for (const code of codes) universeCodes.add(code);
@@ -649,7 +726,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     );
   coverage.executionModel = executionModel;
   await guardOwnership();
-  const finalCoverage = await store.updateDatasetCoverage(datasetId, coverage);
+  const finalCoverage = requireApplied(
+    await store.updateDatasetCoverage(datasetId, coverage, datasetOwner),
+  );
   if (!succeeded.length)
     return jobs.finishJob(jobId, EXECUTOR_ID, {
       stage: "FAILED",
