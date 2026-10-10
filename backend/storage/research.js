@@ -287,6 +287,32 @@ export class ResearchRepository {
     }
     return registry;
   }
+  async assertTrainingDatesUsable(trainingDates) {
+    if (!Array.isArray(trainingDates) || !trainingDates.length)
+      throw new Error("冷启动训练日期清单为空");
+    for (const date of trainingDates) {
+      const claimed = await this.db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM research_test_claims WHERE namespace = ? AND outcome_date = ?",
+        )
+        .bind(this.namespace, date)
+        .first();
+      if (claimed.n)
+        throw new Error(
+          `日期 ${date} 已登记为前瞻测试数据，不能同时作为冷启动训练数据（防止数据泄漏）`,
+        );
+      const tested = await this.db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM research_sample_uses WHERE namespace = ? AND outcome_date = ? AND role <> 'HISTORICAL_TRAIN'",
+        )
+        .bind(this.namespace, date)
+        .first();
+      if (tested.n)
+        throw new Error(
+          `日期 ${date} 已被历史测试或验证占用，不能同时作为冷启动训练数据（防止数据泄漏）`,
+        );
+    }
+  }
   async assertFreshOutcomeDates(dates) {
     return this.assertReservationFreshness(dates);
   }
@@ -450,7 +476,7 @@ export class ResearchRepository {
     datasetManifestDigest,
   }) {
     const attempt = async () => {
-      await this.assertReservationFreshness(trainingDates);
+      await this.assertTrainingDatesUsable(trainingDates);
       const registryRow = await this.db
         .prepare(
           "SELECT revision, attempt_sequence, bootstrap_done FROM research_registry WHERE namespace = ?",

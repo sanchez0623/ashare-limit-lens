@@ -4,7 +4,7 @@ import {
   advanceSession,
   closeSession,
 } from "../domain/realtime.js";
-import { DEFAULT_FEES } from "../../shared/fees.js";
+import { DEFAULT_FEES, normalizeFees } from "../../shared/fees.js";
 import { digestOf } from "../domain/research-lineage.js";
 import {
   HISTORICAL_EXECUTION_MODEL,
@@ -112,7 +112,7 @@ function endOfDayQuotes({ date, minuteByCode, templates }) {
 }
 export async function runBacktest(
   env,
-  { datasetId, name, strategy, initialCapital, weights },
+  { datasetId, name, strategy, initialCapital, weights, fees },
 ) {
   const store = openHistoryStore(env);
   if (!store)
@@ -122,14 +122,14 @@ export async function runBacktest(
   const integrity = await store.datasetIntegrity(datasetId);
   if (integrity && !integrity.verified)
     throw new Error(
-      "历史数据集 manifest 校验失败：数据集输入与发布时不一致（可能被修改），拒绝用于回测",
+      `历史数据集 manifest 校验失败：${(integrity.issues ?? []).join("；")}；拒绝用于回测`,
     );
   const dataset = await store.getDataset(datasetId);
   if (!dataset) throw new Error("历史数据集不存在");
   if (dataset.executionModel !== "SIX_FACTOR_V1")
     throw new Error("回测需要六因子历史评分数据集（SIX_FACTOR_V1）");
   const strategyParams = strategy ?? BASE_STRATEGY;
-  const feeConfig = DEFAULT_FEES;
+  const feeConfig = fees ? normalizeFees(fees) : DEFAULT_FEES;
   const runId = newId("bt");
   let book = newBook(initialCapital ?? 1000000, feeConfig);
   const paramsDigest = await digestOf(strategyParams);
@@ -147,8 +147,37 @@ export async function runBacktest(
     executionVersion: HISTORICAL_EXECUTION_VERSION,
     initialBook: { initialCashCents: book.initialCashCents },
   });
+  try {
+    return await runBacktestInner(store, runId, dataset, {
+      strategyParams,
+      feeConfig,
+      book,
+    });
+  } catch (error) {
+    const reason = String(error?.message ?? error).slice(0, 300);
+    await store.finishBacktestRun(runId, "FAILED", {
+      executionModel: HISTORICAL_EXECUTION_MODEL,
+      error: reason,
+      note: "回测过程发生未预期错误（如持仓缺少收盘报价），任务记录为 FAILED；可修正数据后重试",
+    });
+    throw error;
+  }
+}
+async function runBacktestInner(
+  store,
+  runId,
+  dataset,
+  { strategyParams, feeConfig, book },
+) {
+  const datasetId = dataset.id;
   const scores = await store.listScores(datasetId);
   const minuteDates = new Set(await store.listMinuteDates(datasetId));
+  const succeededDates = Array.isArray(dataset.coverage?.succeededDates)
+    ? dataset.coverage.succeededDates
+    : [];
+  const succeededPosition = new Map(
+    succeededDates.map((date, index) => [date, index]),
+  );
   const coverage = {
     executionModel: HISTORICAL_EXECUTION_MODEL,
     plannedPairs: 0,
@@ -168,6 +197,19 @@ export async function runBacktest(
     const signalDate = signal.tradeDate;
     const tradeDate = scores[index + 1].tradeDate;
     coverage.plannedPairs++;
+    const tradePosition = succeededPosition.get(tradeDate);
+    if (
+      tradePosition === undefined ||
+      tradePosition === 0 ||
+      succeededDates[tradePosition - 1] !== signalDate
+    ) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: "评分日与执行日之间有缺失交易日，不跨缺失日配对执行",
+      });
+      continue;
+    }
     if (!minuteDates.has(tradeDate)) {
       coverage.skippedPairs.push({
         signalDate,
@@ -254,13 +296,15 @@ export async function runBacktest(
     const sampledCloseIncomplete = Object.values(sampledCloseTimes).some(
       (time) => time !== "15:00",
     );
-    if (sampledCloseIncomplete)
+    if (sampledCloseIncomplete) {
+      coverage.sampledCloseIncomplete = true;
       coverage.notes.push(
         `${tradeDate} 收盘价以分钟采样末端 ${Object.entries(sampledCloseTimes)
           .filter(([, time]) => time !== "15:00")
           .map(([code, time]) => `${code}@${time}`)
           .join("、")} 近似，未覆盖真实收盘时段`,
       );
+    }
     const equityRow = {
       tradeDate,
       equityCents: book.equityCents,
@@ -281,7 +325,9 @@ export async function runBacktest(
   coverage.fillCount = ledgerRows.length;
   coverage.feesCents = book.feesCents;
   const stage =
-    coverage.executedPairs > 0 && coverage.skippedPairs.length === 0
+    coverage.executedPairs > 0 &&
+    coverage.skippedPairs.length === 0 &&
+    !coverage.sampledCloseIncomplete
       ? "READY"
       : "PARTIAL";
   const run = await store.finishBacktestRun(runId, stage, coverage);
@@ -305,6 +351,43 @@ export async function backtestDetail(env, runId) {
       ? equity.at(-1).equityCents / run.initialBook.initialCashCents - 1
       : null;
   const ledgerCountMatches = ledger.length === (run.coverage?.fillCount ?? -1);
+  const cashIssues = [];
+  if (run.initialBook?.initialCashCents) {
+    let replayCashCents = run.initialBook.initialCashCents;
+    const ledgerByDate = new Map();
+    for (const row of ledger) {
+      const recomputedDelta =
+        row.side === "BUY"
+          ? -(row.quantity * row.priceCents) - row.feeCents
+          : row.quantity * row.priceCents - row.feeCents;
+      if (recomputedDelta !== row.cashDeltaCents)
+        cashIssues.push(
+          `${row.tradeDate} ${row.code} ${row.side} 现金变动 ${row.cashDeltaCents} 与数量×价格×费用重算值 ${recomputedDelta} 不一致`,
+        );
+      if (!ledgerByDate.has(row.tradeDate)) ledgerByDate.set(row.tradeDate, []);
+      ledgerByDate.get(row.tradeDate).push(row);
+      replayCashCents += recomputedDelta;
+    }
+    for (const equityRow of equity) {
+      const dayRows = ledgerByDate.get(equityRow.tradeDate) ?? [];
+      if (dayRows.length) {
+        const lastAfter = dayRows.at(-1).cashAfterCents;
+        if (lastAfter !== equityRow.cashCents)
+          cashIssues.push(
+            `${equityRow.tradeDate} 权益记录现金 ${equityRow.cashCents} 与账本末笔现金 ${lastAfter} 不一致`,
+          );
+      } else if (equityRow.cashCents !== replayCashCents) {
+        cashIssues.push(
+          `${equityRow.tradeDate} 无成交日现金 ${equityRow.cashCents} 与重放现金 ${replayCashCents} 不一致`,
+        );
+      }
+    }
+    if (equity.length && replayCashCents !== equity.at(-1).cashCents)
+      cashIssues.push(
+        `账本重放终值现金 ${replayCashCents} 与权益终值现金 ${equity.at(-1).cashCents} 不一致`,
+      );
+  }
+  const cashChainMatches = cashIssues.length === 0;
   return {
     run,
     plans,
@@ -313,17 +396,22 @@ export async function backtestDetail(env, runId) {
     equity,
     verification: {
       ledgerCountMatches,
+      cashChainMatches,
+      cashIssues: cashIssues.slice(0, 10),
       totalReturnMatches:
-        recomputedTotalReturn === null || !ledgerCountMatches || !ledger.length
+        recomputedTotalReturn === null ||
+        !ledgerCountMatches ||
+        !ledger.length ||
+        !cashChainMatches
           ? false
           : Math.abs(
               (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0),
             ) < 1e-9,
       recomputedTotalReturn,
       note:
-        ledger.length && ledgerCountMatches
-          ? "收益核验基于当前账本行数与权益终值"
-          : "账本缺失或与运行记录不一致，无法核验收益；不得将 totalReturn 视为已验证",
+        ledger.length && ledgerCountMatches && cashChainMatches
+          ? "收益核验基于账本独立重放（逐笔现金变动重算 + 逐日现金链）与权益终值"
+          : "账本缺失、行数不符或现金重放不一致，无法核验收益；不得将 totalReturn 视为已验证",
     },
   };
 }

@@ -38,6 +38,7 @@ function minuteBars(basePrice) {
     { time: "09:34", priceCents: basePrice - 5, volumeShares: 600000 },
     { time: "10:00", priceCents: basePrice, volumeShares: 600000 },
     { time: "14:50", priceCents: basePrice, volumeShares: 400000 },
+    { time: "15:00", priceCents: basePrice + 5, volumeShares: 200000 },
   ];
 }
 async function seedDataset(env, store, { minuteOn }) {
@@ -66,6 +67,10 @@ async function seedDataset(env, store, { minuteOn }) {
         anomalies: [],
         sampled: true,
       });
+  await store.updateDatasetCoverage(datasetId, {
+    executionModel: "SIX_FACTOR_V1",
+    succeededDates: DATES,
+  });
   return datasetId;
 }
 test("研究回测：采样模型成交、T+1 与费用入账、收益可重放验证", async () => {
@@ -213,6 +218,98 @@ test("数据集输入被篡改后回测拒绝并提示校验失败", async () =>
       () => runBacktest(env, { datasetId, initialCapital: 1000000 }),
       /manifest 校验失败/,
     );
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("分钟数据篡改使 manifest 核验失败", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = await seedDataset(env, store, { minuteOn: DATES.slice(1) });
+  try {
+    await store.updateDatasetCoverage(datasetId, {
+      executionModel: "SIX_FACTOR_V1",
+    });
+    const before = await store.datasetIntegrity(datasetId);
+    assert.equal(before.verified, true);
+    await store.saveMinuteInputs(datasetId, DATES[1], "600001", {
+      bars: [{ time: "09:31", priceCents: 1, volumeShares: 1 }],
+      anomalies: [],
+      sampled: true,
+    });
+    const after = await store.datasetIntegrity(datasetId);
+    assert.equal(after.verified, false);
+    assert.ok(
+      after.issues.some((issue) => issue.includes("manifest 摘要不一致")),
+    );
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("回测不跨缺失交易日配对执行", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = await seedDataset(env, store, { minuteOn: DATES });
+  try {
+    await store.updateDatasetCoverage(datasetId, {
+      executionModel: "SIX_FACTOR_V1",
+      succeededDates: ["2026-03-02", "2026-03-04"],
+    });
+    const run = await runBacktest(env, { datasetId, initialCapital: 1000000 });
+    assert.equal(run.stage, "PARTIAL");
+    assert.ok(
+      run.coverage.skippedPairs.some((row) =>
+        row.reason.includes("不跨缺失日配对"),
+      ),
+    );
+    assert.equal(run.coverage.executedPairs, 0);
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("修改账本成交价格后收益核验失败", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = await seedDataset(env, store, { minuteOn: DATES.slice(1) });
+  try {
+    const run = await runBacktest(env, { datasetId, initialCapital: 1000000 });
+    const before = await backtestDetail(env, run.id);
+    assert.equal(before.verification.totalReturnMatches, true);
+    const rows = await store.db
+      .prepare("SELECT id, payload FROM backtest_ledger WHERE run_id = ?")
+      .bind(run.id)
+      .all();
+    const target = rows.results[0];
+    const payload = JSON.parse(target.payload);
+    payload.priceCents += 50;
+    await store.db
+      .prepare(
+        "UPDATE backtest_ledger SET payload = ? WHERE run_id = ? AND id = ?",
+      )
+      .bind(JSON.stringify(payload), run.id, target.id)
+      .run();
+    const after = await backtestDetail(env, run.id);
+    assert.equal(after.verification.cashChainMatches, false);
+    assert.equal(after.verification.totalReturnMatches, false);
+    assert.ok(after.verification.cashIssues.length > 0);
   } finally {
     DB.close();
     store.close();

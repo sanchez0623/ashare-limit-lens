@@ -3762,11 +3762,19 @@ var HistoryJobRepository = class {
     ).run();
     return this.getJob(id);
   }
-  async claimExecution(id, executorId) {
-    const result = await this.db.prepare(
+  async claimExecution(id, executorId, leaseMinutes = 30) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const fresh = await this.db.prepare(
       "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PLANNED','PARTIAL','FAILED','BLOCKED')"
-    ).bind(executorId, (/* @__PURE__ */ new Date()).toISOString(), (/* @__PURE__ */ new Date()).toISOString(), id).run();
-    return result.meta.changes > 0;
+    ).bind(executorId, now, now, id).run();
+    if (fresh.meta.changes) return true;
+    const cutoff = new Date(
+      Date.now() - leaseMinutes * 60 * 1e3
+    ).toISOString();
+    const takeover = await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') < ?"
+    ).bind(executorId, now, now, now, id, cutoff).run();
+    return takeover.meta.changes > 0;
   }
   async finishJob(id, executorId, { stage, statusPayload, datasetId }) {
     if (!HISTORY_STAGES.includes(stage))
@@ -3870,6 +3878,14 @@ var HistoryDatasetStore = class {
         digest TEXT NOT NULL,
         PRIMARY KEY (dataset_id, trade_date, code)
       );
+      CREATE TABLE IF NOT EXISTS history_observation_prices (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        code TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, code)
+      );
       CREATE TABLE IF NOT EXISTS backtest_runs (
         id TEXT PRIMARY KEY,
         dataset_id TEXT NOT NULL,
@@ -3926,12 +3942,10 @@ var HistoryDatasetStore = class {
     coverage
   }) {
     await this.ensure();
-    const manifest = {
+    const manifest = await this.buildDatasetManifest(id, {
       executionModel: executionModel ?? null,
-      coverage,
-      chunkRefs: [],
-      inputs: []
-    };
+      coverage
+    });
     const digest2 = await digestOf(manifest);
     await this.db.prepare(
       "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -3988,6 +4002,7 @@ var HistoryDatasetStore = class {
       const { writeFileSync } = await import("node:fs");
       writeFileSync(artifactPath, JSON.stringify(raw), "utf8");
       storedRef = `history-chunks/${jobId}__${safeKey}.json`;
+      rawDigest = await digestOf(raw);
     }
     await this.db.prepare(
       "INSERT INTO history_chunks (job_id, chunk_key, dataset_id, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows, dataset_id = excluded.dataset_id, raw_digest = excluded.raw_digest, artifact_ref = excluded.artifact_ref"
@@ -4022,14 +4037,40 @@ var HistoryDatasetStore = class {
       artifactRef: row.artifact_ref
     }));
   }
+  async datasetMinuteRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, code, digest FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date, code"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      code: row.code,
+      digest: row.digest
+    }));
+  }
+  async datasetObservationRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, code, digest FROM history_observation_prices WHERE dataset_id = ? ORDER BY trade_date, code"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      code: row.code,
+      digest: row.digest
+    }));
+  }
   async buildDatasetManifest(datasetId, { executionModel, coverage }) {
     const inputs = await this.listDatasetDates(datasetId);
     const chunkRefs = await this.datasetChunkRefs(datasetId);
+    const minuteRefs = await this.datasetMinuteRefs(datasetId);
+    const observationRefs = await this.datasetObservationRefs(datasetId);
     return {
       executionModel: executionModel ?? null,
       coverage: coverage ?? null,
       chunkRefs,
-      inputs
+      inputs,
+      minuteRefs,
+      observationRefs
     };
   }
   async datasetIntegrity(datasetId) {
@@ -4040,9 +4081,35 @@ var HistoryDatasetStore = class {
       coverage: dataset.coverage
     });
     const recomputedDigest = await digestOf(manifest);
+    const issues = [];
+    if (recomputedDigest !== dataset.manifestDigest)
+      issues.push(
+        "\u6570\u636E\u96C6\u8F93\u5165\uFF08\u65E5\u7EBF/\u5206\u949F/\u89C2\u5BDF\u4EF7\u683C\uFF09\u4E0E\u53D1\u5E03\u65F6\u7684 manifest \u6458\u8981\u4E0D\u4E00\u81F4"
+      );
+    const { existsSync, readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    for (const ref of manifest.chunkRefs) {
+      if (!ref.artifactRef) {
+        issues.push(`\u4E0B\u8F7D\u5757 ${ref.chunkKey} \u7F3A\u5C11\u539F\u59CB\u5F52\u6863\u5F15\u7528`);
+        continue;
+      }
+      const artifactPath = join(dirname(this.path), ref.artifactRef);
+      if (!existsSync(artifactPath)) {
+        issues.push(
+          `\u4E0B\u8F7D\u5757 ${ref.chunkKey} \u7684\u539F\u59CB\u5F52\u6863\u6587\u4EF6\u7F3A\u5931\uFF1A${ref.artifactRef}`
+        );
+        continue;
+      }
+      const archivedDigest = await digestOf(
+        JSON.parse(readFileSync(artifactPath, "utf8"))
+      );
+      if (archivedDigest !== ref.rawDigest)
+        issues.push(`\u4E0B\u8F7D\u5757 ${ref.chunkKey} \u7684\u539F\u59CB\u5F52\u6863\u5185\u5BB9\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4`);
+    }
     return {
       datasetId,
-      verified: recomputedDigest === dataset.manifestDigest,
+      verified: issues.length === 0,
+      issues,
       manifestDigest: dataset.manifestDigest,
       recomputedDigest,
       manifest
@@ -4141,6 +4208,57 @@ var HistoryDatasetStore = class {
       "SELECT DISTINCT trade_date FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date"
     ).bind(datasetId).all();
     return result.results.map((row) => row.trade_date);
+  }
+  async saveObservationDaily(datasetId, tradeDate, byCode) {
+    await this.ensure();
+    for (const [code, row] of Object.entries(byCode)) {
+      const payload = JSON.stringify(row);
+      await this.db.prepare(
+        "INSERT OR REPLACE INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
+      ).bind(datasetId, tradeDate, code, payload, await digestOf(row)).run();
+    }
+  }
+  async getObservationDaily(datasetId, tradeDate) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT code, payload FROM history_observation_prices WHERE dataset_id = ? AND trade_date = ? ORDER BY code"
+    ).bind(datasetId, tradeDate).all();
+    if (!result.results.length) return null;
+    return Object.fromEntries(
+      result.results.map((row) => [row.code, JSON.parse(row.payload)])
+    );
+  }
+  async cloneDatasetForMinutes(sourceId) {
+    await this.ensure();
+    const source = await this.getDataset(sourceId);
+    if (!source) throw new Error(`\u8981\u9644\u52A0\u5206\u949F\u6570\u636E\u7684\u6570\u636E\u96C6\u4E0D\u5B58\u5728\uFF1A${sourceId}`);
+    const newId3 = `hds-${crypto.randomUUID()}`;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      newId3,
+      source.provider,
+      source.kind,
+      source.executionModel,
+      source.requestedRange.start,
+      source.requestedRange.end,
+      source.observedRange.start,
+      source.observedRange.end,
+      JSON.stringify(source.coverage),
+      source.manifestDigest,
+      now
+    ).run();
+    await this.db.prepare(
+      "INSERT INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) SELECT ?, trade_date, scoring_version, params_digest, payload, digest FROM history_scores WHERE dataset_id = ?"
+    ).bind(newId3, sourceId).run();
+    await this.db.prepare(
+      "INSERT INTO history_daily_inputs (dataset_id, trade_date, payload, digest) SELECT ?, trade_date, payload, digest FROM history_daily_inputs WHERE dataset_id = ?"
+    ).bind(newId3, sourceId).run();
+    await this.db.prepare(
+      "INSERT INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) SELECT ?, trade_date, code, payload, digest FROM history_observation_prices WHERE dataset_id = ?"
+    ).bind(newId3, sourceId).run();
+    return { id: newId3, sourceCoverage: source.coverage };
   }
   async createBacktestRun({
     id,
@@ -4579,6 +4697,26 @@ var ResearchRepository = class {
     }
     return registry;
   }
+  async assertTrainingDatesUsable(trainingDates) {
+    if (!Array.isArray(trainingDates) || !trainingDates.length)
+      throw new Error("\u51B7\u542F\u52A8\u8BAD\u7EC3\u65E5\u671F\u6E05\u5355\u4E3A\u7A7A");
+    for (const date of trainingDates) {
+      const claimed = await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM research_test_claims WHERE namespace = ? AND outcome_date = ?"
+      ).bind(this.namespace, date).first();
+      if (claimed.n)
+        throw new Error(
+          `\u65E5\u671F ${date} \u5DF2\u767B\u8BB0\u4E3A\u524D\u77BB\u6D4B\u8BD5\u6570\u636E\uFF0C\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u51B7\u542F\u52A8\u8BAD\u7EC3\u6570\u636E\uFF08\u9632\u6B62\u6570\u636E\u6CC4\u6F0F\uFF09`
+        );
+      const tested = await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM research_sample_uses WHERE namespace = ? AND outcome_date = ? AND role <> 'HISTORICAL_TRAIN'"
+      ).bind(this.namespace, date).first();
+      if (tested.n)
+        throw new Error(
+          `\u65E5\u671F ${date} \u5DF2\u88AB\u5386\u53F2\u6D4B\u8BD5\u6216\u9A8C\u8BC1\u5360\u7528\uFF0C\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u51B7\u542F\u52A8\u8BAD\u7EC3\u6570\u636E\uFF08\u9632\u6B62\u6570\u636E\u6CC4\u6F0F\uFF09`
+        );
+    }
+  }
   async assertFreshOutcomeDates(dates) {
     return this.assertReservationFreshness(dates);
   }
@@ -4722,7 +4860,7 @@ var ResearchRepository = class {
     datasetManifestDigest
   }) {
     const attempt = async () => {
-      await this.assertReservationFreshness(trainingDates);
+      await this.assertTrainingDatesUsable(trainingDates);
       const registryRow = await this.db.prepare(
         "SELECT revision, attempt_sequence, bootstrap_done FROM research_registry WHERE namespace = ?"
       ).bind(this.namespace).first();
@@ -5619,7 +5757,13 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
       testDates: windows.testDates,
       samples
     });
-  } catch {
+  } catch (error) {
+    const reason = String(error?.message ?? error);
+    if (reason.includes("\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u51B7\u542F\u52A8\u8BAD\u7EC3\u6570\u636E"))
+      return {
+        status: "NEED_DATA",
+        reason: `\u8BAD\u7EC3\u65E5\u671F\u4E0E\u5DF2\u7528\u6D4B\u8BD5\u6570\u636E\u51B2\u7A81\uFF0C\u672A\u6D88\u8017\u51B7\u542F\u52A8\u8D44\u683C\uFF1A${reason}`
+      };
     return { status: "BUSY", reason: "\u5E76\u53D1\u9884\u7559\u51B2\u7A81\uFF0C\u672C\u6B21\u672A\u53D1\u8D77\u6A21\u578B\u8C03\u7528" };
   }
   if (!reserved)
@@ -5755,41 +5899,26 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
     const nextPosition = succeededPosition.get(nextDate);
     if (nextPosition === void 0 || nextPosition === 0 || succeededDates[nextPosition - 1] !== signal.tradeDate)
       continue;
-    const daily = await store.getDailyInput(datasetId, nextDate);
-    if (!daily) continue;
-    const rows = Array.isArray(daily.normalized) ? daily.normalized : Object.entries(daily.normalized ?? {}).map(([code, row]) => ({
-      code,
-      name: null,
-      sector: "\u672A\u5206\u7C7B",
-      price: row.closeCents !== null ? row.closeCents / 100 : null,
-      change: null,
-      amount: null,
-      floatCap: null,
-      seal: null,
-      turnover: null,
-      first: null,
-      last: null,
-      breaks: null,
-      height: null
-    }));
-    const snapshotStocks = new Map(
-      (signal.payload.stocks ?? []).map((stock) => [
-        stock.code,
-        stock.price !== null && stock.price !== void 0 ? Math.round(stock.price * 100) : null
-      ])
+    const nextBars = await store.getObservationDaily(datasetId, nextDate);
+    const signalBars = await store.getObservationDaily(
+      datasetId,
+      signal.tradeDate
     );
+    if (!nextBars || !Object.keys(nextBars).length) continue;
     const quotes = {};
-    for (const row of rows) {
-      if (!row.code || row.price === null) continue;
-      const previousCloseCents = snapshotStocks.get(row.code) ?? Math.round(row.price * 100);
-      quotes[row.code] = {
+    for (const [code, bar] of Object.entries(nextBars)) {
+      const previousBar = signalBars ? signalBars[code] : null;
+      if (!previousBar || !(previousBar.closeCents > 0)) continue;
+      const previousCloseCents = previousBar.closeCents;
+      if (bar.closeCents === null || bar.closeCents === void 0) continue;
+      quotes[code] = {
         date: nextDate,
         previousCloseCents,
-        openCents: row.openCents ?? previousCloseCents,
-        closeCents: Math.round(row.price * 100),
-        highCents: row.highCents ?? Math.round(row.price * 100),
-        lowCents: row.lowCents ?? Math.round(row.price * 100),
-        volumeShares: row.volumeShares ?? 1e7,
+        openCents: bar.openCents ?? previousCloseCents,
+        closeCents: bar.closeCents,
+        highCents: bar.highCents ?? bar.closeCents,
+        lowCents: bar.lowCents ?? bar.closeCents,
+        volumeShares: bar.volumeShares ?? null,
         limitUpCents: Math.round(previousCloseCents * 1.1),
         limitDownCents: Math.round(previousCloseCents * 0.9),
         timestamp: `${nextDate}T15:00:00+08:00`
@@ -5803,7 +5932,7 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
         previousTradingDate: signal.tradeDate,
         quotes,
         minutes: {},
-        source: `\u5386\u53F2\u51B7\u542F\u52A8\uFF08${dataset.provider}\uFF09`,
+        source: `\u5386\u53F2\u51B7\u542F\u52A8\uFF08${dataset.provider}\uFF0C\u771F\u5B9E\u524D\u590D\u6743\u65E5\u7EBF\uFF09`,
         fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
       }
     });
@@ -7048,7 +7177,8 @@ async function runHistoryImport(env, jobId, options = {}) {
   const jobs = new HistoryJobRepository(env);
   const job = await jobs.getJob(jobId);
   if (!job) throw new Error("\u5386\u53F2\u5BFC\u5165\u4EFB\u52A1\u4E0D\u5B58\u5728");
-  if (job.stage === "READY") return job;
+  if (job.stage === "READY" && options.withObservationReturns !== true)
+    return job;
   const store = openHistoryStore(env);
   if (!store) {
     return jobs.updateJob(jobId, {
@@ -7108,6 +7238,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     notes: []
   };
   let preservedExecutionModel = null;
+  let clonedSourceDates = null;
   let datasetId = job.datasetId;
   if (!datasetId) {
     datasetId = newId("hds");
@@ -7241,6 +7372,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           `\u89C2\u5BDF\u53CD\u9988\u65E5\u7EBF\u4E0B\u8F7D\u5931\u8D25\uFF0C\u672C\u6B21\u4E0D\u751F\u6210\u6B21\u65E5\u89C2\u5BDF\u6536\u76CA\uFF1A${String(error.message ?? error).slice(0, 120)}`
         );
       }
+      if (dailyNormalized)
+        for (const [obsDate, byCode] of dailyNormalized)
+          await store.saveObservationDaily(datasetId, obsDate, byCode);
     }
     const dateIndex = new Map(
       calendar.dates.map((date, index) => [date, index])
@@ -7264,11 +7398,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         paramsDigest,
         {
           date: entry.date,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          createdAt: `${entry.date}T07:05:00.000Z`,
           weights,
           source: `\u5386\u53F2\u91CD\u6784\uFF08${job.provider}\uFF09`,
           modelVersion: SCORING_VERSION2,
-          judgment: "\u5386\u53F2\u91CD\u6784\u8BC4\u5206\uFF1A\u7531\u4F9B\u5E94\u5546\u6863\u6848\u91CD\u5EFA\u5F53\u65E5\u6DA8\u505C\u7279\u5F81\u540E\u6309\u540C\u4E00\u89C4\u5219\u6A21\u578B\u8BA1\u7B97\uFF1B\u975E\u4E8B\u524D\u91C7\u96C6\uFF0C\u4E0D\u6784\u6210\u4E8B\u524D\u5224\u65AD\u3002",
+          judgment: "\u5386\u53F2\u91CD\u6784\u8BC4\u5206\uFF1A\u7531\u4F9B\u5E94\u5546\u6863\u6848\u91CD\u5EFA\u5F53\u65E5\u6DA8\u505C\u7279\u5F81\u540E\u6309\u540C\u4E00\u89C4\u5219\u6A21\u578B\u8BA1\u7B97\uFF1B\u975E\u4E8B\u524D\u91C7\u96C6\uFF0C\u4E0D\u6784\u6210\u4E8B\u524D\u5224\u65AD\uFF1BcreatedAt \u91C7\u7528\u8BC4\u5206\u65E5\u76D8\u524D\u865A\u62DF\u65F6\u95F4\u4EE5\u4FDD\u8BC1\u53EF\u91CD\u653E\u6027",
           stocks: a.stocks,
           sectors: a.sectors,
           emotion: a.emotion,
@@ -7353,18 +7487,14 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     }
     const targetDatasetId = options.datasetId ?? job.statusPayload?.datasetId;
     if (targetDatasetId) {
-      const target = await store.getDataset(targetDatasetId);
-      if (!target)
-        return jobs.finishJob(jobId, EXECUTOR_ID2, {
-          stage: "BLOCKED",
-          statusPayload: {
-            capabilities,
-            reason: `\u6307\u5B9A\u7684\u76EE\u6807\u6570\u636E\u96C6\u4E0D\u5B58\u5728\uFF1A${targetDatasetId}`
-          }
-        });
-      datasetId = targetDatasetId;
-      preservedExecutionModel = target.executionModel;
+      const cloned = await store.cloneDatasetForMinutes(targetDatasetId);
+      datasetId = cloned.id;
+      preservedExecutionModel = cloned.sourceCoverage.executionModel ?? null;
+      clonedSourceDates = Array.isArray(cloned.sourceCoverage.succeededDates) ? cloned.sourceCoverage.succeededDates : [];
       await jobs.updateJob(jobId, { datasetId });
+      coverage.notes.push(
+        `\u5206\u949F\u6570\u636E\u9644\u52A0\u4E3A\u65B0\u6570\u636E\u96C6\u7248\u672C ${datasetId}\uFF08\u6E90\uFF1A${targetDatasetId}\uFF09\uFF1B\u6E90\u6570\u636E\u96C6\u4FDD\u6301\u53D1\u5E03\u65F6\u72B6\u6001\u4E0D\u88AB\u6539\u5199`
+      );
     }
     for (const date of calendar.dates) {
       let dayRows = 0;
@@ -7493,6 +7623,10 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   coverage.observedStart = succeeded.length ? succeeded[0].date : null;
   coverage.observedEnd = succeeded.length ? succeeded.at(-1).date : null;
   coverage.succeededDates = succeeded.map((entry) => entry.date);
+  if (clonedSourceDates)
+    coverage.succeededDates = [
+      .../* @__PURE__ */ new Set([...clonedSourceDates, ...coverage.succeededDates])
+    ].sort();
   coverage.failedDates = failed;
   coverage.notes.push(
     `\u8054\u5408\u91C7\u96C6\u80A1\u7968\u6C60 ${universeCodes.size} \u53EA\uFF1B\u5931\u8D25\u65E5\u671F ${failed.length} \u4E2A`
@@ -7670,7 +7804,7 @@ function endOfDayQuotes({ date, minuteByCode, templates }) {
   }
   return { quotes, sampledCloseTimes };
 }
-async function runBacktest(env, { datasetId, name, strategy, initialCapital, weights }) {
+async function runBacktest(env, { datasetId, name, strategy, initialCapital, weights, fees }) {
   const store = openHistoryStore(env);
   if (!store)
     throw new Error(
@@ -7679,14 +7813,14 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
   const integrity = await store.datasetIntegrity(datasetId);
   if (integrity && !integrity.verified)
     throw new Error(
-      "\u5386\u53F2\u6570\u636E\u96C6 manifest \u6821\u9A8C\u5931\u8D25\uFF1A\u6570\u636E\u96C6\u8F93\u5165\u4E0E\u53D1\u5E03\u65F6\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u4FEE\u6539\uFF09\uFF0C\u62D2\u7EDD\u7528\u4E8E\u56DE\u6D4B"
+      `\u5386\u53F2\u6570\u636E\u96C6 manifest \u6821\u9A8C\u5931\u8D25\uFF1A${(integrity.issues ?? []).join("\uFF1B")}\uFF1B\u62D2\u7EDD\u7528\u4E8E\u56DE\u6D4B`
     );
   const dataset = await store.getDataset(datasetId);
   if (!dataset) throw new Error("\u5386\u53F2\u6570\u636E\u96C6\u4E0D\u5B58\u5728");
   if (dataset.executionModel !== "SIX_FACTOR_V1")
     throw new Error("\u56DE\u6D4B\u9700\u8981\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09");
   const strategyParams = strategy ?? BASE_STRATEGY;
-  const feeConfig = DEFAULT_FEES;
+  const feeConfig = fees ? normalizeFees(fees) : DEFAULT_FEES;
   const runId = newId2("bt");
   let book = newBook(initialCapital ?? 1e6, feeConfig);
   const paramsDigest = await digestOf(strategyParams);
@@ -7704,8 +7838,30 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
     executionVersion: HISTORICAL_EXECUTION_VERSION,
     initialBook: { initialCashCents: book.initialCashCents }
   });
+  try {
+    return await runBacktestInner(store, runId, dataset, {
+      strategyParams,
+      feeConfig,
+      book
+    });
+  } catch (error) {
+    const reason = String(error?.message ?? error).slice(0, 300);
+    await store.finishBacktestRun(runId, "FAILED", {
+      executionModel: HISTORICAL_EXECUTION_MODEL,
+      error: reason,
+      note: "\u56DE\u6D4B\u8FC7\u7A0B\u53D1\u751F\u672A\u9884\u671F\u9519\u8BEF\uFF08\u5982\u6301\u4ED3\u7F3A\u5C11\u6536\u76D8\u62A5\u4EF7\uFF09\uFF0C\u4EFB\u52A1\u8BB0\u5F55\u4E3A FAILED\uFF1B\u53EF\u4FEE\u6B63\u6570\u636E\u540E\u91CD\u8BD5"
+    });
+    throw error;
+  }
+}
+async function runBacktestInner(store, runId, dataset, { strategyParams, feeConfig, book }) {
+  const datasetId = dataset.id;
   const scores = await store.listScores(datasetId);
   const minuteDates = new Set(await store.listMinuteDates(datasetId));
+  const succeededDates = Array.isArray(dataset.coverage?.succeededDates) ? dataset.coverage.succeededDates : [];
+  const succeededPosition = new Map(
+    succeededDates.map((date, index) => [date, index])
+  );
   const coverage = {
     executionModel: HISTORICAL_EXECUTION_MODEL,
     plannedPairs: 0,
@@ -7725,6 +7881,15 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
     const signalDate = signal.tradeDate;
     const tradeDate = scores[index + 1].tradeDate;
     coverage.plannedPairs++;
+    const tradePosition = succeededPosition.get(tradeDate);
+    if (tradePosition === void 0 || tradePosition === 0 || succeededDates[tradePosition - 1] !== signalDate) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: "\u8BC4\u5206\u65E5\u4E0E\u6267\u884C\u65E5\u4E4B\u95F4\u6709\u7F3A\u5931\u4EA4\u6613\u65E5\uFF0C\u4E0D\u8DE8\u7F3A\u5931\u65E5\u914D\u5BF9\u6267\u884C"
+      });
+      continue;
+    }
     if (!minuteDates.has(tradeDate)) {
       coverage.skippedPairs.push({
         signalDate,
@@ -7809,10 +7974,12 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
     const sampledCloseIncomplete = Object.values(sampledCloseTimes).some(
       (time) => time !== "15:00"
     );
-    if (sampledCloseIncomplete)
+    if (sampledCloseIncomplete) {
+      coverage.sampledCloseIncomplete = true;
       coverage.notes.push(
         `${tradeDate} \u6536\u76D8\u4EF7\u4EE5\u5206\u949F\u91C7\u6837\u672B\u7AEF ${Object.entries(sampledCloseTimes).filter(([, time]) => time !== "15:00").map(([code, time]) => `${code}@${time}`).join("\u3001")} \u8FD1\u4F3C\uFF0C\u672A\u8986\u76D6\u771F\u5B9E\u6536\u76D8\u65F6\u6BB5`
       );
+    }
     const equityRow = {
       tradeDate,
       equityCents: book.equityCents,
@@ -7832,7 +7999,7 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
   const ledgerRows = await store.listBacktestLedger(runId);
   coverage.fillCount = ledgerRows.length;
   coverage.feesCents = book.feesCents;
-  const stage = coverage.executedPairs > 0 && coverage.skippedPairs.length === 0 ? "READY" : "PARTIAL";
+  const stage = coverage.executedPairs > 0 && coverage.skippedPairs.length === 0 && !coverage.sampledCloseIncomplete ? "READY" : "PARTIAL";
   const run = await store.finishBacktestRun(runId, stage, coverage);
   return run;
 }
@@ -7851,6 +8018,40 @@ async function backtestDetail(env, runId) {
   ]);
   const recomputedTotalReturn = equity.length && run.initialBook?.initialCashCents ? equity.at(-1).equityCents / run.initialBook.initialCashCents - 1 : null;
   const ledgerCountMatches = ledger.length === (run.coverage?.fillCount ?? -1);
+  const cashIssues = [];
+  if (run.initialBook?.initialCashCents) {
+    let replayCashCents = run.initialBook.initialCashCents;
+    const ledgerByDate = /* @__PURE__ */ new Map();
+    for (const row of ledger) {
+      const recomputedDelta = row.side === "BUY" ? -(row.quantity * row.priceCents) - row.feeCents : row.quantity * row.priceCents - row.feeCents;
+      if (recomputedDelta !== row.cashDeltaCents)
+        cashIssues.push(
+          `${row.tradeDate} ${row.code} ${row.side} \u73B0\u91D1\u53D8\u52A8 ${row.cashDeltaCents} \u4E0E\u6570\u91CF\xD7\u4EF7\u683C\xD7\u8D39\u7528\u91CD\u7B97\u503C ${recomputedDelta} \u4E0D\u4E00\u81F4`
+        );
+      if (!ledgerByDate.has(row.tradeDate)) ledgerByDate.set(row.tradeDate, []);
+      ledgerByDate.get(row.tradeDate).push(row);
+      replayCashCents += recomputedDelta;
+    }
+    for (const equityRow of equity) {
+      const dayRows = ledgerByDate.get(equityRow.tradeDate) ?? [];
+      if (dayRows.length) {
+        const lastAfter = dayRows.at(-1).cashAfterCents;
+        if (lastAfter !== equityRow.cashCents)
+          cashIssues.push(
+            `${equityRow.tradeDate} \u6743\u76CA\u8BB0\u5F55\u73B0\u91D1 ${equityRow.cashCents} \u4E0E\u8D26\u672C\u672B\u7B14\u73B0\u91D1 ${lastAfter} \u4E0D\u4E00\u81F4`
+          );
+      } else if (equityRow.cashCents !== replayCashCents) {
+        cashIssues.push(
+          `${equityRow.tradeDate} \u65E0\u6210\u4EA4\u65E5\u73B0\u91D1 ${equityRow.cashCents} \u4E0E\u91CD\u653E\u73B0\u91D1 ${replayCashCents} \u4E0D\u4E00\u81F4`
+        );
+      }
+    }
+    if (equity.length && replayCashCents !== equity.at(-1).cashCents)
+      cashIssues.push(
+        `\u8D26\u672C\u91CD\u653E\u7EC8\u503C\u73B0\u91D1 ${replayCashCents} \u4E0E\u6743\u76CA\u7EC8\u503C\u73B0\u91D1 ${equity.at(-1).cashCents} \u4E0D\u4E00\u81F4`
+      );
+  }
+  const cashChainMatches = cashIssues.length === 0;
   return {
     run,
     plans,
@@ -7859,11 +8060,13 @@ async function backtestDetail(env, runId) {
     equity,
     verification: {
       ledgerCountMatches,
-      totalReturnMatches: recomputedTotalReturn === null || !ledgerCountMatches || !ledger.length ? false : Math.abs(
+      cashChainMatches,
+      cashIssues: cashIssues.slice(0, 10),
+      totalReturnMatches: recomputedTotalReturn === null || !ledgerCountMatches || !ledger.length || !cashChainMatches ? false : Math.abs(
         (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0)
       ) < 1e-9,
       recomputedTotalReturn,
-      note: ledger.length && ledgerCountMatches ? "\u6536\u76CA\u6838\u9A8C\u57FA\u4E8E\u5F53\u524D\u8D26\u672C\u884C\u6570\u4E0E\u6743\u76CA\u7EC8\u503C" : "\u8D26\u672C\u7F3A\u5931\u6216\u4E0E\u8FD0\u884C\u8BB0\u5F55\u4E0D\u4E00\u81F4\uFF0C\u65E0\u6CD5\u6838\u9A8C\u6536\u76CA\uFF1B\u4E0D\u5F97\u5C06 totalReturn \u89C6\u4E3A\u5DF2\u9A8C\u8BC1"
+      note: ledger.length && ledgerCountMatches && cashChainMatches ? "\u6536\u76CA\u6838\u9A8C\u57FA\u4E8E\u8D26\u672C\u72EC\u7ACB\u91CD\u653E\uFF08\u9010\u7B14\u73B0\u91D1\u53D8\u52A8\u91CD\u7B97 + \u9010\u65E5\u73B0\u91D1\u94FE\uFF09\u4E0E\u6743\u76CA\u7EC8\u503C" : "\u8D26\u672C\u7F3A\u5931\u3001\u884C\u6570\u4E0D\u7B26\u6216\u73B0\u91D1\u91CD\u653E\u4E0D\u4E00\u81F4\uFF0C\u65E0\u6CD5\u6838\u9A8C\u6536\u76CA\uFF1B\u4E0D\u5F97\u5C06 totalReturn \u89C6\u4E3A\u5DF2\u9A8C\u8BC1"
     }
   };
 }
@@ -8014,7 +8217,8 @@ async function api(request, env) {
         datasetId: body2.datasetId,
         name: body2.name,
         strategy: body2.strategy,
-        initialCapital: body2.initialCapital
+        initialCapital: body2.initialCapital,
+        fees: body2.fees
       });
       return json({ run });
     }

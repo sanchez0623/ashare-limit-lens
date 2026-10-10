@@ -199,6 +199,7 @@ export async function api(request, env) {
         name: body.name,
         strategy: body.strategy,
         initialCapital: body.initialCapital,
+        fees: body.fees,
       });
       return json({ run });
     }

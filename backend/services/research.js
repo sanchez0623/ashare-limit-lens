@@ -442,7 +442,13 @@ export async function proposeImprovement(
       testDates: windows.testDates,
       samples,
     });
-  } catch {
+  } catch (error) {
+    const reason = String(error?.message ?? error);
+    if (reason.includes("不能同时作为冷启动训练数据"))
+      return {
+        status: "NEED_DATA",
+        reason: `训练日期与已用测试数据冲突，未消耗冷启动资格：${reason}`,
+      };
     return { status: "BUSY", reason: "并发预留冲突，本次未发起模型调用" };
   }
   if (!reserved)
@@ -598,46 +604,26 @@ export async function proposeBootstrapImprovement(
       succeededDates[nextPosition - 1] !== signal.tradeDate
     )
       continue;
-    const daily = await store.getDailyInput(datasetId, nextDate);
-    if (!daily) continue;
-    const rows = Array.isArray(daily.normalized)
-      ? daily.normalized
-      : Object.entries(daily.normalized ?? {}).map(([code, row]) => ({
-          code,
-          name: null,
-          sector: "未分类",
-          price: row.closeCents !== null ? row.closeCents / 100 : null,
-          change: null,
-          amount: null,
-          floatCap: null,
-          seal: null,
-          turnover: null,
-          first: null,
-          last: null,
-          breaks: null,
-          height: null,
-        }));
-    const snapshotStocks = new Map(
-      (signal.payload.stocks ?? []).map((stock) => [
-        stock.code,
-        stock.price !== null && stock.price !== undefined
-          ? Math.round(stock.price * 100)
-          : null,
-      ]),
+    const nextBars = await store.getObservationDaily(datasetId, nextDate);
+    const signalBars = await store.getObservationDaily(
+      datasetId,
+      signal.tradeDate,
     );
+    if (!nextBars || !Object.keys(nextBars).length) continue;
     const quotes = {};
-    for (const row of rows) {
-      if (!row.code || row.price === null) continue;
-      const previousCloseCents =
-        snapshotStocks.get(row.code) ?? Math.round(row.price * 100);
-      quotes[row.code] = {
+    for (const [code, bar] of Object.entries(nextBars)) {
+      const previousBar = signalBars ? signalBars[code] : null;
+      if (!previousBar || !(previousBar.closeCents > 0)) continue;
+      const previousCloseCents = previousBar.closeCents;
+      if (bar.closeCents === null || bar.closeCents === undefined) continue;
+      quotes[code] = {
         date: nextDate,
         previousCloseCents,
-        openCents: row.openCents ?? previousCloseCents,
-        closeCents: Math.round(row.price * 100),
-        highCents: row.highCents ?? Math.round(row.price * 100),
-        lowCents: row.lowCents ?? Math.round(row.price * 100),
-        volumeShares: row.volumeShares ?? 10000000,
+        openCents: bar.openCents ?? previousCloseCents,
+        closeCents: bar.closeCents,
+        highCents: bar.highCents ?? bar.closeCents,
+        lowCents: bar.lowCents ?? bar.closeCents,
+        volumeShares: bar.volumeShares ?? null,
         limitUpCents: Math.round(previousCloseCents * 1.1),
         limitDownCents: Math.round(previousCloseCents * 0.9),
         timestamp: `${nextDate}T15:00:00+08:00`,
@@ -651,7 +637,7 @@ export async function proposeBootstrapImprovement(
         previousTradingDate: signal.tradeDate,
         quotes,
         minutes: {},
-        source: `历史冷启动（${dataset.provider}）`,
+        source: `历史冷启动（${dataset.provider}，真实前复权日线）`,
         fetchedAt: new Date().toISOString(),
       },
     });

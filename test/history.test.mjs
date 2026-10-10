@@ -538,6 +538,7 @@ test("数据集摘要绑定真实输入与原始下载块引用", async () => {
       rows: 1,
       stage: "DONE",
       rawDigest: "raw-digest-1",
+      raw: { probe: true },
     });
     const withChunks = await store.updateDatasetCoverage(probeId, {});
     assert.equal(withChunks.manifest.inputs.length, 1);
@@ -814,8 +815,29 @@ test("评分与分钟导入可组合为同一数据集并回测", async () => {
     });
     const minuteDone = await runHistoryImport(env, minuteJob.id);
     assert.equal(minuteDone.stage, "READY");
-    assert.equal(minuteDone.statusPayload.datasetId, datasetId);
-    const run = await runBacktest(env, { datasetId, initialCapital: 1000000 });
+    const newDatasetId = minuteDone.statusPayload.datasetId;
+    assert.notEqual(newDatasetId, datasetId);
+    const originalDataset = await openHistoryStore(env).getDataset(datasetId);
+    assert.ok(
+      !originalDataset.coverage.succeededDates.includes("2026-03-04"),
+      "源数据集不应被附加分钟数据改写",
+    );
+    const originalIntegrity =
+      await openHistoryStore(env).datasetIntegrity(datasetId);
+    assert.equal(originalIntegrity.verified, true);
+    const combinedCoverage = minuteDone.statusPayload.coverage;
+    assert.ok(
+      combinedCoverage.succeededDates.includes("2026-03-02"),
+      "新版本应继承源数据集日期",
+    );
+    assert.ok(
+      combinedCoverage.succeededDates.includes("2026-03-04"),
+      "新版本应包含分钟日期",
+    );
+    const run = await runBacktest(env, {
+      datasetId: newDatasetId,
+      initialCapital: 1000000,
+    });
     assert.ok(run.coverage.executedPairs >= 1);
     assert.ok(Number.isFinite(run.coverage.totalReturn));
   } finally {

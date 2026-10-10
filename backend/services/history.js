@@ -93,7 +93,8 @@ export async function runHistoryImport(env, jobId, options = {}) {
   const jobs = new HistoryJobRepository(env);
   const job = await jobs.getJob(jobId);
   if (!job) throw new Error("历史导入任务不存在");
-  if (job.stage === "READY") return job;
+  if (job.stage === "READY" && options.withObservationReturns !== true)
+    return job;
   const store = openHistoryStore(env);
   if (!store) {
     return jobs.updateJob(jobId, {
@@ -158,6 +159,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     notes: [],
   };
   let preservedExecutionModel = null;
+  let clonedSourceDates = null;
   let datasetId = job.datasetId;
   if (!datasetId) {
     datasetId = newId("hds");
@@ -291,6 +293,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           `观察反馈日线下载失败，本次不生成次日观察收益：${String(error.message ?? error).slice(0, 120)}`,
         );
       }
+      if (dailyNormalized)
+        for (const [obsDate, byCode] of dailyNormalized)
+          await store.saveObservationDaily(datasetId, obsDate, byCode);
     }
     const dateIndex = new Map(
       calendar.dates.map((date, index) => [date, index]),
@@ -315,12 +320,12 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         paramsDigest,
         {
           date: entry.date,
-          createdAt: new Date().toISOString(),
+          createdAt: `${entry.date}T07:05:00.000Z`,
           weights,
           source: `历史重构（${job.provider}）`,
           modelVersion: SCORING_VERSION,
           judgment:
-            "历史重构评分：由供应商档案重建当日涨停特征后按同一规则模型计算；非事前采集，不构成事前判断。",
+            "历史重构评分：由供应商档案重建当日涨停特征后按同一规则模型计算；非事前采集，不构成事前判断；createdAt 采用评分日盘前虚拟时间以保证可重放性",
           stocks: a.stocks,
           sectors: a.sectors,
           emotion: a.emotion,
@@ -436,18 +441,16 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     }
     const targetDatasetId = options.datasetId ?? job.statusPayload?.datasetId;
     if (targetDatasetId) {
-      const target = await store.getDataset(targetDatasetId);
-      if (!target)
-        return jobs.finishJob(jobId, EXECUTOR_ID, {
-          stage: "BLOCKED",
-          statusPayload: {
-            capabilities,
-            reason: `指定的目标数据集不存在：${targetDatasetId}`,
-          },
-        });
-      datasetId = targetDatasetId;
-      preservedExecutionModel = target.executionModel;
+      const cloned = await store.cloneDatasetForMinutes(targetDatasetId);
+      datasetId = cloned.id;
+      preservedExecutionModel = cloned.sourceCoverage.executionModel ?? null;
+      clonedSourceDates = Array.isArray(cloned.sourceCoverage.succeededDates)
+        ? cloned.sourceCoverage.succeededDates
+        : [];
       await jobs.updateJob(jobId, { datasetId });
+      coverage.notes.push(
+        `分钟数据附加为新数据集版本 ${datasetId}（源：${targetDatasetId}）；源数据集保持发布时状态不被改写`,
+      );
     }
     for (const date of calendar.dates) {
       let dayRows = 0;
@@ -576,6 +579,10 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   coverage.observedStart = succeeded.length ? succeeded[0].date : null;
   coverage.observedEnd = succeeded.length ? succeeded.at(-1).date : null;
   coverage.succeededDates = succeeded.map((entry) => entry.date);
+  if (clonedSourceDates)
+    coverage.succeededDates = [
+      ...new Set([...clonedSourceDates, ...coverage.succeededDates]),
+    ].sort();
   coverage.failedDates = failed;
   coverage.notes.push(
     `联合采集股票池 ${universeCodes.size} 只；失败日期 ${failed.length} 个`,

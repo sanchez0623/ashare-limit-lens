@@ -105,6 +105,11 @@ async function seedDataset(env, store, dayCount) {
       snapshotPayload(date, index),
     );
     await store.saveDailyInputs(datasetId, date, dailyInput(date, index));
+    await store.saveObservationDaily(
+      datasetId,
+      date,
+      dailyInput(date, index).normalized,
+    );
   }
   await store.updateDatasetCoverage(datasetId, {
     observedStart: dates[0],

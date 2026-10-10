@@ -151,14 +151,25 @@ export class HistoryJobRepository {
       .run();
     return this.getJob(id);
   }
-  async claimExecution(id, executorId) {
-    const result = await this.db
+  async claimExecution(id, executorId, leaseMinutes = 30) {
+    const now = new Date().toISOString();
+    const fresh = await this.db
       .prepare(
         "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PLANNED','PARTIAL','FAILED','BLOCKED')",
       )
-      .bind(executorId, new Date().toISOString(), new Date().toISOString(), id)
+      .bind(executorId, now, now, id)
       .run();
-    return result.meta.changes > 0;
+    if (fresh.meta.changes) return true;
+    const cutoff = new Date(
+      Date.now() - leaseMinutes * 60 * 1000,
+    ).toISOString();
+    const takeover = await this.db
+      .prepare(
+        "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') < ?",
+      )
+      .bind(executorId, now, now, now, id, cutoff)
+      .run();
+    return takeover.meta.changes > 0;
   }
   async finishJob(id, executorId, { stage, statusPayload, datasetId }) {
     if (!HISTORY_STAGES.includes(stage))
@@ -268,6 +279,14 @@ export class HistoryDatasetStore {
         digest TEXT NOT NULL,
         PRIMARY KEY (dataset_id, trade_date, code)
       );
+      CREATE TABLE IF NOT EXISTS history_observation_prices (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        code TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, code)
+      );
       CREATE TABLE IF NOT EXISTS backtest_runs (
         id TEXT PRIMARY KEY,
         dataset_id TEXT NOT NULL,
@@ -328,12 +347,10 @@ export class HistoryDatasetStore {
     coverage,
   }) {
     await this.ensure();
-    const manifest = {
+    const manifest = await this.buildDatasetManifest(id, {
       executionModel: executionModel ?? null,
       coverage,
-      chunkRefs: [],
-      inputs: [],
-    };
+    });
     const digest = await digestOf(manifest);
     await this.db
       .prepare(
@@ -399,6 +416,7 @@ export class HistoryDatasetStore {
       const { writeFileSync } = await import("node:fs");
       writeFileSync(artifactPath, JSON.stringify(raw), "utf8");
       storedRef = `history-chunks/${jobId}__${safeKey}.json`;
+      rawDigest = await digestOf(raw);
     }
     await this.db
       .prepare(
@@ -442,14 +460,46 @@ export class HistoryDatasetStore {
       artifactRef: row.artifact_ref,
     }));
   }
+  async datasetMinuteRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT trade_date, code, digest FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date, code",
+      )
+      .bind(datasetId)
+      .all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      code: row.code,
+      digest: row.digest,
+    }));
+  }
+  async datasetObservationRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT trade_date, code, digest FROM history_observation_prices WHERE dataset_id = ? ORDER BY trade_date, code",
+      )
+      .bind(datasetId)
+      .all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      code: row.code,
+      digest: row.digest,
+    }));
+  }
   async buildDatasetManifest(datasetId, { executionModel, coverage }) {
     const inputs = await this.listDatasetDates(datasetId);
     const chunkRefs = await this.datasetChunkRefs(datasetId);
+    const minuteRefs = await this.datasetMinuteRefs(datasetId);
+    const observationRefs = await this.datasetObservationRefs(datasetId);
     return {
       executionModel: executionModel ?? null,
       coverage: coverage ?? null,
       chunkRefs,
       inputs,
+      minuteRefs,
+      observationRefs,
     };
   }
   async datasetIntegrity(datasetId) {
@@ -461,9 +511,35 @@ export class HistoryDatasetStore {
       coverage: dataset.coverage,
     });
     const recomputedDigest = await digestOf(manifest);
+    const issues = [];
+    if (recomputedDigest !== dataset.manifestDigest)
+      issues.push(
+        "数据集输入（日线/分钟/观察价格）与发布时的 manifest 摘要不一致",
+      );
+    const { existsSync, readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    for (const ref of manifest.chunkRefs) {
+      if (!ref.artifactRef) {
+        issues.push(`下载块 ${ref.chunkKey} 缺少原始归档引用`);
+        continue;
+      }
+      const artifactPath = join(dirname(this.path), ref.artifactRef);
+      if (!existsSync(artifactPath)) {
+        issues.push(
+          `下载块 ${ref.chunkKey} 的原始归档文件缺失：${ref.artifactRef}`,
+        );
+        continue;
+      }
+      const archivedDigest = await digestOf(
+        JSON.parse(readFileSync(artifactPath, "utf8")),
+      );
+      if (archivedDigest !== ref.rawDigest)
+        issues.push(`下载块 ${ref.chunkKey} 的原始归档内容与摘要不一致`);
+    }
     return {
       datasetId,
-      verified: recomputedDigest === dataset.manifestDigest,
+      verified: issues.length === 0,
+      issues,
       manifestDigest: dataset.manifestDigest,
       recomputedDigest,
       manifest,
@@ -595,6 +671,75 @@ export class HistoryDatasetStore {
       .bind(datasetId)
       .all();
     return result.results.map((row) => row.trade_date);
+  }
+  async saveObservationDaily(datasetId, tradeDate, byCode) {
+    await this.ensure();
+    for (const [code, row] of Object.entries(byCode)) {
+      const payload = JSON.stringify(row);
+      await this.db
+        .prepare(
+          "INSERT OR REPLACE INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(datasetId, tradeDate, code, payload, await digestOf(row))
+        .run();
+    }
+  }
+  async getObservationDaily(datasetId, tradeDate) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT code, payload FROM history_observation_prices WHERE dataset_id = ? AND trade_date = ? ORDER BY code",
+      )
+      .bind(datasetId, tradeDate)
+      .all();
+    if (!result.results.length) return null;
+    return Object.fromEntries(
+      result.results.map((row) => [row.code, JSON.parse(row.payload)]),
+    );
+  }
+  async cloneDatasetForMinutes(sourceId) {
+    await this.ensure();
+    const source = await this.getDataset(sourceId);
+    if (!source) throw new Error(`要附加分钟数据的数据集不存在：${sourceId}`);
+    const newId = `hds-${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    await this.db
+      .prepare(
+        "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        newId,
+        source.provider,
+        source.kind,
+        source.executionModel,
+        source.requestedRange.start,
+        source.requestedRange.end,
+        source.observedRange.start,
+        source.observedRange.end,
+        JSON.stringify(source.coverage),
+        source.manifestDigest,
+        now,
+      )
+      .run();
+    await this.db
+      .prepare(
+        "INSERT INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) SELECT ?, trade_date, scoring_version, params_digest, payload, digest FROM history_scores WHERE dataset_id = ?",
+      )
+      .bind(newId, sourceId)
+      .run();
+    await this.db
+      .prepare(
+        "INSERT INTO history_daily_inputs (dataset_id, trade_date, payload, digest) SELECT ?, trade_date, payload, digest FROM history_daily_inputs WHERE dataset_id = ?",
+      )
+      .bind(newId, sourceId)
+      .run();
+    await this.db
+      .prepare(
+        "INSERT INTO history_observation_prices (dataset_id, trade_date, code, payload, digest) SELECT ?, trade_date, code, payload, digest FROM history_observation_prices WHERE dataset_id = ?",
+      )
+      .bind(newId, sourceId)
+      .run();
+    return { id: newId, sourceCoverage: source.coverage };
   }
   async createBacktestRun({
     id,
