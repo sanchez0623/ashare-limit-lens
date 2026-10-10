@@ -25,6 +25,7 @@ const DB = localDatabase(dbPath),
     AI_API_KEY: process.env.AI_API_KEY,
     AI_BASE_URL: process.env.AI_BASE_URL,
     AI_MODEL: process.env.AI_MODEL,
+    LOCAL_RESEARCH_DB_PATH: process.env.LOCAL_RESEARCH_DB_PATH,
     TRADING_POLL_SECONDS: process.env.TRADING_POLL_SECONDS || "10",
     TRADING_RUNNER:
       process.env.TRADING_ENABLED === "false" ? "disabled" : "server",

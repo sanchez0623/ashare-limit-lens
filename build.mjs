@@ -31,8 +31,8 @@ await build({
   entryPoints: ["backend/worker.js"],
   bundle: true,
   format: "esm",
-  platform: "browser",
+  platform: "node",
   target: "es2022",
   outfile: "dist/server/index.js",
 });
-console.log("Built separate browser assets and Cloudflare Worker");
+console.log("Built separate browser assets and Node-compatible server bundle");

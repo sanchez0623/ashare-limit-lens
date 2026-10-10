@@ -24,6 +24,13 @@ import {
   promoteCandidate,
   researchStatus,
 } from "../services/research.js";
+import {
+  createHistoryImport,
+  historyImportDetail,
+  probeHistoryCapabilities,
+  runHistoryImport,
+} from "../services/history.js";
+import { HistoryJobRepository } from "../storage/history.js";
 import { pollTrading, realtimeStatus } from "../services/realtime.js";
 
 async function runDaily(env) {
@@ -93,9 +100,16 @@ export async function api(request, env) {
     "/api/paper/live": ["GET"],
     "/api/paper/poll": ["POST"],
     "/api/research/status": ["GET"],
+    "/api/history/capabilities": ["GET"],
+    "/api/history/imports": ["GET", "POST"],
   };
-  if (!methods[path]) return json({ error: "接口不存在" }, 404);
-  if (!methods[path].includes(request.method))
+  const historyImportMatch = path.match(
+    /^\/api\/history\/imports\/([a-z0-9-]+)(\/run)?$/,
+  );
+  if (!methods[path] && !historyImportMatch)
+    return json({ error: "接口不存在" }, 404);
+  const allowedMethods = methods[path] ?? ["GET", "POST"];
+  if (!allowedMethods.includes(request.method))
     return json({ error: "不支持此请求方法" }, 405);
   if (
     request.method === "POST" &&
@@ -126,6 +140,42 @@ export async function api(request, env) {
     }
     if (path === "/api/history") return json(await historyList(env));
     if (path === "/api/research/status") return json(await researchStatus(env));
+    if (path === "/api/history/capabilities") {
+      const start = url.searchParams.get("start");
+      const end = url.searchParams.get("end");
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(start ?? "") ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(end ?? "")
+      )
+        return json({ error: "请提供 start 与 end 日期（YYYY-MM-DD）" }, 400);
+      return json(await probeHistoryCapabilities(env, { start, end }));
+    }
+    if (path === "/api/history/imports") {
+      if (request.method === "GET")
+        return json({
+          imports: await new HistoryJobRepository(env).listJobs(20),
+        });
+      const body = await readJson(request);
+      const job = await createHistoryImport(env, {
+        provider: body.provider,
+        kind: body.kind,
+        start: body.start,
+        end: body.end,
+        name: body.name,
+      });
+      return json({ job });
+    }
+    if (historyImportMatch) {
+      const [, importId, action] = historyImportMatch;
+      if (request.method === "GET")
+        return json(
+          (await historyImportDetail(env, importId)) ?? {
+            error: "历史导入任务不存在",
+          },
+        );
+      if (action === "/run") return json(await runHistoryImport(env, importId));
+      return json({ error: "不支持此操作" }, 405);
+    }
     if (path === "/api/review") {
       const date = url.searchParams.get("date") || beijingDate();
       if (!validDate(date)) return json({ error: "日期格式无效" }, 400);

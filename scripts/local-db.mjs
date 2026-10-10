@@ -49,6 +49,7 @@ export function localDatabase(path = ":memory:") {
   }
   return {
     prepare,
+    exec: (sql) => sqlite.exec(sql),
     async batch(statements) {
       sqlite.exec("BEGIN IMMEDIATE");
       try {

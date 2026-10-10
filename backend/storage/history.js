@@ -1,0 +1,375 @@
+import { database } from "./database.js";
+import { localDatabase } from "../../scripts/local-db.mjs";
+import { digestOf } from "../domain/research-lineage.js";
+
+export const RESEARCH_NAMESPACE = "main";
+export const HISTORY_STAGES = [
+  "PLANNED",
+  "PROBING",
+  "DOWNLOADING",
+  "NORMALIZING",
+  "SCORING",
+  "READY",
+  "PARTIAL",
+  "BLOCKED",
+  "FAILED",
+];
+export class HistoryJobRepository {
+  constructor(env) {
+    this.db = database(env);
+  }
+  async createJob({ id, provider, kind, start, end, name }) {
+    const now = new Date().toISOString();
+    await this.db
+      .prepare(
+        "INSERT INTO history_import_jobs (id, namespace, provider, kind, requested_start, requested_end, name, stage, progress, status_payload, dataset_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'PLANNED', '{}', '{}', NULL, ?, ?)",
+      )
+      .bind(
+        id,
+        RESEARCH_NAMESPACE,
+        provider,
+        kind,
+        start,
+        end,
+        name ?? null,
+        now,
+        now,
+      )
+      .run();
+    return this.getJob(id);
+  }
+  async getJob(id) {
+    const row = await this.db
+      .prepare("SELECT * FROM history_import_jobs WHERE id = ?")
+      .bind(id)
+      .first();
+    return row ? this.mapJob(row) : null;
+  }
+  mapJob(row) {
+    return {
+      id: row.id,
+      namespace: row.namespace,
+      provider: row.provider,
+      kind: row.kind,
+      requestedRange: { start: row.requested_start, end: row.requested_end },
+      name: row.name,
+      stage: row.stage,
+      progress: JSON.parse(row.progress || "{}"),
+      statusPayload: JSON.parse(row.status_payload || "{}"),
+      datasetId: row.dataset_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+  async listJobs(limit = 20) {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM history_import_jobs ORDER BY created_at DESC, id DESC LIMIT ?",
+      )
+      .bind(limit)
+      .all();
+    return result.results.map((row) => this.mapJob(row));
+  }
+  async updateJob(id, { stage, progress, statusPayload, datasetId }) {
+    const job = await this.getJob(id);
+    if (!job) throw new Error("历史导入任务不存在");
+    if (stage && !HISTORY_STAGES.includes(stage))
+      throw new Error(`历史任务阶段无效：${stage}`);
+    await this.db
+      .prepare(
+        "UPDATE history_import_jobs SET stage = ?, progress = ?, status_payload = ?, dataset_id = ?, updated_at = ? WHERE id = ?",
+      )
+      .bind(
+        stage ?? job.stage,
+        JSON.stringify(progress ?? job.progress),
+        JSON.stringify(statusPayload ?? job.statusPayload),
+        datasetId ?? job.datasetId,
+        new Date().toISOString(),
+        id,
+      )
+      .run();
+    return this.getJob(id);
+  }
+}
+export class HistoryDatasetStore {
+  constructor(path) {
+    this.path = path;
+    this.db = localDatabase(path);
+    this.ready = false;
+  }
+  async ensure() {
+    if (this.ready) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS history_dataset_versions (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        execution_model TEXT NOT NULL,
+        requested_start TEXT NOT NULL,
+        requested_end TEXT NOT NULL,
+        observed_start TEXT,
+        observed_end TEXT,
+        coverage_payload TEXT NOT NULL,
+        manifest_digest TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS history_daily_inputs (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date)
+      );
+      CREATE TABLE IF NOT EXISTS history_scores (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        scoring_version TEXT NOT NULL,
+        params_digest TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, scoring_version, params_digest)
+      );
+      CREATE TABLE IF NOT EXISTS history_reviews (
+        dataset_id TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        label_end_date TEXT NOT NULL,
+        review_version TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, signal_date, label_end_date, review_version)
+      );
+      CREATE TABLE IF NOT EXISTS history_chunks (
+        job_id TEXT NOT NULL,
+        chunk_key TEXT NOT NULL,
+        request_range TEXT NOT NULL,
+        actual_range TEXT,
+        rows INTEGER NOT NULL,
+        stage TEXT NOT NULL,
+        raw_digest TEXT,
+        artifact_ref TEXT,
+        PRIMARY KEY (job_id, chunk_key)
+      );
+    `);
+    this.ready = true;
+  }
+  async createDatasetVersion({
+    id,
+    provider,
+    kind,
+    executionModel,
+    requestedStart,
+    requestedEnd,
+    coverage,
+  }) {
+    await this.ensure();
+    const digest = await digestOf(coverage);
+    await this.db
+      .prepare(
+        "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        id,
+        provider,
+        kind,
+        executionModel,
+        requestedStart,
+        requestedEnd,
+        coverage.observedStart ?? null,
+        coverage.observedEnd ?? null,
+        JSON.stringify(coverage),
+        digest,
+        new Date().toISOString(),
+      )
+      .run();
+    return { id, manifestDigest: digest };
+  }
+  async updateDatasetCoverage(id, coverage) {
+    await this.ensure();
+    const digest = await digestOf(coverage);
+    await this.db
+      .prepare(
+        "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?",
+      )
+      .bind(
+        JSON.stringify(coverage),
+        digest,
+        coverage.observedStart ?? null,
+        coverage.observedEnd ?? null,
+        coverage.executionModel ?? "PENDING",
+        id,
+      )
+      .run();
+  }
+  async saveChunk(
+    jobId,
+    {
+      chunkKey,
+      requestRange,
+      actualRange,
+      rows,
+      stage,
+      rawDigest,
+      artifactRef,
+    },
+  ) {
+    await this.ensure();
+    await this.db
+      .prepare(
+        "INSERT INTO history_chunks (job_id, chunk_key, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows",
+      )
+      .bind(
+        jobId,
+        chunkKey,
+        requestRange,
+        actualRange ?? null,
+        rows ?? 0,
+        stage,
+        rawDigest ?? null,
+        artifactRef ?? null,
+      )
+      .run();
+  }
+  async completedChunkKeys(jobId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT chunk_key FROM history_chunks WHERE job_id = ? AND stage IN ('DONE','EMPTY')",
+      )
+      .bind(jobId)
+      .all();
+    return new Set(result.results.map((row) => row.chunk_key));
+  }
+  async saveDailyInputs(datasetId, tradeDate, { normalized, provenance }) {
+    await this.ensure();
+    const payload = JSON.stringify({ normalized, provenance });
+    await this.db
+      .prepare(
+        "INSERT OR REPLACE INTO history_daily_inputs (dataset_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)",
+      )
+      .bind(datasetId, tradeDate, payload, await digestOf(payload))
+      .run();
+  }
+  async saveScore(datasetId, tradeDate, scoringVersion, paramsDigest, payload) {
+    await this.ensure();
+    await this.db
+      .prepare(
+        "INSERT OR IGNORE INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        datasetId,
+        tradeDate,
+        scoringVersion,
+        paramsDigest,
+        JSON.stringify(payload),
+        await digestOf(payload),
+      )
+      .run();
+  }
+  async saveReview(
+    datasetId,
+    signalDate,
+    labelEndDate,
+    reviewVersion,
+    payload,
+  ) {
+    await this.ensure();
+    await this.db
+      .prepare(
+        "INSERT OR IGNORE INTO history_reviews (dataset_id, signal_date, label_end_date, review_version, payload, digest) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        datasetId,
+        signalDate,
+        labelEndDate,
+        reviewVersion,
+        JSON.stringify(payload),
+        await digestOf(payload),
+      )
+      .run();
+  }
+  async getDataset(id) {
+    await this.ensure();
+    const row = await this.db
+      .prepare("SELECT * FROM history_dataset_versions WHERE id = ?")
+      .bind(id)
+      .first();
+    if (!row) return null;
+    return {
+      id: row.id,
+      provider: row.provider,
+      kind: row.kind,
+      executionModel: row.execution_model,
+      requestedRange: { start: row.requested_start, end: row.requested_end },
+      observedRange: { start: row.observed_start, end: row.observed_end },
+      coverage: JSON.parse(row.coverage_payload),
+      manifestDigest: row.manifest_digest,
+      createdAt: row.created_at,
+    };
+  }
+  async listDatasetDates(id) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT trade_date, digest FROM history_daily_inputs WHERE dataset_id = ? ORDER BY trade_date",
+      )
+      .bind(id)
+      .all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      digest: row.digest,
+    }));
+  }
+  async getDailyInput(datasetId, tradeDate) {
+    await this.ensure();
+    const row = await this.db
+      .prepare(
+        "SELECT payload FROM history_daily_inputs WHERE dataset_id = ? AND trade_date = ?",
+      )
+      .bind(datasetId, tradeDate)
+      .first();
+    return row ? JSON.parse(row.payload) : null;
+  }
+  async listScores(datasetId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT trade_date, scoring_version, params_digest, payload, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date",
+      )
+      .bind(datasetId)
+      .all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      scoringVersion: row.scoring_version,
+      paramsDigest: row.params_digest,
+      payload: JSON.parse(row.payload),
+      digest: row.digest,
+    }));
+  }
+  async listReviews(datasetId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT signal_date, label_end_date, review_version, payload, digest FROM history_reviews WHERE dataset_id = ? ORDER BY signal_date",
+      )
+      .bind(datasetId)
+      .all();
+    return result.results.map((row) => ({
+      signalDate: row.signal_date,
+      labelEndDate: row.label_end_date,
+      reviewVersion: row.review_version,
+      payload: JSON.parse(row.payload),
+      digest: row.digest,
+    }));
+  }
+  close() {
+    this.db.close();
+  }
+}
+export function openHistoryStore(env) {
+  const path =
+    env?.LOCAL_RESEARCH_DB_PATH || ".sites-runtime/research-history.sqlite";
+  return new HistoryDatasetStore(path);
+}
+export function historyJobDatabase(env) {
+  return database(env);
+}

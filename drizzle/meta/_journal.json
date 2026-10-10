@@ -36,6 +36,13 @@
       "when": 1791601373743,
       "tag": "0004_clear_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791619540827,
+      "tag": "0005_condemned_nemesis",
+      "breakpoints": true
     }
   ]
 }
