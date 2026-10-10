@@ -149,6 +149,52 @@ export class HistoryDatasetStore {
         artifact_ref TEXT,
         PRIMARY KEY (job_id, chunk_key)
       );
+      CREATE TABLE IF NOT EXISTS history_minute_inputs (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        code TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, code)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_runs (
+        id TEXT PRIMARY KEY,
+        dataset_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        strategy_version TEXT NOT NULL,
+        strategy_params TEXT NOT NULL,
+        params_digest TEXT NOT NULL,
+        fee_config TEXT NOT NULL,
+        fee_digest TEXT NOT NULL,
+        execution_model TEXT NOT NULL,
+        execution_version TEXT NOT NULL,
+        initial_book TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        coverage_payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS backtest_plans (
+        run_id TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (run_id, signal_date)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_ledger (
+        run_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        PRIMARY KEY (run_id, id)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_equity (
+        run_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (run_id, trade_date)
+      );
     `);
     this.ready = true;
   }
@@ -328,6 +374,204 @@ export class HistoryDatasetStore {
       .bind(datasetId, tradeDate)
       .first();
     return row ? JSON.parse(row.payload) : null;
+  }
+  async saveMinuteInputs(datasetId, tradeDate, code, payload) {
+    await this.ensure();
+    await this.db
+      .prepare(
+        "INSERT OR REPLACE INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)",
+      )
+      .bind(
+        datasetId,
+        tradeDate,
+        code,
+        JSON.stringify(payload),
+        await digestOf(payload),
+      )
+      .run();
+  }
+  async listMinuteInputs(datasetId, tradeDate) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT code, payload FROM history_minute_inputs WHERE dataset_id = ? AND trade_date = ?",
+      )
+      .bind(datasetId, tradeDate)
+      .all();
+    return Object.fromEntries(
+      result.results.map((row) => [row.code, JSON.parse(row.payload)]),
+    );
+  }
+  async listMinuteDates(datasetId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT DISTINCT trade_date FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date",
+      )
+      .bind(datasetId)
+      .all();
+    return result.results.map((row) => row.trade_date);
+  }
+  async createBacktestRun({
+    id,
+    datasetId,
+    name,
+    strategyVersion,
+    strategyParams,
+    paramsDigest,
+    feeConfig,
+    feeDigest,
+    executionModel,
+    executionVersion,
+    initialBook,
+  }) {
+    await this.ensure();
+    const now = new Date().toISOString();
+    await this.db
+      .prepare(
+        "INSERT INTO backtest_runs (id, dataset_id, name, strategy_version, strategy_params, params_digest, fee_config, fee_digest, execution_model, execution_version, initial_book, stage, coverage_payload, digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', '{}', ?, ?)",
+      )
+      .bind(
+        id,
+        datasetId,
+        name,
+        strategyVersion,
+        JSON.stringify(strategyParams),
+        paramsDigest,
+        JSON.stringify(feeConfig),
+        feeDigest,
+        executionModel,
+        executionVersion,
+        JSON.stringify(initialBook),
+        await digestOf({ initialBook, datasetId, strategyParams }),
+        now,
+      )
+      .run();
+    return this.getBacktestRun(id);
+  }
+  async saveBacktestPlan(runId, signalDate, payload) {
+    await this.ensure();
+    await this.db
+      .prepare(
+        "INSERT OR IGNORE INTO backtest_plans (run_id, signal_date, payload, digest) VALUES (?, ?, ?, ?)",
+      )
+      .bind(runId, signalDate, JSON.stringify(payload), await digestOf(payload))
+      .run();
+  }
+  async appendBacktestLedger(runId, tradeDate, rows) {
+    await this.ensure();
+    for (const row of rows)
+      await this.db
+        .prepare(
+          "INSERT OR IGNORE INTO backtest_ledger (run_id, id, trade_date, payload) VALUES (?, ?, ?, ?)",
+        )
+        .bind(runId, row.id, tradeDate, JSON.stringify(row))
+        .run();
+  }
+  async saveBacktestEquity(runId, tradeDate, payload) {
+    await this.ensure();
+    await this.db
+      .prepare(
+        "INSERT OR REPLACE INTO backtest_equity (run_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)",
+      )
+      .bind(runId, tradeDate, JSON.stringify(payload), await digestOf(payload))
+      .run();
+  }
+  async finishBacktestRun(id, stage, coverage) {
+    await this.ensure();
+    const digest = await digestOf(coverage);
+    await this.db
+      .prepare(
+        "UPDATE backtest_runs SET stage = ?, coverage_payload = ?, digest = ? WHERE id = ?",
+      )
+      .bind(stage, JSON.stringify(coverage), digest, id)
+      .run();
+    return this.getBacktestRun(id);
+  }
+  async getBacktestRun(id) {
+    await this.ensure();
+    const row = await this.db
+      .prepare("SELECT * FROM backtest_runs WHERE id = ?")
+      .bind(id)
+      .first();
+    if (!row) return null;
+    return {
+      id: row.id,
+      datasetId: row.dataset_id,
+      name: row.name,
+      strategyVersion: row.strategy_version,
+      strategyParams: JSON.parse(row.strategy_params),
+      paramsDigest: row.params_digest,
+      feeConfig: JSON.parse(row.fee_config),
+      feeDigest: row.fee_digest,
+      executionModel: row.execution_model,
+      executionVersion: row.execution_version,
+      initialBook: JSON.parse(row.initial_book),
+      stage: row.stage,
+      coverage: JSON.parse(row.coverage_payload),
+      digest: row.digest,
+      createdAt: row.created_at,
+    };
+  }
+  async listBacktestLedger(runId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT id, trade_date, payload FROM backtest_ledger WHERE run_id = ? ORDER BY trade_date, id",
+      )
+      .bind(runId)
+      .all();
+    return result.results.map((row) => ({
+      id: row.id,
+      tradeDate: row.trade_date,
+      ...JSON.parse(row.payload),
+    }));
+  }
+  async listBacktestEquity(runId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT trade_date, payload, digest FROM backtest_equity WHERE run_id = ? ORDER BY trade_date",
+      )
+      .bind(runId)
+      .all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      ...JSON.parse(row.payload),
+      digest: row.digest,
+    }));
+  }
+  async listBacktestRuns(limit = 20) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT id, dataset_id, name, stage, execution_model, coverage_payload, created_at FROM backtest_runs ORDER BY created_at DESC, id DESC LIMIT ?",
+      )
+      .bind(limit)
+      .all();
+    return result.results.map((row) => ({
+      id: row.id,
+      datasetId: row.dataset_id,
+      name: row.name,
+      stage: row.stage,
+      executionModel: row.execution_model,
+      coverage: JSON.parse(row.coverage_payload),
+      createdAt: row.created_at,
+    }));
+  }
+  async listBacktestPlans(runId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT signal_date, payload, digest FROM backtest_plans WHERE run_id = ? ORDER BY signal_date",
+      )
+      .bind(runId)
+      .all();
+    return result.results.map((row) => ({
+      signalDate: row.signal_date,
+      ...JSON.parse(row.payload),
+      digest: row.digest,
+    }));
   }
   async listScores(datasetId) {
     await this.ensure();

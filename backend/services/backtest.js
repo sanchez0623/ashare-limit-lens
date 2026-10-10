@@ -1,0 +1,292 @@
+import { BASE_STRATEGY, createPlan, newBook } from "../domain/trading.js";
+import {
+  openSession,
+  advanceSession,
+  closeSession,
+} from "../domain/realtime.js";
+import { DEFAULT_FEES } from "../../shared/fees.js";
+import { digestOf } from "../domain/research-lineage.js";
+import {
+  HISTORICAL_EXECUTION_MODEL,
+  HISTORICAL_EXECUTION_VERSION,
+  assertCausalObservations,
+} from "../domain/historical-execution.js";
+import { openHistoryStore } from "../storage/history.js";
+
+function newId(prefix) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+function buildQuoteTemplates({ book, snapshot }) {
+  const templates = {};
+  for (const position of book.positions) {
+    templates[position.code] = {
+      date: null,
+      name: position.name,
+      previousCloseCents: position.markCents,
+      openCents: null,
+      limitUpCents: Math.round(position.markCents * 1.1),
+      limitDownCents: Math.round(position.markCents * 0.9),
+      volumeShares: 0,
+    };
+  }
+  for (const stock of snapshot.stocks ?? []) {
+    if (templates[stock.code] || stock.price === null) continue;
+    const previousCloseCents = Math.round(stock.price * 100);
+    templates[stock.code] = {
+      date: null,
+      name: stock.name,
+      previousCloseCents,
+      openCents: null,
+      limitUpCents: Math.round(previousCloseCents * 1.1),
+      limitDownCents: Math.round(previousCloseCents * 0.9),
+      volumeShares: 0,
+    };
+  }
+  return templates;
+}
+function inSessionTime(time) {
+  return (
+    (time >= "09:30" && time <= "11:30") || (time >= "13:00" && time < "14:57")
+  );
+}
+function buildTimeline(minuteByCode) {
+  const times = new Set();
+  for (const series of Object.values(minuteByCode))
+    for (const bar of series.bars ?? []) times.add(bar.time);
+  return [...times].filter(inSessionTime).sort();
+}
+function observationsForDay({ date, minuteByCode, templates }) {
+  const timeline = buildTimeline(minuteByCode);
+  const observations = [];
+  const cumulative = Object.fromEntries(
+    Object.keys(templates).map((code) => [code, 0]),
+  );
+  for (const time of timeline) {
+    const quotes = {};
+    for (const [code, series] of Object.entries(minuteByCode)) {
+      const template = templates[code];
+      if (!template) continue;
+      const bar = (series.bars ?? []).find((bar) => bar.time === time);
+      if (!bar) continue;
+      cumulative[code] += Math.max(0, Math.round(bar.volumeShares));
+      quotes[code] = {
+        ...template,
+        date,
+        closeCents: bar.priceCents,
+        volumeShares: cumulative[code],
+        timestamp: `${date}T${time}:00+08:00`,
+      };
+    }
+    if (!Object.keys(quotes).length) continue;
+    observations.push({
+      observedAt: new Date(`${date}T${time}:00+08:00`).toISOString(),
+      pollIntervalSeconds: 60,
+      quotes,
+    });
+  }
+  return observations;
+}
+function endOfDayQuotes({ date, minuteByCode, templates }) {
+  const quotes = {};
+  for (const [code, series] of Object.entries(minuteByCode)) {
+    const template = templates[code];
+    const bars = series.bars ?? [];
+    const last = bars.at(-1);
+    if (!template || !last) continue;
+    quotes[code] = {
+      ...template,
+      date,
+      closeCents: last.priceCents,
+      volumeShares: last.volumeShares,
+      timestamp: `${date}T15:00:00+08:00`,
+    };
+  }
+  return quotes;
+}
+export async function runBacktest(
+  env,
+  { datasetId, name, strategy, initialCapital, weights },
+) {
+  const store = openHistoryStore(env);
+  const dataset = await store.getDataset(datasetId);
+  if (!dataset) throw new Error("历史数据集不存在");
+  if (dataset.executionModel !== "SIX_FACTOR_V1")
+    throw new Error("回测需要六因子历史评分数据集（SIX_FACTOR_V1）");
+  const strategyParams = strategy ?? BASE_STRATEGY;
+  const feeConfig = DEFAULT_FEES;
+  const runId = newId("bt");
+  let book = newBook(initialCapital ?? 1000000, feeConfig);
+  const paramsDigest = await digestOf(strategyParams);
+  const feeDigest = await digestOf(feeConfig);
+  await store.createBacktestRun({
+    id: runId,
+    datasetId,
+    name: name ?? "历史回测",
+    strategyVersion: dataset.id,
+    strategyParams,
+    paramsDigest,
+    feeConfig,
+    feeDigest,
+    executionModel: HISTORICAL_EXECUTION_MODEL,
+    executionVersion: HISTORICAL_EXECUTION_VERSION,
+    initialBook: { initialCashCents: book.initialCashCents },
+  });
+  const scores = await store.listScores(datasetId);
+  const minuteDates = new Set(await store.listMinuteDates(datasetId));
+  const coverage = {
+    executionModel: HISTORICAL_EXECUTION_MODEL,
+    plannedPairs: 0,
+    executedPairs: 0,
+    skippedPairs: [],
+    equity: [],
+    totalReturn: null,
+    maxDrawdown: null,
+    fillCount: 0,
+    feesCents: null,
+    notes: [
+      "研究回测：MINUTE_SAMPLE_V1 采样价模型，涨跌停边界按上一收盘 ±10% 近似；不含可成交性保证，不代表可执行策略收益",
+    ],
+  };
+  for (let index = 0; index + 1 < scores.length; index++) {
+    const signal = scores[index];
+    const signalDate = signal.tradeDate;
+    const tradeDate = scores[index + 1].tradeDate;
+    coverage.plannedPairs++;
+    if (!minuteDates.has(tradeDate)) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: "缺少次日分钟采样数据",
+      });
+      continue;
+    }
+    const snapshot = signal.payload;
+    let plan;
+    try {
+      plan = createPlan(
+        snapshot,
+        book,
+        strategyParams,
+        `backtest-${runId}`,
+        `${signalDate}T07:10:00.000Z`,
+      );
+    } catch (error) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: `计划生成失败：${String(error.message ?? error).slice(0, 120)}`,
+      });
+      continue;
+    }
+    await store.saveBacktestPlan(runId, signalDate, plan);
+    const minuteByCode = await store.listMinuteInputs(datasetId, tradeDate);
+    const templates = buildQuoteTemplates({ book, snapshot });
+    const observations = observationsForDay({
+      date: tradeDate,
+      minuteByCode,
+      templates,
+    });
+    if (!observations.length) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: "分钟采样未产生有效观测",
+      });
+      continue;
+    }
+    assertCausalObservations(observations);
+    let session;
+    try {
+      session = openSession({ ...book, lastDate: signalDate }, plan, tradeDate);
+    } catch (error) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: `会话开启失败：${String(error.message ?? error).slice(0, 120)}`,
+      });
+      continue;
+    }
+    const dayLedger = [];
+    for (const observation of observations) {
+      const result = advanceSession(book, session, observation);
+      book = result.book;
+      session = result.session;
+      dayLedger.push(
+        ...result.ledger.map((row, offset) => ({
+          ...row,
+          id: row.id ?? `${tradeDate}:${observation.observedAt}:${offset}`,
+        })),
+      );
+    }
+    const eodQuotes = endOfDayQuotes({
+      date: tradeDate,
+      minuteByCode,
+      templates,
+    });
+    const closed = closeSession(book, session, {
+      date: tradeDate,
+      quotes: eodQuotes,
+      source: "历史研究（采样收盘）",
+    });
+    book = closed.book;
+    coverage.executedPairs++;
+    if (dayLedger.length)
+      await store.appendBacktestLedger(runId, tradeDate, dayLedger);
+    const drawdown = book.peakEquityCents
+      ? 1 - book.equityCents / book.peakEquityCents
+      : 0;
+    const equityRow = {
+      tradeDate,
+      equityCents: book.equityCents,
+      cashCents: book.cashCents,
+      drawdown,
+      positions: book.positions.length,
+    };
+    coverage.equity.push(equityRow);
+    await store.saveBacktestEquity(runId, tradeDate, equityRow);
+  }
+  coverage.totalReturn = book.equityCents / book.initialCashCents - 1;
+  coverage.maxDrawdown = Math.max(
+    0,
+    ...coverage.equity.map((row) => row.drawdown),
+  );
+  const ledgerRows = await store.listBacktestLedger(runId);
+  coverage.fillCount = ledgerRows.length;
+  coverage.feesCents = book.feesCents;
+  const stage =
+    coverage.executedPairs > 0 && coverage.skippedPairs.length === 0
+      ? "READY"
+      : "PARTIAL";
+  const run = await store.finishBacktestRun(runId, stage, coverage);
+  return run;
+}
+export async function backtestDetail(env, runId) {
+  const store = openHistoryStore(env);
+  const run = await store.getBacktestRun(runId);
+  if (!run) return null;
+  const [plans, ledger, equity] = await Promise.all([
+    store.listBacktestPlans(runId),
+    store.listBacktestLedger(runId),
+    store.listBacktestEquity(runId),
+  ]);
+  const recomputedTotalReturn =
+    equity.length && run.initialBook?.initialCashCents
+      ? equity.at(-1).equityCents / run.initialBook.initialCashCents - 1
+      : null;
+  return {
+    run,
+    plans,
+    ledger: ledger.slice(-100),
+    ledgerCount: ledger.length,
+    equity,
+    verification: {
+      totalReturnMatches:
+        recomputedTotalReturn === null
+          ? null
+          : Math.abs(
+              (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0),
+            ) < 1e-9,
+      recomputedTotalReturn,
+    },
+  };
+}

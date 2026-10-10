@@ -6002,6 +6002,52 @@ var HistoryDatasetStore = class {
         artifact_ref TEXT,
         PRIMARY KEY (job_id, chunk_key)
       );
+      CREATE TABLE IF NOT EXISTS history_minute_inputs (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        code TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, code)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_runs (
+        id TEXT PRIMARY KEY,
+        dataset_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        strategy_version TEXT NOT NULL,
+        strategy_params TEXT NOT NULL,
+        params_digest TEXT NOT NULL,
+        fee_config TEXT NOT NULL,
+        fee_digest TEXT NOT NULL,
+        execution_model TEXT NOT NULL,
+        execution_version TEXT NOT NULL,
+        initial_book TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        coverage_payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS backtest_plans (
+        run_id TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (run_id, signal_date)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_ledger (
+        run_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        PRIMARY KEY (run_id, id)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_equity (
+        run_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (run_id, trade_date)
+      );
     `);
     this.ready = true;
   }
@@ -6143,6 +6189,165 @@ var HistoryDatasetStore = class {
     ).bind(datasetId, tradeDate).first();
     return row ? JSON.parse(row.payload) : null;
   }
+  async saveMinuteInputs(datasetId, tradeDate, code, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR REPLACE INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
+    ).bind(
+      datasetId,
+      tradeDate,
+      code,
+      JSON.stringify(payload),
+      await digestOf(payload)
+    ).run();
+  }
+  async listMinuteInputs(datasetId, tradeDate) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT code, payload FROM history_minute_inputs WHERE dataset_id = ? AND trade_date = ?"
+    ).bind(datasetId, tradeDate).all();
+    return Object.fromEntries(
+      result.results.map((row) => [row.code, JSON.parse(row.payload)])
+    );
+  }
+  async listMinuteDates(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT DISTINCT trade_date FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date"
+    ).bind(datasetId).all();
+    return result.results.map((row) => row.trade_date);
+  }
+  async createBacktestRun({
+    id,
+    datasetId,
+    name,
+    strategyVersion,
+    strategyParams,
+    paramsDigest,
+    feeConfig,
+    feeDigest,
+    executionModel,
+    executionVersion,
+    initialBook
+  }) {
+    await this.ensure();
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT INTO backtest_runs (id, dataset_id, name, strategy_version, strategy_params, params_digest, fee_config, fee_digest, execution_model, execution_version, initial_book, stage, coverage_payload, digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', '{}', ?, ?)"
+    ).bind(
+      id,
+      datasetId,
+      name,
+      strategyVersion,
+      JSON.stringify(strategyParams),
+      paramsDigest,
+      JSON.stringify(feeConfig),
+      feeDigest,
+      executionModel,
+      executionVersion,
+      JSON.stringify(initialBook),
+      await digestOf({ initialBook, datasetId, strategyParams }),
+      now
+    ).run();
+    return this.getBacktestRun(id);
+  }
+  async saveBacktestPlan(runId, signalDate, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO backtest_plans (run_id, signal_date, payload, digest) VALUES (?, ?, ?, ?)"
+    ).bind(runId, signalDate, JSON.stringify(payload), await digestOf(payload)).run();
+  }
+  async appendBacktestLedger(runId, tradeDate, rows) {
+    await this.ensure();
+    for (const row of rows)
+      await this.db.prepare(
+        "INSERT OR IGNORE INTO backtest_ledger (run_id, id, trade_date, payload) VALUES (?, ?, ?, ?)"
+      ).bind(runId, row.id, tradeDate, JSON.stringify(row)).run();
+  }
+  async saveBacktestEquity(runId, tradeDate, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR REPLACE INTO backtest_equity (run_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)"
+    ).bind(runId, tradeDate, JSON.stringify(payload), await digestOf(payload)).run();
+  }
+  async finishBacktestRun(id, stage, coverage) {
+    await this.ensure();
+    const digest2 = await digestOf(coverage);
+    await this.db.prepare(
+      "UPDATE backtest_runs SET stage = ?, coverage_payload = ?, digest = ? WHERE id = ?"
+    ).bind(stage, JSON.stringify(coverage), digest2, id).run();
+    return this.getBacktestRun(id);
+  }
+  async getBacktestRun(id) {
+    await this.ensure();
+    const row = await this.db.prepare("SELECT * FROM backtest_runs WHERE id = ?").bind(id).first();
+    if (!row) return null;
+    return {
+      id: row.id,
+      datasetId: row.dataset_id,
+      name: row.name,
+      strategyVersion: row.strategy_version,
+      strategyParams: JSON.parse(row.strategy_params),
+      paramsDigest: row.params_digest,
+      feeConfig: JSON.parse(row.fee_config),
+      feeDigest: row.fee_digest,
+      executionModel: row.execution_model,
+      executionVersion: row.execution_version,
+      initialBook: JSON.parse(row.initial_book),
+      stage: row.stage,
+      coverage: JSON.parse(row.coverage_payload),
+      digest: row.digest,
+      createdAt: row.created_at
+    };
+  }
+  async listBacktestLedger(runId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT id, trade_date, payload FROM backtest_ledger WHERE run_id = ? ORDER BY trade_date, id"
+    ).bind(runId).all();
+    return result.results.map((row) => ({
+      id: row.id,
+      tradeDate: row.trade_date,
+      ...JSON.parse(row.payload)
+    }));
+  }
+  async listBacktestEquity(runId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, payload, digest FROM backtest_equity WHERE run_id = ? ORDER BY trade_date"
+    ).bind(runId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      ...JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
+  async listBacktestRuns(limit = 20) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT id, dataset_id, name, stage, execution_model, coverage_payload, created_at FROM backtest_runs ORDER BY created_at DESC, id DESC LIMIT ?"
+    ).bind(limit).all();
+    return result.results.map((row) => ({
+      id: row.id,
+      datasetId: row.dataset_id,
+      name: row.name,
+      stage: row.stage,
+      executionModel: row.execution_model,
+      coverage: JSON.parse(row.coverage_payload),
+      createdAt: row.created_at
+    }));
+  }
+  async listBacktestPlans(runId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT signal_date, payload, digest FROM backtest_plans WHERE run_id = ? ORDER BY signal_date"
+    ).bind(runId).all();
+    return result.results.map((row) => ({
+      signalDate: row.signal_date,
+      ...JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
   async listScores(datasetId) {
     await this.ensure();
     const result = await this.db.prepare(
@@ -6191,8 +6396,8 @@ async function probeHistoryCapabilities(env, { start, end }) {
   return provider.capabilities({ start, end });
 }
 async function createHistoryImport(env, { provider = "tencent-free", kind, start, end, name }) {
-  if (!["LIMIT_FEATURES", "DAILY"].includes(kind))
-    throw new Error("\u5386\u53F2\u5BFC\u5165\u7C7B\u578B\u65E0\u6548\uFF08LIMIT_FEATURES \u6216 DAILY\uFF09");
+  if (!["LIMIT_FEATURES", "DAILY", "MINUTES"].includes(kind))
+    throw new Error("\u5386\u53F2\u5BFC\u5165\u7C7B\u578B\u65E0\u6548\uFF08LIMIT_FEATURES\u3001DAILY \u6216 MINUTES\uFF09");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end))
     throw new Error("\u5386\u53F2\u5BFC\u5165\u65E5\u671F\u8303\u56F4\u65E0\u6548");
   if (start > end) throw new Error("\u5386\u53F2\u5BFC\u5165\u8D77\u59CB\u65E5\u671F\u665A\u4E8E\u7ED3\u675F\u65E5\u671F");
@@ -6439,6 +6644,67 @@ async function runHistoryImport(env, jobId, options = {}) {
         }
       );
     }
+  } else if (job.kind === "MINUTES") {
+    const codes = options.codes ?? [];
+    if (!codes.length) {
+      return jobs.updateJob(jobId, {
+        stage: "BLOCKED",
+        statusPayload: {
+          capabilities,
+          reason: "MINUTES \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08options.codes\uFF09"
+        }
+      });
+    }
+    for (const date of calendar.dates) {
+      let dayRows = 0;
+      let dayFailures = 0;
+      for (const code of codes) {
+        const chunkKey = `minute:${date}:${code}`;
+        if (doneChunks.has(chunkKey) && job.datasetId) {
+          dayRows++;
+          continue;
+        }
+        try {
+          const series = await provider.minuteSeries({ code, date });
+          await store.saveMinuteInputs(datasetId, date, code, {
+            bars: series.inSession,
+            anomalies: series.anomalies.slice(0, 5),
+            sampled: true,
+            note: "\u5206\u949F\u91C7\u6837\u4EF7\u5E8F\u5217\uFF08MINUTE_SAMPLE_V1\uFF09\uFF0C\u975E\u5B8C\u6574 OHLC"
+          });
+          await store.saveChunk(jobId, {
+            chunkKey,
+            requestRange: date,
+            actualRange: date,
+            rows: series.inSession.length,
+            stage: "DONE"
+          });
+          dayRows++;
+        } catch (error) {
+          await store.saveChunk(jobId, {
+            chunkKey,
+            requestRange: date,
+            actualRange: null,
+            rows: 0,
+            stage: "FAILED",
+            artifactRef: String(error.message ?? error).slice(0, 160)
+          });
+          dayFailures++;
+        }
+      }
+      if (dayFailures === 0 && dayRows > 0) {
+        succeeded.push({ date });
+        for (const code of codes) universeCodes.add(code);
+      } else if (dayRows > 0) {
+        succeeded.push({ date });
+        failed.push({
+          date,
+          reason: `\u5206\u949F\u91C7\u6837\u90E8\u5206\u7F3A\u5931\uFF1A${dayFailures}/${codes.length} \u53EA\u5931\u8D25`
+        });
+      } else {
+        failed.push({ date, reason: "\u5206\u949F\u91C7\u6837\u5168\u90E8\u5931\u8D25" });
+      }
+    }
   } else if (job.kind === "DAILY") {
     await jobs.updateJob(jobId, { stage: "DOWNLOADING" });
     const codes = options.codes ?? [];
@@ -6527,6 +6793,280 @@ async function historyImportDetail(env, jobId) {
   };
 }
 
+// backend/domain/historical-execution.js
+var HISTORICAL_EXECUTION_VERSION = "minute-sample-v1";
+var HISTORICAL_EXECUTION_MODEL = "MINUTE_SAMPLE_V1";
+function assertCausalObservations(observations) {
+  for (let index = 1; index < observations.length; index++) {
+    if (new Date(observations[index].observedAt) <= new Date(observations[index - 1].observedAt))
+      throw new Error("\u7814\u7A76\u89C2\u6D4B\u65F6\u95F4\u975E\u4E25\u683C\u9012\u589E\uFF0C\u8FDD\u53CD\u56E0\u679C\u987A\u5E8F");
+  }
+  return true;
+}
+
+// backend/services/backtest.js
+function newId2(prefix) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+function buildQuoteTemplates({ book, snapshot }) {
+  const templates = {};
+  for (const position of book.positions) {
+    templates[position.code] = {
+      date: null,
+      name: position.name,
+      previousCloseCents: position.markCents,
+      openCents: null,
+      limitUpCents: Math.round(position.markCents * 1.1),
+      limitDownCents: Math.round(position.markCents * 0.9),
+      volumeShares: 0
+    };
+  }
+  for (const stock of snapshot.stocks ?? []) {
+    if (templates[stock.code] || stock.price === null) continue;
+    const previousCloseCents = Math.round(stock.price * 100);
+    templates[stock.code] = {
+      date: null,
+      name: stock.name,
+      previousCloseCents,
+      openCents: null,
+      limitUpCents: Math.round(previousCloseCents * 1.1),
+      limitDownCents: Math.round(previousCloseCents * 0.9),
+      volumeShares: 0
+    };
+  }
+  return templates;
+}
+function inSessionTime(time) {
+  return time >= "09:30" && time <= "11:30" || time >= "13:00" && time < "14:57";
+}
+function buildTimeline(minuteByCode) {
+  const times = /* @__PURE__ */ new Set();
+  for (const series of Object.values(minuteByCode))
+    for (const bar of series.bars ?? []) times.add(bar.time);
+  return [...times].filter(inSessionTime).sort();
+}
+function observationsForDay({ date, minuteByCode, templates }) {
+  const timeline = buildTimeline(minuteByCode);
+  const observations = [];
+  const cumulative = Object.fromEntries(
+    Object.keys(templates).map((code) => [code, 0])
+  );
+  for (const time of timeline) {
+    const quotes = {};
+    for (const [code, series] of Object.entries(minuteByCode)) {
+      const template = templates[code];
+      if (!template) continue;
+      const bar = (series.bars ?? []).find((bar2) => bar2.time === time);
+      if (!bar) continue;
+      cumulative[code] += Math.max(0, Math.round(bar.volumeShares));
+      quotes[code] = {
+        ...template,
+        date,
+        closeCents: bar.priceCents,
+        volumeShares: cumulative[code],
+        timestamp: `${date}T${time}:00+08:00`
+      };
+    }
+    if (!Object.keys(quotes).length) continue;
+    observations.push({
+      observedAt: (/* @__PURE__ */ new Date(`${date}T${time}:00+08:00`)).toISOString(),
+      pollIntervalSeconds: 60,
+      quotes
+    });
+  }
+  return observations;
+}
+function endOfDayQuotes({ date, minuteByCode, templates }) {
+  const quotes = {};
+  for (const [code, series] of Object.entries(minuteByCode)) {
+    const template = templates[code];
+    const bars = series.bars ?? [];
+    const last = bars.at(-1);
+    if (!template || !last) continue;
+    quotes[code] = {
+      ...template,
+      date,
+      closeCents: last.priceCents,
+      volumeShares: last.volumeShares,
+      timestamp: `${date}T15:00:00+08:00`
+    };
+  }
+  return quotes;
+}
+async function runBacktest(env, { datasetId, name, strategy, initialCapital, weights }) {
+  const store = openHistoryStore(env);
+  const dataset = await store.getDataset(datasetId);
+  if (!dataset) throw new Error("\u5386\u53F2\u6570\u636E\u96C6\u4E0D\u5B58\u5728");
+  if (dataset.executionModel !== "SIX_FACTOR_V1")
+    throw new Error("\u56DE\u6D4B\u9700\u8981\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09");
+  const strategyParams = strategy ?? BASE_STRATEGY;
+  const feeConfig = DEFAULT_FEES;
+  const runId = newId2("bt");
+  let book = newBook(initialCapital ?? 1e6, feeConfig);
+  const paramsDigest = await digestOf(strategyParams);
+  const feeDigest = await digestOf(feeConfig);
+  await store.createBacktestRun({
+    id: runId,
+    datasetId,
+    name: name ?? "\u5386\u53F2\u56DE\u6D4B",
+    strategyVersion: dataset.id,
+    strategyParams,
+    paramsDigest,
+    feeConfig,
+    feeDigest,
+    executionModel: HISTORICAL_EXECUTION_MODEL,
+    executionVersion: HISTORICAL_EXECUTION_VERSION,
+    initialBook: { initialCashCents: book.initialCashCents }
+  });
+  const scores = await store.listScores(datasetId);
+  const minuteDates = new Set(await store.listMinuteDates(datasetId));
+  const coverage = {
+    executionModel: HISTORICAL_EXECUTION_MODEL,
+    plannedPairs: 0,
+    executedPairs: 0,
+    skippedPairs: [],
+    equity: [],
+    totalReturn: null,
+    maxDrawdown: null,
+    fillCount: 0,
+    feesCents: null,
+    notes: [
+      "\u7814\u7A76\u56DE\u6D4B\uFF1AMINUTE_SAMPLE_V1 \u91C7\u6837\u4EF7\u6A21\u578B\uFF0C\u6DA8\u8DCC\u505C\u8FB9\u754C\u6309\u4E0A\u4E00\u6536\u76D8 \xB110% \u8FD1\u4F3C\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA"
+    ]
+  };
+  for (let index = 0; index + 1 < scores.length; index++) {
+    const signal = scores[index];
+    const signalDate = signal.tradeDate;
+    const tradeDate = scores[index + 1].tradeDate;
+    coverage.plannedPairs++;
+    if (!minuteDates.has(tradeDate)) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: "\u7F3A\u5C11\u6B21\u65E5\u5206\u949F\u91C7\u6837\u6570\u636E"
+      });
+      continue;
+    }
+    const snapshot = signal.payload;
+    let plan;
+    try {
+      plan = createPlan(
+        snapshot,
+        book,
+        strategyParams,
+        `backtest-${runId}`,
+        `${signalDate}T07:10:00.000Z`
+      );
+    } catch (error) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: `\u8BA1\u5212\u751F\u6210\u5931\u8D25\uFF1A${String(error.message ?? error).slice(0, 120)}`
+      });
+      continue;
+    }
+    await store.saveBacktestPlan(runId, signalDate, plan);
+    const minuteByCode = await store.listMinuteInputs(datasetId, tradeDate);
+    const templates = buildQuoteTemplates({ book, snapshot });
+    const observations = observationsForDay({
+      date: tradeDate,
+      minuteByCode,
+      templates
+    });
+    if (!observations.length) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: "\u5206\u949F\u91C7\u6837\u672A\u4EA7\u751F\u6709\u6548\u89C2\u6D4B"
+      });
+      continue;
+    }
+    assertCausalObservations(observations);
+    let session;
+    try {
+      session = openSession({ ...book, lastDate: signalDate }, plan, tradeDate);
+    } catch (error) {
+      coverage.skippedPairs.push({
+        signalDate,
+        tradeDate,
+        reason: `\u4F1A\u8BDD\u5F00\u542F\u5931\u8D25\uFF1A${String(error.message ?? error).slice(0, 120)}`
+      });
+      continue;
+    }
+    const dayLedger = [];
+    for (const observation of observations) {
+      const result = advanceSession(book, session, observation);
+      book = result.book;
+      session = result.session;
+      dayLedger.push(
+        ...result.ledger.map((row, offset) => ({
+          ...row,
+          id: row.id ?? `${tradeDate}:${observation.observedAt}:${offset}`
+        }))
+      );
+    }
+    const eodQuotes = endOfDayQuotes({
+      date: tradeDate,
+      minuteByCode,
+      templates
+    });
+    const closed = closeSession(book, session, {
+      date: tradeDate,
+      quotes: eodQuotes,
+      source: "\u5386\u53F2\u7814\u7A76\uFF08\u91C7\u6837\u6536\u76D8\uFF09"
+    });
+    book = closed.book;
+    coverage.executedPairs++;
+    if (dayLedger.length)
+      await store.appendBacktestLedger(runId, tradeDate, dayLedger);
+    const drawdown = book.peakEquityCents ? 1 - book.equityCents / book.peakEquityCents : 0;
+    const equityRow = {
+      tradeDate,
+      equityCents: book.equityCents,
+      cashCents: book.cashCents,
+      drawdown,
+      positions: book.positions.length
+    };
+    coverage.equity.push(equityRow);
+    await store.saveBacktestEquity(runId, tradeDate, equityRow);
+  }
+  coverage.totalReturn = book.equityCents / book.initialCashCents - 1;
+  coverage.maxDrawdown = Math.max(
+    0,
+    ...coverage.equity.map((row) => row.drawdown)
+  );
+  const ledgerRows = await store.listBacktestLedger(runId);
+  coverage.fillCount = ledgerRows.length;
+  coverage.feesCents = book.feesCents;
+  const stage = coverage.executedPairs > 0 && coverage.skippedPairs.length === 0 ? "READY" : "PARTIAL";
+  const run = await store.finishBacktestRun(runId, stage, coverage);
+  return run;
+}
+async function backtestDetail(env, runId) {
+  const store = openHistoryStore(env);
+  const run = await store.getBacktestRun(runId);
+  if (!run) return null;
+  const [plans, ledger, equity] = await Promise.all([
+    store.listBacktestPlans(runId),
+    store.listBacktestLedger(runId),
+    store.listBacktestEquity(runId)
+  ]);
+  const recomputedTotalReturn = equity.length && run.initialBook?.initialCashCents ? equity.at(-1).equityCents / run.initialBook.initialCashCents - 1 : null;
+  return {
+    run,
+    plans,
+    ledger: ledger.slice(-100),
+    ledgerCount: ledger.length,
+    equity,
+    verification: {
+      totalReturnMatches: recomputedTotalReturn === null ? null : Math.abs(
+        (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0)
+      ) < 1e-9,
+      recomputedTotalReturn
+    }
+  };
+}
+
 // backend/routes/api.js
 async function runDaily(env) {
   const date = beijingDate();
@@ -6591,12 +7131,14 @@ async function api(request, env) {
     "/api/paper/poll": ["POST"],
     "/api/research/status": ["GET"],
     "/api/history/capabilities": ["GET"],
-    "/api/history/imports": ["GET", "POST"]
+    "/api/history/imports": ["GET", "POST"],
+    "/api/backtests": ["GET", "POST"]
   };
   const historyImportMatch = path.match(
     /^\/api\/history\/imports\/([a-z0-9-]+)(\/run)?$/
   );
-  if (!methods[path] && !historyImportMatch)
+  const backtestMatch = path.match(/^\/api\/backtests\/([a-z0-9-]+)$/);
+  if (!methods[path] && !historyImportMatch && !backtestMatch)
     return json({ error: "\u63A5\u53E3\u4E0D\u5B58\u5728" }, 404);
   const allowedMethods = methods[path] ?? ["GET", "POST"];
   if (!allowedMethods.includes(request.method))
@@ -6654,6 +7196,26 @@ async function api(request, env) {
         );
       if (action === "/run") return json(await runHistoryImport(env, importId));
       return json({ error: "\u4E0D\u652F\u6301\u6B64\u64CD\u4F5C" }, 405);
+    }
+    if (path === "/api/backtests") {
+      if (request.method === "GET")
+        return json({
+          backtests: await openHistoryStore(env).listBacktestRuns(20)
+        });
+      const body2 = await readJson(request);
+      const run = await runBacktest(env, {
+        datasetId: body2.datasetId,
+        name: body2.name,
+        strategy: body2.strategy,
+        initialCapital: body2.initialCapital
+      });
+      return json({ run });
+    }
+    if (backtestMatch) {
+      if (request.method !== "GET")
+        return json({ error: "\u4E0D\u652F\u6301\u6B64\u8BF7\u6C42\u65B9\u6CD5" }, 405);
+      const detail = await backtestDetail(env, backtestMatch[1]);
+      return json(detail ?? { error: "\u56DE\u6D4B\u4E0D\u5B58\u5728" });
     }
     if (path === "/api/review") {
       const date = url.searchParams.get("date") || beijingDate();

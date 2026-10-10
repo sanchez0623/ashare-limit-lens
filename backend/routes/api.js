@@ -30,7 +30,8 @@ import {
   probeHistoryCapabilities,
   runHistoryImport,
 } from "../services/history.js";
-import { HistoryJobRepository } from "../storage/history.js";
+import { HistoryJobRepository, openHistoryStore } from "../storage/history.js";
+import { backtestDetail, runBacktest } from "../services/backtest.js";
 import { pollTrading, realtimeStatus } from "../services/realtime.js";
 
 async function runDaily(env) {
@@ -102,11 +103,13 @@ export async function api(request, env) {
     "/api/research/status": ["GET"],
     "/api/history/capabilities": ["GET"],
     "/api/history/imports": ["GET", "POST"],
+    "/api/backtests": ["GET", "POST"],
   };
   const historyImportMatch = path.match(
     /^\/api\/history\/imports\/([a-z0-9-]+)(\/run)?$/,
   );
-  if (!methods[path] && !historyImportMatch)
+  const backtestMatch = path.match(/^\/api\/backtests\/([a-z0-9-]+)$/);
+  if (!methods[path] && !historyImportMatch && !backtestMatch)
     return json({ error: "接口不存在" }, 404);
   const allowedMethods = methods[path] ?? ["GET", "POST"];
   if (!allowedMethods.includes(request.method))
@@ -175,6 +178,26 @@ export async function api(request, env) {
         );
       if (action === "/run") return json(await runHistoryImport(env, importId));
       return json({ error: "不支持此操作" }, 405);
+    }
+    if (path === "/api/backtests") {
+      if (request.method === "GET")
+        return json({
+          backtests: await openHistoryStore(env).listBacktestRuns(20),
+        });
+      const body = await readJson(request);
+      const run = await runBacktest(env, {
+        datasetId: body.datasetId,
+        name: body.name,
+        strategy: body.strategy,
+        initialCapital: body.initialCapital,
+      });
+      return json({ run });
+    }
+    if (backtestMatch) {
+      if (request.method !== "GET")
+        return json({ error: "不支持此请求方法" }, 405);
+      const detail = await backtestDetail(env, backtestMatch[1]);
+      return json(detail ?? { error: "回测不存在" });
     }
     if (path === "/api/review") {
       const date = url.searchParams.get("date") || beijingDate();

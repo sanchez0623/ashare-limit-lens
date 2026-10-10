@@ -28,8 +28,8 @@ export async function createHistoryImport(
   env,
   { provider = "tencent-free", kind, start, end, name },
 ) {
-  if (!["LIMIT_FEATURES", "DAILY"].includes(kind))
-    throw new Error("历史导入类型无效（LIMIT_FEATURES 或 DAILY）");
+  if (!["LIMIT_FEATURES", "DAILY", "MINUTES"].includes(kind))
+    throw new Error("历史导入类型无效（LIMIT_FEATURES、DAILY 或 MINUTES）");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end))
     throw new Error("历史导入日期范围无效");
   if (start > end) throw new Error("历史导入起始日期晚于结束日期");
@@ -299,6 +299,67 @@ export async function runHistoryImport(env, jobId, options = {}) {
           universe: universe.slice(0, 200),
         },
       );
+    }
+  } else if (job.kind === "MINUTES") {
+    const codes = options.codes ?? [];
+    if (!codes.length) {
+      return jobs.updateJob(jobId, {
+        stage: "BLOCKED",
+        statusPayload: {
+          capabilities,
+          reason: "MINUTES 导入需要显式声明研究股票池（options.codes）",
+        },
+      });
+    }
+    for (const date of calendar.dates) {
+      let dayRows = 0;
+      let dayFailures = 0;
+      for (const code of codes) {
+        const chunkKey = `minute:${date}:${code}`;
+        if (doneChunks.has(chunkKey) && job.datasetId) {
+          dayRows++;
+          continue;
+        }
+        try {
+          const series = await provider.minuteSeries({ code, date });
+          await store.saveMinuteInputs(datasetId, date, code, {
+            bars: series.inSession,
+            anomalies: series.anomalies.slice(0, 5),
+            sampled: true,
+            note: "分钟采样价序列（MINUTE_SAMPLE_V1），非完整 OHLC",
+          });
+          await store.saveChunk(jobId, {
+            chunkKey,
+            requestRange: date,
+            actualRange: date,
+            rows: series.inSession.length,
+            stage: "DONE",
+          });
+          dayRows++;
+        } catch (error) {
+          await store.saveChunk(jobId, {
+            chunkKey,
+            requestRange: date,
+            actualRange: null,
+            rows: 0,
+            stage: "FAILED",
+            artifactRef: String(error.message ?? error).slice(0, 160),
+          });
+          dayFailures++;
+        }
+      }
+      if (dayFailures === 0 && dayRows > 0) {
+        succeeded.push({ date });
+        for (const code of codes) universeCodes.add(code);
+      } else if (dayRows > 0) {
+        succeeded.push({ date });
+        failed.push({
+          date,
+          reason: `分钟采样部分缺失：${dayFailures}/${codes.length} 只失败`,
+        });
+      } else {
+        failed.push({ date, reason: "分钟采样全部失败" });
+      }
     }
   } else if (job.kind === "DAILY") {
     await jobs.updateJob(jobId, { stage: "DOWNLOADING" });

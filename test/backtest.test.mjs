@@ -1,0 +1,171 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { unlinkSync } from "node:fs";
+import { localDatabase } from "../scripts/local-db.mjs";
+import { openHistoryStore } from "../backend/storage/history.js";
+import { runBacktest, backtestDetail } from "../backend/services/backtest.js";
+import { FACTORS, PRESETS } from "../shared/scoring.js";
+
+const DATES = ["2026-03-02", "2026-03-03", "2026-03-04"];
+const CODES = ["600001", "600002"];
+function snapshotPayload(date, priceStep) {
+  return {
+    date,
+    createdAt: `${date}T07:05:00.000Z`,
+    emotion: 70,
+    stocks: CODES.map((code, index) => ({
+      code,
+      name: `样本${index + 1}`,
+      sector: "测试行业",
+      price: 10.5 + index * 0.5 + priceStep,
+      deduction: 0,
+      factors: FACTORS.map((factor, i) => ({
+        key: factor.key,
+        name: factor.name,
+        value: [92, 90, 88, 91, 89, 87][i],
+        weight: PRESETS.balanced[i],
+      })),
+      risks: [],
+    })),
+    sectors: [{ name: "测试行业", score: 82, count: CODES.length }],
+  };
+}
+function minuteBars(basePrice) {
+  return [
+    { time: "09:31", priceCents: basePrice - 20, volumeShares: 1200000 },
+    { time: "09:32", priceCents: basePrice - 15, volumeShares: 600000 },
+    { time: "09:33", priceCents: basePrice - 10, volumeShares: 600000 },
+    { time: "09:34", priceCents: basePrice - 5, volumeShares: 600000 },
+    { time: "10:00", priceCents: basePrice, volumeShares: 600000 },
+    { time: "14:50", priceCents: basePrice, volumeShares: 400000 },
+  ];
+}
+async function seedDataset(env, store, { minuteOn }) {
+  const datasetId = `hds-${crypto.randomUUID()}`;
+  await store.createDatasetVersion({
+    id: datasetId,
+    provider: "tencent-free",
+    kind: "LIMIT_FEATURES",
+    executionModel: "SIX_FACTOR_V1",
+    requestedStart: DATES[0],
+    requestedEnd: DATES.at(-1),
+    coverage: { succeededDates: DATES, coverage: { ratio: 100 } },
+  });
+  for (const [index, date] of DATES.entries())
+    await store.saveScore(
+      datasetId,
+      date,
+      "rules-v1-historical",
+      "test-params",
+      snapshotPayload(date, index * 0.1),
+    );
+  for (const date of minuteOn)
+    for (const [codeIndex, code] of CODES.entries())
+      await store.saveMinuteInputs(datasetId, date, code, {
+        bars: minuteBars(1050 + codeIndex * 50),
+        anomalies: [],
+        sampled: true,
+      });
+  return datasetId;
+}
+test("研究回测：采样模型成交、T+1 与费用入账、收益可重放验证", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = await seedDataset(env, store, { minuteOn: DATES.slice(1) });
+  try {
+    const run = await runBacktest(env, {
+      datasetId,
+      name: "采样回测",
+      initialCapital: 1000000,
+    });
+    assert.equal(run.stage, "READY");
+    assert.equal(run.executionModel, "MINUTE_SAMPLE_V1");
+    assert.equal(run.coverage.plannedPairs, 2);
+    assert.equal(run.coverage.executedPairs, 2);
+    assert.equal(run.coverage.equity.length, 2);
+    assert.ok(Number.isFinite(run.coverage.totalReturn));
+    assert.ok(run.coverage.feesCents > 0);
+    const detail = await backtestDetail(env, run.id);
+    assert.equal(detail.verification.totalReturnMatches, true);
+    assert.ok(detail.ledgerCount > 0);
+    const dayOneSells = detail.ledger.filter(
+      (row) =>
+        row.tradeDate === DATES[1] &&
+        (row.side === "SELL" ||
+          row.action === "EXIT" ||
+          row.action === "REDUCE"),
+    );
+    const dayOneBuys = detail.ledger.filter(
+      (row) => row.tradeDate === DATES[1] && row.side === "BUY",
+    );
+    for (const sell of dayOneSells)
+      assert.ok(
+        !dayOneBuys.some((buy) => buy.code === sell.code),
+        "T+1：当日买入的股票不允许当日卖出",
+      );
+    const rerunEquity = await store.listBacktestEquity(run.id);
+    assert.equal(rerunEquity.length, 2);
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("缺少分钟采样的交易日被跳过并标记 PARTIAL；账本跨日保留", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = await seedDataset(env, store, { minuteOn: [DATES[1]] });
+  try {
+    const run = await runBacktest(env, { datasetId, initialCapital: 1000000 });
+    assert.equal(run.stage, "PARTIAL");
+    assert.equal(run.coverage.plannedPairs, 2);
+    assert.equal(run.coverage.executedPairs, 1);
+    assert.ok(
+      run.coverage.skippedPairs.some(
+        (row) => row.tradeDate === DATES[2] && row.reason.includes("分钟"),
+      ),
+    );
+    const detail = await backtestDetail(env, run.id);
+    assert.equal(detail.verification.totalReturnMatches, true);
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("非六因子数据集拒绝回测", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = `hds-${crypto.randomUUID()}`;
+  try {
+    await store.createDatasetVersion({
+      id: datasetId,
+      provider: "tencent-free",
+      kind: "DAILY",
+      executionModel: "DAILY_OBSERVATION_V1",
+      requestedStart: DATES[0],
+      requestedEnd: DATES.at(-1),
+      coverage: {},
+    });
+    await assert.rejects(
+      () => runBacktest(env, { datasetId }),
+      /六因子历史评分数据集/,
+    );
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
