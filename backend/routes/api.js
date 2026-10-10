@@ -167,6 +167,7 @@ export async function api(request, env) {
         start: body.start,
         end: body.end,
         name: body.name,
+        codes: body.codes,
       });
       return json({ job });
     }
@@ -182,10 +183,15 @@ export async function api(request, env) {
       return json({ error: "不支持此操作" }, 405);
     }
     if (path === "/api/backtests") {
-      if (request.method === "GET")
+      if (request.method === "GET") {
+        const store = openHistoryStore(env);
         return json({
-          backtests: await openHistoryStore(env).listBacktestRuns(20),
+          backtests: store ? await store.listBacktestRuns(20) : [],
+          note: store
+            ? undefined
+            : "历史研究存储仅本机可用：请配置 LOCAL_RESEARCH_DB_PATH 后在本机查看",
         });
+      }
       const body = await readJson(request);
       const run = await runBacktest(env, {
         datasetId: body.datasetId,

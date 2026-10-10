@@ -31,7 +31,8 @@ await build({
   entryPoints: ["backend/worker.js"],
   bundle: true,
   format: "esm",
-  platform: "node",
+  platform: "browser",
+  external: ["node:sqlite"],
   target: "es2022",
   outfile: "dist/server/index.js",
 });

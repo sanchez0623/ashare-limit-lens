@@ -558,11 +558,13 @@ export async function proposeBootstrapImprovement(
       reason: "AI 冷启动初始化全局仅一次；失败与错误同样视为已消耗",
     };
   const store = openHistoryStore(env);
-  const dataset = datasetId ? await store.getDataset(datasetId) : null;
+  const dataset = store && datasetId ? await store.getDataset(datasetId) : null;
   if (!dataset)
     return {
       status: "NEED_DATA",
-      reason: "请指定六因子历史评分数据集（SIX_FACTOR_V1）",
+      reason: store
+        ? "请指定六因子历史评分数据集（SIX_FACTOR_V1）"
+        : "AI 冷启动训练依赖本机历史研究存储：请配置 LOCAL_RESEARCH_DB_PATH 后在本机运行",
     };
   if (dataset.executionModel !== "SIX_FACTOR_V1")
     return {

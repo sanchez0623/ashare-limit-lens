@@ -189,7 +189,13 @@ export function createTencentHistoricalProvider(options = {}) {
         results[code] = deduped;
         segments.push({ code, segments: codeSegments, rows: deduped.length });
       }
-      return { rows: results, segments };
+      return {
+        rows: results,
+        segments,
+        adjustment: "QFQ",
+        adjustmentNote:
+          "腾讯日线使用前复权（QFQ）价格：适合观察研究特征；历史数值会随未来除权修订，不能直接代入未复权资金账本",
+      };
     },
     async limitFeatures({ date }) {
       const [main, broken] = await Promise.allSettled([

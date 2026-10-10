@@ -679,7 +679,7 @@ var ASSETS = { "/": { "body": `<!doctype html>\r
         </p>\r
       </div>\r
     </dialog>\r
-    <script type="module" src="/assets/app.js"></script>\r
+    <script type="module" src="/assets/app.js"><\/script>\r
   </body>\r
 </html>\r
 `, "type": "text/html; charset=utf-8" }, "/assets/app.js": { "body": 'var K=[{key:"quality",name:"\\u5C01\\u677F\\u8D28\\u91CF",weight:30,description:"100 \\u2212 \\u70B8\\u677F\\u6B21\\u6570 \\xD7 15\\uFF0C\\u6700\\u4F4E 10 \\u5206"},{key:"capital",name:"\\u5C01\\u5355\\u5F3A\\u5EA6",weight:20,description:"\\u5C01\\u5355\\u91D1\\u989D \\xF7 \\u6210\\u4EA4\\u989D \\xF7 10%\\uFF0C\\u4E0A\\u9650 100 \\u5206"},{key:"liquidity",name:"\\u6362\\u624B\\u7ED3\\u6784",weight:15,description:"4\\u201312%\\uFF1A95\\uFF1B12\\u201325%\\uFF1A80\\uFF1B1\\u20134%\\uFF1A65\\uFF1B25\\u201340%\\uFF1A50\\uFF1B\\u5176\\u4F59\\uFF1A30"},{key:"timing",name:"\\u9996\\u5C01\\u65F6\\u70B9",weight:15,description:"09:45 \\u524D 100\\uFF1B10:30 \\u524D 85\\uFF1B11:30 \\u524D 65\\uFF1B14:00 \\u524D 45\\uFF1B\\u5176\\u4F59 25"},{key:"sector",name:"\\u677F\\u5757\\u534F\\u540C",weight:15,description:"\\u4F7F\\u7528\\u540C\\u65E5\\u3001\\u540C\\u4E00\\u884C\\u4E1A\\u7684\\u677F\\u5757\\u8BC4\\u5206"},{key:"ladder",name:"\\u8FDE\\u677F\\u7ED3\\u6784",weight:5,description:"\\u9996\\u677F 75\\uFF1B2\\u20133 \\u677F 100\\uFF1B4 \\u677F 65\\uFF1B5 \\u677F\\u53CA\\u4EE5\\u4E0A 40"}],D={balanced:[30,20,15,15,15,5],first:[30,20,15,20,12,3],relay:[30,20,10,10,20,10]},T=(e,t=0,n=100)=>Math.max(t,Math.min(n,e)),A=e=>e==null||e===""||!Number.isFinite(Number(e))?null:Number(e);function z(e){if(e==null)return"\\u2014";let t=String(e).padStart(6,"0");return/^\\d{6}$/.test(t)?`${t.slice(0,2)}:${t.slice(2,4)}`:"\\u2014"}function ee(e){return{code:String(e.c||""),name:String(e.n||""),sector:String(e.hybk||"\\u672A\\u5206\\u7C7B"),price:A(e.p)===null?null:Number(e.p)/1e3,change:A(e.zdp),amount:A(e.amount),floatCap:A(e.ltsz),seal:A(e.fund),turnover:A(e.hs),first:A(e.fbt),last:A(e.lbt),breaks:A(e.zbc),height:A(e.lbc),history:e.zttj?`${e.zttj.days} \\u5929 ${e.zttj.ct} \\u677F`:null}}function Ce(e,t){let n=e.map(o=>o[t]).filter(Number.isFinite);return n.length?n.reduce((o,s)=>o+s,0)/n.length:null}function we(e){let t=new Map;return e.forEach(n=>{t.has(n.sector)||t.set(n.sector,[]),t.get(n.sector).push(n)}),[...t].map(([n,o])=>{let s=o.filter(l=>l.breaks!==null),u=s.length?Ce(s.map(l=>({...l,q:T(100-l.breaks*15,10)})),"q"):null,c=Math.max(0,...o.map(l=>l.height||0)),$=[{name:"\\u6DA8\\u505C\\u96C6\\u805A",weight:35,value:T(o.length/6*100)},{name:"\\u8FDE\\u677F\\u9AD8\\u5EA6",weight:25,value:T(c/5*100)},{name:"\\u5C01\\u677F\\u7A33\\u5B9A",weight:25,value:u},{name:"\\u65E9\\u76D8\\u8054\\u52A8",weight:15,value:o.filter(l=>l.first!==null).length?o.filter(l=>l.first!==null&&l.first<103e3).length/o.filter(l=>l.first!==null).length*100:null}],v=$.filter(l=>l.value!==null).reduce((l,i)=>l+i.weight,0),C=Math.round($.reduce((l,i)=>l+(i.value===null?0:i.value*i.weight),0)/v);return{name:n,count:o.length,height:c,quality:u,score:C,coverage:v,components:$,amount:o.reduce((l,i)=>l+(i.amount||0),0),members:o.map(l=>l.code)}}).sort((n,o)=>o.score-n.score||o.count-n.count)}function xe(e,t,n=D.balanced){let o={quality:e.breaks===null?null:T(100-e.breaks*15,10),capital:e.seal===null||!e.amount?null:T(e.seal/e.amount/.1*100),liquidity:e.turnover===null?null:e.turnover>=4&&e.turnover<=12?95:e.turnover>12&&e.turnover<=25?80:e.turnover>=1&&e.turnover<4?65:e.turnover>25&&e.turnover<=40?50:30,timing:e.first===null?null:e.first<94500?100:e.first<103e3?85:e.first<113e3?65:e.first<14e4?45:25,sector:t??null,ladder:e.height===null?null:e.height===1?75:e.height<=3?100:e.height===4?65:40},s=[];e.height>=5&&s.push({text:"\\u9AD8\\u4F4D\\u8FDE\\u677F",penalty:8,detail:"5 \\u677F\\u53CA\\u4EE5\\u4E0A\\uFF0C\\u5206\\u6B67\\u4E0E\\u9000\\u6F6E\\u98CE\\u9669\\u4E0A\\u5347\\u3002"}),e.turnover>40&&s.push({text:"\\u9AD8\\u6362\\u624B",penalty:8,detail:"\\u6362\\u624B\\u7387\\u8D85\\u8FC7 40%\\uFF0C\\u7B79\\u7801\\u4EA4\\u6362\\u5267\\u70C8\\u3002"}),e.breaks>=3&&s.push({text:"\\u53CD\\u590D\\u70B8\\u677F",penalty:5,detail:"\\u76D8\\u4E2D\\u81F3\\u5C11 3 \\u6B21\\u5F00\\u677F\\uFF0C\\u5C01\\u677F\\u7A33\\u5B9A\\u6027\\u504F\\u5F31\\u3002"}),e.first===92500&&e.last===92500&&e.turnover!==null&&e.turnover<1&&s.push({text:"\\u4E00\\u5B57\\u7279\\u5F81",penalty:10,detail:"\\u7ADE\\u4EF7\\u5C01\\u677F\\u4E14\\u4F4E\\u6362\\u624B\\uFF0C\\u5B9E\\u9645\\u6210\\u4EA4\\u673A\\u4F1A\\u53EF\\u80FD\\u6709\\u9650\\u3002"}),e.last!==null&&e.last>=145e3&&s.push({text:"\\u5C3E\\u76D8\\u56DE\\u5C01",penalty:4,detail:"\\u6700\\u540E\\u5C01\\u677F\\u65F6\\u95F4\\u63A5\\u8FD1\\u6536\\u76D8\\uFF0C\\u9700\\u89C2\\u5BDF\\u6B21\\u65E5\\u627F\\u63A5\\u3002"});let u=K.map((i,p)=>({...i,weight:n[p],value:o[i.key]})),c=u.filter(i=>i.value!==null),$=c.reduce((i,p)=>i+p.weight,0),v=n.reduce((i,p)=>i+p,0),C=$?c.reduce((i,p)=>i+p.value*p.weight,0)/$:null,l=Math.min(20,s.reduce((i,p)=>i+p.penalty,0));return{...e,score:C===null?null:Math.round(T(C-l)),rawScore:C,deduction:l,factors:u,risks:s,coverage:v?Math.round($/v*100):0,sealRatio:e.seal!==null&&e.amount>0?e.seal/e.amount:null}}function oe(e,t=null,n=null,o=D.balanced){let s=e.filter(m=>m.code&&!/ST|\u9000/.test(m.name)),u=we(s),c=new Map(u.map(m=>[m.name,m.score])),$=s.map(m=>xe(m,c.get(m.sector),o)).sort((m,S)=>(S.score??-1)-(m.score??-1)),v=t===null?null:e.length+t?e.length/(e.length+t)*100:null,C=Math.max(0,...s.map(m=>m.height||0)),l=s.filter(m=>m.height===1).length,i=s.filter(m=>m.height>1).length,p=[{weight:40,value:T(s.length/80*100)},{weight:35,value:v},{weight:25,value:T(C/7*100)}],x=p.filter(m=>m.value!==null).reduce((m,S)=>m+S.weight,0),L=s.length?Math.round(p.reduce((m,S)=>m+(S.value??0)*S.weight,0)/x):null,k=n?new Set(n.map(m=>m.code)):null,E=n?n.filter(m=>m.height!==null):null,be=E&&E.length?E.filter(m=>s.some(S=>S.code===m.code&&S.height!==null&&S.height>m.height)).length/E.length*100:null;return{stocks:$,sectors:u,count:s.length,excluded:e.length-s.length,first:l,relay:i,height:C,sealRate:v,emotion:L,emotionCoverage:x,promotion:be,previousCount:k?k.size:null}}var N=Object.freeze([{key:"commission_rate",label:"\\u4F63\\u91D1\\u7387",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"commission_min",label:"\\u6700\\u4F4E\\u4F63\\u91D1",unit:"\\u5143",direction:"\\u53CC\\u8FB9"},{key:"stamp_tax",label:"\\u5370\\u82B1\\u7A0E",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u4EC5\\u5356\\u51FA"},{key:"handling_fee",label:"\\u7ECF\\u624B\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"regulatory_fee",label:"\\u8BC1\\u7BA1\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"transfer_fee",label:"\\u8FC7\\u6237\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"}]),te=Object.freeze({commission_rate:5e-5,commission_min:5,stamp_tax:5e-4,handling_fee:341e-7,regulatory_fee:2e-5,transfer_fee:1e-5}),Oe=Object.freeze({commission_rate:25e-5,commission_min:5,stamp_tax:5e-4,handling_fee:0,regulatory_fee:0,transfer_fee:1e-5});var d=e=>document.getElementById(e),h=e=>String(e??"").replace(/[&<>"\']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[t]),f=e=>(Number(e||0)/100).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2}),re=e=>Math.abs(e||0)>=1e10?`${(e/1e10).toFixed(2)} \\u4EBF`:Math.abs(e||0)>=1e6?`${(e/1e6).toFixed(2)} \\u4E07`:f(e),w=e=>e==null?"\\u2014":`${e>0?"+":""}${(e*100).toFixed(2)}%`,B=e=>e>0?"up":e<0?"down":"",U={OPEN:"\\u5EFA\\u4ED3",ADD:"\\u52A0\\u4ED3",REDUCE:"\\u51CF\\u4ED3",EXIT:"\\u6E05\\u4ED3",T_FORWARD:"\\u6B63\\u5411 T",T_REVERSE:"\\u53CD\\u5411 T",HOLD:"\\u6301\\u6709"},de={ACTIVE:"\\u4F7F\\u7528\\u4E2D",VALIDATED:"\\u9A8C\\u8BC1\\u901A\\u8FC7",LEGACY_VALIDATED:"\\u5386\\u53F2\\u901A\\u8FC7\\uFF08\\u65E0\\u542F\\u7528\\u8D44\\u683C\\uFF09",SHADOW_PENDING:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",AWAITING_SHADOW:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",REJECTED:"\\u672A\\u901A\\u8FC7",ERROR:"\\u8C03\\u7528\\u5931\\u8D25",PROPOSING:"\\u6B63\\u5728\\u9A8C\\u8BC1",RETIRED:"\\u5DF2\\u5F52\\u6863",COLLECTING:"\\u6570\\u636E\\u79EF\\u7D2F\\u4E2D",NOT_CONFIGURED:"\\u672A\\u914D\\u7F6E\\u5927\\u6A21\\u578B",BUSY:"\\u5DF2\\u6709\\u8FDB\\u884C\\u4E2D\\u7684\\u5B9E\\u9A8C",BUDGET_EXHAUSTED:"\\u672C\\u6708\\u63D0\\u6848\\u6B21\\u6570\\u5DF2\\u7528\\u5B8C",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u73AF\\u5883\\u53D8\\u5316\\u5DF2\\u5931\\u6548",APPROVED:"\\u5DF2\\u6279\\u51C6\\u5F85\\u6392\\u671F",SCHEDULED:"\\u5DF2\\u6392\\u671F",PROMOTED:"\\u5DF2\\u542F\\u7528"},le={PENDING:"\\u7B49\\u5F85\\u89E6\\u53D1",BLOCKED:"\\u53D7\\u7EA6\\u675F\\uFF0C\\u91CD\\u8BD5\\u4E2D",PARTIAL:"\\u90E8\\u5206\\u6210\\u4EA4",FIRST_LEG:"\\u505A T \\u7B2C\\u4E00\\u817F",SECOND_LEG:"\\u6062\\u590D\\u7B2C\\u4E8C\\u817F",FILLED:"\\u5B8C\\u6210",CANCELLED:"\\u5DF2\\u53D6\\u6D88",EXPIRED:"\\u5F53\\u65E5\\u5230\\u671F",EXPIRED_PARTIAL:"\\u90E8\\u5206\\u5B8C\\u6210\\u540E\\u5230\\u671F",INCOMPLETE_T:"\\u7B2C\\u4E8C\\u817F\\u8F6C\\u4E0B\\u65E5",RUNNING:"\\u8F6E\\u8BE2\\u8FD0\\u884C\\u4E2D",STALE_QUOTES:"\\u62A5\\u4EF7\\u9648\\u65E7\\uFF0C\\u6682\\u505C\\u6210\\u4EA4",MARKET_CLOSED:"\\u7B49\\u5F85\\u4EA4\\u6613\\u65F6\\u6BB5",ERROR:"\\u5F02\\u5E38\\uFF0C\\u81EA\\u52A8\\u91CD\\u8BD5",NON_TRADING_DAY:"\\u975E\\u4EA4\\u6613\\u65E5",CONFLICT:"\\u5E76\\u53D1\\u7ED3\\u679C\\u5DF2\\u4E22\\u5F03",SETTLED:"\\u5DF2\\u7ED3\\u7B97"},y=null,V=!1,q=!1;async function I(e,t){let n=await fetch(e,{...t===void 0?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)},signal:AbortSignal.timeout(13e4)}),o=await n.json();if(!n.ok)throw new Error(o.error||"\\u670D\\u52A1\\u6682\\u4E0D\\u53EF\\u7528");return o}function O(e){d("paper-message").textContent=e}var ae=(e,t)=>e==="commission_min"?t:Number((t*1e4).toFixed(5));function ue(e){for(let{key:t}of N)d(`fee-${t}`).value=ae(t,e[t])}function ke(e){return N.map(({key:t,label:n,unit:o})=>`${n} ${ae(t,e[t])}${o==="\\u5143"?" \\u5143":" / \\u4E07"}`).join(" \\xB7 ")}function ce(e){return Object.entries({commission:"\\u4F63\\u91D1",stamp:"\\u5370\\u82B1\\u7A0E",handling:"\\u7ECF\\u624B\\u8D39",regulatory:"\\u8BC1\\u7BA1\\u8D39",transfer:"\\u8FC7\\u6237\\u8D39"}).map(([n,o])=>`${o} \\xA5 ${f(e.feeBreakdown[n]||0)}`).join("\\uFF1B")}function Ee(e){let t=`<span class="stock-code">\\u53C2\\u8003\\u4EF7 \\xA5 ${f(e.referenceCents)}</span>`,n=`<span class="stock-code">\\u6B62\\u635F \\u2264 \\xA5 ${f(e.stopCents)}<br>\\u5206\\u6279\\u6B62\\u76C8 \\u2265 \\xA5 ${f(e.takeProfitCents)}</span>`,o=e.side==="PAIR"?`\\u4F4E\\u5438 \\u2264 \\xA5 ${f(e.buyTriggerCents)}<br>\\u5151\\u73B0 \\u2265 \\xA5 ${f(e.sellTriggerCents)}<span class="stock-code">09:35 \\u8D77\\u89E6\\u53D1 \\xB7 14:50 \\u8D77\\u6062\\u590D\\u7B2C\\u4E8C\\u817F</span>`:e.side==="BUY"&&e.recovery?`\\u6062\\u590D\\u4E70\\u56DE \\xB7 \\u53C2\\u8003 \\xA5 ${f(e.referenceCents)}<span class="stock-code">\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u6309\\u5B9E\\u65F6\\u4EF7 + 0.1% \\u6ED1\\u70B9<br>\\u53D7\\u73B0\\u91D1\\u3001\\u4ED3\\u4F4D\\u4E0E\\u6DA8\\u505C\\u8FB9\\u754C\\u9650\\u5236</span>`:e.side==="BUY"?`\\u4E70\\u5165\\u4E0A\\u9650 \\xA5 ${f(e.maxPriceCents)}<span class="stock-code">\\u542B\\u6ED1\\u70B9 \\xB7 09:30\\u201309:35 \\u5185\\u6EE1\\u8DB3\\u65F6\\u6210\\u4EA4</span>`:e.side==="SELL"?`\\u53C2\\u8003\\u5356\\u4EF7 \\xA5 ${f(Math.round(e.referenceCents*.999))}<span class="stock-code">\\u5B9E\\u9645\\u5356\\u4EF7 = \\u5B9E\\u65F6\\u62A5\\u4EF7 \\u2212 0.1% \\u6ED1\\u70B9<br>\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u91CD\\u8BD5\\uFF0C\\u8DCC\\u505C\\u4E0D\\u5047\\u8BBE\\u6210\\u4EA4</span>`:"\\u6301\\u6709\\u5E76\\u76D1\\u63A7\\u4FDD\\u62A4\\u9608\\u503C";return t+o+n}function Se(e){if(!e.length)return\'<div class="empty"><strong>\\u6536\\u76CA\\u66F2\\u7EBF\\u4ECE\\u9996\\u4E2A\\u7ED3\\u7B97\\u65E5\\u5F00\\u59CB</strong>\\u4FDD\\u5B58\\u771F\\u5B9E\\u8BA1\\u5212\\u5E76\\u6267\\u884C\\u540E\\uFF0C\\u9010\\u65E5\\u79EF\\u7D2F\\u51C0\\u503C\\u3002</div>\';let t=760,n=200,o=30,s=[0,...e.map(l=>l.totalReturn),...e.map(l=>l.benchmarkReturn).filter(l=>l!=null)],u=Math.min(...s)-.005,c=Math.max(...s)+.005,$=l=>o+l/Math.max(1,e.length-1)*(t-2*o),v=l=>n-o-(l-u)/(c-u)*(n-o*2),C=l=>e.map((i,p)=>i[l]===null||i[l]===void 0?null:`${$(p)},${v(i[l])}`).filter(Boolean).join(" ");return`<svg class="equity-chart" viewBox="0 0 ${t} ${n}" role="img" aria-label="\\u8D26\\u6237\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387\\u4E0E\\u4E0A\\u8BC1\\u6307\\u6570\\u6536\\u76CA\\u7387"><line x1="${o}" x2="${t-o}" y1="${v(0)}" y2="${v(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${o}" y="18" class="chart-axis">${w(c)}</text><text x="${o}" y="${n-7}" class="chart-axis">${w(u)}</text><polyline points="${C("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${C("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${e.map((l,i)=>`<circle cx="${$(i)}" cy="${v(l.totalReturn)}" r="3" fill="#13977e"><title>${h(l.date)}\\uFF1A\\u8D26\\u6237 ${w(l.totalReturn)}\\uFF1B\\u57FA\\u51C6 ${w(l.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>\\u6A21\\u62DF\\u8D26\\u6237</span><span><i class="benchmark"></i>\\u4E0A\\u8BC1\\u6307\\u6570</span><span>${h(e[0].date)} \\u2014 ${h(e.at(-1).date)} \\xB7 ${e.length} \\u4E2A\\u7ED3\\u7B97\\u65E5</span></div>${e.length===1?\'<p class="panel-footnote">\\u9996\\u6B21\\u7ED3\\u7B97\\u53EA\\u5EFA\\u7ACB\\u6536\\u76CA\\u57FA\\u51C6\\uFF1B\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8D77\\u6267\\u884C\\u4E8B\\u524D\\u8BA1\\u5212\\u3002</p>\':""}`}function Ae(){if(!y)return;let{book:e,equity:t,plan:n,run:o,versions:s}=y,u=y.realtime,c=u?.health;d("paper-live-tag").textContent=u?.running?"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5DF2\\u8FDE\\u63A5":"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u672A\\u8FDE\\u63A5",d("paper-live-summary").textContent=u?.session?`${u.session.date} \\xB7 ${u.session.sequence} \\u6B21\\u89C2\\u6D4B \\xB7 ${u.session.fillCount} \\u7B14\\u6210\\u4EA4`:"\\u5C1A\\u65E0\\u4ECA\\u65E5\\u5B9E\\u65F6\\u4EA4\\u6613\\u8BB0\\u5F55",d("paper-live-health").textContent=`${c?`${le[c.status]||c.status} \\xB7 \\u6700\\u8FD1\\u5FC3\\u8DF3 ${new Date(c.checkedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\xB7 ${c.pollIntervalSeconds} \\u79D2\\u8F6E\\u8BE2\\u3002`:"\\u5C1A\\u672A\\u6536\\u5230\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5FC3\\u8DF3\\u3002"} ${u?.running?"\\u5173\\u95ED\\u7F51\\u9875\\u540E\\u670D\\u52A1\\u7EE7\\u7EED\\u6267\\u884C\\uFF1B\\u76D8\\u540E\\u6309\\u5DF2\\u8BB0\\u5F55\\u6210\\u4EA4\\u7ED3\\u7B97\\u3002":u?.requirement||""}`,d("paper-live-orders").innerHTML=u?.session?.orders.length?u.session.orders.map(i=>`<tr><td><strong>${h(i.name)} \\xB7 ${U[i.action]}</strong><span class="stock-code">${h(i.code)}</span></td><td>${le[i.status]||h(i.status)}</td><td>${i.side==="PAIR"?`\\u7B2C\\u4E00\\u817F ${i.firstFilled} / \\u7B2C\\u4E8C\\u817F ${i.secondFilled}`:`${i.filledQuantity} / ${i.quantity}`} \\u80A1</td><td>${h(i.reason)}</td></tr>`).join(""):\'<tr><td colspan="4"><div class="empty compact">\\u7B49\\u5F85\\u5E38\\u9A7B\\u670D\\u52A1\\u5728\\u4EA4\\u6613\\u65F6\\u6BB5\\u6267\\u884C\\u51BB\\u7ED3\\u8BA1\\u5212\\u3002</div></td></tr>\';let $=e.positions.reduce((i,p)=>i+p.lots.reduce((x,L)=>x+L.quantity,0)*p.markCents,0),v=[["\\u8D26\\u6237\\u603B\\u6743\\u76CA",`\\xA5 ${re(e.equityCents)}`,`\\u521D\\u59CB\\u8D44\\u91D1 \\xA5 ${f(e.initialCashCents)}`,""],["\\u5F53\\u65E5\\u76C8\\u4E8F",`\\xA5 ${re(t?.dailyPnlCents)}`,`\\u5F53\\u65E5\\u6536\\u76CA ${w(t?.dailyReturn??0)}`,B(t?.dailyPnlCents)],["\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387",w(e.equityCents/e.initialCashCents-1),`\\u5DF2\\u6263\\u8D39\\u7528 \\xA5 ${f(e.feesCents)}`,B(e.equityCents-e.initialCashCents)],["\\u5F53\\u524D\\u6301\\u4ED3\\u6BD4\\u4F8B",w($/e.equityCents),`\\u53EF\\u7528\\u73B0\\u91D1 \\xA5 ${f(e.cashCents)}`,""]];d("paper-metrics").innerHTML=v.map(([i,p,x,L])=>`<article class="metric"><div class="metric-head">${i}</div><div class="metric-value ${L}">${p}</div><div class="metric-caption">${x}</div></article>`).join(""),d("paper-date").textContent=e.lastDate?`\\u5DF2\\u7ED3\\u7B97\\u81F3 ${e.lastDate}`:"\\u7B49\\u5F85\\u9996\\u6B21\\u76D8\\u540E\\u7ED3\\u7B97",d("paper-audit").textContent=y.audit.passed?"\\u8D44\\u91D1\\u8D26\\u672C\\u4E00\\u81F4":"\\u8D26\\u672C\\u6838\\u5BF9\\u5F02\\u5E38",d("paper-audit").className=`outline-tag ${y.audit.passed?"verified":"down"}`,d("paper-chart").innerHTML=Se(y.equities),d("paper-risk").textContent=`\\u5355\\u80A1\\u4E0A\\u9650 20% \\xB7 \\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650 60% \\xB7 \\u56DE\\u64A4 ${w(t?.drawdown??0)} / 10% \\xB7 \\u4E0D\\u900F\\u652F`,d("paper-position-rows").innerHTML=e.positions.length?e.positions.map(i=>{let p=i.lots.reduce((k,E)=>k+E.quantity,0),x=i.lots.reduce((k,E)=>k+E.costCents,0),L=i.lots.filter(k=>k.acquiredDate<(u?.session?.date||new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"}))).reduce((k,E)=>k+E.quantity,0);return`<tr><td><strong>${h(i.name)}</strong><span class="stock-code">${h(i.code)}</span></td><td>${p}<span class="stock-code">\\u5F53\\u65E5\\u53EF\\u5356 ${L}</span></td><td>${f(x/p)}</td><td>${f(i.markCents)}</td><td>\\xA5 ${f(p*i.markCents)}</td><td class="${B(p*i.markCents-x)}">\\xA5 ${f(p*i.markCents-x)}</td><td>${i.heldDays} \\u65E5</td></tr>`}).join(""):\'<tr><td colspan="7"><div class="empty compact">\\u5F53\\u524D\\u7A7A\\u4ED3\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6309\\u7167\\u51BB\\u7ED3\\u8BA1\\u5212\\u4E0E\\u5B9E\\u9645\\u6210\\u4EA4\\u6761\\u4EF6\\u6A21\\u62DF\\u6267\\u884C\\u3002</div></td></tr>\',d("paper-plan-date").textContent=n?`${n.signalDate} \\u76D8\\u540E\\u5236\\u5B9A \\u2192 \\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5`:"\\u5C1A\\u672A\\u751F\\u6210\\u8BA1\\u5212",d("paper-plan-meta").textContent=n?`\\u7B56\\u7565 ${n.strategyVersion} \\xB7 \\u8D39\\u7528 v${n.feeConfigVersion||0}${n.sourceSnapshotMissing?" \\xB7 \\u8BC4\\u5206\\u7F3A\\u5931\\uFF0C\\u4EC5\\u6267\\u884C\\u98CE\\u9669\\u4FDD\\u62A4":""} \\xB7 \\u76EE\\u6807\\u4ED3\\u4F4D ${w(n.targetExposure)} \\xB7 ${new Date(n.createdAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\u51BB\\u7ED3`:"\\u5F53\\u65E5\\u8BC4\\u5206\\u4FDD\\u5B58\\u540E\\uFF0C\\u751F\\u6210\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8BA1\\u5212\\u3002",d("paper-plan-rows").innerHTML=n?.orders.length?n.orders.map(i=>`<tr><td><strong>${h(i.name)}</strong><span class="stock-code">${h(i.code)} \\xB7 ${h(i.sector)}</span></td><td><span class="action-tag">${U[i.action]}</span></td><td>${i.score??"\\u2014"}<span class="stock-code">\\u539F\\u59CB ${i.originalScore??"\\u2014"}</span></td><td>${i.quantity||"\\u2014"} \\u80A1</td><td class="plan-price-conditions">${Ee(i)}</td><td class="plan-reason">${h(i.reason)}</td></tr>`).join(""):`<tr><td colspan="6"><div class="empty compact">${n?"\\u5F53\\u524D\\u6CA1\\u6709\\u6EE1\\u8DB3\\u5EFA\\u4ED3\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1\\uFF0C\\u4FDD\\u6301\\u7A7A\\u4ED3\\u3002":"\\u7B49\\u5F85\\u6709\\u6548\\u76D8\\u540E\\u8BC4\\u5206\\u3002"}</div></td></tr>`,d("paper-outcomes").innerHTML=o?.outcomes?.length?`<details><summary>\\u6700\\u8FD1\\u6267\\u884C\\u53CD\\u9988 \\xB7 ${h(o.date)}</summary><div class="execution-feedback">${o.outcomes.map(i=>`<p><strong>${h(i.name)} \\xB7 ${U[i.action]}</strong><span>${i.status==="FILLED"?"\\u5DF2\\u6210\\u4EA4":i.status==="PARTIAL"?"\\u90E8\\u5206\\u5B8C\\u6210":"\\u672A\\u6267\\u884C"} ${i.filledQuantity?`${i.filledQuantity} \\u80A1`:""} \\xB7 ${h(i.reason||"")}</span></p>`).join("")}</div></details>`:"",d("paper-ledger-rows").innerHTML=y.ledger.length?[...y.ledger].sort((i,p)=>p.date.localeCompare(i.date)||p.sequence-i.sequence).map(i=>`<tr><td>${h(i.date)}<span class="stock-code">${h(i.time)}</span></td><td><strong>${h(i.name)}</strong><span class="stock-code">${h(i.code)}</span></td><td>${U[i.action]} \\xB7 ${i.side==="BUY"?"\\u4E70":"\\u5356"}</td><td>${i.quantity}</td><td>${f(i.priceCents)}</td><td title="${h(ce(i))}"><details class="fee-breakdown"><summary>\\xA5 ${f(i.feeCents)}</summary><span>${h(ce(i))}</span></details><span class="stock-code">\\u8D39\\u7528 v${i.feeConfigVersion||0}</span></td><td class="${B(i.cashDeltaCents)}">${f(i.cashDeltaCents)}</td><td>${i.dataQuality==="realtime_poll"?"\\u5B9E\\u65F6 HTTP \\u8F6E\\u8BE2":i.dataQuality==="minute"?"\\u5386\\u53F2\\u5206\\u949F\\u91C7\\u6837":"\\u5F00\\u76D8\\u5047\\u8BBE"}</td></tr>`).join(""):\'<tr><td colspan="8"><div class="empty compact">\\u5C1A\\u65E0\\u6210\\u4EA4\\u8BB0\\u5F55\\u3002\\u672A\\u6EE1\\u8DB3\\u6210\\u4EA4\\u6761\\u4EF6\\u7684\\u8BA1\\u5212\\u4E0D\\u4F1A\\u8BB0\\u4E3A\\u6536\\u76CA\\u3002</div></td></tr>\';let l=o?.improvement?.days??Math.max(0,e.settlementCount-1);d("paper-ai-tag").textContent=y.ai.configured?"\\u5DF2\\u914D\\u7F6E\\u6A21\\u578B":"\\u6A21\\u578B\\u5F85\\u914D\\u7F6E",d("paper-ai-content").innerHTML=`<div class="strategy-active"><span>\\u5F53\\u524D\\u7B56\\u7565</span><strong>${h(e.activeStrategy)}</strong></div><p>${y.ai.configured?`\\u5DF2\\u79EF\\u7D2F ${l} \\u4E2A\\u53EF\\u9A8C\\u8BC1\\u4EA4\\u6613\\u65E5\\u3002\\u81F3\\u5C11 20 \\u65E5\\u8BAD\\u7EC3 + 10 \\u65E5\\u5C01\\u5B58\\u9A8C\\u8BC1\\u540E\\u63D0\\u51FA\\u65B0\\u5019\\u9009\\u3002`:"\\u5C1A\\u672A\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5927\\u6A21\\u578B\\u5BC6\\u94A5\\u3002\\u89C4\\u5219\\u7B56\\u7565\\u6B63\\u5E38\\u8FD0\\u884C\\uFF1B\\u914D\\u7F6E\\u540E\\u63A5\\u5165\\u771F\\u5B9E AI \\u63D0\\u6848\\u4E0E\\u9A8C\\u8BC1\\u3002"}</p><div class="ai-process">\\u771F\\u5B9E\\u6210\\u4EA4\\u4E0E\\u8D39\\u7528<span>\\u2193</span>AI \\u8BAD\\u7EC3\\u7A97\\u53E3\\u5EFA\\u8BAE<span>\\u2193</span>\\u72EC\\u7ACB\\u9A8C\\u8BC1 \\xB7 \\u6536\\u76CA\\u4E0E\\u56DE\\u64A4<span>\\u2193</span>\\u901A\\u8FC7\\u540E\\u542F\\u7528\\u65B0\\u7248\\u672C</div><p class="ai-note">\\u6BCF\\u4E2A\\u5C01\\u5B58\\u7A97\\u53E3\\u53EA\\u9A8C\\u8BC1\\u4E00\\u4E2A\\u5019\\u9009\\uFF1B\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u548C\\u5386\\u53F2\\u4EA4\\u6613\\u4FDD\\u7559\\u539F\\u7248\\u672C\\u3002</p>`,d("paper-version-list").innerHTML=s.filter(i=>i.id!=="baseline-v1").slice(0,6).map(i=>`<div class="version-row"><div><strong>${h(i.id)}</strong><span>${de[i.status]||h(i.status)}</span></div><p>${h(i.evidence.rationale||i.evidence.error||"\\u7B49\\u5F85\\u9A8C\\u8BC1\\u7ED3\\u679C")}</p>${i.evidence.baseline?`<small>\\u5C01\\u5B58\\u9A8C\\u8BC1 ${h(i.evidence.validationStart)} \\u2014 ${h(i.evidence.validationEnd)}<br>\\u57FA\\u7EBF ${w(i.evidence.baseline.totalReturn)} \\u2192 \\u5019\\u9009 ${w(i.evidence.candidate.totalReturn)} \\xB7 \\u56DE\\u64A4 ${w(i.evidence.candidate.maxDrawdown)}</small>`:""}${i.status==="VALIDATED"?`<button class="secondary" data-activate="${h(i.id)}">\\u542F\\u7528\\u6B64\\u7248\\u672C</button>`:""}</div>`).join("")||\'<div class="small-muted">\\u5C1A\\u65E0 AI \\u5019\\u9009\\u7248\\u672C\\uFF0C\\u6301\\u7EED\\u79EF\\u7D2F\\u771F\\u5B9E\\u6570\\u636E\\u3002</div>\',q||(d("paper-initial-capital").value=e.initialCashCents/100),d("paper-initial-capital").disabled=!y.canEditCapital,q||ue(y.feeConfig),d("paper-fee-version").textContent=`\\u8D39\\u7528\\u914D\\u7F6E v${e.feeConfigVersion||0}`,d("paper-fee-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${n?.feeConfig?ke(n.feeConfig):"\\u65E7\\u7248\\u56FA\\u5B9A\\u8D39\\u7528"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,q||(d("paper-improvement-mode").value=e.improvementMode||"auto"),d("paper-config-note").textContent=y.canEditCapital?"\\u4EA4\\u6613\\u8BA1\\u5212\\u5F00\\u59CB\\u6267\\u884C\\u524D\\u53EF\\u81EA\\u5B9A\\u4E49\\u521D\\u59CB\\u8D44\\u91D1\\uFF1B\\u8D39\\u7528\\u968F\\u65F6\\u53EF\\u8C03\\u6574\\u3002":"\\u521D\\u59CB\\u8D44\\u91D1\\u4F5C\\u4E3A\\u6536\\u76CA\\u57FA\\u51C6\\u5DF2\\u51BB\\u7ED3\\uFF1B\\u8D39\\u7528\\u4ECD\\u53EF\\u81EA\\u5B9A\\u4E49\\uFF0C\\u9002\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212\\u3002",document.querySelectorAll("[data-activate]").forEach(i=>i.onclick=()=>_(async()=>(await I("/api/paper/activate",{id:i.dataset.activate})).activated?"\\u65B0\\u7248\\u672C\\u5DF2\\u542F\\u7528\\uFF0C\\u5C06\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212":"\\u8D26\\u6237\\u540C\\u65F6\\u66F4\\u65B0\\uFF0C\\u8BF7\\u91CD\\u8BD5"))}async function j(){try{y=await I("/api/paper"),Ae()}catch(e){O(e.message)}}async function _(e){if(!V){V=!0,document.querySelectorAll("[data-paper-operation]").forEach(t=>t.disabled=!0),O("\\u6B63\\u5728\\u5904\\u7406\\uFF0C\\u7ED3\\u679C\\u5C06\\u4FDD\\u5B58\\u5230\\u8D26\\u672C\\u2026");try{let t=await e();await j(),O(t)}catch(t){O(t.message)}finally{V=!1,document.querySelectorAll("[data-paper-operation]").forEach(t=>t.disabled=!1)}}}function pe(){return d("paper-config-form").addEventListener("input",()=>{q=!0}),d("paper-fee-controls").innerHTML=N.map(({key:e,label:t,unit:n,direction:o})=>`<label for="fee-${e}">${t}\\uFF08${n}\\uFF09<input id="fee-${e}" type="number" min="0" max="${e==="commission_min"?1e4:100}" step="${e==="commission_min"?"0.01":"0.001"}" value="${ae(e,te[e])}" required><span>${o}</span></label>`).join(""),d("paper-fee-defaults").onclick=()=>{ue(te),q=!0,O("\\u5DF2\\u586B\\u5165\\u56FE\\u4E2D\\u9ED8\\u8BA4\\u8D39\\u7528\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},d("paper-run").onclick=()=>_(async()=>{let e=await I("/api/run-daily",{});return window.dispatchEvent(new Event("paper-updated")),e.paper?.reason||e.snapshot?.reason||"\\u5DF2\\u5B8C\\u6210\\u76D8\\u540E\\u66F4\\u65B0"}),d("paper-verify").onclick=()=>_(async()=>{let e=await I("/api/paper/verify");return e.passed?`\\u5B8C\\u6574\\u91CD\\u653E\\u901A\\u8FC7\\uFF1A${e.days} \\u4E2A\\u7ED3\\u7B97\\u65E5\\u3001${e.fills} \\u7B14\\u6210\\u4EA4\\uFF0C\\u8D44\\u91D1\\u3001\\u8D39\\u7528\\u4E0E\\u6536\\u76CA\\u5747\\u4E00\\u81F4\\u3002`:"\\u9A8C\\u8BC1\\u672A\\u901A\\u8FC7\\uFF0C\\u8BF7\\u68C0\\u67E5\\u5BFC\\u51FA\\u8BB0\\u5F55\\u4E0E\\u884C\\u60C5\\u5B8C\\u6574\\u5EA6\\u3002"}),d("paper-improve").onclick=()=>_(async()=>{let e=await I("/api/paper/improve",{});return e.reason||`AI \\u6539\\u8FDB\\u72B6\\u6001\\uFF1A${de[e.status]||e.status}`}),d("paper-config-form").onsubmit=e=>{e.preventDefault(),_(async()=>(await I("/api/paper/settings",{...y?.canEditCapital?{initialCapital:Number(d("paper-initial-capital").value)}:{},improvementMode:d("paper-improvement-mode").value,fees:Object.fromEntries(N.map(({key:t})=>[t,t==="commission_min"?Number(d(`fee-${t}`).value):Number(d(`fee-${t}`).value)/1e4]))}),q=!1,"\\u8D44\\u91D1\\u4E0E\\u8D39\\u7528\\u8BBE\\u7F6E\\u5DF2\\u4FDD\\u5B58\\uFF1B\\u65B0\\u8BA1\\u5212\\u91C7\\u7528\\u65B0\\u914D\\u7F6E\\uFF0C\\u5DF2\\u6267\\u884C\\u8BB0\\u5F55\\u4FDD\\u7559\\u539F\\u914D\\u7F6E\\u3002"))},window.addEventListener("paper-updated",j),setInterval(()=>{!document.hidden&&!V&&j()},15e3),j(),{refresh:j}}var r=e=>document.getElementById(e),g=e=>String(e??"").replace(/[&<>"\']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[t]),me={dashboard:\'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>\',chart:\'<path d="M4 3v17h17M8 15l4-6 4 3 5-7"/>\',grid:\'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 11h18M11 4v16"/>\',sliders:\'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/>\',database:\'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/>\',calendar:\'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>\',refresh:\'<path d="M20 7a8 8 0 0 0-14-2L3 8m0-5v5h5M4 17a8 8 0 0 0 14 2l3-3m0 5v-5h-5"/>\',search:\'<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>\',info:\'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>\',close:\'<path d="m6 6 12 12M6 18 18 6"/>\',flame:\'<path d="M12 3c1 6 7 6 7 12a7 7 0 0 1-14 0c0-3 2-5 4-7 0 3 1 3 2 4 2-3 2-6 1-9Z"/>\',shield:\'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>\'};function F(e){return`<svg viewBox="0 0 24 24" aria-hidden="true">${me[e]||me.chart}</svg>`}document.querySelectorAll("[data-icon]").forEach(e=>e.innerHTML=F(e.dataset.icon));var a={view:"overview",height:"all",weights:[...D.balanced],payload:null,analysis:null,loading:!0,error:null,demo:!1,request:0,review:null,ai:null,aiConfig:{configured:!1},history:null,reviewBusy:!1,reviewMessage:"",storageAvailable:!1};try{let e=JSON.parse(localStorage.getItem("limitLensWeights"));Array.isArray(e)&&e.length===6&&e.every(t=>Number.isInteger(t)&&t>=0&&t<=50)&&e.some(t=>t>0)&&(a.weights=e)}catch{}var J=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date);r("trade-date").value=J;r("trade-date").max=J;var Me=pe(),G={paper:["\\u6A21\\u62DF\\u4EA4\\u6613","\\u8BA9\\u8BC4\\u5206\\u63A5\\u53D7\\u8D26\\u6237\\u68C0\\u9A8C","\\u5236\\u5B9A\\u8BA1\\u5212\\u3001\\u6A21\\u62DF\\u6267\\u884C\\u3001\\u6838\\u5BF9\\u6536\\u76CA\\uFF0C\\u7528\\u771F\\u5B9E\\u7ED3\\u679C\\u6539\\u8FDB\\u7B56\\u7565\\u3002"],overview:["\\u603B\\u89C8\\u590D\\u76D8","\\u6BCF\\u65E5\\u6DA8\\u505C\\u590D\\u76D8","\\u628A\\u6DA8\\u505C\\u62C6\\u6210\\u4FE1\\u53F7\\uFF0C\\u628A\\u5224\\u65AD\\u5EFA\\u7ACB\\u5728\\u6570\\u636E\\u4E0A\\u3002"],stocks:["\\u4E2A\\u80A1\\u5206\\u6790","\\u6DA8\\u505C\\u4E2A\\u80A1\\u5206\\u6790","\\u62C6\\u89E3\\u5C01\\u677F\\u8868\\u73B0\\uFF0C\\u6BD4\\u8F83\\u5F3A\\u5EA6\\u4E0E\\u98CE\\u9669\\u3002"],sectors:["\\u677F\\u5757\\u7814\\u7A76","\\u884C\\u4E1A\\u677F\\u5757\\u7814\\u7A76","\\u4ECE\\u6DA8\\u505C\\u96C6\\u805A\\u4E0E\\u8FDE\\u677F\\u68AF\\u961F\\uFF0C\\u89C2\\u5BDF\\u8D44\\u91D1\\u7684\\u5171\\u540C\\u65B9\\u5411\\u3002"],review:["\\u6628\\u65E5\\u53CD\\u9988","\\u8BA9\\u6628\\u65E5\\u5224\\u65AD\\u63A5\\u53D7\\u68C0\\u9A8C","\\u4FDD\\u5B58\\u5F53\\u65F6\\u7684\\u5224\\u65AD\\uFF0C\\u7528\\u5B9E\\u9645\\u8868\\u73B0\\u68C0\\u9A8C\\uFF0C\\u518D\\u7531 AI \\u5BA1\\u89C6\\u3002"],model:["\\u8BC4\\u5206\\u6A21\\u578B","\\u53EF\\u89E3\\u91CA\\u7684\\u8BC4\\u5206\\u6A21\\u578B","\\u6BCF\\u4E00\\u5206\\u90FD\\u6709\\u4F9D\\u636E\\uFF0C\\u6BCF\\u4E00\\u9879\\u6743\\u91CD\\u90FD\\u53EF\\u4EE5\\u8C03\\u6574\\u3002"]};function Q(e){G[e]&&(a.view=e,document.querySelectorAll("[data-view]").forEach(t=>{t.classList.toggle("active",t.dataset.view===e),t.setAttribute("aria-current",t.dataset.view===e?"page":"false")}),r("crumb").textContent=G[e][0],r("page-title").textContent=G[e][1],r("page-subtitle").textContent=G[e][2],r("overview-content").hidden=!["overview","stocks"].includes(e),r("sectors-view").hidden=e!=="sectors",r("model-view").hidden=e!=="model",r("review-view").hidden=e!=="review",r("summary").hidden=["model","review","paper"].includes(e),r("paper-view").hidden=e!=="paper",document.querySelector(".heading-actions").hidden=e==="paper",document.querySelector(".data-strip").hidden=e==="paper",e==="paper"&&Me.refresh(),document.querySelector(".right-column").hidden=e==="stocks",r("overview-content").style.gridTemplateColumns=e==="stocks"?"minmax(0,1fr)":"",R(),M())}document.querySelectorAll("[data-view]").forEach(e=>e.onclick=()=>Q(e.dataset.view));document.querySelector(".brand").onclick=e=>{e.preventDefault(),Q("overview")};function b(e,t=1){return e==null?"\\u2014":Number(e).toFixed(t)}function ne(e){return e==null?"\\u2014":e>=1e8?`${(e/1e8).toFixed(2)} \\u4EBF`:`${(e/1e4).toFixed(0)} \\u4E07`}function Te(e){return e>=80?"":e>=60?"mid":"low"}function Y(e){return`<div class="score-cell"><span class="score-number ${Te(e)}">${e??"\\u2014"}</span><span class="score-track"><i style="width:${e??0}%"></i></span></div>`}function se(){a.analysis=a.payload?oe(a.payload.rows.map(ee),a.payload.broken,a.payload.previous?.map(ee)||null,a.weights):null}function R(){let e=a.analysis,t=e!==null,n=a.loading,o=[{name:"\\u6DA8\\u505C\\u5BB6\\u6570",value:t?e.count:"\\u2014",unit:"\\u5BB6",caption:t?`\\u9996\\u677F ${e.first} \\u5BB6 \\xB7 \\u8FDE\\u677F ${e.relay} \\u5BB6`:"\\u9996\\u677F\\u4E0E\\u8FDE\\u677F\\u5206\\u5E03",icon:"flame",pct:t?Math.min(e.count/80*100,100):0},{name:"\\u5C01\\u677F\\u7387",value:t?b(e.sealRate):"\\u2014",unit:"%",caption:t?a.payload.broken===null?"\\u70B8\\u677F\\u6C60\\u6570\\u636E\\u6682\\u7F3A":`\\u70B8\\u677F ${a.payload.broken} \\u5BB6 \\xB7 \\u5F53\\u524D\\u672A\\u5C01\\u4F4F`:"\\u6DA8\\u505C /\\uFF08\\u6DA8\\u505C + \\u70B8\\u677F\\uFF09",icon:"shield",pct:t?e.sealRate??0:0},{name:"\\u6700\\u9AD8\\u8FDE\\u677F",value:t?e.height:"\\u2014",unit:"\\u677F",caption:t?`\\u8FDE\\u677F\\u80A1\\u5360\\u6BD4 ${e.count?b(e.relay/e.count*100):"\\u2014"}%`:"\\u8861\\u91CF\\u5F53\\u65E5\\u5E02\\u573A\\u9AD8\\u5EA6",icon:"chart",pct:t?Math.min(e.height/7*100,100):0,amber:!0},{name:"\\u60C5\\u7EEA\\u5F3A\\u5EA6",value:t?e.emotion??"\\u2014":"\\u2014",unit:"/ 100",caption:t?e.emotion===null?"\\u5F53\\u65E5\\u65E0\\u6709\\u6548\\u8BC4\\u5206\\u6837\\u672C":`${e.emotion>=75?"\\u5F3A\\u5EA6\\u8F83\\u9AD8":e.emotion>=45?"\\u5F3A\\u5EA6\\u4E2D\\u7B49":"\\u5F3A\\u5EA6\\u8F83\\u4F4E"} \\xB7 \\u6570\\u636E\\u8986\\u76D6 ${e.emotionCoverage}%`:"\\u6DA8\\u505C\\u89C4\\u6A21 \\xB7 \\u5C01\\u677F\\u7387 \\xB7 \\u9AD8\\u5EA6",icon:"dashboard",pct:t?e.emotion??0:0,accent:!0}];r("summary").innerHTML=o.map(s=>`<article class="metric ${n?"loading":""}"><div class="metric-head">${s.name}${F(s.icon)}</div><div class="metric-value ${s.accent?"accent":""}">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div><div class="metric-line ${s.amber?"amber":""}"><i style="width:${s.pct}%"></i></div></article>`).join(""),r("pool-count").textContent=t?e.count:"\\u2014",H(),De(),Ie()}function Le(){let e=a.analysis?.stocks||[],t=r("search").value.trim().toLowerCase(),n=r("sector-filter").value;e=e.filter(s=>(!t||s.name.toLowerCase().includes(t)||s.code.includes(t))&&(!n||s.sector===n)&&(a.height==="all"||(a.height==="first"?s.height===1:s.height>1)));let o=r("sort").value;return e.slice().sort(o==="height"?(s,u)=>(u.height??0)-(s.height??0):o==="seal"?(s,u)=>(u.seal??-1)-(s.seal??-1):o==="first"?(s,u)=>(s.first??999999)-(u.first??999999):(s,u)=>(u.score??-1)-(s.score??-1))}function H(){let e=Le(),t=a.analysis!==null,n=a.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u884C\\u60C5":t?"\\u6CA1\\u6709\\u7B26\\u5408\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1":"\\u6682\\u65E0\\u53EF\\u7528\\u884C\\u60C5",o=a.loading?"\\u6B63\\u5728\\u8BFB\\u53D6\\u516C\\u5F00\\u6DA8\\u505C\\u6C60\\u3001\\u70B8\\u677F\\u6C60\\u4E0E\\u6628\\u65E5\\u6DA8\\u505C\\u6C60\\u2026":t?"\\u5C1D\\u8BD5\\u8C03\\u6574\\u641C\\u7D22\\u3001\\u884C\\u4E1A\\u6216\\u8FDE\\u677F\\u7B5B\\u9009\\u3002":"\\u5207\\u6362\\u8FD1\\u671F\\u4EA4\\u6613\\u65E5\\u671F\\u6216\\u7A0D\\u540E\\u5237\\u65B0\\uFF0C\\u4E5F\\u53EF\\u4EE5\\u67E5\\u770B\\u660E\\u786E\\u6807\\u6CE8\\u7684\\u6F14\\u793A\\u3002";r("stock-rows").innerHTML=e.length?e.map(s=>`<tr><td><button class="stock-name" data-stock="${g(s.code)}">${g(s.name)}</button><span class="stock-code">${g(s.code)}</span></td><td>${Y(s.score)}</td><td><span class="sector-tag">${g(s.sector)}</span></td><td><span class="height-tag ${s.height>=4?"high":""}">${s.height===1?"\\u9996\\u677F":s.height?`${s.height} \\u677F`:"\\u2014"}</span></td><td class="money">${z(s.first)}</td><td class="money">${ne(s.seal)}</td><td class="money">${b(s.turnover)}%</td><td class="money">${s.breaks??"\\u2014"}</td></tr>`).join(""):`<tr><td colspan="8"><div class="empty"><strong>${n}</strong>${o}</div></td></tr>`,document.querySelectorAll("[data-stock]").forEach(s=>s.onclick=()=>qe(s.dataset.stock)),r("table-status").textContent=t?`\\u663E\\u793A ${e.length} / ${a.analysis.count} \\u5BB6${a.analysis.excluded?` \\xB7 \\u5DF2\\u5254\\u9664 ${a.analysis.excluded} \\u5BB6 ST / \\u9000\\u5E02\\u6807\\u8BC6\\u4E2A\\u80A1`:""}`:a.loading?"\\u516C\\u5F00\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":"\\u7B49\\u5F85\\u6709\\u6548\\u6570\\u636E"}function De(){let e=a.analysis?.sectors||[];r("sector-rank").innerHTML=e.length?e.slice(0,5).map((t,n)=>`<button class="sector-row" data-sector="${g(t.name)}"><div class="sector-row-label"><div><span class="rank-index">0${n+1}</span>${g(t.name)}</div><span class="sector-score">${t.score}</span></div><div class="sector-bar"><i style="width:${t.score}%"></i></div><div class="sector-row-meta">${t.count} \\u5BB6\\u6DA8\\u505C \\xB7 \\u6700\\u9AD8 ${t.height} \\u677F</div></button>`).join(""):\'<div class="empty compact">\\u6709\\u6548\\u884C\\u60C5\\u5230\\u8FBE\\u540E\\uFF0C\\u663E\\u793A\\u884C\\u4E1A\\u5F3A\\u5EA6\\u6392\\u540D\\u3002</div>\',r("sector-rows").innerHTML=e.length?e.map(t=>`<tr><td><button class="stock-name" data-sector="${g(t.name)}">${g(t.name)}</button></td><td>${Y(t.score)}</td><td>${t.count}</td><td>${t.height} \\u677F</td><td>${b(t.quality)} / 100</td><td>${b(t.components[3].value)}%</td><td>${ne(t.amount)}</td></tr>`).join(""):\'<tr><td colspan="7"><div class="empty"><strong>\\u6682\\u65E0\\u677F\\u5757\\u8BC4\\u5206</strong>\\u8BF7\\u5148\\u83B7\\u53D6\\u6709\\u6548\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3002</div></td></tr>\',document.querySelectorAll("[data-sector]").forEach(t=>t.onclick=()=>{r("sector-filter").value=t.dataset.sector,Q("stocks")})}function Ie(){let e=a.analysis,t=[{name:"5\\u677F+",count:e?e.stocks.filter(o=>o.height>=5).length:0},{name:"4\\u677F",count:e?e.stocks.filter(o=>o.height===4).length:0},{name:"3\\u677F",count:e?e.stocks.filter(o=>o.height===3).length:0},{name:"2\\u677F",count:e?e.stocks.filter(o=>o.height===2).length:0},{name:"\\u9996\\u677F",count:e?e.first:0}],n=Math.max(1,...t.map(o=>o.count));r("ladder-chart").innerHTML=t.map(o=>`<div class="ladder-row"><span class="label">${o.name}</span><div class="ladder-track"><i style="width:${o.count/n*100}%"></i></div><span class="ladder-count">${e?o.count:"\\u2014"}</span></div>`).join(""),r("ladder-insight").textContent=e?`\\u4E0A\\u4E00\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u80A1\\u664B\\u7EA7\\u7387\\uFF1A${b(e.promotion)}%${e.previousCount!==null?`\\uFF08\\u6837\\u672C ${e.previousCount} \\u5BB6\\uFF09`:"\\uFF0C\\u6628\\u65E5\\u6570\\u636E\\u6682\\u7F3A"}\\u3002\\u8FDE\\u677F\\u68AF\\u961F\\u4EC5\\u53CD\\u6620\\u5F53\\u65E5\\u7ED3\\u6784\\u3002`:"\\u7528\\u9996\\u677F\\u4F9B\\u7ED9\\u4E0E\\u8FDE\\u677F\\u9AD8\\u5EA6\\u5171\\u540C\\u89C2\\u5BDF\\u63A5\\u529B\\u7ED3\\u6784\\u3002"}function Z(){let e=a.payload;r("source-tag").className=`source-tag ${a.demo?"demo":a.error?"unavailable":""}`,r("source-tag").textContent=a.loading?"\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":a.demo?"\\u6F14\\u793A\\u6570\\u636E":e?"\\u516C\\u5F00\\u884C\\u60C5":"\\u6570\\u636E\\u6682\\u4E0D\\u53EF\\u7528",r("data-time").textContent=a.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u6240\\u9009\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u6C60":e?a.demo?"\\u865A\\u6784\\u6837\\u672C\\uFF0C\\u4EC5\\u7528\\u4E8E\\u4F53\\u9A8C\\u8BC4\\u5206\\u548C\\u4EA4\\u4E92":`${e.date} \\xB7 ${e.source} \\xB7 \\u83B7\\u53D6\\u4E8E ${new Date(e.fetchedAt).toLocaleTimeString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09${e.cached?" \\xB7 2 \\u5206\\u949F\\u7F13\\u5B58":""}`:"\\u672A\\u4F7F\\u7528\\u6F14\\u793A\\u6570\\u636E\\u66FF\\u4EE3\\u771F\\u5B9E\\u884C\\u60C5",r("sidebar-source").textContent=a.demo?"\\u6F14\\u793A\\u6A21\\u5F0F":e?"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u5DF2\\u63A5\\u5165":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u7B49\\u5F85\\u6570\\u636E",r("demo-btn").textContent=a.demo?"\\u8FD4\\u56DE\\u516C\\u5F00\\u884C\\u60C5":"\\u67E5\\u770B\\u6F14\\u793A",r("notice").hidden=!a.error&&!a.demo&&!e?.warnings?.length,r("notice").textContent=a.error||(a.demo?"\\u5F53\\u524D\\u4E3A\\u865A\\u6784\\u6F14\\u793A\\u6837\\u672C\\uFF0C\\u6240\\u6709\\u4E2A\\u80A1\\u3001\\u65E5\\u671F\\u5173\\u8054\\u4E0E\\u5F97\\u5206\\u5747\\u4E0D\\u4EE3\\u8868\\u5B9E\\u9645\\u884C\\u60C5\\u3002":e?.warnings?.join(" "))||"",r("refresh-btn").disabled=a.loading,r("refresh-btn").innerHTML=`${F("refresh")}${a.loading?"\\u83B7\\u53D6\\u4E2D\\u2026":"\\u5237\\u65B0\\u884C\\u60C5"}`}async function P(){let e=++a.request;a.demo=!1,a.loading=!0,a.error=null,a.payload=null,a.analysis=null,a.review=null,a.ai=null,a.reviewMessage="\\u6B63\\u5728\\u68C0\\u67E5\\u5386\\u53F2\\u53CD\\u9988",Z(),R(),M();try{let t=await fetch(`/api/market?date=${encodeURIComponent(r("trade-date").value)}`,{signal:AbortSignal.timeout(2e4)}),n=await t.json();if(e!==a.request)return;if(!t.ok||!Array.isArray(n.rows))throw new Error(n.error||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25");a.payload=n,se()}catch(t){if(e!==a.request)return;a.error=t.name==="TimeoutError"?"\\u884C\\u60C5\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u8BF7\\u7A0D\\u540E\\u5237\\u65B0\\u3002":t.message||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25"}finally{e===a.request&&(a.loading=!1,ge(),Z(),R(),a.payload?.date===J&&a.storageAvailable?ye(e):ve(e))}}function ge(){let e=r("sector-filter").value;r("sector-filter").innerHTML=\'<option value="">\\u5168\\u90E8\\u884C\\u4E1A</option>\'+(a.analysis?.sectors||[]).map(t=>`<option value="${g(t.name)}">${g(t.name)}</option>`).join(""),a.analysis?.sectors.some(t=>t.name===e)&&(r("sector-filter").value=e)}function qe(e){let t=a.analysis?.stocks.find(c=>c.code===e);if(!t)return;let n=a.analysis.sectors.find(c=>c.name===t.sector),o=t.factors.filter(c=>c.value!==null).sort((c,$)=>$.value-c.value)[0],s=t.factors.filter(c=>c.value!==null).sort((c,$)=>c.value-$.value)[0],u=`${t.name}\\u4E3A${t.height===1?"\\u9996\\u677F":t.height?`${t.height}\\u8FDE\\u677F`:"\\u8FDE\\u677F\\u9AD8\\u5EA6\\u6682\\u7F3A"}\\uFF0C${z(t.first)}\\u9996\\u6B21\\u5C01\\u677F${t.breaks!==null?`\\uFF0C\\u76D8\\u4E2D\\u70B8\\u677F ${t.breaks} \\u6B21`:""}\\u3002${o?`${o.name}\\u662F\\u5F53\\u524D\\u8F83\\u5F3A\\u6307\\u6807\\uFF08${Math.round(o.value)} \\u5206\\uFF09\\u3002`:""}${s&&s!==o?`${s.name}\\u76F8\\u5BF9\\u504F\\u5F31\\uFF08${Math.round(s.value)} \\u5206\\uFF09\\u3002`:""}\\u6240\\u5C5E\\u884C\\u4E1A ${n?.count||0} \\u5BB6\\u6DA8\\u505C\\uFF0C\\u677F\\u5757\\u5F97\\u5206 ${n?.score??"\\u2014"}\\u3002`;r("stock-detail").innerHTML=`<div class="detail-head"><div><h2>${g(t.name)}</h2><span class="stock-code">${g(t.code)}${a.demo?" \\xB7 \\u6F14\\u793A\\u6837\\u672C":""}</span><div class="detail-tags"><span class="sector-tag">${g(t.sector)}</span><span class="height-tag">${t.height===1?"\\u9996\\u677F":`${t.height??"\\u2014"} \\u677F`}</span></div></div><div class="detail-score">${t.score??"\\u2014"}<small>\\u7EFC\\u5408\\u8BC4\\u5206 / 100</small></div></div><div class="detail-facts"><div><label>\\u5C01\\u5355\\u91D1\\u989D</label><strong>${ne(t.seal)}</strong></div><div><label>\\u5C01\\u5355 / \\u6210\\u4EA4\\u989D</label><strong>${t.sealRatio===null?"\\u2014":b(t.sealRatio*100)}%</strong></div><div><label>\\u6362\\u624B\\u7387</label><strong>${b(t.turnover)}%</strong></div><div><label>\\u6700\\u540E\\u5C01\\u677F</label><strong>${z(t.last)}</strong></div></div><div class="detail-section"><h3>\\u516D\\u7EF4\\u8BC4\\u5206\\u62C6\\u89E3</h3>${t.factors.map(c=>`<div class="factor-row"><span>${c.name}</span><span class="factor-track"><i style="width:${c.value??0}%"></i></span><strong>${c.value===null?"\\u2014":Math.round(c.value)}</strong><span class="weight">\\u6743\\u91CD ${c.weight}</span></div>`).join("")}<p class="detail-footnote">\\u6709\\u6548\\u6307\\u6807\\u5747\\u5206 ${b(t.rawScore)} \\u2212 \\u98CE\\u9669\\u6263\\u5206 ${t.deduction} = ${t.score??"\\u2014"} \\u5206 \\xB7 \\u8986\\u76D6\\u7387 ${t.coverage}%</p></div><div class="detail-section"><h3>\\u98CE\\u9669\\u89C2\\u5BDF</h3>${t.risks.length?t.risks.map(c=>`<div class="risk-row"><strong>${c.text} \\u2212${c.penalty}</strong><span>${c.detail}</span></div>`).join(""):\'<p class="detail-footnote">\\u5F53\\u524D\\u5B57\\u6BB5\\u672A\\u89E6\\u53D1\\u6A21\\u578B\\u98CE\\u9669\\u6263\\u5206\\u9879\\uFF1B\\u516C\\u544A\\u3001\\u57FA\\u672C\\u9762\\u4E0E\\u9898\\u6750\\u98CE\\u9669\\u4ECD\\u9700\\u5355\\u72EC\\u6838\\u5B9E\\u3002</p>\'}</div><div class="detail-section"><h3>\\u76D8\\u540E\\u8BCA\\u65AD</h3><p class="detail-text">${g(u)}</p></div><p class="detail-footnote">\\u6B21\\u65E5\\u89C2\\u5BDF\\uFF1A\\u7ADE\\u4EF7\\u662F\\u5426\\u6709\\u627F\\u63A5\\u3001\\u540C\\u677F\\u5757\\u662F\\u5426\\u5F62\\u6210\\u5408\\u529B\\u3001\\u5F00\\u677F\\u540E\\u80FD\\u5426\\u56DE\\u5C01\\u3002\\u5F53\\u524D\\u89C4\\u5219\\u5206\\u6570\\u5C1A\\u672A\\u7ECF\\u8FC7\\u5386\\u53F2\\u6536\\u76CA\\u6821\\u51C6\\uFF0C\\u4E0D\\u4EE3\\u8868\\u4E0A\\u6DA8\\u6982\\u7387\\u3002</p>`,r("stock-dialog").showModal()}document.querySelectorAll(".close-dialog").forEach(e=>e.onclick=()=>e.closest("dialog").close());document.querySelectorAll("dialog").forEach(e=>e.onclick=t=>{if(t.target===e){let n=e.getBoundingClientRect();(t.clientX<n.left||t.clientX>n.right||t.clientY<n.top||t.clientY>n.bottom)&&e.close()}});r("help-btn").onclick=()=>r("help-dialog").showModal();r("all-sectors").onclick=()=>Q("sectors");r("refresh-btn").onclick=P;r("trade-date").onchange=P;r("search").oninput=H;r("sector-filter").onchange=H;r("sort").onchange=H;document.querySelectorAll("[data-height]").forEach(e=>e.onclick=()=>{a.height=e.dataset.height,document.querySelectorAll("[data-height]").forEach(t=>t.classList.toggle("active",t===e)),H()});function X(){r("weight-controls").innerHTML=K.map((e,t)=>`<div class="weight-item"><div class="weight-heading"><label for="weight-${t}">${e.name}</label><output id="weight-output-${t}" for="weight-${t}">${a.weights[t]}%</output></div><input id="weight-${t}" data-weight="${t}" type="range" min="0" max="50" step="1" value="${a.weights[t]}" aria-describedby="weight-desc-${t}"><p id="weight-desc-${t}">${e.description}</p></div>`).join(""),document.querySelectorAll("[data-weight]").forEach(e=>e.oninput=()=>{let t=[...a.weights];if(t[Number(e.dataset.weight)]=Number(e.value),!t.some(n=>n>0)){e.value=a.weights[Number(e.dataset.weight)],r("model-status").textContent="\\u81F3\\u5C11\\u4FDD\\u7559\\u4E00\\u9879\\u6709\\u6548\\u6743\\u91CD";return}a.weights=t,r(`weight-output-${e.dataset.weight}`).textContent=`${e.value}%`,ie()}),fe()}function fe(){let e=a.weights.reduce((t,n)=>t+n,0);r("weight-total").textContent=`\\u5408\\u8BA1 ${e}%`,r("model-status").textContent=e===100?"\\u5DF2\\u5373\\u65F6\\u91CD\\u7B97 \\xB7 \\u5373\\u65F6\\u91CD\\u7B97":`\\u5408\\u8BA1 ${e}%\\uFF0C\\u8BA1\\u7B97\\u65F6\\u81EA\\u52A8\\u5F52\\u4E00\\u5316`,document.querySelectorAll("[data-preset]").forEach(t=>t.classList.toggle("active",D[t.dataset.preset].every((n,o)=>n===a.weights[o])))}var he;function ie(){try{localStorage.setItem("limitLensWeights",JSON.stringify(a.weights))}catch{}fe(),se(),R(),clearTimeout(he),he=setTimeout(async()=>{try{let e=await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({weights:a.weights})}),t=await e.json();if(!e.ok)throw new Error(t.error);r("model-status").textContent="\\u6743\\u91CD\\u5DF2\\u4FDD\\u5B58 \\xB7 \\u5DF2\\u5F52\\u6863\\u8BC4\\u5206\\u4FDD\\u6301\\u539F\\u6837"}catch{r("model-status").textContent="\\u670D\\u52A1\\u5668\\u4FDD\\u5B58\\u5931\\u8D25\\uFF0C\\u5F53\\u524D\\u8C03\\u6574\\u4ECD\\u53EF\\u4F7F\\u7528\\uFF0C\\u8BF7\\u7A0D\\u540E\\u91CD\\u8BD5\\u3002"}},500)}document.querySelectorAll("[data-preset]").forEach(e=>e.onclick=()=>{a.weights=[...D[e.dataset.preset]],ie(),X()});r("reset-model").onclick=()=>{a.weights=[...D.balanced],ie(),X()};function Re(){let e=["\\u793A\\u4F8B\\xB7\\u8F6F\\u4EF6\\u670D\\u52A1","\\u793A\\u4F8B\\xB7\\u7535\\u5B50\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u673A\\u68B0\\u5236\\u9020","\\u793A\\u4F8B\\xB7\\u7535\\u529B\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u533B\\u836F\\u5236\\u9020"];return Array.from({length:22},(t,n)=>({c:`DEMO${String(n+1).padStart(3,"0")}`,n:`\\u793A\\u4F8B\\u4E2A\\u80A1 ${String(n+1).padStart(2,"0")}`,hybk:e[Math.min(4,Math.floor(n/5))],p:(12+n)*1e3,zdp:n%4===0?20:10,amount:(2+n%6)*1e8,ltsz:(18+n)*1e8,fund:(.3+(21-n)/10)*1e8,hs:4+n%16,lbc:n===0?6:n===1?4:n<5?3:n<9?2:1,fbt:n%6===0?92500:93e3+n*700,lbt:n===0?145500:1e5+n*800,zbc:n%5===0?3:n%3===0?1:0,zttj:{days:3,ct:1}}))}r("demo-btn").onclick=()=>{if(a.demo){P();return}++a.request,a.loading=!1,a.demo=!0,a.error=null,a.review=null,a.ai=null,a.reviewMessage="\\u6F14\\u793A\\u6837\\u672C\\u4E0D\\u4F1A\\u4FDD\\u5B58\\u8BC4\\u5206\\u6216\\u751F\\u6210\\u5E02\\u573A\\u53CD\\u9988\\u3002",a.payload={date:"\\u6F14\\u793A",source:"\\u865A\\u6784\\u6837\\u672C",fetchedAt:new Date().toISOString(),rows:Re(),broken:6,previous:null,warnings:[]},se(),ge(),Z(),R(),M()};function $e(e){return e==null?"\\u2014":`${e>0?"+":""}${Number(e).toFixed(2)}%`}function W(e){return`<span class="${e>0?"up":e<0?"down":""}">${$e(e)}</span>`}function M(){let e=a.review,t=a.ai;r("review-date-label").textContent=e?`${e.snapshotDate} \\u8BC4\\u5206 \\u2192 ${e.date} \\u8868\\u73B0`:"\\u7B49\\u5F85\\u9996\\u4E2A\\u53CD\\u9988\\u65E5",r("review-status").textContent=a.reviewBusy?"\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C\\u6536\\u76D8\\u7ED3\\u679C\\u2026":a.reviewMessage||"\\u5F53\\u5929\\u6536\\u76D8\\u540E\\u4FDD\\u5B58\\u539F\\u59CB\\u8BC4\\u5206\\uFF0C\\u4E0B\\u4E00\\u4E2A\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5E02\\u573A\\u8868\\u73B0\\u3002",r("run-review").disabled=a.reviewBusy||a.demo,r("review-coverage").textContent=e?`${e.validCount} / ${e.total} \\u5BB6\\u6709\\u6548`:"\\u7B49\\u5F85\\u6837\\u672C";let n=[{name:"\\u7CFB\\u7EDF\\u5BA2\\u89C2\\u53CD\\u9988\\u5206",value:e?.systemScore??"\\u2014",unit:"/ 100",caption:"\\u5355\\u65E5\\u6392\\u5E8F\\u4E0E\\u76F8\\u5BF9\\u8868\\u73B0\\uFF0C\\u89C4\\u5219\\u8BA1\\u7B97"},{name:"\\u9AD8\\u5206\\u7EC4\\u6B21\\u65E5\\u6536\\u76CA",value:e?.topMean===null||!e?"\\u2014":b(e.topMean,2),unit:"%",caption:e?`\\u6709\\u6548 ${e.topValid} \\u5BB6 \\xB7 \\u8BC4\\u5206\\u524D 20%`:"\\u6309\\u6628\\u65E5\\u8BC4\\u5206\\u56FA\\u5B9A\\u89C2\\u5BDF\\u7EC4"},{name:"\\u76F8\\u5BF9\\u6837\\u672C\\u8D85\\u989D",value:e?.excess===null||!e?"\\u2014":b(e.excess,2),unit:"\\u767E\\u5206\\u70B9",caption:e?`\\u5168\\u6837\\u672C\\u5747\\u503C ${$e(e.allMean)}`:"\\u9AD8\\u5206\\u7EC4\\u5747\\u503C \\u2212 \\u5168\\u6837\\u672C\\u5747\\u503C"},{name:"\\u8BC4\\u5206\\u4E0E\\u8868\\u73B0\\u76F8\\u5173",value:e?.rho===null||!e?"\\u2014":b(e.rho,2),unit:"\\u03C1",caption:"Spearman \\u79E9\\u76F8\\u5173\\uFF0C\\u8303\\u56F4 \\u22121 \\u81F3 1"}];r("review-metrics").innerHTML=n.map(s=>`<article class="metric"><div class="metric-head">${s.name}${F("shield")}</div><div class="metric-value">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div></article>`).join(""),r("review-conclusion").hidden=!e,r("review-conclusion").textContent=e?.conclusion||"",r("review-rows").innerHTML=e?e.rows.map((s,u)=>`<tr><td><strong class="review-stock">${g(s.name)}${u<e.topSize?\'<span class="top-group">\\u9AD8\\u5206\\u7EC4</span>\':""}</strong><span class="stock-code">${g(s.code)}</span></td><td>${Y(s.score)}</td><td>${s.available?W(s.openReturn):"\\u2014"}</td><td>${s.available?W(s.closeReturn):"\\u2014"}</td><td>${s.available?W(s.lowReturn):"\\u2014"}</td><td>${s.available?s.continued?\'<span class="height-tag high">\\u662F</span>\':"\\u5426":`<span class="small-muted" title="${g(s.reason)}">\\u4E0D\\u53EF\\u6BD4</span>`}</td></tr>`).join(""):\'<tr><td colspan="6"><div class="empty"><strong>\\u5148\\u4FDD\\u5B58\\u5224\\u65AD\\uFF0C\\u518D\\u68C0\\u9A8C\\u7ED3\\u679C</strong>\\u6536\\u76D8\\u540E\\u8BBF\\u95EE\\u5DE5\\u4F5C\\u53F0\\u4F1A\\u81EA\\u52A8\\u4FDD\\u5B58\\u5F53\\u65E5\\u8BC4\\u5206\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u7684\\u771F\\u5B9E\\u53CD\\u9988\\u5230\\u8FBE\\u524D\\uFF0C\\u6B64\\u5904\\u4FDD\\u6301\\u7A7A\\u767D\\u3002</div></td></tr>\',r("review-sector-rows").innerHTML=e?e.sectors.map(s=>`<tr><td>${g(s.name)}</td><td>${Y(s.score)}</td><td>${s.available} / ${s.count}</td><td>${W(s.averageReturn)}</td><td>${s.continuationRate===null?"\\u2014":b(s.continuationRate*100)}%</td></tr>`).join(""):\'<tr><td colspan="5"><div class="empty compact">\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5DF2\\u4FDD\\u5B58\\u7684\\u677F\\u5757\\u8BC4\\u5206\\u3002</div></td></tr>\',r("ai-status-tag").textContent=a.aiConfig.configured?"\\u5DF2\\u8FDE\\u63A5":"\\u5F85\\u914D\\u7F6E",r("model-ai-status").textContent=a.aiConfig.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E",r("model-ai-detail").textContent=a.aiConfig.configured?`\\u5DF2\\u914D\\u7F6E ${a.aiConfig.model}\\u3002\\u53EA\\u5411\\u6A21\\u578B\\u53D1\\u9001\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u6838\\u9A8C\\u7ED3\\u679C\\uFF0C\\u8BC4\\u4EF7\\u4F1A\\u4E0E\\u539F\\u59CB\\u6570\\u636E\\u4E00\\u5E76\\u4FDD\\u5B58\\u3002`:"\\u670D\\u52A1\\u7AEF\\u914D\\u7F6E\\u5BC6\\u94A5\\u3001\\u63A5\\u53E3\\u5730\\u5740\\u548C\\u6A21\\u578B\\u540E\\uFF0CAI \\u4F1A\\u6839\\u636E\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5DF2\\u6838\\u9A8C\\u5E02\\u573A\\u7ED3\\u679C\\u751F\\u6210\\u8BC4\\u4EF7\\u3002\\u5BC6\\u94A5\\u4E0D\\u8FDB\\u5165\\u6D4F\\u89C8\\u5668\\u3002",r("ai-content").innerHTML=t?`<div class="ai-score"><strong>${t.score}</strong><span>AI \\u4E3B\\u89C2\\u8BC4\\u4EF7 / 100<small>${g(t.model)} \\xB7 ${t.confidence==="high"?"\\u8F83\\u9AD8":t.confidence==="medium"?"\\u4E2D\\u7B49":"\\u8F83\\u4F4E"}\\u7F6E\\u4FE1\\u5EA6</small></span></div><p class="ai-summary">${g(t.summary)}</p><h3>\\u8BC4\\u4EF7\\u4F9D\\u636E</h3><ul>${t.evidence.map(s=>`<li>${g(s)}</li>`).join("")}</ul>${t.failures.length?`<h3>\\u5224\\u65AD\\u4E0D\\u8DB3</h3><ul>${t.failures.map(s=>`<li>${g(s)}</li>`).join("")}</ul>`:""}${t.suggestions.length?`<h3>\\u6539\\u8FDB\\u5EFA\\u8BAE</h3><ul>${t.suggestions.map(s=>`<li>${g(s)}</li>`).join("")}</ul>`:""}<p class="ai-note">AI \\u8BC4\\u4EF7\\u4E0E\\u89C4\\u5219\\u53CD\\u9988\\u5206\\u5206\\u522B\\u4FDD\\u7559\\u3002\\u5EFA\\u8BAE\\u4E0D\\u4F1A\\u81EA\\u52A8\\u6539\\u5199\\u6A21\\u578B\\u3002</p>`:`<div class="ai-empty"><span class="ai-symbol">${F("sliders")}</span><h3>${a.aiConfig.configured?"\\u7B49\\u5F85\\u5DF2\\u6838\\u9A8C\\u7ED3\\u679C":"\\u5927\\u6A21\\u578B\\u5C1A\\u672A\\u914D\\u7F6E"}</h3><p>${a.aiConfig.configured?"\\u79EF\\u7D2F\\u4E8B\\u524D\\u5FEB\\u7167\\u5E76\\u53D6\\u5F97\\u6B21\\u65E5\\u6536\\u76D8\\u7ED3\\u679C\\u540E\\uFF0CAI \\u624D\\u5BF9\\u7CFB\\u7EDF\\u8BC4\\u4EF7\\u3002":"\\u5DF2\\u9884\\u7559 DeepSeek\\u3001OpenAI\\u3001\\u901A\\u4E49\\u517C\\u5BB9\\u63A5\\u53E3\\u3002\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5BC6\\u94A5\\u540E\\u542F\\u7528\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6A21\\u62DF AI \\u7ED3\\u8BBA\\u66FF\\u4EE3\\u771F\\u5B9E\\u8C03\\u7528\\u3002"}</p><div class="ai-process">\\u51BB\\u7ED3\\u6628\\u65E5\\u8BC4\\u5206<span>\\u2193</span>\\u6838\\u9A8C\\u4ECA\\u65E5\\u5E02\\u573A\\u7ED3\\u679C<span>\\u2193</span>AI \\u8BC4\\u5206\\u3001\\u8BC1\\u636E\\u4E0E\\u6539\\u8FDB\\u5EFA\\u8BAE</div></div>`,r("ai-grade-btn").disabled=a.demo||a.reviewBusy||!a.aiConfig.configured||!e||!!t,r("ai-grade-btn").textContent=t?"\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58":"\\u751F\\u6210 AI \\u8BC4\\u4EF7";let o=a.history?.reviews||[];r("review-history").innerHTML=o.length?`<div class="history-list">${o.map(s=>`<button data-history="${g(s.date)}"><span>${g(s.snapshotDate)} \\u2192 ${g(s.date)}</span><span>\\u5BA2\\u89C2 ${s.systemScore??"\\u2014"} \\u5206 \\xB7 AI ${s.aiScore??"\\u2014"} \\u5206</span></button>`).join("")}</div>`:\'<div class="empty compact">\\u5C1A\\u65E0\\u53CD\\u9988\\u8BB0\\u5F55\\u3002\\u5FEB\\u7167\\u4E0E\\u53CD\\u9988\\u4F1A\\u4FDD\\u5B58\\u5230\\u670D\\u52A1\\u7AEF\\uFF0C\\u8DE8\\u8BBE\\u5907\\u53EF\\u67E5\\u770B\\u3002</div>\',document.querySelectorAll("[data-history]").forEach(s=>s.onclick=()=>{r("trade-date").value=s.dataset.history,P()})}async function ve(e=a.request){try{let[t,n]=await Promise.all([fetch(`/api/review?date=${encodeURIComponent(r("trade-date").value)}`),fetch("/api/history")]),o=await t.json(),s=await n.json();if(e!==a.request||a.demo)return;if(!t.ok)throw new Error(o.error);a.review=o.review,a.ai=o.ai,a.aiConfig=o.aiStatus||a.aiConfig,a.history=n.ok?s:a.history,a.reviewMessage=o.reason||"\\u5DF2\\u52A0\\u8F7D\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5B9E\\u9645\\u7ED3\\u679C\\u3002"}catch(t){e===a.request&&(a.reviewMessage=t.message||"\\u5386\\u53F2\\u53CD\\u9988\\u6682\\u65F6\\u4E0D\\u53EF\\u7528")}e===a.request&&M()}async function ye(e=a.request){if(!(a.demo||a.reviewBusy)){a.reviewBusy=!0,a.reviewMessage="\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C",M();try{let t=await fetch("/api/run-daily",{method:"POST",signal:AbortSignal.timeout(13e4)}),n=await t.json();if(e!==a.request||a.demo)return;if(!t.ok)throw new Error(n.error);a.review=n.review,a.ai=n.ai||null,a.aiConfig=n.aiStatus||a.aiConfig,a.history=n.history||a.history,a.reviewMessage=n.aiError||n.reason||(n.review?"\\u5DF2\\u5B8C\\u6210\\u6628\\u65E5\\u5224\\u65AD\\u6838\\u9A8C\\uFF1B\\u539F\\u59CB\\u8BC4\\u5206\\u4E0E\\u7ED3\\u679C\\u5747\\u5DF2\\u4FDD\\u5B58\\u3002":"\\u4ECA\\u65E5\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863\\uFF0C\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u751F\\u6210\\u53CD\\u9988\\u3002"),r("snapshot-status").textContent=n.snapshot?.saved?`${n.snapshot.date} \\u539F\\u59CB\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863`:n.snapshot?.reason||"\\u7B49\\u5F85\\u6536\\u76D8\\u540E\\u4FDD\\u5B58"}catch(t){e===a.request&&(a.reviewMessage=t.name==="TimeoutError"?"\\u53CD\\u9988\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u53EF\\u5237\\u65B0\\u8BFB\\u53D6\\u5DF2\\u4FDD\\u5B58\\u7684\\u8FDB\\u5EA6\\u3002":t.message,r("snapshot-status").textContent="\\u5F52\\u6863\\u6682\\u4E0D\\u53EF\\u7528\\uFF0C\\u53EF\\u7A0D\\u540E\\u91CD\\u8BD5")}finally{a.reviewBusy=!1,M(),window.dispatchEvent(new Event("paper-updated"))}}}r("run-review").onclick=()=>{r("trade-date").value===J?ye():ve()};r("ai-grade-btn").onclick=async()=>{if(!a.review)return;let e=a.review.date;a.reviewBusy=!0,M(),r("ai-action-status").textContent="\\u6A21\\u578B\\u6B63\\u5728\\u8BC4\\u4EF7\\u2026";try{let t=await fetch("/api/ai-grade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:e}),signal:AbortSignal.timeout(55e3)}),n=await t.json();if(!t.ok)throw new Error(n.error);a.review?.date===e&&(a.ai=n.ai),r("ai-action-status").textContent="\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58"}catch(t){r("ai-action-status").textContent=t.message||"AI \\u8C03\\u7528\\u5931\\u8D25"}finally{a.reviewBusy=!1,M()}};async function Ne(){try{let e=await fetch("/api/settings",{signal:AbortSignal.timeout(5e3)}),t=await e.json();e.ok&&(a.storageAvailable=!0,je(t.weights)&&(a.weights=t.weights),a.aiConfig=t.ai,X())}catch{}await P()}function je(e){return Array.isArray(e)&&e.length===6&&e.every(t=>Number.isInteger(t)&&t>=0&&t<=50)&&e.some(t=>t>0)}X();Z();R();M();Ne();if(document.modelContext?.registerTool){let e=new AbortController;try{Promise.resolve(document.modelContext.registerTool({name:"read_limit_up_analysis",title:"\\u8BFB\\u53D6\\u6DA8\\u505C\\u5206\\u6790",description:"\\u8BFB\\u53D6\\u5F53\\u524D\\u4EA4\\u6613\\u65E5\\u7684\\u4E2A\\u80A1\\u4E0E\\u884C\\u4E1A\\u8BC4\\u5206\\uFF0C\\u5E76\\u660E\\u786E\\u8FD4\\u56DE\\u771F\\u5B9E\\u6216\\u6F14\\u793A\\u6570\\u636E\\u72B6\\u6001\\u3002",inputSchema:{type:"object",properties:{},additionalProperties:!1},annotations:{readOnlyHint:!0,untrustedContentHint:!0},execute(t){if(t===null||typeof t!="object"||Array.isArray(t)||Object.keys(t).length)throw new Error("\\u8F93\\u5165\\u5FC5\\u987B\\u662F\\u7A7A\\u5BF9\\u8C61");return{date:a.payload?.date??null,mode:a.demo?"demo":"public",loading:a.loading,error:a.error,stocks:a.analysis?.stocks.map(n=>({code:n.code,name:n.name,sector:n.sector,score:n.score,coverage:n.coverage,risks:n.risks.map(o=>o.text)}))||[],sectors:a.analysis?.sectors.map(n=>({name:n.name,score:n.score,count:n.count}))||[]}}},{signal:e.signal})).catch(()=>{}),window.addEventListener("pagehide",()=>e.abort(),{once:!0})}catch{}}\n', "type": "text/javascript; charset=utf-8" }, "/assets/styles.css": { "body": '* {\r\n  box-sizing: border-box;\r\n}\r\n:root {\r\n  --navy: #101e2e;\r\n  --ink: #1b2c3f;\r\n  --muted: #7c8795;\r\n  --line: #e7ebf0;\r\n  --bg: #f4f6f9;\r\n  --teal: #148775;\r\n  --red: #db5a55;\r\n  --green: #309477;\r\n  --amber: #c18a31;\r\n}\r\nbody {\r\n  margin: 0;\r\n  background: var(--bg);\r\n  color: var(--ink);\r\n  font:\r\n    14px/1.55 -apple-system,\r\n    BlinkMacSystemFont,\r\n    "Segoe UI",\r\n    "PingFang SC",\r\n    "Microsoft YaHei",\r\n    sans-serif;\r\n}\r\nbutton,\r\ninput,\r\nselect {\r\n  font: inherit;\r\n}\r\nbutton,\r\na,\r\ninput,\r\nselect {\r\n  touch-action: manipulation;\r\n}\r\nbutton {\r\n  cursor: pointer;\r\n}\r\nbutton {\r\n  border: 0;\r\n}\r\nbutton:focus-visible,\r\na:focus-visible,\r\ninput:focus-visible,\r\nselect:focus-visible {\r\n  outline: 3px solid #66c5ba;\r\n  outline-offset: 3px;\r\n}\r\nbutton:disabled {\r\n  opacity: 0.65;\r\n  cursor: wait;\r\n}\r\na {\r\n  text-decoration: none;\r\n  color: inherit;\r\n}\r\n[hidden] {\r\n  display: none !important;\r\n}\r\nh1,\r\nh2,\r\nh3,\r\np {\r\n  margin: 0;\r\n}\r\nh2 {\r\n  font-size: 16px;\r\n  font-weight: 650;\r\n}\r\nh3 {\r\n  font-size: 14px;\r\n}\r\nsvg {\r\n  width: 19px;\r\n  height: 19px;\r\n  display: block;\r\n  fill: none;\r\n  stroke: currentColor;\r\n  stroke-width: 1.6;\r\n  stroke-linecap: round;\r\n  stroke-linejoin: round;\r\n}\r\n.shell {\r\n  display: flex;\r\n  min-height: 100vh;\r\n}\r\n.sidebar {\r\n  width: 222px;\r\n  position: fixed;\r\n  inset: 0 auto 0 0;\r\n  background: var(--navy);\r\n  color: #b4c0cd;\r\n  padding: 32px 18px;\r\n  display: flex;\r\n  flex-direction: column;\r\n}\r\n.brand {\r\n  display: flex;\r\n  gap: 12px;\r\n  align-items: center;\r\n  color: #fff;\r\n  font-size: 19px;\r\n  font-weight: 650;\r\n  padding: 0 10px;\r\n}\r\n.brand small {\r\n  display: block;\r\n  font-size: 10px;\r\n  letter-spacing: 2.8px;\r\n  font-weight: 450;\r\n  color: #7e93aa;\r\n  margin-top: 3px;\r\n}\r\n.brand-mark {\r\n  display: flex;\r\n  gap: 4px;\r\n  align-items: flex-end;\r\n  width: 29px;\r\n  height: 29px;\r\n}\r\n.brand-mark i {\r\n  display: block;\r\n  background: #55c9b0;\r\n  width: 6px;\r\n  border-radius: 2px;\r\n}\r\n.brand-mark i:nth-child(1) {\r\n  height: 12px;\r\n}\r\n.brand-mark i:nth-child(2) {\r\n  height: 20px;\r\n}\r\n.brand-mark i:nth-child(3) {\r\n  height: 29px;\r\n}\r\n.nav-label {\r\n  font-size: 12px;\r\n  color: #718398;\r\n  letter-spacing: 1px;\r\n  margin: 46px 16px 13px;\r\n}\r\n.nav-item {\r\n  background: transparent;\r\n  color: #91a4b8;\r\n  display: flex;\r\n  gap: 13px;\r\n  align-items: center;\r\n  padding: 13px 16px;\r\n  width: 100%;\r\n  text-align: left;\r\n  margin-bottom: 7px;\r\n  border-radius: 7px;\r\n  font-size: 14px;\r\n}\r\n.nav-item.active {\r\n  background: #223847;\r\n  color: #70d6c2;\r\n}\r\n.nav-item:hover {\r\n  background: #1d3042;\r\n}\r\n.sidebar-note {\r\n  margin-top: auto;\r\n  background: #152738;\r\n  border: 1px solid #293b4e;\r\n  padding: 19px 15px;\r\n  border-radius: 8px;\r\n}\r\n.mini-label {\r\n  display: block;\r\n  color: #6d8b9d;\r\n  font-size: 12px;\r\n  margin-bottom: 9px;\r\n}\r\n.sidebar-note strong {\r\n  font-size: 14px;\r\n  color: #d5dee7;\r\n  font-weight: 500;\r\n}\r\n.sidebar-note p {\r\n  font-size: 12px;\r\n  color: #8a9bae;\r\n  margin: 9px 0 15px;\r\n  line-height: 1.8;\r\n}\r\n.note-line {\r\n  height: 1px;\r\n  background: #2b3b4d;\r\n  margin-bottom: 12px;\r\n}\r\n.sidebar-note > span:last-child {\r\n  font-size: 12px;\r\n  color: #90a3b7;\r\n}\r\n.sidebar-footer {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: center;\r\n  margin: 22px 12px 0;\r\n  font-size: 12px;\r\n}\r\n.sidebar-footer small {\r\n  display: block;\r\n  color: #60768c;\r\n  font-size: 12px;\r\n}\r\n.workspace {\r\n  margin-left: 222px;\r\n  width: calc(100% - 222px);\r\n}\r\n.topbar {\r\n  height: 68px;\r\n  background: #fff;\r\n  border-bottom: 1px solid var(--line);\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  padding: 0 35px;\r\n}\r\n.breadcrumb {\r\n  font-size: 13px;\r\n  color: #8a95a2;\r\n  display: flex;\r\n  gap: 14px;\r\n}\r\n.breadcrumb strong {\r\n  color: #526073;\r\n  font-weight: 500;\r\n}\r\n.topbar-right {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 24px;\r\n}\r\n.session-label {\r\n  font-size: 13px;\r\n  color: #7d8897;\r\n}\r\n.icon-button {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  background: transparent;\r\n  width: 32px;\r\n  height: 32px;\r\n  color: #8b98a6;\r\n  border-radius: 5px;\r\n}\r\n.icon-button:hover {\r\n  background: #eef4f4;\r\n  color: var(--teal);\r\n}\r\nmain {\r\n  max-width: 1680px;\r\n  margin: auto;\r\n  padding: 31px 35px 20px;\r\n}\r\n.page-heading {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  margin-bottom: 25px;\r\n}\r\n.eyebrow {\r\n  font-size: 11px;\r\n  letter-spacing: 1.9px;\r\n  color: #8290a0;\r\n  font-weight: 650;\r\n}\r\n.page-heading h1 {\r\n  font-size: 28px;\r\n  letter-spacing: -0.7px;\r\n  font-weight: 650;\r\n  margin-top: 5px;\r\n}\r\n.page-heading p {\r\n  font-size: 14px;\r\n  color: #86909d;\r\n  margin-top: 6px;\r\n}\r\n.heading-actions {\r\n  display: flex;\r\n  gap: 12px;\r\n  align-items: center;\r\n}\r\n.date-control {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  background: #fff;\r\n  border: 1px solid #e0e5ec;\r\n  padding: 9px 12px;\r\n  border-radius: 6px;\r\n  color: #8391a0;\r\n}\r\n.date-control input {\r\n  border: 0;\r\n  outline: 0;\r\n  color: #536276;\r\n  width: 130px;\r\n  background: transparent;\r\n}\r\n.primary,\r\n.secondary {\r\n  padding: 10px 16px;\r\n  border-radius: 6px;\r\n  font-weight: 550;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 9px;\r\n  white-space: nowrap;\r\n}\r\n.primary {\r\n  background: var(--teal);\r\n  color: #fff;\r\n}\r\n.primary:hover {\r\n  background: #106f62;\r\n}\r\n.secondary {\r\n  background: #f3f5f8;\r\n  color: #4f6275;\r\n  border: 1px solid var(--line);\r\n}\r\n.data-strip {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  margin-bottom: 21px;\r\n  gap: 12px;\r\n  color: #8a96a3;\r\n  font-size: 12px;\r\n}\r\n.data-strip > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 12px;\r\n  flex-wrap: wrap;\r\n}\r\n.source-tag {\r\n  display: inline-flex;\r\n  background: #e5f1ed;\r\n  color: #3b8b7b;\r\n  font-size: 12px;\r\n  border-radius: 4px;\r\n  padding: 3px 8px;\r\n}\r\n.source-tag.unavailable {\r\n  background: #fff1df;\r\n  color: #a27428;\r\n}\r\n.source-tag.demo {\r\n  background: #edf0f7;\r\n  color: #6e7ba1;\r\n}\r\n.text-button {\r\n  background: transparent;\r\n  color: #74839b;\r\n  font-size: 12px;\r\n  white-space: nowrap;\r\n  padding: 4px;\r\n}\r\n.text-button:hover {\r\n  color: var(--teal);\r\n}\r\n.notice {\r\n  padding: 13px 17px;\r\n  background: #fff8ed;\r\n  border: 1px solid #eedfc6;\r\n  color: #91703b;\r\n  border-radius: 6px;\r\n  margin-bottom: 19px;\r\n  font-size: 14px;\r\n}\r\n.metrics {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, minmax(0, 1fr));\r\n  gap: 17px;\r\n  margin-bottom: 24px;\r\n}\r\n.metric {\r\n  background: white;\r\n  border: 1px solid var(--line);\r\n  border-radius: 8px;\r\n  padding: 20px 21px;\r\n  position: relative;\r\n  overflow: hidden;\r\n}\r\n.metric-head {\r\n  color: #7c8999;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  font-size: 13px;\r\n}\r\n.metric-head svg {\r\n  width: 17px;\r\n  height: 17px;\r\n  color: #aab4c1;\r\n}\r\n.metric-value {\r\n  font-size: 36px;\r\n  font-family: ui-sans-serif, system-ui, sans-serif;\r\n  font-weight: 600;\r\n  letter-spacing: -1.7px;\r\n  margin-top: 8px;\r\n  line-height: 1.25;\r\n}\r\n.metric-value small {\r\n  font-size: 14px;\r\n  color: #94a0ae;\r\n  font-weight: 400;\r\n  letter-spacing: 0;\r\n  margin-left: 5px;\r\n}\r\n.metric-caption {\r\n  font-size: 12px;\r\n  color: #8a96a4;\r\n  margin-top: 10px;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n}\r\n.metric-line {\r\n  height: 3px;\r\n  background: #edf2f3;\r\n  border-radius: 3px;\r\n  margin-top: 15px;\r\n}\r\n.metric-line i {\r\n  display: block;\r\n  height: 100%;\r\n  border-radius: 3px;\r\n  background: #80bfad;\r\n}\r\n.metric-line.amber i {\r\n  background: #e0b065;\r\n}\r\n.metric-value.accent {\r\n  color: var(--teal);\r\n}\r\n.overview-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1fr) 300px;\r\n  gap: 22px;\r\n  align-items: start;\r\n}\r\n.panel {\r\n  background: #fff;\r\n  border: 1px solid var(--line);\r\n  border-radius: 8px;\r\n  overflow: hidden;\r\n}\r\n.panel-heading {\r\n  padding: 21px 22px 17px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  gap: 12px;\r\n}\r\n.panel-heading h2 {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 9px;\r\n}\r\n.panel-heading p {\r\n  font-size: 12px;\r\n  color: #929ca9;\r\n  margin-top: 5px;\r\n}\r\n.count-chip {\r\n  font-size: 11px;\r\n  font-weight: 500;\r\n  background: #eef3f6;\r\n  padding: 0 7px;\r\n  line-height: 20px;\r\n  border-radius: 4px;\r\n  color: #7990a2;\r\n}\r\n.small-muted {\r\n  font-size: 12px;\r\n  color: #9ca6b0;\r\n  white-space: nowrap;\r\n}\r\n.filters {\r\n  display: flex;\r\n  gap: 12px;\r\n  padding: 0 22px 17px;\r\n}\r\n.search-control {\r\n  display: flex;\r\n  gap: 9px;\r\n  align-items: center;\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  padding: 8px 10px;\r\n  flex: 1;\r\n  min-width: 100px;\r\n  color: #9ca8b5;\r\n  background: #fcfdfe;\r\n}\r\n.search-control svg {\r\n  width: 15px;\r\n  height: 15px;\r\n}\r\n.search-control input {\r\n  border: 0;\r\n  background: transparent;\r\n  outline: 0;\r\n  width: 100%;\r\n  min-width: 0;\r\n  font-size: 13px;\r\n  color: var(--ink);\r\n}\r\ninput::placeholder {\r\n  color: #a1aab6;\r\n}\r\nselect {\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  color: #6b798b;\r\n  padding: 7px 9px;\r\n  background: #fff;\r\n  max-width: 180px;\r\n  font-size: 13px;\r\n}\r\n.table-subnav {\r\n  padding: 0 22px 13px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  align-items: center;\r\n}\r\n.segments {\r\n  display: flex;\r\n  gap: 6px;\r\n}\r\n.segments button {\r\n  background: transparent;\r\n  color: #8c97a4;\r\n  padding: 5px 12px;\r\n  font-size: 13px;\r\n  border-radius: 4px;\r\n}\r\n.segments button.active {\r\n  background: #e8f3ef;\r\n  color: var(--teal);\r\n  font-weight: 550;\r\n}\r\n.sort-control {\r\n  display: flex;\r\n  gap: 8px;\r\n  align-items: center;\r\n  font-size: 12px;\r\n  color: #9aa4af;\r\n}\r\n.sort-control select {\r\n  border: 0;\r\n  padding: 4px;\r\n  font-size: 12px;\r\n}\r\n.table-scroll {\r\n  overflow-x: auto;\r\n}\r\ntable {\r\n  border-collapse: collapse;\r\n  width: 100%;\r\n  white-space: nowrap;\r\n  font-size: 13px;\r\n  text-align: left;\r\n}\r\nth {\r\n  padding: 11px 16px;\r\n  background: #f8fafc;\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n  color: #8b97a5;\r\n  border-block: 1px solid #edf0f3;\r\n}\r\ntd {\r\n  padding: 17px 16px;\r\n  border-bottom: 1px solid #eef1f5;\r\n  vertical-align: middle;\r\n}\r\ntd:first-child,\r\nth:first-child {\r\n  padding-left: 22px;\r\n}\r\ntd:last-child,\r\nth:last-child {\r\n  padding-right: 22px;\r\n}\r\ntbody tr:hover {\r\n  background: #f8fbfa;\r\n}\r\n.stock-name {\r\n  background: transparent;\r\n  text-align: left;\r\n  display: block;\r\n  padding: 0;\r\n  color: #253a4d;\r\n  font-size: 14px;\r\n  font-weight: 550;\r\n  max-width: 145px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n.stock-name:hover {\r\n  color: var(--teal);\r\n}\r\n.stock-code {\r\n  font-size: 11px;\r\n  color: #9ba5b0;\r\n  display: block;\r\n  margin-top: 3px;\r\n  font-variant-numeric: tabular-nums;\r\n  letter-spacing: 0.3px;\r\n}\r\n.score-cell {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 7px;\r\n}\r\n.score-number {\r\n  font-size: 18px;\r\n  font-weight: 650;\r\n  color: var(--teal);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.score-number.mid {\r\n  color: #b18745;\r\n}\r\n.score-number.low {\r\n  color: #8695a5;\r\n}\r\n.score-track {\r\n  height: 3px;\r\n  background: #eaf1ee;\r\n  width: 36px;\r\n  border-radius: 2px;\r\n}\r\n.score-track i {\r\n  height: 100%;\r\n  display: block;\r\n  background: #78bda9;\r\n  border-radius: 2px;\r\n}\r\n.sector-tag {\r\n  background: #f4f6f9;\r\n  color: #7b8da0;\r\n  padding: 4px 7px;\r\n  border-radius: 4px;\r\n  font-size: 12px;\r\n}\r\n.height-tag {\r\n  color: #61758a;\r\n  background: #edf2f8;\r\n  padding: 3px 7px;\r\n  border-radius: 4px;\r\n  font-size: 12px;\r\n}\r\n.height-tag.high {\r\n  color: #b38742;\r\n  background: #fbf1df;\r\n}\r\n.money {\r\n  font-variant-numeric: tabular-nums;\r\n  color: #556a7d;\r\n}\r\n.table-footer {\r\n  font-size: 12px;\r\n  color: #9aa4b0;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  padding: 15px 22px;\r\n}\r\n.right-column {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 20px;\r\n}\r\n.sector-row {\r\n  display: block;\r\n  background: transparent;\r\n  width: 100%;\r\n  padding: 10px 22px;\r\n  text-align: left;\r\n}\r\n.sector-row:hover {\r\n  background: #f6faf8;\r\n}\r\n.sector-row-label {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  font-size: 14px;\r\n  color: #4e6478;\r\n}\r\n.sector-row-label > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 10px;\r\n}\r\n.rank-index {\r\n  color: #a8b3bf;\r\n  font:\r\n    12px/1 ui-monospace,\r\n    monospace;\r\n}\r\n.sector-score {\r\n  color: #3d8474;\r\n  font-weight: 650;\r\n  font-size: 17px;\r\n}\r\n.sector-bar {\r\n  height: 5px;\r\n  border-radius: 2px;\r\n  background: #f1f4f7;\r\n  margin: 9px 0 4px 25px;\r\n}\r\n.sector-bar i {\r\n  height: 100%;\r\n  display: block;\r\n  border-radius: 2px;\r\n  background: #71b7a3;\r\n}\r\n.sector-row:nth-child(2) .sector-bar i {\r\n  background: #8fc4b5;\r\n}\r\n.sector-row:nth-child(n + 3) .sector-bar i {\r\n  background: #b3d6cc;\r\n}\r\n.sector-row-meta {\r\n  font-size: 11px;\r\n  color: #a0aab5;\r\n  margin-left: 25px;\r\n}\r\n.panel-footnote {\r\n  font-size: 11px;\r\n  color: #9da7b1;\r\n  border-top: 1px solid #f0f2f5;\r\n  margin-top: 15px;\r\n  padding: 12px 22px;\r\n}\r\n.outline-tag {\r\n  font-size: 11px;\r\n  color: #8e9dac;\r\n  border: 1px solid #e5eaf0;\r\n  border-radius: 4px;\r\n  padding: 2px 7px;\r\n  white-space: nowrap;\r\n}\r\n#ladder-chart {\r\n  padding: 0 22px 10px;\r\n}\r\n.ladder-row {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: center;\r\n  padding: 8px 0;\r\n  font-size: 12px;\r\n  color: #8b99a8;\r\n}\r\n.ladder-row .label {\r\n  width: 38px;\r\n}\r\n.ladder-track {\r\n  background: #f3f5f8;\r\n  height: 18px;\r\n  flex: 1;\r\n  border-radius: 3px;\r\n  overflow: hidden;\r\n}\r\n.ladder-track i {\r\n  display: block;\r\n  height: 100%;\r\n  background: #b8c9d7;\r\n  border-radius: 3px;\r\n  min-width: 0;\r\n}\r\n.ladder-row:first-child .ladder-track i {\r\n  background: #dbb879;\r\n}\r\n.ladder-row:last-child .ladder-track i {\r\n  background: #81bba9;\r\n}\r\n.ladder-count {\r\n  width: 21px;\r\n  text-align: right;\r\n  color: #61778c;\r\n}\r\n.insight {\r\n  margin: 8px 22px 19px;\r\n  padding: 12px;\r\n  background: #f5f8fa;\r\n  border-radius: 5px;\r\n  color: #7a8a9a;\r\n  font-size: 12px;\r\n  line-height: 1.8;\r\n}\r\n.empty {\r\n  padding: 60px 24px;\r\n  text-align: center;\r\n  color: #8b9baa;\r\n  font-size: 14px;\r\n  white-space: normal;\r\n}\r\n.empty strong {\r\n  display: block;\r\n  font-size: 16px;\r\n  font-weight: 500;\r\n  color: #596d80;\r\n  margin-bottom: 8px;\r\n}\r\n.empty.compact {\r\n  padding: 27px 20px;\r\n  font-size: 12px;\r\n}\r\n.page-footer {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  font-size: 11px;\r\n  color: #a0aab5;\r\n  margin-top: 25px;\r\n}\r\n.page-footer > span:first-child {\r\n  white-space: nowrap;\r\n  letter-spacing: 0.5px;\r\n}\r\n.page-footer i {\r\n  margin: 0 5px;\r\n  font-style: normal;\r\n}\r\n.sector-formula {\r\n  padding: 13px 22px;\r\n  background: #f5faf8;\r\n  color: #6b8d80;\r\n  font-size: 13px;\r\n}\r\n.sector-formula span {\r\n  margin: 0 9px;\r\n  color: #b2c6bd;\r\n}\r\n.model-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);\r\n  gap: 22px;\r\n}\r\n.preset-buttons {\r\n  display: flex;\r\n  gap: 9px;\r\n  padding: 0 22px 22px;\r\n}\r\n.preset-buttons button {\r\n  font-size: 13px;\r\n  padding: 8px 13px;\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  background: #fff;\r\n  color: #8897a5;\r\n}\r\n.preset-buttons button.active {\r\n  background: #edf6f2;\r\n  color: var(--teal);\r\n  border-color: #c9e3d9;\r\n}\r\n.weight-item {\r\n  padding: 17px 22px;\r\n  border-top: 1px solid #eff2f5;\r\n}\r\n.weight-heading {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  font-size: 14px;\r\n  margin-bottom: 10px;\r\n}\r\n.weight-heading output {\r\n  font-weight: 600;\r\n  color: var(--teal);\r\n}\r\n.weight-item input {\r\n  width: 100%;\r\n  accent-color: var(--teal);\r\n  height: 5px;\r\n}\r\n.weight-item p {\r\n  color: #96a2ae;\r\n  font-size: 12px;\r\n  margin-top: 10px;\r\n}\r\n.model-actions {\r\n  padding: 18px 22px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  gap: 12px;\r\n  border-top: 1px solid var(--line);\r\n}\r\n.model-actions span {\r\n  color: #8b9aa7;\r\n  font-size: 12px;\r\n}\r\n.model-explain {\r\n  padding-bottom: 22px;\r\n}\r\n.formula-box {\r\n  padding: 20px 22px;\r\n  background: #f1f7f4;\r\n  margin: 0 22px 22px;\r\n  color: #4d8e79;\r\n  font-size: 16px;\r\n  font-weight: 550;\r\n  line-height: 1.9;\r\n  border-radius: 6px;\r\n}\r\n.formula-box span {\r\n  font-size: 13px;\r\n  font-weight: 400;\r\n}\r\n.model-explain h3 {\r\n  margin: 18px 22px 9px;\r\n}\r\n.model-explain p {\r\n  margin: 0 22px;\r\n  color: #8898a6;\r\n  line-height: 1.8;\r\n}\r\n.model-explain dl {\r\n  margin: 0 22px;\r\n}\r\n.model-explain dl div {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  padding: 8px 0;\r\n  color: #6d7d8d;\r\n  font-size: 13px;\r\n  border-bottom: 1px solid #f1f3f6;\r\n}\r\n.model-explain dd {\r\n  color: var(--amber);\r\n}\r\n.model-explain .model-limit {\r\n  margin-top: 22px;\r\n  font-size: 12px;\r\n}\r\n.detail-dialog,\r\n.help-dialog {\r\n  border: 1px solid var(--line);\r\n  border-radius: 12px;\r\n  box-shadow: 0 20px 80px #10213540;\r\n  width: min(720px, calc(100vw - 32px));\r\n  padding: 25px 29px;\r\n  max-height: 90vh;\r\n  color: var(--ink);\r\n}\r\ndialog::backdrop {\r\n  background: #10213580;\r\n  backdrop-filter: blur(3px);\r\n}\r\n.dialog-top {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  margin-bottom: 20px;\r\n}\r\n.detail-head {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  align-items: center;\r\n}\r\n.detail-head h2 {\r\n  font-size: 26px;\r\n}\r\n.detail-head .stock-code {\r\n  font-size: 13px;\r\n  margin-top: 6px;\r\n}\r\n.detail-score {\r\n  font-size: 54px;\r\n  line-height: 1;\r\n  color: var(--teal);\r\n  font-weight: 600;\r\n  letter-spacing: -2px;\r\n}\r\n.detail-score small {\r\n  display: block;\r\n  font-size: 12px;\r\n  letter-spacing: 0;\r\n  font-weight: 400;\r\n  color: #94a4b0;\r\n  text-align: right;\r\n  margin-top: 8px;\r\n}\r\n.detail-tags {\r\n  display: flex;\r\n  gap: 8px;\r\n  margin-top: 15px;\r\n}\r\n.detail-facts {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, 1fr);\r\n  gap: 15px;\r\n  background: #f6f8fa;\r\n  padding: 18px;\r\n  margin: 22px 0;\r\n  border-radius: 6px;\r\n}\r\n.detail-facts label {\r\n  display: block;\r\n  color: #91a0ae;\r\n  font-size: 12px;\r\n  margin-bottom: 5px;\r\n}\r\n.detail-facts strong {\r\n  font-size: 16px;\r\n  font-weight: 550;\r\n}\r\n.factor-row {\r\n  display: grid;\r\n  grid-template-columns: 90px 1fr 40px 56px;\r\n  gap: 12px;\r\n  align-items: center;\r\n  margin: 14px 0;\r\n  font-size: 13px;\r\n}\r\n.factor-row .factor-track {\r\n  height: 7px;\r\n  background: #edf2f4;\r\n  border-radius: 4px;\r\n}\r\n.factor-track i {\r\n  display: block;\r\n  height: 100%;\r\n  border-radius: 4px;\r\n  background: #7dbda9;\r\n}\r\n.factor-row .weight {\r\n  font-size: 12px;\r\n  color: #97a6b3;\r\n  text-align: right;\r\n}\r\n.detail-section h3 {\r\n  font-size: 15px;\r\n  margin: 23px 0 13px;\r\n}\r\n.risk-row {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: flex-start;\r\n  font-size: 13px;\r\n  line-height: 1.8;\r\n  margin: 10px 0;\r\n  color: #8593a0;\r\n}\r\n.risk-row strong {\r\n  color: #b18442;\r\n  font-size: 12px;\r\n  white-space: nowrap;\r\n  background: #fbf2e4;\r\n  padding: 2px 6px;\r\n  border-radius: 4px;\r\n}\r\n.detail-text {\r\n  padding: 15px 18px;\r\n  background: #f4f8f7;\r\n  color: #6e8a81;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  border-radius: 6px;\r\n}\r\n.detail-footnote {\r\n  font-size: 12px;\r\n  color: #97a5b2;\r\n  margin-top: 18px;\r\n  line-height: 1.8;\r\n}\r\n.help-content p {\r\n  margin: 15px 0;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #6c7f90;\r\n}\r\n.loading {\r\n  animation: pulse 1.5s ease-in-out infinite;\r\n}\r\n@keyframes pulse {\r\n  50% {\r\n    opacity: 0.4;\r\n  }\r\n}\r\n@media (min-width: 1500px) {\r\n  .overview-grid {\r\n    grid-template-columns: minmax(0, 1fr) 330px;\r\n  }\r\n  td {\r\n    padding: 19px 18px;\r\n  }\r\n  main {\r\n    padding: 38px 42px;\r\n  }\r\n  .metric {\r\n    padding: 23px 26px;\r\n  }\r\n}\r\n@media (max-width: 1200px) {\r\n  .sidebar {\r\n    width: 190px;\r\n    padding-inline: 12px;\r\n  }\r\n  .workspace {\r\n    margin-left: 190px;\r\n    width: calc(100% - 190px);\r\n  }\r\n  main {\r\n    padding: 25px 24px;\r\n  }\r\n  .topbar {\r\n    padding-inline: 24px;\r\n  }\r\n  .overview-grid {\r\n    grid-template-columns: minmax(0, 1fr) 270px;\r\n    gap: 17px;\r\n  }\r\n  .metric {\r\n    padding: 17px;\r\n  }\r\n  .metric-value {\r\n    font-size: 31px;\r\n  }\r\n  .brand {\r\n    font-size: 17px;\r\n    padding: 0 5px;\r\n  }\r\n  .brand small {\r\n    font-size: 9px;\r\n  }\r\n  .metric-caption {\r\n    font-size: 11px;\r\n  }\r\n  .heading-actions {\r\n    gap: 8px;\r\n  }\r\n  .primary {\r\n    padding-inline: 13px;\r\n  }\r\n  .page-footer {\r\n    font-size: 10px;\r\n  }\r\n}\r\n@media (max-width: 1000px) {\r\n  .overview-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .right-column {\r\n    display: grid;\r\n    grid-template-columns: 1fr 1fr;\r\n  }\r\n  .model-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .sidebar {\r\n    width: 175px;\r\n  }\r\n  .workspace {\r\n    margin-left: 175px;\r\n    width: calc(100% - 175px);\r\n  }\r\n  .page-heading {\r\n    align-items: flex-start;\r\n    flex-wrap: wrap;\r\n  }\r\n  .metric-caption {\r\n    flex-direction: column;\r\n    align-items: flex-start;\r\n    gap: 2px;\r\n  }\r\n  .metric-head {\r\n    font-size: 12px;\r\n  }\r\n  .metric-value {\r\n    font-size: 28px;\r\n  }\r\n  .page-footer {\r\n    flex-direction: column;\r\n    gap: 6px;\r\n  }\r\n}\r\n@media (max-width: 720px) {\r\n  .shell {\r\n    display: block;\r\n  }\r\n  .sidebar {\r\n    position: static;\r\n    width: 100%;\r\n    padding: 18px 20px 0;\r\n  }\r\n  .brand {\r\n    font-size: 18px;\r\n  }\r\n  .brand small {\r\n    font-size: 9px;\r\n  }\r\n  .brand-mark {\r\n    height: 25px;\r\n  }\r\n  .brand-mark i:nth-child(3) {\r\n    height: 25px;\r\n  }\r\n  .nav-label,\r\n  .sidebar-note,\r\n  .sidebar-footer {\r\n    display: none;\r\n  }\r\n  .sidebar nav {\r\n    display: flex;\r\n    margin-top: 17px;\r\n    gap: 6px;\r\n  }\r\n  .nav-item {\r\n    padding: 11px 8px;\r\n    font-size: 13px;\r\n    justify-content: center;\r\n    gap: 7px;\r\n    margin: 0;\r\n    border-radius: 6px 6px 0 0;\r\n  }\r\n  .nav-item svg {\r\n    width: 15px;\r\n    height: 15px;\r\n  }\r\n  .workspace {\r\n    width: 100%;\r\n    margin: 0;\r\n  }\r\n  .topbar {\r\n    height: 48px;\r\n    padding-inline: 20px;\r\n  }\r\n  .session-label {\r\n    font-size: 11px;\r\n  }\r\n  .topbar-right {\r\n    gap: 10px;\r\n  }\r\n  .breadcrumb {\r\n    font-size: 12px;\r\n    gap: 10px;\r\n  }\r\n  main {\r\n    padding: 23px 18px 18px;\r\n  }\r\n  .page-heading {\r\n    gap: 17px;\r\n    margin-bottom: 20px;\r\n  }\r\n  .page-heading h1 {\r\n    font-size: 25px;\r\n  }\r\n  .page-heading p {\r\n    font-size: 13px;\r\n  }\r\n  .eyebrow {\r\n    font-size: 10px;\r\n  }\r\n  .heading-actions {\r\n    width: 100%;\r\n    justify-content: space-between;\r\n  }\r\n  .date-control {\r\n    flex: 1;\r\n    max-width: 225px;\r\n  }\r\n  .date-control input {\r\n    width: 100%;\r\n  }\r\n  .data-strip {\r\n    font-size: 11px;\r\n    align-items: flex-start;\r\n  }\r\n  .data-strip > div {\r\n    gap: 6px;\r\n    align-items: flex-start;\r\n    flex-direction: column;\r\n  }\r\n  .metrics {\r\n    grid-template-columns: repeat(2, minmax(0, 1fr));\r\n    gap: 12px;\r\n    margin-bottom: 17px;\r\n  }\r\n  .metric {\r\n    padding: 16px;\r\n  }\r\n  .metric-head {\r\n    font-size: 13px;\r\n  }\r\n  .metric-value {\r\n    font-size: 32px;\r\n  }\r\n  .metric-caption {\r\n    font-size: 12px;\r\n  }\r\n  .right-column {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .panel-heading {\r\n    padding: 19px 17px 15px;\r\n  }\r\n  .filters {\r\n    padding-inline: 17px;\r\n    gap: 8px;\r\n  }\r\n  .filters select {\r\n    max-width: 130px;\r\n  }\r\n  .table-subnav {\r\n    padding-inline: 17px;\r\n  }\r\n  .table-footer {\r\n    padding-inline: 17px;\r\n  }\r\n  .table-footer span:last-child {\r\n    display: none;\r\n  }\r\n  .small-muted {\r\n    font-size: 11px;\r\n  }\r\n  .detail-dialog,\r\n  .help-dialog {\r\n    padding: 20px;\r\n  }\r\n  .detail-facts {\r\n    grid-template-columns: 1fr 1fr;\r\n  }\r\n  .detail-head h2 {\r\n    font-size: 22px;\r\n  }\r\n  .detail-score {\r\n    font-size: 45px;\r\n  }\r\n  .factor-row {\r\n    grid-template-columns: 76px 1fr 26px 42px;\r\n    gap: 8px;\r\n    font-size: 12px;\r\n  }\r\n  .sector-formula {\r\n    line-height: 2;\r\n  }\r\n  .model-actions {\r\n    flex-wrap: wrap;\r\n  }\r\n  .preset-buttons {\r\n    padding-inline: 17px;\r\n    gap: 6px;\r\n  }\r\n  .preset-buttons button {\r\n    padding-inline: 11px;\r\n  }\r\n  .detail-facts strong {\r\n    font-size: 16px;\r\n  }\r\n  .page-footer {\r\n    font-size: 11px;\r\n  }\r\n  .sidebar .brand small {\r\n    font-size: 10px;\r\n  }\r\n}\r\n@media (prefers-reduced-motion: reduce) {\r\n  * {\r\n    animation: none !important;\r\n    scroll-behavior: auto !important;\r\n  }\r\n}\r\n.review-intro {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  margin-bottom: 22px;\r\n  gap: 20px;\r\n}\r\n.review-intro p {\r\n  font-size: 14px;\r\n  color: #8395a3;\r\n  margin-top: 9px;\r\n}\r\n.review-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);\r\n  gap: 22px;\r\n  align-items: start;\r\n}\r\n.review-conclusion {\r\n  background: #eff7f3;\r\n  color: #628b79;\r\n  padding: 12px 22px;\r\n  font-size: 13px;\r\n}\r\n.review-stock {\r\n  font-weight: 500;\r\n  font-size: 14px;\r\n}\r\n.top-group {\r\n  color: #b58d48;\r\n  background: #fbf3e5;\r\n  font-size: 10px;\r\n  padding: 2px 5px;\r\n  margin-left: 7px;\r\n  border-radius: 3px;\r\n}\r\n.up {\r\n  color: var(--red);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.down {\r\n  color: var(--green);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.ai-content {\r\n  padding: 0 22px;\r\n}\r\n.ai-empty {\r\n  text-align: center;\r\n  padding: 17px 25px 20px;\r\n  color: #8b9aa8;\r\n}\r\n.ai-symbol {\r\n  display: flex;\r\n  justify-content: center;\r\n  width: 45px;\r\n  height: 45px;\r\n  align-items: center;\r\n  background: #eef5f2;\r\n  color: #69a991;\r\n  border-radius: 12px;\r\n  margin: 0 auto 15px;\r\n}\r\n.ai-symbol svg {\r\n  width: 25px;\r\n  height: 25px;\r\n}\r\n.ai-empty h3 {\r\n  font-size: 16px;\r\n  color: #617587;\r\n  font-weight: 500;\r\n  margin-bottom: 9px;\r\n}\r\n.ai-empty p {\r\n  font-size: 13px;\r\n  line-height: 1.9;\r\n}\r\n.ai-process {\r\n  font-size: 12px;\r\n  background: #f7f9fb;\r\n  padding: 16px;\r\n  margin-top: 23px;\r\n  color: #9aabba;\r\n}\r\n.ai-process span {\r\n  display: block;\r\n  color: #c0ccd5;\r\n  line-height: 1.8;\r\n}\r\n.ai-actions {\r\n  padding: 17px 22px;\r\n  border-top: 1px solid var(--line);\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 13px;\r\n}\r\n.ai-actions button {\r\n  font-size: 13px;\r\n}\r\n.ai-actions > span {\r\n  font-size: 12px;\r\n  color: #9b8a6b;\r\n}\r\n.ai-score {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 14px;\r\n  padding: 8px 22px 16px;\r\n}\r\n.ai-score strong {\r\n  font-size: 48px;\r\n  color: #588b79;\r\n  line-height: 1.1;\r\n}\r\n.ai-score > span {\r\n  font-size: 13px;\r\n  color: #789285;\r\n}\r\n.ai-score small {\r\n  display: block;\r\n  font-size: 11px;\r\n  color: #9aa9a1;\r\n  margin-top: 4px;\r\n}\r\n.ai-summary {\r\n  padding: 0 22px;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #637889;\r\n}\r\n.ai-panel h3 {\r\n  margin: 20px 22px 10px;\r\n  font-size: 14px;\r\n}\r\n.ai-panel ul {\r\n  padding: 0 22px 0 38px;\r\n  color: #8192a1;\r\n  font-size: 13px;\r\n  line-height: 1.9;\r\n}\r\n.ai-panel li {\r\n  margin-bottom: 8px;\r\n}\r\n.ai-note {\r\n  padding: 10px 22px 20px;\r\n  font-size: 12px;\r\n  color: #9ba8b2;\r\n}\r\n.review-sector-panel,\r\n.history-panel,\r\n.model-connection {\r\n  margin-top: 22px;\r\n}\r\n.history-list {\r\n  padding: 0 22px 18px;\r\n}\r\n.history-list button {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 14px;\r\n  padding: 12px;\r\n  width: 100%;\r\n  background: #f8fafb;\r\n  color: #718699;\r\n  border-bottom: 1px solid #e8eef1;\r\n  text-align: left;\r\n  font-size: 13px;\r\n}\r\n.history-list button:hover {\r\n  background: #eef6f1;\r\n}\r\n.model-connection > p {\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #81929f;\r\n  margin: 0 22px 14px;\r\n}\r\n.model-connection > p:last-child {\r\n  font-size: 12px;\r\n  margin-bottom: 22px;\r\n}\r\n@media (max-width: 1200px) {\r\n  .review-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .ai-panel {\r\n    max-width: none;\r\n  }\r\n}\r\n@media (max-width: 720px) {\r\n  .sidebar nav {\r\n    overflow-x: auto;\r\n  }\r\n  .nav-item {\r\n    min-width: 83px;\r\n    flex-shrink: 0;\r\n  }\r\n  .review-intro {\r\n    flex-wrap: wrap;\r\n    gap: 12px;\r\n  }\r\n  .history-list button {\r\n    flex-direction: column;\r\n    gap: 4px;\r\n  }\r\n  .top-group {\r\n    display: none;\r\n  }\r\n  .review-intro p {\r\n    font-size: 13px;\r\n  }\r\n  .review-grid {\r\n    gap: 17px;\r\n  }\r\n}\r\n.pool-panel .table-scroll {\r\n  max-height: 650px;\r\n}\r\n.pool-panel th {\r\n  position: sticky;\r\n  top: 0;\r\n  z-index: 1;\r\n}\r\n.stock-code,\r\n.sector-row-meta,\r\n.panel-footnote,\r\n.outline-tag,\r\n.page-footer,\r\n.sidebar-note p,\r\n.sidebar-footer small {\r\n  font-size: 12px;\r\n}\r\ntable {\r\n  font-size: 14px;\r\n}\r\n.sector-tag,\r\n.height-tag {\r\n  font-size: 12px;\r\n}\r\n.page-footer {\r\n  line-height: 1.7;\r\n}\r\n@media (max-width: 720px) {\r\n  .pool-panel .table-scroll {\r\n    max-height: 560px;\r\n  }\r\n}\r\n\r\n/* Paper account uses the same research workspace visual language. */\r\n.paper-toolbar {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 14px;\r\n  flex-wrap: wrap;\r\n}\r\n.paper-toolbar > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  flex-wrap: wrap;\r\n}\r\n.paper-toolbar a {\r\n  text-decoration: none;\r\n  font-size: 12px;\r\n  display: inline-flex;\r\n  align-items: center;\r\n}\r\n.paper-message {\r\n  font-size: 12px;\r\n  color: var(--muted);\r\n  min-height: 18px;\r\n  margin: 12px 0 20px;\r\n}\r\n.paper-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);\r\n  gap: 20px;\r\n  align-items: start;\r\n}\r\n.paper-panel {\r\n  margin-top: 20px;\r\n}\r\n.equity-chart {\r\n  display: block;\r\n  width: 100%;\r\n  height: auto;\r\n  padding: 4px 18px 0;\r\n}\r\n.chart-axis {\r\n  font-size: 11px;\r\n  fill: #758396;\r\n}\r\n.chart-legend {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 14px;\r\n  padding: 0 24px 18px;\r\n  font-size: 11px;\r\n  color: #758396;\r\n}\r\n.chart-legend i {\r\n  display: inline-block;\r\n  width: 12px;\r\n  height: 3px;\r\n  vertical-align: middle;\r\n  background: #13977e;\r\n  margin-right: 6px;\r\n}\r\n.chart-legend i.benchmark {\r\n  background: #acb6c4;\r\n}\r\n.verified {\r\n  color: #14846f;\r\n  border-color: #bfe5d9;\r\n  background: #f0faf6;\r\n}\r\n.action-tag {\r\n  background: #edf4f8;\r\n  color: #405c73;\r\n  border-radius: 5px;\r\n  padding: 5px 8px;\r\n  font-size: 11px;\r\n  white-space: nowrap;\r\n}\r\n.plan-reason {\r\n  min-width: 220px;\r\n  max-width: 330px;\r\n  white-space: normal !important;\r\n  line-height: 1.7;\r\n}\r\n.paper-config {\r\n  display: flex;\r\n  align-items: end;\r\n  gap: 20px;\r\n  flex-wrap: wrap;\r\n  padding: 0 24px 24px;\r\n}\r\n.paper-config label {\r\n  display: grid;\r\n  gap: 9px;\r\n  font-size: 12px;\r\n  color: #758396;\r\n}\r\n.paper-config input,\r\n.paper-config select {\r\n  border: 1px solid #dce3eb;\r\n  border-radius: 6px;\r\n  background: #fff;\r\n  padding: 10px 12px;\r\n  color: #21384b;\r\n  min-width: 220px;\r\n}\r\n.paper-config input:disabled {\r\n  background: #f2f5f8;\r\n  color: #8896a6;\r\n}\r\n.paper-outcomes {\r\n  padding: 0 24px;\r\n}\r\n.paper-outcomes summary {\r\n  cursor: pointer;\r\n  padding: 16px 0;\r\n  font-size: 12px;\r\n  color: #526b80;\r\n}\r\n.execution-feedback p {\r\n  display: flex;\r\n  gap: 14px;\r\n  justify-content: space-between;\r\n  border-top: 1px solid #edf1f5;\r\n  padding: 12px 0;\r\n  margin: 0;\r\n  font-size: 12px;\r\n}\r\n.execution-feedback span {\r\n  color: #758396;\r\n}\r\n.strategy-active {\r\n  display: grid;\r\n  gap: 8px;\r\n  padding: 0 24px 16px;\r\n}\r\n.strategy-active span {\r\n  font-size: 11px;\r\n  color: #758396;\r\n}\r\n.strategy-active strong {\r\n  font-size: 18px;\r\n  letter-spacing: 0.2px;\r\n}\r\n.version-row {\r\n  margin: 16px 24px;\r\n  padding: 14px 0;\r\n  border-top: 1px solid #edf1f5;\r\n  font-size: 12px;\r\n}\r\n.version-row > div {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n}\r\n.version-row p {\r\n  line-height: 1.7;\r\n  color: #758396;\r\n}\r\n.version-row small {\r\n  line-height: 1.8;\r\n  color: #758396;\r\n}\r\n.version-row button {\r\n  margin-top: 12px;\r\n}\r\n.paper-grid .ai-panel > div > p {\r\n  padding: 0 24px;\r\n  color: #758396;\r\n  font-size: 12px;\r\n  line-height: 1.8;\r\n}\r\n.paper-grid .ai-panel .small-muted {\r\n  padding: 0 24px 24px;\r\n}\r\n.paper-grid .ai-process {\r\n  margin: 0 24px;\r\n}\r\n.paper-grid .ai-note {\r\n  margin: 14px 0;\r\n}\r\n.paper-grid .panel-footnote {\r\n  line-height: 1.8;\r\n}\r\n.paper-panel .panel-footnote {\r\n  line-height: 1.8;\r\n}\r\n.paper-panel td {\r\n  vertical-align: top;\r\n}\r\n.paper-message:empty {\r\n  display: none;\r\n}\r\n@media (max-width: 1100px) {\r\n  .paper-grid {\r\n    grid-template-columns: minmax(0, 1fr);\r\n  }\r\n  .paper-toolbar {\r\n    align-items: start;\r\n  }\r\n  .paper-config {\r\n    gap: 14px;\r\n  }\r\n}\r\n@media (max-width: 650px) {\r\n  .paper-toolbar .secondary,\r\n  .paper-toolbar .primary {\r\n    font-size: 11px;\r\n    padding: 9px 10px;\r\n  }\r\n  .paper-toolbar > div {\r\n    gap: 6px;\r\n  }\r\n  .paper-config {\r\n    padding: 0 16px 20px;\r\n  }\r\n  .paper-config label,\r\n  .paper-config input,\r\n  .paper-config select {\r\n    width: 100%;\r\n    min-width: 0;\r\n  }\r\n  .execution-feedback p {\r\n    display: block;\r\n  }\r\n  .execution-feedback span {\r\n    display: block;\r\n    margin-top: 6px;\r\n  }\r\n  .chart-legend {\r\n    padding: 0 16px 16px;\r\n    gap: 9px;\r\n  }\r\n  .paper-grid {\r\n    gap: 16px;\r\n  }\r\n}\r\n\r\n.paper-fee-settings {\r\n  border: 1px solid #dce3eb;\r\n  border-radius: 8px;\r\n  width: 100%;\r\n  padding: 18px 20px;\r\n  margin: 0;\r\n  min-width: 0;\r\n}\r\n.paper-fee-settings legend {\r\n  font-size: 14px;\r\n  font-weight: 600;\r\n  color: #21384b;\r\n  padding: 0 8px;\r\n}\r\n.fee-settings-heading {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  flex-wrap: wrap;\r\n  margin-bottom: 16px;\r\n}\r\n.fee-settings-heading p,\r\n.fee-settings-note {\r\n  font-size: 12px;\r\n  color: #758396;\r\n  line-height: 1.8;\r\n  margin: 0;\r\n}\r\n.paper-fee-controls {\r\n  display: grid;\r\n  grid-template-columns: repeat(3, minmax(0, 1fr));\r\n  gap: 18px 24px;\r\n}\r\n.paper-config .paper-fee-controls input {\r\n  min-width: 0;\r\n  width: 100%;\r\n  font-size: 14px;\r\n}\r\n.paper-fee-controls span {\r\n  font-size: 12px;\r\n  color: #8896a6;\r\n}\r\n.fee-settings-note {\r\n  margin-top: 18px;\r\n}\r\n.paper-fee-settings .text-button {\r\n  margin-top: 8px;\r\n}\r\n.fee-breakdown {\r\n  max-width: 200px;\r\n  white-space: normal;\r\n  line-height: 1.7;\r\n}\r\n.fee-breakdown summary {\r\n  cursor: pointer;\r\n  white-space: nowrap;\r\n}\r\n.fee-breakdown > span {\r\n  display: block;\r\n  color: #758396;\r\n  font-size: 12px;\r\n  margin-top: 8px;\r\n  min-width: 160px;\r\n}\r\n@media (max-width: 650px) {\r\n  .paper-fee-settings {\r\n    padding: 16px 12px;\r\n  }\r\n  .paper-fee-controls {\r\n    grid-template-columns: repeat(2, minmax(0, 1fr));\r\n    gap: 16px 12px;\r\n  }\r\n  .paper-config .paper-fee-controls label {\r\n    font-size: 12px;\r\n  }\r\n  .fee-settings-heading p {\r\n    max-width: 100%;\r\n  }\r\n}\r\n\r\n#paper-metrics .metric-value {\r\n  font-size: clamp(22px, 2.2vw, 32px);\r\n}\r\n.plan-price-conditions {\r\n  min-width: 220px;\r\n  line-height: 1.65;\r\n}\r\n', "type": "text/css; charset=utf-8" } };
@@ -3623,27 +3623,20 @@ function validateCandidatePatch({
   };
 }
 
-// scripts/local-db.mjs
-import { DatabaseSync } from "node:sqlite";
-import { readdirSync, readFileSync } from "node:fs";
-function localDatabase(path = ":memory:") {
-  const sqlite = new DatabaseSync(path);
-  sqlite.exec(
-    "PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS local_migrations (name TEXT PRIMARY KEY)"
-  );
-  for (const name of readdirSync("drizzle").filter((name2) => name2.endsWith(".sql")).sort()) {
-    if (sqlite.prepare("SELECT name FROM local_migrations WHERE name=?").get(name))
-      continue;
-    sqlite.exec("BEGIN");
-    try {
-      sqlite.exec(readFileSync(`drizzle/${name}`, "utf8"));
-      sqlite.prepare("INSERT INTO local_migrations (name) VALUES (?)").run(name);
-      sqlite.exec("COMMIT");
-    } catch (error) {
-      sqlite.exec("ROLLBACK");
-      throw error;
-    }
-  }
+// backend/storage/history.js
+var RESEARCH_NAMESPACE = "main";
+var HISTORY_STAGES = [
+  "PLANNED",
+  "PROBING",
+  "DOWNLOADING",
+  "NORMALIZING",
+  "SCORING",
+  "READY",
+  "PARTIAL",
+  "BLOCKED",
+  "FAILED"
+];
+function historySqliteAdapter(sqlite) {
   function prepare(sql) {
     return {
       args: [],
@@ -3705,20 +3698,6 @@ function localDatabase(path = ":memory:") {
     }
   };
 }
-
-// backend/storage/history.js
-var RESEARCH_NAMESPACE = "main";
-var HISTORY_STAGES = [
-  "PLANNED",
-  "PROBING",
-  "DOWNLOADING",
-  "NORMALIZING",
-  "SCORING",
-  "READY",
-  "PARTIAL",
-  "BLOCKED",
-  "FAILED"
-];
 var HistoryJobRepository = class {
   constructor(env) {
     this.db = database(env);
@@ -3783,15 +3762,25 @@ var HistoryJobRepository = class {
     ).run();
     return this.getJob(id);
   }
+  async claimDataset(id, datasetId) {
+    const result = await this.db.prepare(
+      "UPDATE history_import_jobs SET dataset_id = ?, updated_at = ? WHERE id = ? AND dataset_id IS NULL"
+    ).bind(datasetId, (/* @__PURE__ */ new Date()).toISOString(), id).run();
+    return result.meta.changes > 0;
+  }
 };
 var HistoryDatasetStore = class {
   constructor(path) {
     this.path = path;
-    this.db = localDatabase(path);
+    this.db = null;
     this.ready = false;
   }
   async ensure() {
     if (this.ready) return;
+    const { DatabaseSync } = await import("node:sqlite");
+    const sqlite = new DatabaseSync(this.path);
+    sqlite.exec("PRAGMA busy_timeout=5000;");
+    this.db = historySqliteAdapter(sqlite);
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS history_dataset_versions (
         id TEXT PRIMARY KEY,
@@ -3901,7 +3890,13 @@ var HistoryDatasetStore = class {
     coverage
   }) {
     await this.ensure();
-    const digest2 = await digestOf(coverage);
+    const manifest = {
+      executionModel: executionModel ?? null,
+      coverage,
+      chunkRefs: [],
+      inputs: []
+    };
+    const digest2 = await digestOf(manifest);
     await this.db.prepare(
       "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).bind(
@@ -3919,9 +3914,16 @@ var HistoryDatasetStore = class {
     ).run();
     return { id, manifestDigest: digest2 };
   }
-  async updateDatasetCoverage(id, coverage) {
+  async updateDatasetCoverage(id, coverage, chunkRefs = []) {
     await this.ensure();
-    const digest2 = await digestOf(coverage);
+    const inputs = await this.listDatasetDates(id);
+    const manifest = {
+      executionModel: coverage.executionModel ?? null,
+      coverage,
+      chunkRefs,
+      inputs
+    };
+    const digest2 = await digestOf(manifest);
     await this.db.prepare(
       "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?"
     ).bind(
@@ -3932,6 +3934,7 @@ var HistoryDatasetStore = class {
       coverage.executionModel ?? "PENDING",
       id
     ).run();
+    return { manifest, manifestDigest: digest2 };
   }
   async saveChunk(jobId, {
     chunkKey,
@@ -4215,11 +4218,12 @@ var HistoryDatasetStore = class {
     }));
   }
   close() {
-    this.db.close();
+    if (this.db) this.db.close();
   }
 };
 function openHistoryStore(env) {
-  const path = env?.LOCAL_RESEARCH_DB_PATH || ".sites-runtime/research-history.sqlite";
+  const path = env?.LOCAL_RESEARCH_DB_PATH;
+  if (!path) return null;
   return new HistoryDatasetStore(path);
 }
 
@@ -5638,11 +5642,11 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
       reason: "AI \u51B7\u542F\u52A8\u521D\u59CB\u5316\u5168\u5C40\u4EC5\u4E00\u6B21\uFF1B\u5931\u8D25\u4E0E\u9519\u8BEF\u540C\u6837\u89C6\u4E3A\u5DF2\u6D88\u8017"
     };
   const store = openHistoryStore(env);
-  const dataset = datasetId ? await store.getDataset(datasetId) : null;
+  const dataset = store && datasetId ? await store.getDataset(datasetId) : null;
   if (!dataset)
     return {
       status: "NEED_DATA",
-      reason: "\u8BF7\u6307\u5B9A\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09"
+      reason: store ? "\u8BF7\u6307\u5B9A\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09" : "AI \u51B7\u542F\u52A8\u8BAD\u7EC3\u4F9D\u8D56\u672C\u673A\u5386\u53F2\u7814\u7A76\u5B58\u50A8\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u8FD0\u884C"
     };
   if (dataset.executionModel !== "SIX_FACTOR_V1")
     return {
@@ -6559,6 +6563,32 @@ function normalizeLimitFeatureRow(raw, { origin = "HISTORICAL_RECONSTRUCTED", pr
     }
   };
 }
+function normalizeDailyBarRow(raw) {
+  if (!raw || typeof raw !== "object") throw new Error("\u5386\u53F2\u65E5\u7EBF\u884C\u65E0\u6548");
+  const code = String(raw.code ?? "").trim();
+  if (!/^\d{6}$/.test(code)) throw new Error("\u5386\u53F2\u65E5\u7EBF\u7F3A\u5C11\u5408\u6CD5\u8BC1\u5238\u4EE3\u7801");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(raw.tradeDate ?? "")))
+    throw new Error("\u5386\u53F2\u65E5\u7EBF\u7F3A\u5C11\u5408\u6CD5\u4EA4\u6613\u65E5\u671F");
+  const toCentsFromYuan = (value, field) => {
+    if (value === null || value === void 0) return null;
+    const cents = Math.round(Number(value) * 100);
+    if (!Number.isFinite(cents) || cents <= 0)
+      throw new Error(`\u5386\u53F2\u65E5\u7EBF\u5B57\u6BB5 ${field} \u5FC5\u987B\u4E3A\u6B63\u6570\uFF08\u5355\u4F4D\uFF1A\u5143\uFF09`);
+    return cents;
+  };
+  const row = {
+    code,
+    tradeDate: String(raw.tradeDate),
+    openCents: toCentsFromYuan(raw.openYuan, "openYuan"),
+    closeCents: toCentsFromYuan(raw.closeYuan, "closeYuan"),
+    highCents: toCentsFromYuan(raw.highYuan, "highYuan"),
+    lowCents: toCentsFromYuan(raw.lowYuan, "lowYuan"),
+    volumeShares: raw.volumeShares === null || raw.volumeShares === void 0 ? null : Math.round(finiteOrThrow(raw.volumeShares, "volumeShares"))
+  };
+  if (row.highCents !== null && row.lowCents !== null && row.highCents < row.lowCents)
+    throw new Error("\u5386\u53F2\u65E5\u7EBF\u6700\u9AD8\u4EF7\u4F4E\u4E8E\u6700\u4F4E\u4EF7");
+  return row;
+}
 async function buildSampleProvenance({
   origin = "HISTORICAL_RECONSTRUCTED",
   provider,
@@ -6811,7 +6841,12 @@ function createTencentHistoricalProvider(options = {}) {
         results[code] = deduped;
         segments.push({ code, segments: codeSegments, rows: deduped.length });
       }
-      return { rows: results, segments };
+      return {
+        rows: results,
+        segments,
+        adjustment: "QFQ",
+        adjustmentNote: "\u817E\u8BAF\u65E5\u7EBF\u4F7F\u7528\u524D\u590D\u6743\uFF08QFQ\uFF09\u4EF7\u683C\uFF1A\u9002\u5408\u89C2\u5BDF\u7814\u7A76\u7279\u5F81\uFF1B\u5386\u53F2\u6570\u503C\u4F1A\u968F\u672A\u6765\u9664\u6743\u4FEE\u8BA2\uFF0C\u4E0D\u80FD\u76F4\u63A5\u4EE3\u5165\u672A\u590D\u6743\u8D44\u91D1\u8D26\u672C"
+      };
     },
     async limitFeatures({ date }) {
       const [main, broken] = await Promise.allSettled([
@@ -6846,16 +6881,23 @@ async function probeHistoryCapabilities(env, { start, end }) {
   const provider = createTencentHistoricalProvider();
   return provider.capabilities({ start, end });
 }
-async function createHistoryImport(env, { provider = "tencent-free", kind, start, end, name }) {
+async function createHistoryImport(env, { provider = "tencent-free", kind, start, end, name, codes }) {
   if (!["LIMIT_FEATURES", "DAILY", "MINUTES"].includes(kind))
     throw new Error("\u5386\u53F2\u5BFC\u5165\u7C7B\u578B\u65E0\u6548\uFF08LIMIT_FEATURES\u3001DAILY \u6216 MINUTES\uFF09");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end))
     throw new Error("\u5386\u53F2\u5BFC\u5165\u65E5\u671F\u8303\u56F4\u65E0\u6548");
   if (start > end) throw new Error("\u5386\u53F2\u5BFC\u5165\u8D77\u59CB\u65E5\u671F\u665A\u4E8E\u7ED3\u675F\u65E5\u671F");
+  const declaredCodes = Array.isArray(codes) ? [...new Set(codes.map((code) => String(code).trim()))] : [];
+  if (declaredCodes.some((code) => !/^\d{6}$/.test(code)) || !declaredCodes.length && codes !== void 0)
+    throw new Error("\u80A1\u7968\u6C60 codes \u5FC5\u987B\u4E3A\u516D\u4F4D\u6570\u5B57\u4EE3\u7801\u6570\u7EC4");
+  if (["DAILY", "MINUTES"].includes(kind) && !declaredCodes.length)
+    throw new Error(
+      `${kind} \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08codes\uFF0C\u516D\u4F4D\u6570\u5B57\u4EE3\u7801\u6570\u7EC4\uFF09`
+    );
   const providers = historyProviders();
   if (!providers[provider]) throw new Error("\u672A\u77E5\u5386\u53F2\u6570\u636E\u4F9B\u5E94\u5546");
   const jobs = new HistoryJobRepository(env);
-  return jobs.createJob({
+  const job = await jobs.createJob({
     id: newId("hjob"),
     provider,
     kind,
@@ -6863,32 +6905,64 @@ async function createHistoryImport(env, { provider = "tencent-free", kind, start
     end,
     name
   });
+  if (declaredCodes.length)
+    return jobs.updateJob(job.id, {
+      statusPayload: { ...job.statusPayload, codes: declaredCodes }
+    });
+  return job;
+}
+function orNull(value) {
+  return value === null || value === void 0 || value === "" ? null : value;
 }
 function emRowToCanonical(raw) {
   return {
     code: String(raw.c ?? ""),
-    name: String(raw.n ?? ""),
+    name: orNull(raw.n),
     sector: String(raw.hybk ?? "\u672A\u5206\u7C7B"),
-    price: raw.p === void 0 ? null : Number(raw.p) / 1e3,
-    change: raw.zdp === void 0 ? null : Number(raw.zdp),
-    amount: raw.amount === void 0 ? null : Number(raw.amount),
-    floatCap: raw.ltsz === void 0 ? null : Number(raw.ltsz),
-    seal: raw.fund === void 0 ? null : Number(raw.fund),
-    turnover: raw.hs === void 0 ? null : Number(raw.hs),
-    first: raw.fbt === void 0 ? null : Number(raw.fbt),
-    last: raw.lbt === void 0 ? null : Number(raw.lbt),
-    breaks: raw.zbc === void 0 ? null : Number(raw.zbc),
-    height: raw.lbc === void 0 ? null : Number(raw.lbc)
+    price: orNull(raw.p) === null ? null : Number(raw.p) / 1e3,
+    change: orNull(raw.zdp) === null ? null : Number(raw.zdp),
+    amount: orNull(raw.amount) === null ? null : Number(raw.amount),
+    floatCap: orNull(raw.ltsz) === null ? null : Number(raw.ltsz),
+    seal: orNull(raw.fund) === null ? null : Number(raw.fund),
+    turnover: orNull(raw.hs) === null ? null : Number(raw.hs),
+    first: orNull(raw.fbt) === null ? null : Number(raw.fbt),
+    last: orNull(raw.lbt) === null ? null : Number(raw.lbt),
+    breaks: orNull(raw.zbc) === null ? null : Number(raw.zbc),
+    height: orNull(raw.lbc) === null ? null : Number(raw.lbc)
   };
 }
 async function runHistoryImport(env, jobId, options = {}) {
   const jobs = new HistoryJobRepository(env);
   const job = await jobs.getJob(jobId);
   if (!job) throw new Error("\u5386\u53F2\u5BFC\u5165\u4EFB\u52A1\u4E0D\u5B58\u5728");
-  if (["READY", "PARTIAL"].includes(job.stage)) return job;
+  if (job.stage === "READY") return job;
+  const store = openHistoryStore(env);
+  if (!store) {
+    return jobs.updateJob(jobId, {
+      stage: "BLOCKED",
+      statusPayload: {
+        reason: "\u5386\u53F2\u7814\u7A76\u5B58\u50A8\u4EC5\u672C\u673A\u53EF\u7528\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u5E38\u9A7B\u5B9E\u4F8B\u8FD0\u884C\u5BFC\u5165"
+      }
+    });
+  }
+  try {
+    return await runHistoryImportInner(env, job, { jobs, store, options });
+  } catch (error) {
+    const reason = String(error?.message ?? error).slice(0, 300);
+    return jobs.updateJob(jobId, {
+      stage: "FAILED",
+      statusPayload: {
+        ...job.statusPayload ?? {},
+        error: reason,
+        note: "\u5BFC\u5165\u8FC7\u7A0B\u4E2D\u53D1\u751F\u672A\u9884\u671F\u9519\u8BEF\uFF1B\u5DF2\u5B8C\u6210\u7684\u4E0B\u8F7D\u5757\u4FDD\u7559\uFF0C\u53EF\u91CD\u8BD5\u7EED\u4F20"
+      }
+    });
+  }
+}
+async function runHistoryImportInner(env, job, { jobs, store, options }) {
+  const jobId = job.id;
   const provider = historyProviders()[job.provider];
   if (!provider) throw new Error("\u672A\u77E5\u5386\u53F2\u6570\u636E\u4F9B\u5E94\u5546");
-  const store = openHistoryStore(env);
   const requestedStart = job.requestedRange.start, requestedEnd = job.requestedRange.end;
   await jobs.updateJob(jobId, { stage: "PROBING" });
   const capabilities = await provider.capabilities({
@@ -6904,7 +6978,6 @@ async function runHistoryImport(env, jobId, options = {}) {
       }
     });
   }
-  const datasetId = job.datasetId ?? newId("hds");
   const coverage = {
     observedStart: null,
     observedEnd: null,
@@ -6912,16 +6985,25 @@ async function runHistoryImport(env, jobId, options = {}) {
     failedDates: [],
     notes: []
   };
-  if (!job.datasetId)
-    await store.createDatasetVersion({
-      id: datasetId,
-      provider: job.provider,
-      kind: job.kind,
-      executionModel: "PENDING",
-      requestedStart,
-      requestedEnd,
-      coverage
-    });
+  let datasetId = job.datasetId;
+  if (!datasetId) {
+    datasetId = newId("hds");
+    const claimed = await jobs.claimDataset(jobId, datasetId);
+    if (!claimed) {
+      const current = await jobs.getJob(jobId);
+      datasetId = current.datasetId;
+    } else {
+      await store.createDatasetVersion({
+        id: datasetId,
+        provider: job.provider,
+        kind: job.kind,
+        executionModel: "PENDING",
+        requestedStart,
+        requestedEnd,
+        coverage
+      });
+    }
+  }
   await jobs.updateJob(jobId, { stage: "DOWNLOADING", datasetId });
   const calendar = await provider.tradingCalendar({
     start: requestedStart,
@@ -6979,7 +7061,9 @@ async function runHistoryImport(env, jobId, options = {}) {
             requestRange: date,
             actualRange: date,
             rows: normalized.length,
-            stage: "DONE"
+            stage: "DONE",
+            rawDigest: await digestOf(features),
+            artifactRef: `history_chunks:${jobId}:${chunkKey}`
           });
         } catch (error) {
           await store.saveChunk(jobId, {
@@ -7006,24 +7090,39 @@ async function runHistoryImport(env, jobId, options = {}) {
     const weights = options.weights ?? PRESETS.balanced;
     const paramsDigest = await digestOf(weights);
     await jobs.updateJob(jobId, { stage: "SCORING" });
-    let nextByCodeByDate = null;
+    let dailyNormalized = null;
     if (options.withObservationReturns !== false && succeeded.length) {
-      const daily = await provider.dailyPrices({
-        codes: [...universeCodes],
-        start: succeeded[0].date,
-        end: requestedEnd
-      });
-      nextByCodeByDate = /* @__PURE__ */ new Map();
-      for (const code of Object.keys(daily.rows))
-        for (const row of daily.rows[code]) {
-          if (!nextByCodeByDate.has(row.tradeDate))
-            nextByCodeByDate.set(row.tradeDate, /* @__PURE__ */ new Map());
-          nextByCodeByDate.get(row.tradeDate).set(code, row);
-        }
+      try {
+        const daily = await provider.dailyPrices({
+          codes: [...universeCodes],
+          start: succeeded[0].date,
+          end: requestedEnd
+        });
+        dailyNormalized = /* @__PURE__ */ new Map();
+        for (const code of Object.keys(daily.rows))
+          for (const row of daily.rows[code]) {
+            let normalized;
+            try {
+              normalized = normalizeDailyBarRow(row);
+            } catch {
+              continue;
+            }
+            if (!dailyNormalized.has(normalized.tradeDate))
+              dailyNormalized.set(normalized.tradeDate, /* @__PURE__ */ new Map());
+            dailyNormalized.get(normalized.tradeDate).set(code, normalized);
+          }
+      } catch (error) {
+        dailyNormalized = null;
+        coverage.notes.push(
+          `\u89C2\u5BDF\u53CD\u9988\u65E5\u7EBF\u4E0B\u8F7D\u5931\u8D25\uFF0C\u672C\u6B21\u4E0D\u751F\u6210\u6B21\u65E5\u89C2\u5BDF\u6536\u76CA\uFF1A${String(error.message ?? error).slice(0, 120)}`
+        );
+      }
     }
-    for (let index = 0; index < succeeded.length; index++) {
-      const entry = succeeded[index];
-      const previousEntry = succeeded[index - 1] ?? null;
+    const dateIndex = new Map(
+      calendar.dates.map((date, index) => [date, index])
+    );
+    for (const entry of succeeded) {
+      const previousEntry = succeeded.slice(0, succeeded.indexOf(entry)).at(-1) ?? null;
       const a = analyze(
         entry.normalized,
         entry.broken ?? null,
@@ -7052,57 +7151,79 @@ async function runHistoryImport(env, jobId, options = {}) {
           origin: "HISTORICAL_RECONSTRUCTED"
         }
       );
-      const nextEntry = succeeded[index + 1] ?? null;
-      if (!nextEntry) continue;
-      const nextQuotes = nextByCodeByDate?.get(nextEntry.date) ?? null;
+      const nextTradingDate = calendar.dates[dateIndex.get(entry.date) + 1] ?? null;
+      const nextEntry = nextTradingDate === null ? null : succeeded.find((row) => row.date === nextTradingDate) ?? null;
+      if (!nextEntry) {
+        coverage.notes.push(
+          `${entry.date} \u7684\u76F8\u90BB\u4EA4\u6613\u65E5 ${nextTradingDate ?? "\uFF08\u8303\u56F4\u5185\u65E0\uFF09"} \u6570\u636E\u7F3A\u5931\uFF0C\u672A\u751F\u6210\u6B21\u65E5\u89C2\u5BDF\u53CD\u9988\uFF08\u4E0D\u8DE8\u8D8A\u7F3A\u5931\u65E5\uFF09`
+        );
+        continue;
+      }
+      const dailyByCode = dailyNormalized?.get(entry.date) ?? null;
+      const nextQuotes = dailyNormalized?.get(nextTradingDate) ?? null;
+      const nextFeatures = new Map(
+        (nextEntry.normalized ?? []).map((row) => [row.code, row])
+      );
       const universe = entry.normalized.map((row) => {
-        const next = nextQuotes ? nextQuotes.get(row.code) ?? null : null;
-        const quoteCents = row.price !== null ? Math.round(row.price * 100) : null;
-        const openReturnPct = next && quoteCents ? (next.openCents - quoteCents) / quoteCents * 100 : null;
-        const closeReturnPct = next && quoteCents ? (next.closeCents - quoteCents) / quoteCents * 100 : null;
+        const nextDaily = nextQuotes ? nextQuotes.get(row.code) ?? null : null;
+        const dailyPrev = dailyByCode ? dailyByCode.get(row.code) ?? null : null;
+        const quoteCents = dailyPrev ? dailyPrev.closeCents : row.price !== null ? Math.round(row.price * 100) : null;
+        const returnPct = (cents) => nextDaily && quoteCents !== null ? (cents - quoteCents) / quoteCents * 100 : null;
+        const openReturnPct = nextDaily ? returnPct(nextDaily.openCents) : null;
+        const closeReturnPct = nextDaily ? returnPct(nextDaily.closeCents) : null;
+        let continued = null;
+        if (row.height !== null && nextEntry.normalized !== null) {
+          const nextFeature = nextFeatures.get(row.code);
+          if (!nextFeature) continued = false;
+          else if (nextFeature.height !== null)
+            continued = nextFeature.height > row.height;
+        }
         return {
           code: row.code,
           name: row.name,
           score: entry.scoresByCode?.get(row.code) ?? null,
-          continued: Boolean(
-            next && next.height !== null && next.height > (row.height ?? 0)
-          ) || false,
-          openReturnPct,
-          closeReturnPct
+          continued,
+          openReturnPct: openReturnPct !== null && Number.isFinite(openReturnPct) ? openReturnPct : null,
+          closeReturnPct: closeReturnPct !== null && Number.isFinite(closeReturnPct) ? closeReturnPct : null
         };
       });
       const withReturns = universe.filter((row) => row.openReturnPct !== null);
+      const decidable = universe.filter((row) => row.continued !== null);
+      const continuedCount = decidable.filter((row) => row.continued).length;
       const topQuantile = withReturns.length && withReturns.some((row) => row.score !== null) ? withReturns.filter((row) => row.score !== null).sort((a2, b) => (b.score ?? -1) - (a2.score ?? -1)).slice(0, Math.max(1, Math.ceil(withReturns.length / 5))) : [];
       const mean2 = (values) => values.length ? values.reduce((a2, b) => a2 + b, 0) / values.length : null;
       await store.saveReview(
         datasetId,
         entry.date,
-        nextEntry.date,
+        nextTradingDate,
         SCORING_VERSION2,
         {
           signalDate: entry.date,
-          labelEndDate: nextEntry.date,
+          labelEndDate: nextTradingDate,
           universeCount: universe.length,
-          continuedCount: universe.filter((row) => row.continued).length,
-          continuationRate: universe.length ? universe.filter((row) => row.continued).length / universe.length : null,
+          continuedDecidableCount: decidable.length,
+          continuedUnknownCount: universe.length - decidable.length,
+          continuedCount,
+          continuationRate: decidable.length ? continuedCount / decidable.length : null,
           observationCoverage: withReturns.length,
           topOpenReturnPct: mean2(topQuantile.map((row) => row.openReturnPct)),
           topCloseReturnPct: mean2(topQuantile.map((row) => row.closeReturnPct)),
           allOpenReturnPct: mean2(withReturns.map((row) => row.openReturnPct)),
           allCloseReturnPct: mean2(withReturns.map((row) => row.closeReturnPct)),
-          note: "\u5386\u53F2\u89C2\u5BDF\u53CD\u9988\uFF1A\u57FA\u4E8E\u6B21\u65E5\u65E5\u7EBF\u6536\u76D8\u6570\u636E\u7684\u89C2\u5BDF\u6536\u76CA\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA",
+          priceBasis: "\u4FE1\u53F7\u65E5\u57FA\u51C6\u4EF7\u4F18\u5148\u53D6\u540C\u6E90\u524D\u590D\u6743\u65E5\u7EBF\u6536\u76D8\uFF08QFQ\uFF09\uFF0C\u7F3A\u5931\u65F6\u56DE\u9000\u6DA8\u505C\u6C60\u4EF7\u683C\uFF1B\u6536\u76CA\u4E3A\u89C2\u5BDF\u53E3\u5F84",
+          note: "\u5386\u53F2\u89C2\u5BDF\u53CD\u9988\uFF1A\u57FA\u4E8E\u76F8\u90BB\u4EA4\u6613\u65E5\u65E5\u7EBF\u6536\u76D8\u6570\u636E\u7684\u89C2\u5BDF\u6536\u76CA\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA",
           universe: universe.slice(0, 200)
         }
       );
     }
   } else if (job.kind === "MINUTES") {
-    const codes = options.codes ?? [];
+    const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
       return jobs.updateJob(jobId, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
-          reason: "MINUTES \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08options.codes\uFF09"
+          reason: "MINUTES \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08codes\uFF09"
         }
       });
     }
@@ -7128,7 +7249,9 @@ async function runHistoryImport(env, jobId, options = {}) {
             requestRange: date,
             actualRange: date,
             rows: series.inSession.length,
-            stage: "DONE"
+            stage: "DONE",
+            rawDigest: await digestOf(series),
+            artifactRef: `history_chunks:${jobId}:${chunkKey}`
           });
           dayRows++;
         } catch (error) {
@@ -7158,13 +7281,13 @@ async function runHistoryImport(env, jobId, options = {}) {
     }
   } else if (job.kind === "DAILY") {
     await jobs.updateJob(jobId, { stage: "DOWNLOADING" });
-    const codes = options.codes ?? [];
+    const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
       return jobs.updateJob(jobId, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
-          reason: "DAILY \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08options.codes\uFF09"
+          reason: "DAILY \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08codes\uFF09"
         }
       });
     }
@@ -7180,17 +7303,38 @@ async function runHistoryImport(env, jobId, options = {}) {
       const perCode = {};
       for (const code of codes) {
         const row = daily.rows[code]?.find((item) => item.tradeDate === date);
-        if (row) perCode[code] = row;
-      }
-      await store.saveDailyInputs(datasetId, date, {
-        normalized: perCode,
-        provenance: {
-          origin: "HISTORICAL_RECONSTRUCTED",
-          provider: job.provider,
-          note: "\u65E5\u7EBF\u89C2\u5BDF\u8F93\u5165\uFF1B\u65E0\u6DA8\u505C\u7279\u5F81\uFF0C\u4E0D\u80FD\u91CD\u5EFA\u516D\u56E0\u5B50\u8BC4\u5206"
+        if (row) {
+          try {
+            perCode[code] = normalizeDailyBarRow(row);
+          } catch (error) {
+            failed.push({
+              date,
+              reason: `\u65E5\u7EBF\u884C\u89C4\u8303\u5316\u5931\u8D25\uFF08${code}\uFF09\uFF1A${String(error.message ?? error).slice(0, 120)}`
+            });
+          }
         }
-      });
-      succeeded.push({ date });
+      }
+      if (Object.keys(perCode).length) {
+        await store.saveDailyInputs(datasetId, date, {
+          normalized: perCode,
+          provenance: {
+            origin: "HISTORICAL_RECONSTRUCTED",
+            provider: job.provider,
+            adjustedPrice: "QFQ",
+            note: "\u65E5\u7EBF\u89C2\u5BDF\u8F93\u5165\uFF08\u524D\u590D\u6743\uFF09\uFF1B\u65E0\u6DA8\u505C\u7279\u5F81\uFF0C\u4E0D\u80FD\u91CD\u5EFA\u516D\u56E0\u5B50\u8BC4\u5206"
+          }
+        });
+        await store.saveChunk(jobId, {
+          chunkKey: `daily:${date}`,
+          requestRange: date,
+          actualRange: date,
+          rows: Object.keys(perCode).length,
+          stage: "DONE",
+          rawDigest: await digestOf(perCode),
+          artifactRef: `history_chunks:${jobId}:daily:${date}`
+        });
+        succeeded.push({ date });
+      }
       for (const code of codes) universeCodes.add(code);
     }
   }
@@ -7211,7 +7355,28 @@ async function runHistoryImport(env, jobId, options = {}) {
     job.kind === "LIMIT_FEATURES" && allNormalizedRows.length > 0
   );
   coverage.executionModel = executionModel;
-  await store.updateDatasetCoverage(datasetId, coverage);
+  const chunkRows = await store.completedChunkKeys(jobId);
+  const chunkRefs = [...chunkRows].map((chunkKey) => ({
+    jobId,
+    chunkKey
+  }));
+  const finalCoverage = await store.updateDatasetCoverage(
+    datasetId,
+    coverage,
+    chunkRefs
+  );
+  if (!succeeded.length)
+    return jobs.updateJob(jobId, {
+      stage: "FAILED",
+      statusPayload: {
+        capabilities,
+        datasetId,
+        executionModel,
+        coverage,
+        manifestDigest: finalCoverage.manifestDigest,
+        error: "\u8BF7\u6C42\u8303\u56F4\u5185\u6CA1\u6709\u4EFB\u4F55\u6210\u529F\u65E5\u671F\uFF0C\u4E0D\u80FD\u53D1\u5E03\u4E3A\u5C31\u7EEA\u6570\u636E\u96C6"
+      }
+    });
   const finalStage = failed.length ? "PARTIAL" : "READY";
   return jobs.updateJob(jobId, {
     stage: finalStage,
@@ -7220,6 +7385,7 @@ async function runHistoryImport(env, jobId, options = {}) {
       datasetId,
       executionModel,
       coverage,
+      manifestDigest: finalCoverage.manifestDigest,
       note: executionModel === "DAILY_OBSERVATION_V1" ? "\u65E5\u7EBF\u89C2\u5BDF\u6570\u636E\u96C6\uFF1A\u65E0\u5C01\u677F\u7279\u5F81\uFF0C\u4E0D\u80FD\u91CD\u5EFA\u516D\u56E0\u5B50\u8BC4\u5206\uFF0C\u4EC5\u7528\u4E8E\u89C2\u5BDF\u7814\u7A76" : "\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\u5C31\u7EEA"
     }
   });
@@ -7229,10 +7395,10 @@ async function historyImportDetail(env, jobId) {
   const job = await jobs.getJob(jobId);
   if (!job) return null;
   const store = openHistoryStore(env);
-  const dataset = job.datasetId ? await store.getDataset(job.datasetId) : null;
-  const dates = job.datasetId ? await store.listDatasetDates(job.datasetId) : [];
-  const scores = job.datasetId ? await store.listScores(job.datasetId) : [];
-  const reviews = job.datasetId ? await store.listReviews(job.datasetId) : [];
+  const dataset = store && job.datasetId ? await store.getDataset(job.datasetId) : null;
+  const dates = store && job.datasetId ? await store.listDatasetDates(job.datasetId) : [];
+  const scores = store && job.datasetId ? await store.listScores(job.datasetId) : [];
+  const reviews = store && job.datasetId ? await store.listReviews(job.datasetId) : [];
   return {
     job,
     dataset,
@@ -7346,6 +7512,10 @@ function endOfDayQuotes({ date, minuteByCode, templates }) {
 }
 async function runBacktest(env, { datasetId, name, strategy, initialCapital, weights }) {
   const store = openHistoryStore(env);
+  if (!store)
+    throw new Error(
+      "\u5386\u53F2\u7814\u7A76\u5B58\u50A8\u4EC5\u672C\u673A\u53EF\u7528\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u5E38\u9A7B\u5B9E\u4F8B\u8FD0\u884C\u56DE\u6D4B"
+    );
   const dataset = await store.getDataset(datasetId);
   if (!dataset) throw new Error("\u5386\u53F2\u6570\u636E\u96C6\u4E0D\u5B58\u5728");
   if (dataset.executionModel !== "SIX_FACTOR_V1")
@@ -7495,6 +7665,10 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
 }
 async function backtestDetail(env, runId) {
   const store = openHistoryStore(env);
+  if (!store)
+    throw new Error(
+      "\u5386\u53F2\u7814\u7A76\u5B58\u50A8\u4EC5\u672C\u673A\u53EF\u7528\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u5E38\u9A7B\u5B9E\u4F8B\u67E5\u770B\u56DE\u6D4B"
+    );
   const run = await store.getBacktestRun(runId);
   if (!run) return null;
   const [plans, ledger, equity] = await Promise.all([
@@ -7634,7 +7808,8 @@ async function api(request, env) {
         kind: body2.kind,
         start: body2.start,
         end: body2.end,
-        name: body2.name
+        name: body2.name,
+        codes: body2.codes
       });
       return json({ job });
     }
@@ -7650,10 +7825,13 @@ async function api(request, env) {
       return json({ error: "\u4E0D\u652F\u6301\u6B64\u64CD\u4F5C" }, 405);
     }
     if (path === "/api/backtests") {
-      if (request.method === "GET")
+      if (request.method === "GET") {
+        const store = openHistoryStore(env);
         return json({
-          backtests: await openHistoryStore(env).listBacktestRuns(20)
+          backtests: store ? await store.listBacktestRuns(20) : [],
+          note: store ? void 0 : "\u5386\u53F2\u7814\u7A76\u5B58\u50A8\u4EC5\u672C\u673A\u53EF\u7528\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u67E5\u770B"
         });
+      }
       const body2 = await readJson(request);
       const run = await runBacktest(env, {
         datasetId: body2.datasetId,

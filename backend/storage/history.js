@@ -1,5 +1,4 @@
 import { database } from "./database.js";
-import { localDatabase } from "../../scripts/local-db.mjs";
 import { digestOf } from "../domain/research-lineage.js";
 
 export const RESEARCH_NAMESPACE = "main";
@@ -14,6 +13,68 @@ export const HISTORY_STAGES = [
   "BLOCKED",
   "FAILED",
 ];
+function historySqliteAdapter(sqlite) {
+  function prepare(sql) {
+    return {
+      args: [],
+      bind(...args) {
+        this.args = args;
+        return this;
+      },
+      async first() {
+        return sqlite.prepare(sql).get(...this.args) || null;
+      },
+      async all() {
+        return { results: sqlite.prepare(sql).all(...this.args) };
+      },
+      async run() {
+        const result = sqlite.prepare(sql).run(...this.args);
+        return { meta: { changes: Number(result.changes) } };
+      },
+      _run() {
+        const result = sqlite.prepare(sql).run(...this.args);
+        return { meta: { changes: Number(result.changes) } };
+      },
+    };
+  }
+  return {
+    prepare,
+    exec: (sql) => sqlite.exec(sql),
+    async batch(statements) {
+      sqlite.exec("BEGIN IMMEDIATE");
+      try {
+        const results = statements.map((statement) => statement._run());
+        sqlite.exec("COMMIT");
+        return results;
+      } catch (error) {
+        sqlite.exec("ROLLBACK");
+        throw error;
+      }
+    },
+    transactionQueue: Promise.resolve(),
+    async transaction(fn) {
+      const run = this.transactionQueue.then(async () => {
+        sqlite.exec("BEGIN IMMEDIATE");
+        try {
+          const result = await fn();
+          sqlite.exec("COMMIT");
+          return result;
+        } catch (error) {
+          sqlite.exec("ROLLBACK");
+          throw error;
+        }
+      });
+      this.transactionQueue = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return run;
+    },
+    close() {
+      sqlite.close();
+    },
+  };
+}
 export class HistoryJobRepository {
   constructor(env) {
     this.db = database(env);
@@ -90,15 +151,28 @@ export class HistoryJobRepository {
       .run();
     return this.getJob(id);
   }
+  async claimDataset(id, datasetId) {
+    const result = await this.db
+      .prepare(
+        "UPDATE history_import_jobs SET dataset_id = ?, updated_at = ? WHERE id = ? AND dataset_id IS NULL",
+      )
+      .bind(datasetId, new Date().toISOString(), id)
+      .run();
+    return result.meta.changes > 0;
+  }
 }
 export class HistoryDatasetStore {
   constructor(path) {
     this.path = path;
-    this.db = localDatabase(path);
+    this.db = null;
     this.ready = false;
   }
   async ensure() {
     if (this.ready) return;
+    const { DatabaseSync } = await import("node:sqlite");
+    const sqlite = new DatabaseSync(this.path);
+    sqlite.exec("PRAGMA busy_timeout=5000;");
+    this.db = historySqliteAdapter(sqlite);
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS history_dataset_versions (
         id TEXT PRIMARY KEY,
@@ -208,7 +282,13 @@ export class HistoryDatasetStore {
     coverage,
   }) {
     await this.ensure();
-    const digest = await digestOf(coverage);
+    const manifest = {
+      executionModel: executionModel ?? null,
+      coverage,
+      chunkRefs: [],
+      inputs: [],
+    };
+    const digest = await digestOf(manifest);
     await this.db
       .prepare(
         "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -229,9 +309,16 @@ export class HistoryDatasetStore {
       .run();
     return { id, manifestDigest: digest };
   }
-  async updateDatasetCoverage(id, coverage) {
+  async updateDatasetCoverage(id, coverage, chunkRefs = []) {
     await this.ensure();
-    const digest = await digestOf(coverage);
+    const inputs = await this.listDatasetDates(id);
+    const manifest = {
+      executionModel: coverage.executionModel ?? null,
+      coverage,
+      chunkRefs,
+      inputs,
+    };
+    const digest = await digestOf(manifest);
     await this.db
       .prepare(
         "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?",
@@ -245,6 +332,7 @@ export class HistoryDatasetStore {
         id,
       )
       .run();
+    return { manifest, manifestDigest: digest };
   }
   async saveChunk(
     jobId,
@@ -606,12 +694,12 @@ export class HistoryDatasetStore {
     }));
   }
   close() {
-    this.db.close();
+    if (this.db) this.db.close();
   }
 }
 export function openHistoryStore(env) {
-  const path =
-    env?.LOCAL_RESEARCH_DB_PATH || ".sites-runtime/research-history.sqlite";
+  const path = env?.LOCAL_RESEARCH_DB_PATH;
+  if (!path) return null;
   return new HistoryDatasetStore(path);
 }
 export function historyJobDatabase(env) {

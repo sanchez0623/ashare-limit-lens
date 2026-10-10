@@ -14,12 +14,19 @@ const start = readArg("start");
 const end = readArg("end");
 const name = readArg("name");
 const provider = readArg("provider") ?? "tencent-free";
+const codesArg = readArg("codes");
+const codes = codesArg
+  ? codesArg
+      .split(",")
+      .map((code) => code.trim())
+      .filter(Boolean)
+  : undefined;
 if (!kind || !start || !end) {
   console.error(
-    "用法：node scripts/history-import.mjs --kind LIMIT_FEATURES|DAILY --start YYYY-MM-DD --end YYYY-MM-DD [--provider tencent-free] [--name 名称]",
+    "用法：node scripts/history-import.mjs --kind LIMIT_FEATURES|DAILY|MINUTES --start YYYY-MM-DD --end YYYY-MM-DD [--codes 600001,600002] [--provider tencent-free] [--name 名称]",
   );
   console.error(
-    "注意：LIMIT_FEATURES 依赖涨停池可用日期（能力探测会先验证）；大范围导入建议在收盘后运行。",
+    "注意：LIMIT_FEATURES 依赖涨停池可用日期（能力探测会先验证）；DAILY/MINUTES 必须提供 --codes；大范围导入建议在收盘后运行。",
   );
   process.exit(1);
 }
@@ -43,6 +50,7 @@ const job = await createHistoryImport(env, {
   start,
   end,
   name,
+  codes,
 });
 console.log(`任务已登记：${job.id}（${kind}，${start}..${end}）`);
 const result = await runHistoryImport(env, job.id);

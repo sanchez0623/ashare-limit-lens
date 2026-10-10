@@ -10,6 +10,7 @@ import {
 import {
   HistoryDatasetStore,
   HistoryJobRepository,
+  openHistoryStore,
 } from "../backend/storage/history.js";
 import {
   assessFieldCoverage,
@@ -18,6 +19,7 @@ import {
   normalizeLimitFeatureRow,
   sanitizeMinuteSeries,
 } from "../backend/domain/historical-input.js";
+import { runBacktest } from "../backend/services/backtest.js";
 import { PaperRepository } from "../backend/storage/paper.js";
 
 function weekdays(start, end) {
@@ -49,7 +51,13 @@ function emPoolRow(code, overrides = {}) {
     ...overrides,
   };
 }
-function installFetchStub({ tradingDays, poolDates, poolFailureDates = [] }) {
+function installFetchStub({
+  tradingDays,
+  poolDates,
+  poolFailureDates = [],
+  poolOverrides = {},
+  dailyCloseYuan = "10.50",
+}) {
   const calls = [];
   const fetchBefore = globalThis.fetch;
   globalThis.fetch = async (input) => {
@@ -74,6 +82,7 @@ function installFetchStub({ tradingDays, poolDates, poolFailureDates = [] }) {
               p: 10000 + index * 500,
               lbc: index === 0 ? 2 : 1,
               zbc: index === 2 ? 1 : 0,
+              ...poolOverrides,
             }),
           ),
           qdate: date,
@@ -89,7 +98,14 @@ function installFetchStub({ tradingDays, poolDates, poolFailureDates = [] }) {
       const rows = tradingDays
         .filter((date) => date >= windowStart && date <= windowEnd)
         .slice(-maxRows)
-        .map((date) => [date, "10.00", "10.50", "10.80", "9.90", "120000"]);
+        .map((date) => [
+          date,
+          "10.00",
+          dailyCloseYuan,
+          "10.80",
+          "9.90",
+          "120000",
+        ]);
       return Response.json({
         data: { [symbolCode]: { day: rows } },
       });
@@ -309,18 +325,23 @@ test("部分日期失败标记 PARTIAL 并保留成功日期；DAILY 无股票�
     const info = await historyImportDetail(env, job.id);
     assert.equal(info.dates.length, 2);
     assert.equal(info.scoreCount, 2);
+    await assert.rejects(
+      () =>
+        createHistoryImport(env, {
+          kind: "DAILY",
+          start: "2026-03-02",
+          end: "2026-03-04",
+        }),
+      /股票池/,
+    );
+    const codes = ["600001"];
     const dailyJob = await createHistoryImport(env, {
       kind: "DAILY",
       start: "2026-03-02",
       end: "2026-03-04",
-    });
-    const blocked = await runHistoryImport(env, dailyJob.id);
-    assert.equal(blocked.stage, "BLOCKED");
-    const dailyRepository = new PaperRepository(env);
-    const codes = ["600001"];
-    const dailyDone = await runHistoryImport(env, dailyJob.id, {
       codes,
     });
+    const dailyDone = await runHistoryImport(env, dailyJob.id);
     assert.equal(dailyDone.stage, "READY");
     assert.equal(
       dailyDone.statusPayload.executionModel,
@@ -330,6 +351,255 @@ test("部分日期失败标记 PARTIAL 并保留成功日期；DAILY 无股票�
     assert.equal(dailyInfo.scoreCount, 0);
   } finally {
     stub.restore();
+    DB.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("缺失交易日不生成跨越反馈；PARTIAL 重跑补抓失败日期", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const tradingDays = weekdays("2026-01-01", "2026-03-31");
+  let stub = installFetchStub({
+    tradingDays,
+    poolDates: tradingDays,
+    poolFailureDates: ["2026-03-03"],
+  });
+  try {
+    const job = await createHistoryImport(env, {
+      kind: "LIMIT_FEATURES",
+      start: "2026-03-02",
+      end: "2026-03-04",
+    });
+    const first = await runHistoryImport(env, job.id, {
+      withObservationReturns: true,
+    });
+    assert.equal(first.stage, "PARTIAL");
+    assert.ok(
+      first.statusPayload.coverage.notes.some((note) =>
+        note.includes("不跨越缺失日"),
+      ),
+    );
+    const partialInfo = await historyImportDetail(env, job.id);
+    assert.equal(partialInfo.reviewCount, 0);
+    stub.restore();
+    stub = installFetchStub({ tradingDays, poolDates: tradingDays });
+    const second = await runHistoryImport(env, job.id);
+    assert.equal(second.stage, "READY");
+    const info = await historyImportDetail(env, job.id);
+    assert.equal(info.dates.length, 3);
+    assert.equal(info.scoreCount, 3);
+    assert.equal(info.reviewCount, 2);
+    const review0203 = info.reviews.find(
+      (row) => row.signalDate === "2026-03-02",
+    );
+    assert.equal(review0203.labelEndDate, "2026-03-03");
+  } finally {
+    stub.restore();
+    DB.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("涨停特征缺失保持 null 不填零；空日线数据发布 FAILED", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const tradingDays = weekdays("2026-01-01", "2026-03-31");
+  const stub = installFetchStub({
+    tradingDays,
+    poolDates: tradingDays,
+    poolOverrides: { fund: null, zbc: "" },
+  });
+  try {
+    const job = await createHistoryImport(env, {
+      kind: "LIMIT_FEATURES",
+      start: "2026-03-02",
+      end: "2026-03-03",
+    });
+    const done = await runHistoryImport(env, job.id, {
+      withObservationReturns: false,
+    });
+    assert.equal(done.stage, "READY");
+    const coverage = done.statusPayload.coverage;
+    assert.ok(coverage.coverage.ratio < 100);
+    assert.ok(
+      coverage.coverage.missing.some((field) => field.startsWith("seal")),
+    );
+    assert.ok(
+      coverage.coverage.missing.some((field) => field.startsWith("breaks")),
+    );
+    const stored = await openHistoryStore(env).getDailyInput(
+      done.statusPayload.datasetId,
+      "2026-03-02",
+    );
+    const missingRow = stored.normalized.find((row) => row.code === "600001");
+    assert.equal(missingRow.seal, null);
+    assert.equal(missingRow.breaks, null);
+    const emptyDaily = await createHistoryImport(env, {
+      kind: "DAILY",
+      start: "2026-05-01",
+      end: "2026-05-03",
+      codes: ["600001"],
+    });
+    const emptyResult = await runHistoryImport(env, emptyDaily.id);
+    assert.equal(emptyResult.stage, "FAILED");
+    assert.ok(emptyResult.statusPayload.error.includes("没有任何成功日期"));
+  } finally {
+    stub.restore();
+    DB.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("数据集摘要绑定真实输入与原始下载块引用", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const tradingDays = weekdays("2026-01-01", "2026-03-31");
+  let stub = installFetchStub({ tradingDays, poolDates: tradingDays });
+  try {
+    const jobA = await createHistoryImport(env, {
+      kind: "LIMIT_FEATURES",
+      start: "2026-03-02",
+      end: "2026-03-03",
+    });
+    const doneA = await runHistoryImport(env, jobA.id, {
+      withObservationReturns: false,
+    });
+    const digestA = doneA.statusPayload.manifestDigest;
+    stub.restore();
+    stub = installFetchStub({
+      tradingDays,
+      poolDates: tradingDays,
+      dailyCloseYuan: "11.20",
+      poolOverrides: { p: 12000 },
+    });
+    const jobB = await createHistoryImport(env, {
+      kind: "LIMIT_FEATURES",
+      start: "2026-03-02",
+      end: "2026-03-03",
+    });
+    const doneB = await runHistoryImport(env, jobB.id, {
+      withObservationReturns: false,
+    });
+    const digestB = doneB.statusPayload.manifestDigest;
+    assert.notEqual(digestA, digestB);
+    const store = openHistoryStore(env);
+    const probeId = `hds-probe-${crypto.randomUUID()}`;
+    await store.createDatasetVersion({
+      id: probeId,
+      provider: "tencent-free",
+      kind: "LIMIT_FEATURES",
+      executionModel: "SIX_FACTOR_V1",
+      requestedStart: "2026-03-02",
+      requestedEnd: "2026-03-02",
+      coverage: {},
+    });
+    await store.saveDailyInputs(probeId, "2026-03-02", {
+      normalized: [],
+      provenance: {},
+    });
+    const withChunks = await store.updateDatasetCoverage(probeId, {}, [
+      { jobId: "j1", chunkKey: "limit:2026-03-02" },
+    ]);
+    assert.equal(withChunks.manifest.inputs.length, 1);
+    assert.equal(withChunks.manifest.chunkRefs.length, 1);
+    const withoutChunks = await store.updateDatasetCoverage(probeId, {}, []);
+    assert.notEqual(withChunks.manifestDigest, withoutChunks.manifestDigest);
+  } finally {
+    stub.restore();
+    DB.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("并发认领数据集：只有第一次声明生效", async () => {
+  const DB = localDatabase();
+  const env = { DB };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const jobs = new HistoryJobRepository(env);
+  try {
+    const job = await jobs.createJob({
+      id: "hjob-claim-test",
+      provider: "tencent-free",
+      kind: "DAILY",
+      start: "2026-03-02",
+      end: "2026-03-04",
+      name: null,
+    });
+    assert.equal(await jobs.claimDataset(job.id, "hds-a"), true);
+    assert.equal(await jobs.claimDataset(job.id, "hds-b"), false);
+    assert.equal((await jobs.getJob(job.id)).datasetId, "hds-a");
+  } finally {
+    DB.close();
+  }
+});
+test("未配置本机研究存储时云端入口明确降级", async () => {
+  const DB = localDatabase();
+  const env = { DB };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  try {
+    assert.equal(openHistoryStore(env), null);
+    const job = await createHistoryImport(env, {
+      kind: "LIMIT_FEATURES",
+      start: "2026-03-02",
+      end: "2026-03-04",
+    });
+    const result = await runHistoryImport(env, job.id);
+    assert.equal(result.stage, "BLOCKED");
+    assert.ok(result.statusPayload.reason.includes("仅本机可用"));
+    await assert.rejects(
+      () => runBacktest(env, { datasetId: "hds-none" }),
+      /仅本机可用/,
+    );
+  } finally {
+    DB.close();
+  }
+});
+test("从 main 已发布迁移升级：不重命名已应用迁移", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const researchPath = `.sites-runtime/test-migration-${crypto.randomUUID()}.sqlite`;
+  {
+    const sqlite = new DatabaseSync(researchPath);
+    sqlite.exec("CREATE TABLE local_migrations (name TEXT PRIMARY KEY)");
+    const files = readdirSync("drizzle")
+      .filter((name) => name.endsWith(".sql"))
+      .sort();
+    for (const name of files) {
+      if (name > "0005_research_upgrade.sql") break;
+      sqlite.exec(readFileSync(`drizzle/${name}`, "utf8"));
+      sqlite
+        .prepare("INSERT INTO local_migrations (name) VALUES (?)")
+        .run(name);
+    }
+    sqlite.close();
+  }
+  const DB = localDatabase(researchPath);
+  try {
+    const registry = await DB.prepare(
+      "SELECT bootstrap_done FROM research_registry WHERE namespace = 'main'",
+    ).first();
+    assert.equal(registry.bootstrap_done, 0);
+    const jobs = await DB.prepare(
+      "SELECT COUNT(*) AS n FROM history_import_jobs",
+    ).first();
+    assert.ok(jobs.n >= 0);
+  } finally {
     DB.close();
     try {
       unlinkSync(researchPath);

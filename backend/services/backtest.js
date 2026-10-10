@@ -108,6 +108,10 @@ export async function runBacktest(
   { datasetId, name, strategy, initialCapital, weights },
 ) {
   const store = openHistoryStore(env);
+  if (!store)
+    throw new Error(
+      "历史研究存储仅本机可用：请配置 LOCAL_RESEARCH_DB_PATH 后在本机常驻实例运行回测",
+    );
   const dataset = await store.getDataset(datasetId);
   if (!dataset) throw new Error("历史数据集不存在");
   if (dataset.executionModel !== "SIX_FACTOR_V1")
@@ -262,6 +266,10 @@ export async function runBacktest(
 }
 export async function backtestDetail(env, runId) {
   const store = openHistoryStore(env);
+  if (!store)
+    throw new Error(
+      "历史研究存储仅本机可用：请配置 LOCAL_RESEARCH_DB_PATH 后在本机常驻实例查看回测",
+    );
   const run = await store.getBacktestRun(runId);
   if (!run) return null;
   const [plans, ledger, equity] = await Promise.all([
