@@ -40,43 +40,140 @@ export class ResearchRepository {
       .prepare("SELECT * FROM research_registry WHERE namespace = ?")
       .bind(this.namespace)
       .first();
-    if (row) return this.mapRegistry(row);
-    const versionCount = await this.db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM strategy_versions WHERE id <> 'baseline-v1'",
-      )
-      .first();
-    const cutoff = await this.db
-      .prepare(
-        `SELECT MAX(d) AS cutoff FROM (
+    if (!row) {
+      const versionCount = await this.db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM strategy_versions WHERE id <> 'baseline-v1'",
+        )
+        .first();
+      const cutoff = await this.db
+        .prepare(
+          `SELECT MAX(d) AS cutoff FROM (
         SELECT MAX(trade_date) AS d FROM snapshots
         UNION ALL SELECT MAX(trade_date) FROM paper_market_days
         UNION ALL SELECT MAX(trade_date) FROM reviews
         UNION ALL SELECT MAX(snapshot_date) FROM reviews
+        UNION ALL SELECT MAX(trade_date) FROM paper_runs
+        UNION ALL SELECT MAX(substr(created_at, 1, 10)) FROM strategy_versions
       )`,
-      )
-      .first();
-    const payload = {
-      legacyIncomplete: true,
-      backfilledAt: new Date().toISOString(),
-      note: "旧流程未记录逐次尝试与测试日期；以已知数据日期建立保守截止线，尝试次数为已知下界",
-    };
+        )
+        .first();
+      const payload = {
+        legacyIncomplete: true,
+        backfilledAt: new Date().toISOString(),
+        note: "迁移未初始化时的兜底路径；截止线由已知数据日期建立，尝试次数为已知下界",
+      };
+      await this.db
+        .prepare(
+          "INSERT OR IGNORE INTO research_registry (namespace, revision, attempt_sequence, legacy_cutoff, payload) VALUES (?, 0, ?, ?, ?)",
+        )
+        .bind(
+          this.namespace,
+          versionCount.n,
+          cutoff.cutoff ?? null,
+          JSON.stringify(payload),
+        )
+        .run();
+      row = await this.db
+        .prepare("SELECT * FROM research_registry WHERE namespace = ?")
+        .bind(this.namespace)
+        .first();
+    }
+    const registry = this.mapRegistry(row);
+    const updated = await this.backfillLegacyVersions(registry);
+    return updated ?? registry;
+  }
+  async backfillLegacyVersions(registry) {
+    const rows = (
+      await this.db
+        .prepare(
+          "SELECT id, created_at, evidence FROM strategy_versions WHERE id <> 'baseline-v1' AND json_valid(evidence) AND json_extract(evidence, '$.validationStart') IS NOT NULL AND json_extract(evidence, '$.validationEnd') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM research_test_claims WHERE namespace = ? AND experiment_id = strategy_versions.id)",
+        )
+        .bind(this.namespace)
+        .all()
+    ).results;
+    if (!rows.length) return null;
+    for (const row of rows) {
+      const evidence = JSON.parse(row.evidence);
+      const days = (
+        await this.db
+          .prepare(
+            "SELECT trade_date FROM paper_market_days WHERE trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
+          )
+          .bind(evidence.validationStart, evidence.validationEnd)
+          .all()
+      ).results;
+      for (const day of days) {
+        const payload = {
+          legacy: true,
+          parentVersion: evidence.baseVersion ?? null,
+          decisionDate: null,
+          tradeDate: day.trade_date,
+          role: "HISTORICAL_TEST",
+          note: "旧流程验证窗口回填；对应训练日期未记录，记为未知",
+        };
+        await this.db
+          .prepare(
+            "INSERT OR IGNORE INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) VALUES (?, ?, ?, 'HISTORICAL_TEST', ?)",
+          )
+          .bind(this.namespace, day.trade_date, row.id, row.created_at)
+          .run();
+        await this.db
+          .prepare(
+            "INSERT OR IGNORE INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) VALUES (?, ?, 'HISTORICAL_TEST', ?, ?, ?, ?)",
+          )
+          .bind(
+            this.namespace,
+            row.id,
+            day.trade_date,
+            sampleKey({
+              namespace: this.namespace,
+              experimentId: row.id,
+              role: "HISTORICAL_TEST",
+              outcomeDate: day.trade_date,
+            }),
+            JSON.stringify(payload),
+            await digestOf(payload),
+          )
+          .run();
+      }
+    }
+    const legacyEnds = rows
+      .map((row) => {
+        try {
+          return JSON.parse(row.evidence)?.validationEnd ?? null;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort();
+    const legacyCutoff =
+      [registry.legacyCutoff, ...legacyEnds].filter(Boolean).sort().at(-1) ??
+      null;
     await this.db
       .prepare(
-        "INSERT OR IGNORE INTO research_registry (namespace, revision, attempt_sequence, legacy_cutoff, payload) VALUES (?, 0, ?, ?, ?)",
+        "UPDATE research_registry SET payload = ?, legacy_cutoff = ? WHERE namespace = ?",
       )
       .bind(
+        JSON.stringify({
+          ...registry.payload,
+          legacyBackfillDone: true,
+          backfilledLegacyVersions: rows.length,
+        }),
+        legacyCutoff,
         this.namespace,
-        versionCount.n,
-        cutoff.cutoff ?? null,
-        JSON.stringify(payload),
       )
       .run();
-    row = await this.db
-      .prepare("SELECT * FROM research_registry WHERE namespace = ?")
-      .bind(this.namespace)
-      .first();
-    return this.mapRegistry(row);
+    return {
+      ...registry,
+      legacyCutoff,
+      payload: {
+        ...registry.payload,
+        legacyBackfillDone: true,
+        backfilledLegacyVersions: rows.length,
+      },
+    };
   }
   mapRegistry(row) {
     return {
@@ -155,11 +252,11 @@ export class ResearchRepository {
       .first();
     return row.n;
   }
-  async assertFreshOutcomeDates(dates) {
-    if (!Array.isArray(dates) || !dates.length)
+  async assertReservationFreshness(testDates) {
+    if (!Array.isArray(testDates) || !testDates.length)
       throw new Error("测试日期清单为空");
     const registry = await this.ensureRegistry();
-    for (const date of dates) {
+    for (const date of testDates) {
       if (registry.legacyCutoff && date <= registry.legacyCutoff)
         throw new Error(
           `日期 ${date} 不晚于迁移前保守截止线 ${registry.legacyCutoff}，不能重新登记为新测试数据`,
@@ -183,129 +280,153 @@ export class ResearchRepository {
       if (claimed.n)
         throw new Error(`日期 ${date} 已作为测试数据一次性登记，不能复用`);
     }
-    return { registry, fresh: true };
+    return registry;
+  }
+  async assertFreshOutcomeDates(dates) {
+    return this.assertReservationFreshness(dates);
   }
   async reserveAttempt({
     policy,
     month,
-    trainingDates,
-    testDates,
     parentVersion,
     windowPayload,
+    testDates,
+    samples,
   }) {
-    const registry = await this.ensureRegistry();
-    const now = new Date().toISOString();
-    const nonce = crypto.randomUUID();
-    const experimentId = `exp-${crypto.randomUUID()}`;
-    const attemptSequence = registry.attemptSequence + 1;
-    const reservation = {
-      experimentId,
-      namespace: this.namespace,
-      attemptSequence,
-      parentVersion,
-      trainingDates,
-      testDates,
-      policyId: policy.id,
-      policyDigest: policy.digest,
-      legacyCutoff: registry.legacyCutoff,
-      reservedAt: now,
-    };
-    const reservationDigest = await digestOf(reservation);
-    const guardArgs = [this.namespace, registry.revision + 1, nonce];
-    const guarded = (sql, args) =>
-      this.db
-        .prepare(
-          `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`,
-        )
-        .bind(...args, ...guardArgs);
-    const event = {
-      sequence: 1,
-      eventType: "RESERVED",
-      createdAt: now,
-      payload: { reservation, reservationDigest },
-      previousDigest: null,
-    };
-    const statements = [
-      this.db
-        .prepare(
-          "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, last_run_id = ? WHERE namespace = ? AND revision = ?",
-        )
-        .bind(nonce, this.namespace, registry.revision),
-      guarded(
-        "INSERT INTO research_active_slots (namespace, experiment_id, window_payload, created_at) SELECT ?, ?, ?, ?",
-        [
-          this.namespace,
-          experimentId,
-          JSON.stringify({ ...windowPayload, policyId: policy.id }),
-          now,
-        ],
-      ),
-      guarded(
-        "INSERT INTO research_budget_slots (namespace, month, slot, experiment_id, created_at) SELECT ?, ?, 1, ?, ?",
-        [this.namespace, month, experimentId, now],
-      ),
-      ...testDates.map((date) =>
+    const attempt = async () => {
+      const registry = await this.assertReservationFreshness(testDates);
+      const now = new Date().toISOString();
+      const nonce = crypto.randomUUID();
+      const experimentId = `exp-${crypto.randomUUID()}`;
+      const attemptSequence = registry.attemptSequence + 1;
+      const reservation = {
+        experimentId,
+        namespace: this.namespace,
+        attemptSequence,
+        parentVersion,
+        trainingDates: samples
+          .filter((sample) => sample.role === "TRAIN")
+          .map((sample) => sample.date),
+        testDates,
+        policyId: policy.id,
+        policyDigest: policy.digest,
+        legacyCutoff: registry.legacyCutoff,
+        reservedAt: now,
+      };
+      const reservationDigest = await digestOf(reservation);
+      const guardArgs = [this.namespace, registry.revision + 1, nonce];
+      const guarded = (sql, args) =>
+        this.db
+          .prepare(
+            `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`,
+          )
+          .bind(...args, ...guardArgs);
+      const event = {
+        sequence: 1,
+        eventType: "RESERVED",
+        createdAt: now,
+        payload: { reservation, reservationDigest },
+        previousDigest: null,
+      };
+      const statements = [
+        this.db
+          .prepare(
+            "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, last_run_id = ? WHERE namespace = ? AND revision = ?",
+          )
+          .bind(nonce, this.namespace, registry.revision),
         guarded(
-          "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ?",
-          [this.namespace, date, experimentId, now],
-        ),
-      ),
-      ...[
-        ...trainingDates.map((date) => ({ date, role: "TRAIN" })),
-        ...testDates.map((date) => ({ date, role: "HISTORICAL_TEST" })),
-      ].map(({ date, role }) =>
-        guarded(
-          "INSERT INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+          "INSERT INTO research_active_slots (namespace, experiment_id, window_payload, created_at) SELECT ?, ?, ?, ?",
           [
             this.namespace,
             experimentId,
-            role,
-            date,
-            sampleKey({
-              namespace: this.namespace,
-              experimentId,
-              role,
-              outcomeDate: date,
-            }),
-            JSON.stringify({ decisionDate: null, tradeDate: date, role }),
-            reservationDigest,
+            JSON.stringify({ ...windowPayload, policyId: policy.id }),
+            now,
           ],
         ),
-      ),
-      guarded(
-        "INSERT INTO research_experiments (id, namespace, parent_version, candidate_version, policy_id, stage, revision, frozen_at, reservation_payload, proposal_manifest, proposal_digest, created_at) SELECT ?, ?, ?, NULL, ?, 'PROPOSING', 0, NULL, ?, NULL, NULL, ?",
-        [
-          experimentId,
-          this.namespace,
-          parentVersion,
-          policy.id,
-          JSON.stringify(reservation),
-          now,
-        ],
-      ),
-      guarded(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
-        [
-          experimentId,
-          event.sequence,
-          event.eventType,
-          event.createdAt,
-          JSON.stringify(event.payload),
-          event.previousDigest,
-          await eventDigest(event),
-        ],
-      ),
-    ];
-    await this.db.batch(statements);
-    const after = await this.db
-      .prepare(
-        "SELECT revision, last_run_id FROM research_registry WHERE namespace = ?",
+        guarded(
+          "INSERT INTO research_budget_slots (namespace, month, slot, experiment_id, created_at) SELECT ?, ?, 1, ?, ?",
+          [this.namespace, month, experimentId, now],
+        ),
+        ...testDates.map((date) =>
+          guarded(
+            "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ?",
+            [this.namespace, date, experimentId, now],
+          ),
+        ),
+        ...samples.map((sample) =>
+          guarded(
+            "INSERT INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+            [
+              this.namespace,
+              experimentId,
+              sample.role,
+              sample.date,
+              sampleKey({
+                namespace: this.namespace,
+                experimentId,
+                role: sample.role,
+                outcomeDate: sample.date,
+              }),
+              JSON.stringify(sample.payload),
+              sample.digest,
+            ],
+          ),
+        ),
+        guarded(
+          "INSERT INTO research_experiments (id, namespace, parent_version, candidate_version, policy_id, stage, revision, frozen_at, reservation_payload, proposal_manifest, proposal_digest, created_at) SELECT ?, ?, ?, NULL, ?, 'PROPOSING', 0, NULL, ?, NULL, NULL, ?",
+          [
+            experimentId,
+            this.namespace,
+            parentVersion,
+            policy.id,
+            JSON.stringify(reservation),
+            now,
+          ],
+        ),
+        guarded(
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+          [
+            experimentId,
+            event.sequence,
+            event.eventType,
+            event.createdAt,
+            JSON.stringify(event.payload),
+            event.previousDigest,
+            await eventDigest(event),
+          ],
+        ),
+      ];
+      await this.executeReservation(statements);
+      const after = await this.db
+        .prepare(
+          "SELECT revision, last_run_id FROM research_registry WHERE namespace = ?",
+        )
+        .bind(this.namespace)
+        .first();
+      if (
+        after.revision !== registry.revision + 1 ||
+        after.last_run_id !== nonce
       )
-      .bind(this.namespace)
-      .first();
-    if (after.revision !== registry.revision + 1 || after.last_run_id !== nonce)
-      return null;
-    return { experimentId, reservation, reservationDigest, attemptSequence };
+        return null;
+      return { experimentId, reservation, reservationDigest, attemptSequence };
+    };
+    if (typeof this.db.transaction === "function")
+      return this.db.transaction(async () => {
+        this.inTransaction = true;
+        try {
+          return await attempt();
+        } finally {
+          this.inTransaction = false;
+        }
+      });
+    return attempt();
+  }
+  async executeReservation(statements) {
+    if (this.inTransaction) {
+      for (const statement of statements) await statement.run();
+      return;
+    }
+    await this.db.batch(statements);
   }
   async lastEvent(experimentId) {
     const row = await this.db
@@ -362,6 +483,11 @@ export class ResearchRepository {
       output,
       trainingDates,
       parentVersion,
+      parentParamsDigest,
+      feeConfig,
+      feeConfigDigest,
+      executionVersion,
+      scoringVersion,
     },
   ) {
     const now = new Date().toISOString();
@@ -378,8 +504,13 @@ export class ResearchRepository {
       validatedResponse: output,
       trainingDates,
       parentVersion,
+      parentParamsDigest,
+      feeConfig,
+      feeConfigDigest,
+      executionVersion,
+      scoringVersion,
       frozenAt: now,
-      note: "模型输出与最终参数在历史测试前冻结；真实模型版本无法获得时记录为未知",
+      note: "模型输出、最终参数与执行环境指纹在历史测试前冻结；真实模型版本无法获得时记录为未知",
     };
     const manifestDigest = await digestOf(manifest);
     const previous = await this.lastEvent(experimentId);
@@ -580,6 +711,27 @@ export class ResearchRepository {
         .bind(id)
         .first(),
     );
+  }
+  async parentParams(versionId) {
+    const row = await this.db
+      .prepare("SELECT params FROM strategy_versions WHERE id = ?")
+      .bind(versionId)
+      .first();
+    return row ? JSON.parse(row.params) : null;
+  }
+  async experimentSamples(experimentId) {
+    const result = await this.db
+      .prepare(
+        "SELECT role, outcome_date, payload, digest FROM research_sample_uses WHERE experiment_id = ? ORDER BY outcome_date, role",
+      )
+      .bind(experimentId)
+      .all();
+    return result.results.map((row) => ({
+      role: row.role,
+      outcomeDate: row.outcome_date,
+      payload: JSON.parse(row.payload),
+      digest: row.digest,
+    }));
   }
   async listExperiments(limit = 20) {
     const result = await this.db

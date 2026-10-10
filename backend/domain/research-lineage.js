@@ -29,6 +29,8 @@ export function eventDigest({
 }) {
   return digestOf({ sequence, eventType, createdAt, payload, previousDigest });
 }
+export const EXECUTION_VERSION = "exec-batch1-v1";
+export const SCORING_VERSION = "six-factor-v1";
 export function sampleKey({ namespace, experimentId, role, outcomeDate }) {
   return `${namespace}:${experimentId}:${role}:${outcomeDate}`;
 }

@@ -3413,6 +3413,8 @@ function eventDigest({
 }) {
   return digestOf({ sequence, eventType, createdAt, payload, previousDigest });
 }
+var EXECUTION_VERSION = "exec-batch1-v1";
+var SCORING_VERSION = "six-factor-v1";
 function sampleKey({ namespace, experimentId, role, outcomeDate }) {
   return `${namespace}:${experimentId}:${role}:${outcomeDate}`;
 }
@@ -3702,33 +3704,106 @@ var ResearchRepository = class {
   }
   async ensureRegistry() {
     let row = await this.db.prepare("SELECT * FROM research_registry WHERE namespace = ?").bind(this.namespace).first();
-    if (row) return this.mapRegistry(row);
-    const versionCount = await this.db.prepare(
-      "SELECT COUNT(*) AS n FROM strategy_versions WHERE id <> 'baseline-v1'"
-    ).first();
-    const cutoff = await this.db.prepare(
-      `SELECT MAX(d) AS cutoff FROM (
+    if (!row) {
+      const versionCount = await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM strategy_versions WHERE id <> 'baseline-v1'"
+      ).first();
+      const cutoff = await this.db.prepare(
+        `SELECT MAX(d) AS cutoff FROM (
         SELECT MAX(trade_date) AS d FROM snapshots
         UNION ALL SELECT MAX(trade_date) FROM paper_market_days
         UNION ALL SELECT MAX(trade_date) FROM reviews
         UNION ALL SELECT MAX(snapshot_date) FROM reviews
+        UNION ALL SELECT MAX(trade_date) FROM paper_runs
+        UNION ALL SELECT MAX(substr(created_at, 1, 10)) FROM strategy_versions
       )`
-    ).first();
-    const payload = {
-      legacyIncomplete: true,
-      backfilledAt: (/* @__PURE__ */ new Date()).toISOString(),
-      note: "\u65E7\u6D41\u7A0B\u672A\u8BB0\u5F55\u9010\u6B21\u5C1D\u8BD5\u4E0E\u6D4B\u8BD5\u65E5\u671F\uFF1B\u4EE5\u5DF2\u77E5\u6570\u636E\u65E5\u671F\u5EFA\u7ACB\u4FDD\u5B88\u622A\u6B62\u7EBF\uFF0C\u5C1D\u8BD5\u6B21\u6570\u4E3A\u5DF2\u77E5\u4E0B\u754C"
-    };
+      ).first();
+      const payload = {
+        legacyIncomplete: true,
+        backfilledAt: (/* @__PURE__ */ new Date()).toISOString(),
+        note: "\u8FC1\u79FB\u672A\u521D\u59CB\u5316\u65F6\u7684\u515C\u5E95\u8DEF\u5F84\uFF1B\u622A\u6B62\u7EBF\u7531\u5DF2\u77E5\u6570\u636E\u65E5\u671F\u5EFA\u7ACB\uFF0C\u5C1D\u8BD5\u6B21\u6570\u4E3A\u5DF2\u77E5\u4E0B\u754C"
+      };
+      await this.db.prepare(
+        "INSERT OR IGNORE INTO research_registry (namespace, revision, attempt_sequence, legacy_cutoff, payload) VALUES (?, 0, ?, ?, ?)"
+      ).bind(
+        this.namespace,
+        versionCount.n,
+        cutoff.cutoff ?? null,
+        JSON.stringify(payload)
+      ).run();
+      row = await this.db.prepare("SELECT * FROM research_registry WHERE namespace = ?").bind(this.namespace).first();
+    }
+    const registry = this.mapRegistry(row);
+    const updated = await this.backfillLegacyVersions(registry);
+    return updated ?? registry;
+  }
+  async backfillLegacyVersions(registry) {
+    const rows = (await this.db.prepare(
+      "SELECT id, created_at, evidence FROM strategy_versions WHERE id <> 'baseline-v1' AND json_valid(evidence) AND json_extract(evidence, '$.validationStart') IS NOT NULL AND json_extract(evidence, '$.validationEnd') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM research_test_claims WHERE namespace = ? AND experiment_id = strategy_versions.id)"
+    ).bind(this.namespace).all()).results;
+    if (!rows.length) return null;
+    for (const row of rows) {
+      const evidence = JSON.parse(row.evidence);
+      const days = (await this.db.prepare(
+        "SELECT trade_date FROM paper_market_days WHERE trade_date >= ? AND trade_date <= ? ORDER BY trade_date"
+      ).bind(evidence.validationStart, evidence.validationEnd).all()).results;
+      for (const day of days) {
+        const payload = {
+          legacy: true,
+          parentVersion: evidence.baseVersion ?? null,
+          decisionDate: null,
+          tradeDate: day.trade_date,
+          role: "HISTORICAL_TEST",
+          note: "\u65E7\u6D41\u7A0B\u9A8C\u8BC1\u7A97\u53E3\u56DE\u586B\uFF1B\u5BF9\u5E94\u8BAD\u7EC3\u65E5\u671F\u672A\u8BB0\u5F55\uFF0C\u8BB0\u4E3A\u672A\u77E5"
+        };
+        await this.db.prepare(
+          "INSERT OR IGNORE INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) VALUES (?, ?, ?, 'HISTORICAL_TEST', ?)"
+        ).bind(this.namespace, day.trade_date, row.id, row.created_at).run();
+        await this.db.prepare(
+          "INSERT OR IGNORE INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) VALUES (?, ?, 'HISTORICAL_TEST', ?, ?, ?, ?)"
+        ).bind(
+          this.namespace,
+          row.id,
+          day.trade_date,
+          sampleKey({
+            namespace: this.namespace,
+            experimentId: row.id,
+            role: "HISTORICAL_TEST",
+            outcomeDate: day.trade_date
+          }),
+          JSON.stringify(payload),
+          await digestOf(payload)
+        ).run();
+      }
+    }
+    const legacyEnds = rows.map((row) => {
+      try {
+        return JSON.parse(row.evidence)?.validationEnd ?? null;
+      } catch {
+        return null;
+      }
+    }).filter(Boolean).sort();
+    const legacyCutoff = [registry.legacyCutoff, ...legacyEnds].filter(Boolean).sort().at(-1) ?? null;
     await this.db.prepare(
-      "INSERT OR IGNORE INTO research_registry (namespace, revision, attempt_sequence, legacy_cutoff, payload) VALUES (?, 0, ?, ?, ?)"
+      "UPDATE research_registry SET payload = ?, legacy_cutoff = ? WHERE namespace = ?"
     ).bind(
-      this.namespace,
-      versionCount.n,
-      cutoff.cutoff ?? null,
-      JSON.stringify(payload)
+      JSON.stringify({
+        ...registry.payload,
+        legacyBackfillDone: true,
+        backfilledLegacyVersions: rows.length
+      }),
+      legacyCutoff,
+      this.namespace
     ).run();
-    row = await this.db.prepare("SELECT * FROM research_registry WHERE namespace = ?").bind(this.namespace).first();
-    return this.mapRegistry(row);
+    return {
+      ...registry,
+      legacyCutoff,
+      payload: {
+        ...registry.payload,
+        legacyBackfillDone: true,
+        backfilledLegacyVersions: rows.length
+      }
+    };
   }
   mapRegistry(row) {
     return {
@@ -3790,11 +3865,11 @@ var ResearchRepository = class {
     ).bind(this.namespace, month).first();
     return row.n;
   }
-  async assertFreshOutcomeDates(dates) {
-    if (!Array.isArray(dates) || !dates.length)
+  async assertReservationFreshness(testDates) {
+    if (!Array.isArray(testDates) || !testDates.length)
       throw new Error("\u6D4B\u8BD5\u65E5\u671F\u6E05\u5355\u4E3A\u7A7A");
     const registry = await this.ensureRegistry();
-    for (const date of dates) {
+    for (const date of testDates) {
       if (registry.legacyCutoff && date <= registry.legacyCutoff)
         throw new Error(
           `\u65E5\u671F ${date} \u4E0D\u665A\u4E8E\u8FC1\u79FB\u524D\u4FDD\u5B88\u622A\u6B62\u7EBF ${registry.legacyCutoff}\uFF0C\u4E0D\u80FD\u91CD\u65B0\u767B\u8BB0\u4E3A\u65B0\u6D4B\u8BD5\u6570\u636E`
@@ -3812,121 +3887,140 @@ var ResearchRepository = class {
       if (claimed.n)
         throw new Error(`\u65E5\u671F ${date} \u5DF2\u4F5C\u4E3A\u6D4B\u8BD5\u6570\u636E\u4E00\u6B21\u6027\u767B\u8BB0\uFF0C\u4E0D\u80FD\u590D\u7528`);
     }
-    return { registry, fresh: true };
+    return registry;
+  }
+  async assertFreshOutcomeDates(dates) {
+    return this.assertReservationFreshness(dates);
   }
   async reserveAttempt({
     policy,
     month,
-    trainingDates,
-    testDates,
     parentVersion,
-    windowPayload
+    windowPayload,
+    testDates,
+    samples
   }) {
-    const registry = await this.ensureRegistry();
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const nonce = crypto.randomUUID();
-    const experimentId = `exp-${crypto.randomUUID()}`;
-    const attemptSequence = registry.attemptSequence + 1;
-    const reservation = {
-      experimentId,
-      namespace: this.namespace,
-      attemptSequence,
-      parentVersion,
-      trainingDates,
-      testDates,
-      policyId: policy.id,
-      policyDigest: policy.digest,
-      legacyCutoff: registry.legacyCutoff,
-      reservedAt: now
-    };
-    const reservationDigest = await digestOf(reservation);
-    const guardArgs = [this.namespace, registry.revision + 1, nonce];
-    const guarded = (sql, args) => this.db.prepare(
-      `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`
-    ).bind(...args, ...guardArgs);
-    const event = {
-      sequence: 1,
-      eventType: "RESERVED",
-      createdAt: now,
-      payload: { reservation, reservationDigest },
-      previousDigest: null
-    };
-    const statements = [
-      this.db.prepare(
-        "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, last_run_id = ? WHERE namespace = ? AND revision = ?"
-      ).bind(nonce, this.namespace, registry.revision),
-      guarded(
-        "INSERT INTO research_active_slots (namespace, experiment_id, window_payload, created_at) SELECT ?, ?, ?, ?",
-        [
-          this.namespace,
-          experimentId,
-          JSON.stringify({ ...windowPayload, policyId: policy.id }),
-          now
-        ]
-      ),
-      guarded(
-        "INSERT INTO research_budget_slots (namespace, month, slot, experiment_id, created_at) SELECT ?, ?, 1, ?, ?",
-        [this.namespace, month, experimentId, now]
-      ),
-      ...testDates.map(
-        (date) => guarded(
-          "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ?",
-          [this.namespace, date, experimentId, now]
-        )
-      ),
-      ...[
-        ...trainingDates.map((date) => ({ date, role: "TRAIN" })),
-        ...testDates.map((date) => ({ date, role: "HISTORICAL_TEST" }))
-      ].map(
-        ({ date, role }) => guarded(
-          "INSERT INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+    const attempt = async () => {
+      const registry = await this.assertReservationFreshness(testDates);
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const nonce = crypto.randomUUID();
+      const experimentId = `exp-${crypto.randomUUID()}`;
+      const attemptSequence = registry.attemptSequence + 1;
+      const reservation = {
+        experimentId,
+        namespace: this.namespace,
+        attemptSequence,
+        parentVersion,
+        trainingDates: samples.filter((sample) => sample.role === "TRAIN").map((sample) => sample.date),
+        testDates,
+        policyId: policy.id,
+        policyDigest: policy.digest,
+        legacyCutoff: registry.legacyCutoff,
+        reservedAt: now
+      };
+      const reservationDigest = await digestOf(reservation);
+      const guardArgs = [this.namespace, registry.revision + 1, nonce];
+      const guarded = (sql, args) => this.db.prepare(
+        `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`
+      ).bind(...args, ...guardArgs);
+      const event = {
+        sequence: 1,
+        eventType: "RESERVED",
+        createdAt: now,
+        payload: { reservation, reservationDigest },
+        previousDigest: null
+      };
+      const statements = [
+        this.db.prepare(
+          "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, last_run_id = ? WHERE namespace = ? AND revision = ?"
+        ).bind(nonce, this.namespace, registry.revision),
+        guarded(
+          "INSERT INTO research_active_slots (namespace, experiment_id, window_payload, created_at) SELECT ?, ?, ?, ?",
           [
             this.namespace,
             experimentId,
-            role,
-            date,
-            sampleKey({
-              namespace: this.namespace,
+            JSON.stringify({ ...windowPayload, policyId: policy.id }),
+            now
+          ]
+        ),
+        guarded(
+          "INSERT INTO research_budget_slots (namespace, month, slot, experiment_id, created_at) SELECT ?, ?, 1, ?, ?",
+          [this.namespace, month, experimentId, now]
+        ),
+        ...testDates.map(
+          (date) => guarded(
+            "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at) SELECT ?, ?, ?, 'HISTORICAL_TEST', ?",
+            [this.namespace, date, experimentId, now]
+          )
+        ),
+        ...samples.map(
+          (sample) => guarded(
+            "INSERT INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+            [
+              this.namespace,
               experimentId,
-              role,
-              outcomeDate: date
-            }),
-            JSON.stringify({ decisionDate: null, tradeDate: date, role }),
-            reservationDigest
+              sample.role,
+              sample.date,
+              sampleKey({
+                namespace: this.namespace,
+                experimentId,
+                role: sample.role,
+                outcomeDate: sample.date
+              }),
+              JSON.stringify(sample.payload),
+              sample.digest
+            ]
+          )
+        ),
+        guarded(
+          "INSERT INTO research_experiments (id, namespace, parent_version, candidate_version, policy_id, stage, revision, frozen_at, reservation_payload, proposal_manifest, proposal_digest, created_at) SELECT ?, ?, ?, NULL, ?, 'PROPOSING', 0, NULL, ?, NULL, NULL, ?",
+          [
+            experimentId,
+            this.namespace,
+            parentVersion,
+            policy.id,
+            JSON.stringify(reservation),
+            now
+          ]
+        ),
+        guarded(
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+          [
+            experimentId,
+            event.sequence,
+            event.eventType,
+            event.createdAt,
+            JSON.stringify(event.payload),
+            event.previousDigest,
+            await eventDigest(event)
           ]
         )
-      ),
-      guarded(
-        "INSERT INTO research_experiments (id, namespace, parent_version, candidate_version, policy_id, stage, revision, frozen_at, reservation_payload, proposal_manifest, proposal_digest, created_at) SELECT ?, ?, ?, NULL, ?, 'PROPOSING', 0, NULL, ?, NULL, NULL, ?",
-        [
-          experimentId,
-          this.namespace,
-          parentVersion,
-          policy.id,
-          JSON.stringify(reservation),
-          now
-        ]
-      ),
-      guarded(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
-        [
-          experimentId,
-          event.sequence,
-          event.eventType,
-          event.createdAt,
-          JSON.stringify(event.payload),
-          event.previousDigest,
-          await eventDigest(event)
-        ]
-      )
-    ];
+      ];
+      await this.executeReservation(statements);
+      const after = await this.db.prepare(
+        "SELECT revision, last_run_id FROM research_registry WHERE namespace = ?"
+      ).bind(this.namespace).first();
+      if (after.revision !== registry.revision + 1 || after.last_run_id !== nonce)
+        return null;
+      return { experimentId, reservation, reservationDigest, attemptSequence };
+    };
+    if (typeof this.db.transaction === "function")
+      return this.db.transaction(async () => {
+        this.inTransaction = true;
+        try {
+          return await attempt();
+        } finally {
+          this.inTransaction = false;
+        }
+      });
+    return attempt();
+  }
+  async executeReservation(statements) {
+    if (this.inTransaction) {
+      for (const statement of statements) await statement.run();
+      return;
+    }
     await this.db.batch(statements);
-    const after = await this.db.prepare(
-      "SELECT revision, last_run_id FROM research_registry WHERE namespace = ?"
-    ).bind(this.namespace).first();
-    if (after.revision !== registry.revision + 1 || after.last_run_id !== nonce)
-      return null;
-    return { experimentId, reservation, reservationDigest, attemptSequence };
   }
   async lastEvent(experimentId) {
     const row = await this.db.prepare(
@@ -3972,7 +4066,12 @@ var ResearchRepository = class {
     promptDigest,
     output,
     trainingDates,
-    parentVersion
+    parentVersion,
+    parentParamsDigest,
+    feeConfig,
+    feeConfigDigest,
+    executionVersion,
+    scoringVersion
   }) {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const manifest = {
@@ -3988,8 +4087,13 @@ var ResearchRepository = class {
       validatedResponse: output,
       trainingDates,
       parentVersion,
+      parentParamsDigest,
+      feeConfig,
+      feeConfigDigest,
+      executionVersion,
+      scoringVersion,
       frozenAt: now,
-      note: "\u6A21\u578B\u8F93\u51FA\u4E0E\u6700\u7EC8\u53C2\u6570\u5728\u5386\u53F2\u6D4B\u8BD5\u524D\u51BB\u7ED3\uFF1B\u771F\u5B9E\u6A21\u578B\u7248\u672C\u65E0\u6CD5\u83B7\u5F97\u65F6\u8BB0\u5F55\u4E3A\u672A\u77E5"
+      note: "\u6A21\u578B\u8F93\u51FA\u3001\u6700\u7EC8\u53C2\u6570\u4E0E\u6267\u884C\u73AF\u5883\u6307\u7EB9\u5728\u5386\u53F2\u6D4B\u8BD5\u524D\u51BB\u7ED3\uFF1B\u771F\u5B9E\u6A21\u578B\u7248\u672C\u65E0\u6CD5\u83B7\u5F97\u65F6\u8BB0\u5F55\u4E3A\u672A\u77E5"
     };
     const manifestDigest = await digestOf(manifest);
     const previous = await this.lastEvent(experimentId);
@@ -4148,6 +4252,21 @@ var ResearchRepository = class {
       await this.db.prepare("SELECT * FROM research_experiments WHERE id = ?").bind(id).first()
     );
   }
+  async parentParams(versionId) {
+    const row = await this.db.prepare("SELECT params FROM strategy_versions WHERE id = ?").bind(versionId).first();
+    return row ? JSON.parse(row.params) : null;
+  }
+  async experimentSamples(experimentId) {
+    const result = await this.db.prepare(
+      "SELECT role, outcome_date, payload, digest FROM research_sample_uses WHERE experiment_id = ? ORDER BY outcome_date, role"
+    ).bind(experimentId).all();
+    return result.results.map((row) => ({
+      role: row.role,
+      outcomeDate: row.outcome_date,
+      payload: JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
   async listExperiments(limit = 20) {
     const result = await this.db.prepare(
       "SELECT * FROM research_experiments WHERE namespace = ? ORDER BY created_at DESC, id DESC LIMIT ?"
@@ -4188,10 +4307,180 @@ async function collectPairs(repository) {
     snapshotRows.map((row) => [row.trade_date, JSON.parse(row.payload)])
   );
   const datasets = dataRows.map((row) => JSON.parse(row.payload)).reverse();
-  return datasets.filter((day) => snapshots.has(day.previousTradingDate)).map((dataset) => ({
-    dataset,
-    snapshot: snapshots.get(dataset.previousTradingDate)
-  }));
+  const pairs = [];
+  for (const day of datasets) {
+    const snapshot = snapshots.get(day.previousTradingDate);
+    if (!snapshot) continue;
+    const pair = { dataset: day, snapshot };
+    if (day.executionMode === "realtime") {
+      const ticks = await repository.db.prepare(
+        "SELECT payload FROM paper_live_ticks WHERE trade_date = ? ORDER BY sequence"
+      ).bind(day.date).all();
+      pair.observations = ticks.results.map((row) => JSON.parse(row.payload));
+    }
+    pairs.push(pair);
+  }
+  return pairs;
+}
+async function buildSample(pair, role) {
+  const ticks = pair.observations ?? [];
+  const quoteManifest = {
+    date: pair.dataset.date,
+    tickCount: ticks.length,
+    firstObservedAt: ticks[0]?.observedAt ?? null,
+    lastObservedAt: ticks.at(-1)?.observedAt ?? null
+  };
+  const payload = {
+    decisionDate: pair.snapshot.date,
+    tradeDate: pair.dataset.date,
+    labelEndDate: pair.dataset.date,
+    availableAt: pair.dataset.date,
+    role,
+    snapshotDigest: await digestOf(pair.snapshot),
+    marketDigest: await digestOf(pair.dataset),
+    quoteManifestDigest: await digestOf(quoteManifest)
+  };
+  return {
+    date: pair.dataset.date,
+    role,
+    payload,
+    digest: await digestOf(payload)
+  };
+}
+async function buildSamples(windows) {
+  const samples = [];
+  for (const pair of windows.training)
+    samples.push(await buildSample(pair, "TRAIN"));
+  for (const pair of windows.holdout)
+    samples.push(await buildSample(pair, "HISTORICAL_TEST"));
+  return samples;
+}
+async function evaluateAndConclude({
+  research,
+  experimentId,
+  versionId,
+  parentVersion,
+  training,
+  holdout,
+  base,
+  candidateParams,
+  account,
+  feeConfig,
+  attemptSequence,
+  recovered = false
+}) {
+  const validation = validateCandidate(
+    training,
+    holdout,
+    base,
+    candidateParams,
+    account.book.initialCashCents / 100,
+    feeConfig
+  );
+  const report = {
+    experimentId,
+    attemptSequence,
+    parentVersion,
+    candidateVersion: versionId,
+    trainingDates: training.map((pair) => pair.dataset.date),
+    testDates: holdout.map((pair) => pair.dataset.date),
+    checks: validation.checks,
+    baseline: {
+      totalReturn: validation.baseline.totalReturn,
+      maxDrawdown: validation.baseline.maxDrawdown,
+      fillCount: validation.baseline.fillCount,
+      days: validation.baseline.days
+    },
+    candidateResult: {
+      totalReturn: validation.candidate.totalReturn,
+      maxDrawdown: validation.candidate.maxDrawdown,
+      fillCount: validation.candidate.fillCount,
+      days: validation.candidate.days
+    },
+    feeConfig,
+    initialCashCents: account.book.initialCashCents,
+    recovered,
+    method: "\u5386\u53F2\u7B5B\u67E5\u53EA\u63D0\u4F9B\u8FDB\u5165\u5F71\u5B50\u9636\u6BB5\u7684\u8D44\u683C\uFF1B\u901A\u8FC7\u4E0D\u4EE3\u8868\u53EF\u542F\u7528\uFF0C\u524D\u77BB\u5F71\u5B50\u9A8C\u8BC1\u7531\u540E\u7EED\u6279\u6B21\u5B9E\u65BD",
+    passed: validation.passed
+  };
+  const { stage } = await research.concludeHistorical(experimentId, versionId, {
+    passed: validation.passed,
+    report,
+    reason: validation.passed ? recovered ? "\u4E2D\u65AD\u7684\u5386\u53F2\u9A8C\u8BC1\u5DF2\u5E42\u7B49\u6062\u590D\u5E76\u901A\u8FC7" : "\u5386\u53F2\u7B5B\u67E5\u901A\u8FC7\uFF0C\u7B49\u5F85\u5F71\u5B50\u8D26\u6237\u9636\u6BB5" : "\u5386\u53F2\u7B5B\u67E5\u672A\u901A\u8FC7\uFF0C\u539F\u7B56\u7565\u7EE7\u7EED\u8FD0\u884C"
+  });
+  return { stage, validation };
+}
+async function recoverExperiment(repository, env, research, active) {
+  const experiment = active.experiment;
+  if (!experiment) return { outcome: "BUSY_BLOCKED" };
+  if (experiment.stage === "PROPOSING") {
+    await research.recordError(
+      experiment.id,
+      null,
+      "\u63D0\u6848\u5728\u54CD\u5E94\u6301\u4E45\u5316\u524D\u4E2D\u65AD\uFF1B\u6309\u9519\u8BEF\u5904\u7406\uFF0C\u4E0D\u91CD\u65B0\u8C03\u7528\u6A21\u578B\u6311\u9009\u53C2\u6570\uFF0C\u9884\u7B97\u4E0E\u65E5\u671F\u5360\u7528\u4FDD\u7559"
+    );
+    return { outcome: "ERROR", experimentId: experiment.id };
+  }
+  if (experiment.stage === "HISTORICAL_CHECK") {
+    const manifest = experiment.proposalManifest;
+    const versionId = manifest?.versionId ?? experiment.candidateVersion;
+    if (!manifest?.candidateParams || !versionId) {
+      await research.recordError(
+        experiment.id,
+        versionId ?? null,
+        "\u51BB\u7ED3\u6E05\u5355\u4E0D\u5B8C\u6574\uFF0C\u65E0\u6CD5\u6062\u590D\u5386\u53F2\u9A8C\u8BC1"
+      );
+      return { outcome: "ERROR", experimentId: experiment.id };
+    }
+    const pairs = await collectPairs(repository);
+    const byDate = new Map(pairs.map((pair) => [pair.dataset.date, pair]));
+    const training = (experiment.reservationPayload.trainingDates ?? []).map(
+      (date) => byDate.get(date)
+    );
+    const holdout = (experiment.reservationPayload.testDates ?? []).map(
+      (date) => byDate.get(date)
+    );
+    if (!holdout.length || training.some((pair) => !pair) || holdout.some((pair) => !pair)) {
+      await research.recordError(
+        experiment.id,
+        versionId,
+        "\u6062\u590D\u9A8C\u8BC1\u6240\u9700\u7684\u884C\u60C5\u6216\u5FEB\u7167\u7F3A\u5931\uFF0C\u65E0\u6CD5\u91CD\u653E"
+      );
+      return { outcome: "ERROR", experimentId: experiment.id };
+    }
+    const base = await research.parentParams(experiment.parentVersion);
+    if (!base) {
+      await research.recordError(
+        experiment.id,
+        versionId,
+        "\u7236\u7B56\u7565\u53C2\u6570\u7F3A\u5931\uFF0C\u65E0\u6CD5\u6062\u590D\u5386\u53F2\u9A8C\u8BC1"
+      );
+      return { outcome: "ERROR", experimentId: experiment.id };
+    }
+    const account = await repository.account();
+    const feeConfig = feesForBook(account.book);
+    const { stage, validation } = await evaluateAndConclude({
+      research,
+      experimentId: experiment.id,
+      versionId,
+      parentVersion: experiment.parentVersion,
+      training,
+      holdout,
+      base,
+      candidateParams: manifest.candidateParams,
+      account,
+      feeConfig,
+      attemptSequence: experiment.reservationPayload.attemptSequence ?? null,
+      recovered: true
+    });
+    return {
+      outcome: stage,
+      experimentId: experiment.id,
+      version: versionId,
+      checks: validation.checks
+    };
+  }
+  return { outcome: "BUSY_BLOCKED" };
 }
 async function proposeImprovement(repository, env, propose = requestProposal) {
   const research = new ResearchRepository(env);
@@ -4216,12 +4505,30 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
       reason: windows.reason
     };
   const active = await research.activeExperiment();
-  if (active)
-    return {
-      status: "BUSY",
-      experimentId: active.experimentId,
-      reason: "\u540C\u4E00\u7814\u7A76\u7A7A\u95F4\u540C\u65F6\u53EA\u5141\u8BB8\u4E00\u4E2A\u672A\u7ED3\u675F\u7684\u9A8C\u8BC1\u7A97\u53E3"
-    };
+  if (active) {
+    const recovery = await recoverExperiment(repository, env, research, active);
+    if (recovery.outcome === "AWAITING_SHADOW")
+      return {
+        status: "AWAITING_SHADOW",
+        experimentId: recovery.experimentId,
+        version: recovery.version,
+        checks: recovery.checks,
+        reason: "\u68C0\u6D4B\u5230\u4E2D\u65AD\u7684\u5386\u53F2\u9A8C\u8BC1\uFF0C\u5DF2\u5E42\u7B49\u6062\u590D\u5B8C\u6210\uFF1B\u671F\u95F4\u672A\u8C03\u7528\u6A21\u578B"
+      };
+    if (recovery.outcome === "REJECTED")
+      return {
+        status: "REJECTED",
+        experimentId: recovery.experimentId,
+        checks: recovery.checks,
+        reason: "\u4E2D\u65AD\u7684\u5386\u53F2\u9A8C\u8BC1\u5DF2\u6062\u590D\u5E76\u5224\u5B9A\u672A\u901A\u8FC7\uFF0C\u539F\u7B56\u7565\u7EE7\u7EED\u8FD0\u884C"
+      };
+    if (recovery.outcome === "BUSY_BLOCKED")
+      return {
+        status: "BUSY",
+        experimentId: active.experimentId,
+        reason: `\u5B9E\u9A8C\u5904\u4E8E ${active.experiment?.stage ?? "\u672A\u77E5"} \u9636\u6BB5\uFF0C\u65E0\u6CD5\u81EA\u52A8\u6062\u590D`
+      };
+  }
   const month = beijingMonth();
   const used = await research.monthUsage(month);
   if (used >= policy.payload.monthlyProposalLimit)
@@ -4233,7 +4540,7 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
       reason: "\u672C\u6708\u63D0\u6848\u6B21\u6570\u5DF2\u7528\u5B8C\uFF1B\u5931\u8D25\u4E0E\u9519\u8BEF\u540C\u6837\u5360\u7528\u9884\u7B97"
     };
   try {
-    await research.assertFreshOutcomeDates(windows.testDates);
+    await research.assertReservationFreshness(windows.testDates);
   } catch (error) {
     return {
       status: "COLLECTING",
@@ -4243,13 +4550,12 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
   }
   const base = await repository.strategy(account.book);
   const feeConfig = feesForBook(account.book);
+  const samples = await buildSamples(windows);
   let reserved;
   try {
     reserved = await research.reserveAttempt({
       policy,
       month,
-      trainingDates: windows.trainingDates,
-      testDates: windows.testDates,
       parentVersion: account.book.activeStrategy,
       windowPayload: {
         trainingStart: windows.trainingStart,
@@ -4260,7 +4566,9 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
         histTestDays: policy.payload.histTestDays,
         forwardDays: policy.payload.forwardDays,
         forwardRule: "\u524D\u77BB\u7A97\u53E3\u7531\u540E\u7EED\u6279\u6B21\u6309\u51BB\u7ED3\u89C4\u5219\u767B\u8BB0\u4E0E\u8BA1\u6570"
-      }
+      },
+      testDates: windows.testDates,
+      samples
     });
   } catch {
     return { status: "BUSY", reason: "\u5E76\u53D1\u9884\u7559\u51B2\u7A81\uFF0C\u672C\u6B21\u672A\u53D1\u8D77\u6A21\u578B\u8C03\u7528" };
@@ -4271,6 +4579,9 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
   await research.appendEvent(experimentId, "REQUEST_ISSUED", {
     attemptSequence: reserved.attemptSequence,
     trainingDates: windows.trainingDates,
+    sampleManifestDigest: await digestOf(
+      samples.map(({ payload, digest: digest2 }) => ({ payload, digest: digest2 }))
+    ),
     note: "\u63D0\u6848\u8BF7\u6C42\u53EA\u643A\u5E26\u8BAD\u7EC3\u7A97\u53E3\uFF1B\u6D4B\u8BD5\u884C\u60C5\u4E0D\u8FDB\u5165\u63D0\u793A\u8BCD\u6216\u4F1A\u8BDD\u8BB0\u5FC6"
   });
   let versionId = null;
@@ -4304,50 +4615,26 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
       promptDigest,
       output: { rationale: candidate.rationale, patch: candidate.patch },
       trainingDates: windows.trainingDates,
-      parentVersion: account.book.activeStrategy
-    });
-    const validation = validateCandidate(
-      windows.training,
-      windows.holdout,
-      base,
-      candidate.params,
-      account.book.initialCashCents / 100,
-      feeConfig
-    );
-    const report = {
-      experimentId,
-      attemptSequence: reserved.attemptSequence,
-      parentVersion: account.book.activeVersion ?? account.book.activeStrategy,
-      candidateVersion: versionId,
-      trainingDates: windows.trainingDates,
-      testDates: windows.testDates,
-      checks: validation.checks,
-      baseline: {
-        totalReturn: validation.baseline.totalReturn,
-        maxDrawdown: validation.baseline.maxDrawdown,
-        fillCount: validation.baseline.fillCount,
-        days: validation.baseline.days
-      },
-      candidateResult: {
-        totalReturn: validation.candidate.totalReturn,
-        maxDrawdown: validation.candidate.maxDrawdown,
-        fillCount: validation.candidate.fillCount,
-        days: validation.candidate.days
-      },
+      parentVersion: account.book.activeStrategy,
+      parentParamsDigest: await digestOf(base),
       feeConfig,
-      initialCashCents: account.book.initialCashCents,
-      method: "\u5386\u53F2\u7B5B\u67E5\u53EA\u63D0\u4F9B\u8FDB\u5165\u5F71\u5B50\u9636\u6BB5\u7684\u8D44\u683C\uFF1B\u901A\u8FC7\u4E0D\u4EE3\u8868\u53EF\u542F\u7528\uFF0C\u524D\u77BB\u5F71\u5B50\u9A8C\u8BC1\u7531\u540E\u7EED\u6279\u6B21\u5B9E\u65BD",
-      passed: validation.passed
-    };
-    const { stage } = await research.concludeHistorical(
+      feeConfigDigest: await digestOf(feeConfig),
+      executionVersion: EXECUTION_VERSION,
+      scoringVersion: SCORING_VERSION
+    });
+    const { stage, validation } = await evaluateAndConclude({
+      research,
       experimentId,
       versionId,
-      {
-        passed: validation.passed,
-        report,
-        reason: validation.passed ? "\u5386\u53F2\u7B5B\u67E5\u901A\u8FC7\uFF0C\u7B49\u5F85\u5F71\u5B50\u8D26\u6237\u9636\u6BB5" : "\u5386\u53F2\u7B5B\u67E5\u672A\u901A\u8FC7\uFF0C\u539F\u7B56\u7565\u7EE7\u7EED\u8FD0\u884C"
-      }
-    );
+      parentVersion: account.book.activeStrategy,
+      training: windows.training,
+      holdout: windows.holdout,
+      base,
+      candidateParams: candidate.params,
+      account,
+      feeConfig,
+      attemptSequence: reserved.attemptSequence
+    });
     return {
       status: stage === "AWAITING_SHADOW" ? "AWAITING_SHADOW" : "REJECTED",
       experimentId,
@@ -4402,7 +4689,8 @@ async function researchStatus(env) {
     registry: {
       attemptSequence: registry.attemptSequence,
       legacyCutoff: registry.legacyCutoff,
-      legacyIncomplete: registry.payload.legacyIncomplete ?? false
+      legacyIncomplete: registry.payload.legacyIncomplete ?? false,
+      legacyBackfillDone: registry.payload.legacyBackfillDone ?? false
     },
     activeExperiment: active ? {
       experimentId: active.experimentId,
@@ -5018,7 +5306,8 @@ async function api(request, env) {
     "/api/paper/improve": ["POST"],
     "/api/paper/activate": ["POST"],
     "/api/paper/live": ["GET"],
-    "/api/paper/poll": ["POST"]
+    "/api/paper/poll": ["POST"],
+    "/api/research/status": ["GET"]
   };
   if (!methods[path]) return json({ error: "\u63A5\u53E3\u4E0D\u5B58\u5728" }, 404);
   if (!methods[path].includes(request.method))

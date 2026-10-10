@@ -92,6 +92,7 @@ export async function api(request, env) {
     "/api/paper/activate": ["POST"],
     "/api/paper/live": ["GET"],
     "/api/paper/poll": ["POST"],
+    "/api/research/status": ["GET"],
   };
   if (!methods[path]) return json({ error: "接口不存在" }, 404);
   if (!methods[path].includes(request.method))

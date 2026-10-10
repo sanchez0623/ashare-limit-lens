@@ -60,6 +60,25 @@ export function localDatabase(path = ":memory:") {
         throw error;
       }
     },
+    transactionQueue: Promise.resolve(),
+    async transaction(fn) {
+      const run = this.transactionQueue.then(async () => {
+        sqlite.exec("BEGIN IMMEDIATE");
+        try {
+          const result = await fn();
+          sqlite.exec("COMMIT");
+          return result;
+        } catch (error) {
+          sqlite.exec("ROLLBACK");
+          throw error;
+        }
+      });
+      this.transactionQueue = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return run;
+    },
     close() {
       sqlite.close();
     },

@@ -7,7 +7,11 @@ import {
   selectResearchWindows,
   beijingMonth,
 } from "../domain/research-windows.js";
-import { digestOf } from "../domain/research-lineage.js";
+import {
+  digestOf,
+  EXECUTION_VERSION,
+  SCORING_VERSION,
+} from "../domain/research-lineage.js";
 import { ResearchRepository } from "../storage/research.js";
 import { safeError } from "../http.js";
 
@@ -18,12 +22,192 @@ async function collectPairs(repository) {
     snapshotRows.map((row) => [row.trade_date, JSON.parse(row.payload)]),
   );
   const datasets = dataRows.map((row) => JSON.parse(row.payload)).reverse();
-  return datasets
-    .filter((day) => snapshots.has(day.previousTradingDate))
-    .map((dataset) => ({
-      dataset,
-      snapshot: snapshots.get(dataset.previousTradingDate),
-    }));
+  const pairs = [];
+  for (const day of datasets) {
+    const snapshot = snapshots.get(day.previousTradingDate);
+    if (!snapshot) continue;
+    const pair = { dataset: day, snapshot };
+    if (day.executionMode === "realtime") {
+      const ticks = await repository.db
+        .prepare(
+          "SELECT payload FROM paper_live_ticks WHERE trade_date = ? ORDER BY sequence",
+        )
+        .bind(day.date)
+        .all();
+      pair.observations = ticks.results.map((row) => JSON.parse(row.payload));
+    }
+    pairs.push(pair);
+  }
+  return pairs;
+}
+async function buildSample(pair, role) {
+  const ticks = pair.observations ?? [];
+  const quoteManifest = {
+    date: pair.dataset.date,
+    tickCount: ticks.length,
+    firstObservedAt: ticks[0]?.observedAt ?? null,
+    lastObservedAt: ticks.at(-1)?.observedAt ?? null,
+  };
+  const payload = {
+    decisionDate: pair.snapshot.date,
+    tradeDate: pair.dataset.date,
+    labelEndDate: pair.dataset.date,
+    availableAt: pair.dataset.date,
+    role,
+    snapshotDigest: await digestOf(pair.snapshot),
+    marketDigest: await digestOf(pair.dataset),
+    quoteManifestDigest: await digestOf(quoteManifest),
+  };
+  return {
+    date: pair.dataset.date,
+    role,
+    payload,
+    digest: await digestOf(payload),
+  };
+}
+async function buildSamples(windows) {
+  const samples = [];
+  for (const pair of windows.training)
+    samples.push(await buildSample(pair, "TRAIN"));
+  for (const pair of windows.holdout)
+    samples.push(await buildSample(pair, "HISTORICAL_TEST"));
+  return samples;
+}
+async function evaluateAndConclude({
+  research,
+  experimentId,
+  versionId,
+  parentVersion,
+  training,
+  holdout,
+  base,
+  candidateParams,
+  account,
+  feeConfig,
+  attemptSequence,
+  recovered = false,
+}) {
+  const validation = validateCandidate(
+    training,
+    holdout,
+    base,
+    candidateParams,
+    account.book.initialCashCents / 100,
+    feeConfig,
+  );
+  const report = {
+    experimentId,
+    attemptSequence,
+    parentVersion,
+    candidateVersion: versionId,
+    trainingDates: training.map((pair) => pair.dataset.date),
+    testDates: holdout.map((pair) => pair.dataset.date),
+    checks: validation.checks,
+    baseline: {
+      totalReturn: validation.baseline.totalReturn,
+      maxDrawdown: validation.baseline.maxDrawdown,
+      fillCount: validation.baseline.fillCount,
+      days: validation.baseline.days,
+    },
+    candidateResult: {
+      totalReturn: validation.candidate.totalReturn,
+      maxDrawdown: validation.candidate.maxDrawdown,
+      fillCount: validation.candidate.fillCount,
+      days: validation.candidate.days,
+    },
+    feeConfig,
+    initialCashCents: account.book.initialCashCents,
+    recovered,
+    method:
+      "历史筛查只提供进入影子阶段的资格；通过不代表可启用，前瞻影子验证由后续批次实施",
+    passed: validation.passed,
+  };
+  const { stage } = await research.concludeHistorical(experimentId, versionId, {
+    passed: validation.passed,
+    report,
+    reason: validation.passed
+      ? recovered
+        ? "中断的历史验证已幂等恢复并通过"
+        : "历史筛查通过，等待影子账户阶段"
+      : "历史筛查未通过，原策略继续运行",
+  });
+  return { stage, validation };
+}
+async function recoverExperiment(repository, env, research, active) {
+  const experiment = active.experiment;
+  if (!experiment) return { outcome: "BUSY_BLOCKED" };
+  if (experiment.stage === "PROPOSING") {
+    await research.recordError(
+      experiment.id,
+      null,
+      "提案在响应持久化前中断；按错误处理，不重新调用模型挑选参数，预算与日期占用保留",
+    );
+    return { outcome: "ERROR", experimentId: experiment.id };
+  }
+  if (experiment.stage === "HISTORICAL_CHECK") {
+    const manifest = experiment.proposalManifest;
+    const versionId = manifest?.versionId ?? experiment.candidateVersion;
+    if (!manifest?.candidateParams || !versionId) {
+      await research.recordError(
+        experiment.id,
+        versionId ?? null,
+        "冻结清单不完整，无法恢复历史验证",
+      );
+      return { outcome: "ERROR", experimentId: experiment.id };
+    }
+    const pairs = await collectPairs(repository);
+    const byDate = new Map(pairs.map((pair) => [pair.dataset.date, pair]));
+    const training = (experiment.reservationPayload.trainingDates ?? []).map(
+      (date) => byDate.get(date),
+    );
+    const holdout = (experiment.reservationPayload.testDates ?? []).map(
+      (date) => byDate.get(date),
+    );
+    if (
+      !holdout.length ||
+      training.some((pair) => !pair) ||
+      holdout.some((pair) => !pair)
+    ) {
+      await research.recordError(
+        experiment.id,
+        versionId,
+        "恢复验证所需的行情或快照缺失，无法重放",
+      );
+      return { outcome: "ERROR", experimentId: experiment.id };
+    }
+    const base = await research.parentParams(experiment.parentVersion);
+    if (!base) {
+      await research.recordError(
+        experiment.id,
+        versionId,
+        "父策略参数缺失，无法恢复历史验证",
+      );
+      return { outcome: "ERROR", experimentId: experiment.id };
+    }
+    const account = await repository.account();
+    const feeConfig = feesForBook(account.book);
+    const { stage, validation } = await evaluateAndConclude({
+      research,
+      experimentId: experiment.id,
+      versionId,
+      parentVersion: experiment.parentVersion,
+      training,
+      holdout,
+      base,
+      candidateParams: manifest.candidateParams,
+      account,
+      feeConfig,
+      attemptSequence: experiment.reservationPayload.attemptSequence ?? null,
+      recovered: true,
+    });
+    return {
+      outcome: stage,
+      experimentId: experiment.id,
+      version: versionId,
+      checks: validation.checks,
+    };
+  }
+  return { outcome: "BUSY_BLOCKED" };
 }
 export async function proposeImprovement(
   repository,
@@ -52,12 +236,30 @@ export async function proposeImprovement(
       reason: windows.reason,
     };
   const active = await research.activeExperiment();
-  if (active)
-    return {
-      status: "BUSY",
-      experimentId: active.experimentId,
-      reason: "同一研究空间同时只允许一个未结束的验证窗口",
-    };
+  if (active) {
+    const recovery = await recoverExperiment(repository, env, research, active);
+    if (recovery.outcome === "AWAITING_SHADOW")
+      return {
+        status: "AWAITING_SHADOW",
+        experimentId: recovery.experimentId,
+        version: recovery.version,
+        checks: recovery.checks,
+        reason: "检测到中断的历史验证，已幂等恢复完成；期间未调用模型",
+      };
+    if (recovery.outcome === "REJECTED")
+      return {
+        status: "REJECTED",
+        experimentId: recovery.experimentId,
+        checks: recovery.checks,
+        reason: "中断的历史验证已恢复并判定未通过，原策略继续运行",
+      };
+    if (recovery.outcome === "BUSY_BLOCKED")
+      return {
+        status: "BUSY",
+        experimentId: active.experimentId,
+        reason: `实验处于 ${active.experiment?.stage ?? "未知"} 阶段，无法自动恢复`,
+      };
+  }
   const month = beijingMonth();
   const used = await research.monthUsage(month);
   if (used >= policy.payload.monthlyProposalLimit)
@@ -69,7 +271,7 @@ export async function proposeImprovement(
       reason: "本月提案次数已用完；失败与错误同样占用预算",
     };
   try {
-    await research.assertFreshOutcomeDates(windows.testDates);
+    await research.assertReservationFreshness(windows.testDates);
   } catch (error) {
     return {
       status: "COLLECTING",
@@ -79,13 +281,12 @@ export async function proposeImprovement(
   }
   const base = await repository.strategy(account.book);
   const feeConfig = feesForBook(account.book);
+  const samples = await buildSamples(windows);
   let reserved;
   try {
     reserved = await research.reserveAttempt({
       policy,
       month,
-      trainingDates: windows.trainingDates,
-      testDates: windows.testDates,
       parentVersion: account.book.activeStrategy,
       windowPayload: {
         trainingStart: windows.trainingStart,
@@ -97,6 +298,8 @@ export async function proposeImprovement(
         forwardDays: policy.payload.forwardDays,
         forwardRule: "前瞻窗口由后续批次按冻结规则登记与计数",
       },
+      testDates: windows.testDates,
+      samples,
     });
   } catch {
     return { status: "BUSY", reason: "并发预留冲突，本次未发起模型调用" };
@@ -107,6 +310,9 @@ export async function proposeImprovement(
   await research.appendEvent(experimentId, "REQUEST_ISSUED", {
     attemptSequence: reserved.attemptSequence,
     trainingDates: windows.trainingDates,
+    sampleManifestDigest: await digestOf(
+      samples.map(({ payload, digest }) => ({ payload, digest })),
+    ),
     note: "提案请求只携带训练窗口；测试行情不进入提示词或会话记忆",
   });
   let versionId = null;
@@ -141,52 +347,25 @@ export async function proposeImprovement(
       output: { rationale: candidate.rationale, patch: candidate.patch },
       trainingDates: windows.trainingDates,
       parentVersion: account.book.activeStrategy,
+      parentParamsDigest: await digestOf(base),
+      feeConfig,
+      feeConfigDigest: await digestOf(feeConfig),
+      executionVersion: EXECUTION_VERSION,
+      scoringVersion: SCORING_VERSION,
     });
-    const validation = validateCandidate(
-      windows.training,
-      windows.holdout,
-      base,
-      candidate.params,
-      account.book.initialCashCents / 100,
-      feeConfig,
-    );
-    const report = {
-      experimentId,
-      attemptSequence: reserved.attemptSequence,
-      parentVersion: account.book.activeVersion ?? account.book.activeStrategy,
-      candidateVersion: versionId,
-      trainingDates: windows.trainingDates,
-      testDates: windows.testDates,
-      checks: validation.checks,
-      baseline: {
-        totalReturn: validation.baseline.totalReturn,
-        maxDrawdown: validation.baseline.maxDrawdown,
-        fillCount: validation.baseline.fillCount,
-        days: validation.baseline.days,
-      },
-      candidateResult: {
-        totalReturn: validation.candidate.totalReturn,
-        maxDrawdown: validation.candidate.maxDrawdown,
-        fillCount: validation.candidate.fillCount,
-        days: validation.candidate.days,
-      },
-      feeConfig,
-      initialCashCents: account.book.initialCashCents,
-      method:
-        "历史筛查只提供进入影子阶段的资格；通过不代表可启用，前瞻影子验证由后续批次实施",
-      passed: validation.passed,
-    };
-    const { stage } = await research.concludeHistorical(
+    const { stage, validation } = await evaluateAndConclude({
+      research,
       experimentId,
       versionId,
-      {
-        passed: validation.passed,
-        report,
-        reason: validation.passed
-          ? "历史筛查通过，等待影子账户阶段"
-          : "历史筛查未通过，原策略继续运行",
-      },
-    );
+      parentVersion: account.book.activeStrategy,
+      training: windows.training,
+      holdout: windows.holdout,
+      base,
+      candidateParams: candidate.params,
+      account,
+      feeConfig,
+      attemptSequence: reserved.attemptSequence,
+    });
     return {
       status: stage === "AWAITING_SHADOW" ? "AWAITING_SHADOW" : "REJECTED",
       experimentId,
@@ -246,6 +425,7 @@ export async function researchStatus(env) {
       attemptSequence: registry.attemptSequence,
       legacyCutoff: registry.legacyCutoff,
       legacyIncomplete: registry.payload.legacyIncomplete ?? false,
+      legacyBackfillDone: registry.payload.legacyBackfillDone ?? false,
     },
     activeExperiment: active
       ? {
