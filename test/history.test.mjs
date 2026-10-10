@@ -771,8 +771,12 @@ test("执行所有权：迟到执行器无法覆盖终态", async () => {
       end: "2026-03-04",
       name: null,
     });
-    assert.equal(await jobs.claimExecution(job.id, "executor-a"), true);
-    assert.equal(await jobs.claimExecution(job.id, "executor-b"), false);
+    assert.equal(
+      (await jobs.claimExecution(job.id, "executor-a")).round,
+      1,
+      "首次领取应拿到轮次 1",
+    );
+    assert.equal(await jobs.claimExecution(job.id, "executor-b"), null);
     assert.equal(
       await jobs.finishJob(job.id, "executor-b", {
         stage: "READY",
@@ -791,7 +795,7 @@ test("执行所有权：迟到执行器无法覆盖终态", async () => {
     });
     assert.equal(finished.stage, "READY");
     assert.equal(finished.statusPayload.datasetId, "hds-x");
-    assert.equal(await jobs.claimExecution(job.id, "executor-c"), false);
+    assert.equal(await jobs.claimExecution(job.id, "executor-c"), null);
   } finally {
     DB.close();
   }
@@ -811,11 +815,12 @@ test("过期执行器被接管后无法破坏新执行器的终态", async () =>
       end: "2026-03-04",
       name: null,
     });
-    assert.equal(await jobs.claimExecution(job.id, "executor-old"), true);
+    assert.equal((await jobs.claimExecution(job.id, "executor-old")).round, 1);
+    const takeoverClaim = await jobs.claimExecution(job.id, "executor-new", 0);
     assert.equal(
-      await jobs.claimExecution(job.id, "executor-new", 0),
-      true,
-      "租约过期（0 分钟）后应允许接管",
+      takeoverClaim.round,
+      2,
+      "租约过期（0 分钟）后应允许接管并推进轮次",
     );
     const finished = await jobs.finishJob(job.id, "executor-new", {
       stage: "READY",
@@ -867,13 +872,15 @@ test("迟到下载执行器无法改写已发布数据与完整性", async () =>
         )
         .bind(jobId)
         .run();
-      assert.equal(await jobs.claimExecution(jobId, "executor-new", 0), true);
+      const takeoverClaim = await jobs.claimExecution(jobId, "executor-new", 0);
+      assert.equal(takeoverClaim.round, 2);
       const datasetId = (await jobs.getJob(jobId)).datasetId;
       const owner = await store.acquireDatasetOwnership(
         datasetId,
-        "executor-new",
+        { executorId: "executor-new", round: takeoverClaim.round },
         jobId,
       );
+      assert.equal(owner.granted, true);
       await store.saveDailyInputs(
         datasetId,
         publishedDate,
@@ -965,12 +972,14 @@ test("被接管后旧执行器的失败分支无法把新执行器的 DONE 记�
         )
         .bind(jobId)
         .run();
-      assert.equal(await jobs.claimExecution(jobId, "executor-new", 0), true);
+      const takeoverClaim = await jobs.claimExecution(jobId, "executor-new", 0);
+      assert.equal(takeoverClaim.round, 2);
       const owner = await store.acquireDatasetOwnership(
         datasetId,
-        "executor-new",
+        { executorId: "executor-new", round: takeoverClaim.round },
         jobId,
       );
+      assert.equal(owner.granted, true);
       await store.saveDailyInputs(
         datasetId,
         formatted,
@@ -1050,7 +1059,7 @@ test("被接管后旧执行器的失败分支无法把新执行器的 DONE 记�
     } catch {}
   }
 });
-test("存储层代次守卫：被接管后旧执行器的迟到写入被拒绝", async () => {
+test("存储层轮次守卫：被接管后旧执行器的迟到写入被拒绝", async () => {
   const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
   const store = new HistoryDatasetStore(researchPath);
   try {
@@ -1086,16 +1095,29 @@ test("存储层代次守卫：被接管后旧执行器的迟到写入被拒绝",
     });
     const ownerOld = await store.acquireDatasetOwnership(
       datasetId,
-      "executor-old",
+      { executorId: "executor-old", round: 1 },
       "hjob-1",
     );
     const ownerNew = await store.acquireDatasetOwnership(
       datasetId,
-      "executor-new",
+      { executorId: "executor-new", round: 2 },
       "hjob-1",
     );
-    assert.equal(ownerOld.generation, 1);
-    assert.equal(ownerNew.generation, 2, "接管后应推进到下一代次");
+    assert.equal(ownerOld.granted, true);
+    assert.equal(ownerOld.round, 1);
+    assert.equal(ownerNew.granted, true);
+    assert.equal(ownerNew.round, 2, "接管后应推进到更高轮次");
+    const lateGrant = await store.acquireDatasetOwnership(
+      datasetId,
+      { executorId: "executor-old", round: 1 },
+      "hjob-1",
+    );
+    assert.equal(
+      lateGrant.granted,
+      false,
+      "迟到的低轮次授予请求应被单调轮次拒绝",
+    );
+    assert.equal(lateGrant.round, 2, "拒绝时不得降级当前所有者轮次");
     assert.equal(
       (
         await store.saveObservationDaily(
@@ -1138,6 +1160,203 @@ test("存储层代次守卫：被接管后旧执行器的迟到写入被拒绝",
     const integrity = await store.datasetIntegrity(datasetId);
     assert.equal(integrity.verified, true);
   } finally {
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("分钟克隆后旧执行器的迟到写入不得提前覆盖原始归档", async () => {
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const store = new HistoryDatasetStore(researchPath);
+  try {
+    await store.ensure();
+    const datasetId = "hds-archive-guard";
+    const jobId = "hjob-archive";
+    const date = "2026-03-02";
+    const coverage = {
+      observedStart: date,
+      observedEnd: date,
+      executionModel: "SIX_FACTOR_V1",
+      succeededDates: [date],
+      tradingDates: [date],
+      failedDates: [],
+    };
+    await store.createDatasetVersion({
+      id: datasetId,
+      provider: "tencent-free",
+      kind: "LIMIT_FEATURES",
+      executionModel: "SIX_FACTOR_V1",
+      requestedStart: date,
+      requestedEnd: date,
+      coverage,
+    });
+    const ownerOld = await store.acquireDatasetOwnership(
+      datasetId,
+      { executorId: "executor-old", round: 1 },
+      jobId,
+    );
+    assert.equal(ownerOld.granted, true);
+    // 已发布的原始归档（同一 jobId + chunkKey）
+    const published = await store.saveChunk(
+      jobId,
+      {
+        chunkKey: `limit:${date}`,
+        datasetId,
+        requestRange: date,
+        actualRange: date,
+        rows: 1,
+        stage: "DONE",
+        raw: { rc: 0, qdate: date, pool: [{ c: "600001" }] },
+      },
+      ownerOld,
+    );
+    assert.equal(published.applied, true);
+    assert.equal(
+      (await store.updateDatasetCoverage(datasetId, coverage, ownerOld))
+        .applied,
+      true,
+    );
+    assert.equal((await store.datasetIntegrity(datasetId)).verified, true);
+    // 接管：新执行器取得更高轮次所有权
+    const ownerNew = await store.acquireDatasetOwnership(
+      datasetId,
+      { executorId: "executor-new", round: 2 },
+      jobId,
+    );
+    assert.equal(ownerNew.granted, true);
+    // 分钟导入克隆新版本，其所有权轮次重新从 1 开始
+    const clone = await store.cloneDatasetForMinutes(datasetId);
+    const cloneOwner = await store.acquireDatasetOwnership(
+      clone.id,
+      { executorId: "executor-new", round: 1 },
+      jobId,
+    );
+    assert.equal(cloneOwner.round, 1, "克隆数据集的所有权轮次应重新计数");
+    // 旧执行器的迟到写入：SQL 应拒绝，且归档文件不得在守卫前被覆盖
+    const late = await store.saveChunk(
+      jobId,
+      {
+        chunkKey: `limit:${date}`,
+        datasetId,
+        requestRange: date,
+        actualRange: date,
+        rows: 1,
+        stage: "DONE",
+        raw: { rc: 0, qdate: date, pool: [{ c: "600009" }] },
+      },
+      ownerOld,
+    );
+    assert.equal(late.applied, false, "旧执行器的迟到归档写入应被轮次守卫拒绝");
+    const integrity = await store.datasetIntegrity(datasetId);
+    assert.equal(
+      integrity.verified,
+      true,
+      "旧执行器的迟到写入不得覆盖已发布的原始归档文件",
+    );
+  } finally {
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("同进程接管：旧执行器令牌被替换且无法继续改写已发布数据", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const tradingDays = weekdays("2026-01-01", "2026-03-31");
+  const jobs = new HistoryJobRepository(env);
+  const store = openHistoryStore(env);
+  const code = "600001";
+  let jobId = null;
+  let poolCalls = 0;
+  let run1Token = null;
+  let run2Token = null;
+  let run2Reached = false;
+  let releaseGate1;
+  let releaseGate2;
+  const gate1 = new Promise((resolve) => {
+    releaseGate1 = resolve;
+  });
+  const gate2 = new Promise((resolve) => {
+    releaseGate2 = resolve;
+  });
+  const stub = installFetchStub({
+    tradingDays,
+    poolDates: tradingDays,
+    onPoolFetch: async () => {
+      poolCalls += 1;
+      if (poolCalls === 1) {
+        // 回拨租约使第二执行器可接管，并记录旧执行器令牌
+        await jobs.db
+          .prepare(
+            "UPDATE history_import_jobs SET progress = json_set(progress, '$.claimedAt', '2000-01-01T00:00:00.000Z') WHERE id = ?",
+          )
+          .bind(jobId)
+          .run();
+        run1Token = (await jobs.getJob(jobId)).progress.executorId;
+        return null;
+      }
+      // 旧执行器停在能力探测的最后一次池请求
+      if (poolCalls === 6) {
+        await gate1;
+        return null;
+      }
+      // 新执行器的首次池请求
+      if (poolCalls === 7) {
+        run2Reached = true;
+        await gate2;
+        return null;
+      }
+      return null;
+    },
+  });
+  let run1Promise = null;
+  let run2Promise = null;
+  try {
+    const job = await createHistoryImport(env, {
+      kind: "DAILY",
+      start: "2026-03-02",
+      end: "2026-03-04",
+      codes: [code],
+    });
+    jobId = job.id;
+    run1Promise = runHistoryImport(env, job.id);
+    for (let i = 0; i < 400 && poolCalls < 6; i += 1)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.ok(poolCalls >= 6, "旧执行器应已到达能力探测的池请求阶段");
+    run2Promise = runHistoryImport(env, job.id);
+    for (let i = 0; i < 400 && !run2Reached; i += 1)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.ok(run2Reached, "新执行器应已开始能力探测");
+    run2Token = (await jobs.getJob(job.id)).progress.executorId;
+    assert.notEqual(
+      run1Token,
+      run2Token,
+      "同进程接管必须为每次领取分配独立令牌",
+    );
+    releaseGate1();
+    const r1 = await run1Promise;
+    assert.ok(
+      String(r1.note ?? "").includes("接管"),
+      "旧执行器被接管后应立即停止，不得继续改写已发布数据",
+    );
+    releaseGate2();
+    const r2 = await run2Promise;
+    assert.equal(r2.stage, "READY");
+    const finalJob = await jobs.getJob(job.id);
+    assert.equal(finalJob.stage, "READY");
+    const integrity = await store.datasetIntegrity(finalJob.datasetId);
+    assert.equal(integrity.verified, true);
+  } finally {
+    releaseGate1?.();
+    releaseGate2?.();
+    await Promise.allSettled([run1Promise, run2Promise].filter(Boolean));
+    stub.restore();
+    DB.close();
     store.close();
     try {
       unlinkSync(researchPath);

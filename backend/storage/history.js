@@ -155,21 +155,22 @@ export class HistoryJobRepository {
     const now = new Date().toISOString();
     const fresh = await this.db
       .prepare(
-        "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PLANNED','PARTIAL','FAILED','BLOCKED')",
+        "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'claimRound', COALESCE(json_extract(progress, '$.claimRound'), 0) + 1), updated_at = ? WHERE id = ? AND stage IN ('PLANNED','PARTIAL','FAILED','BLOCKED') RETURNING json_extract(progress, '$.claimRound') AS claim_round",
       )
       .bind(executorId, now, now, id)
-      .run();
-    if (fresh.meta.changes) return true;
+      .first();
+    if (fresh) return { executorId, round: Number(fresh.claim_round) };
     const cutoff = new Date(
       Date.now() - leaseMinutes * 60 * 1000,
     ).toISOString();
     const takeover = await this.db
       .prepare(
-        "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') <= ?",
+        "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?, 'claimRound', COALESCE(json_extract(progress, '$.claimRound'), 0) + 1), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') <= ? RETURNING json_extract(progress, '$.claimRound') AS claim_round",
       )
       .bind(executorId, now, now, now, id, cutoff)
-      .run();
-    return takeover.meta.changes > 0;
+      .first();
+    if (takeover) return { executorId, round: Number(takeover.claim_round) };
+    return null;
   }
   async finishJob(id, executorId, { stage, statusPayload, datasetId }) {
     if (!HISTORY_STAGES.includes(stage))
@@ -321,6 +322,7 @@ export class HistoryDatasetStore {
         job_id TEXT,
         executor_id TEXT NOT NULL,
         generation INTEGER NOT NULL DEFAULT 1,
+        round INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS backtest_runs (
@@ -369,22 +371,35 @@ export class HistoryDatasetStore {
     ).results;
     if (!chunkColumns.some((column) => column.name === "dataset_id"))
       this.db.exec("ALTER TABLE history_chunks ADD COLUMN dataset_id TEXT;");
+    const ownerColumns = (
+      await this.db
+        .prepare("SELECT name FROM pragma_table_info('history_dataset_owners')")
+        .all()
+    ).results;
+    if (!ownerColumns.some((column) => column.name === "round"))
+      this.db.exec(
+        "ALTER TABLE history_dataset_owners ADD COLUMN round INTEGER NOT NULL DEFAULT 0;",
+      );
     this.rawDir = `${dirname(this.path)}/history-chunks`;
     mkdirSync(this.rawDir, { recursive: true });
     this.ready = true;
   }
-  async acquireDatasetOwnership(datasetId, executorId, jobId = null) {
+  async acquireDatasetOwnership(datasetId, owner, jobId = null) {
     await this.ensure();
     if (!datasetId) throw new Error("数据集所有权需要 datasetId");
+    const executorId = owner?.executorId;
+    const round = Number(owner?.round ?? 0);
+    if (!executorId) throw new Error("数据集所有权需要 executorId");
     return this.db.transaction(async () => {
       const row = await this.db
         .prepare(
-          "SELECT job_id, executor_id, generation FROM history_dataset_owners WHERE dataset_id = ?",
+          "SELECT job_id, executor_id, round FROM history_dataset_owners WHERE dataset_id = ?",
         )
         .bind(datasetId)
         .first();
       const now = new Date().toISOString();
-      if (row && row.executor_id === executorId) {
+      const existingRound = row ? Number(row.round) : null;
+      if (row && row.executor_id === executorId && existingRound === round) {
         if (jobId)
           await this.db
             .prepare(
@@ -392,16 +407,22 @@ export class HistoryDatasetStore {
             )
             .bind(jobId, now, datasetId)
             .run();
-        return { datasetId, executorId, generation: Number(row.generation) };
+        return { granted: true, datasetId, executorId, round };
       }
-      const generation = row ? Number(row.generation) + 1 : 1;
+      if (row && existingRound > round)
+        return {
+          granted: false,
+          datasetId,
+          executorId: row.executor_id,
+          round: existingRound,
+        };
       await this.db
         .prepare(
-          "INSERT INTO history_dataset_owners (dataset_id, job_id, executor_id, generation, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (dataset_id) DO UPDATE SET job_id = excluded.job_id, executor_id = excluded.executor_id, generation = excluded.generation, updated_at = excluded.updated_at",
+          "INSERT INTO history_dataset_owners (dataset_id, job_id, executor_id, round, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (dataset_id) DO UPDATE SET job_id = excluded.job_id, executor_id = excluded.executor_id, round = excluded.round, updated_at = excluded.updated_at",
         )
-        .bind(datasetId, jobId ?? null, executorId, generation, now)
+        .bind(datasetId, jobId ?? null, executorId, round, now)
         .run();
-      return { datasetId, executorId, generation };
+      return { granted: true, datasetId, executorId, round };
     });
   }
   async _applyGuarded(datasetId, owner, apply) {
@@ -414,7 +435,7 @@ export class HistoryDatasetStore {
       }
       const row = await this.db
         .prepare(
-          "SELECT executor_id, generation FROM history_dataset_owners WHERE dataset_id = ?",
+          "SELECT executor_id, round FROM history_dataset_owners WHERE dataset_id = ?",
         )
         .bind(datasetId)
         .first();
@@ -422,7 +443,7 @@ export class HistoryDatasetStore {
         if (
           !owner ||
           row.executor_id !== owner.executorId ||
-          Number(row.generation) !== Number(owner.generation)
+          Number(row.round) !== Number(owner.round)
         )
           return { applied: false };
       } else if (owner) {
@@ -509,14 +530,14 @@ export class HistoryDatasetStore {
     await this.ensure();
     let storedRef = artifactRef ?? null;
     if (raw !== undefined && stage === "DONE") {
-      const safeKey = chunkKey.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const suffix = owner ? `__g${owner.generation}` : "";
-      const fileName = `${jobId}__${safeKey}${suffix}.json`;
-      const artifactPath = `${this.rawDir}/${fileName}`;
-      const { writeFileSync } = await import("node:fs");
-      writeFileSync(artifactPath, JSON.stringify(raw), "utf8");
-      storedRef = `history-chunks/${fileName}`;
       rawDigest = await digestOf(raw);
+      const dirSegment = datasetId || jobId;
+      const dir = `${this.rawDir}/${dirSegment}`;
+      const { mkdirSync, writeFileSync } = await import("node:fs");
+      mkdirSync(dir, { recursive: true });
+      const fileName = `${rawDigest}.json`;
+      writeFileSync(`${dir}/${fileName}`, JSON.stringify(raw), "utf8");
+      storedRef = `history-chunks/${dirSegment}/${fileName}`;
     }
     const result = await this._applyGuarded(datasetId, owner, () => {
       this.db

@@ -3972,16 +3972,17 @@ var HistoryJobRepository = class {
   async claimExecution(id, executorId, leaseMinutes = 30) {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const fresh = await this.db.prepare(
-      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PLANNED','PARTIAL','FAILED','BLOCKED')"
-    ).bind(executorId, now, now, id).run();
-    if (fresh.meta.changes) return true;
+      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'claimRound', COALESCE(json_extract(progress, '$.claimRound'), 0) + 1), updated_at = ? WHERE id = ? AND stage IN ('PLANNED','PARTIAL','FAILED','BLOCKED') RETURNING json_extract(progress, '$.claimRound') AS claim_round"
+    ).bind(executorId, now, now, id).first();
+    if (fresh) return { executorId, round: Number(fresh.claim_round) };
     const cutoff = new Date(
       Date.now() - leaseMinutes * 60 * 1e3
     ).toISOString();
     const takeover = await this.db.prepare(
-      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') <= ?"
-    ).bind(executorId, now, now, now, id, cutoff).run();
-    return takeover.meta.changes > 0;
+      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?, 'tookOverAt', ?, 'claimRound', COALESCE(json_extract(progress, '$.claimRound'), 0) + 1), updated_at = ? WHERE id = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING') AND json_extract(progress, '$.claimedAt') IS NOT NULL AND json_extract(progress, '$.claimedAt') <= ? RETURNING json_extract(progress, '$.claimRound') AS claim_round"
+    ).bind(executorId, now, now, now, id, cutoff).first();
+    if (takeover) return { executorId, round: Number(takeover.claim_round) };
+    return null;
   }
   async finishJob(id, executorId, { stage, statusPayload, datasetId }) {
     if (!HISTORY_STAGES.includes(stage))
@@ -4121,6 +4122,7 @@ var HistoryDatasetStore = class {
         job_id TEXT,
         executor_id TEXT NOT NULL,
         generation INTEGER NOT NULL DEFAULT 1,
+        round INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS backtest_runs (
@@ -4165,30 +4167,45 @@ var HistoryDatasetStore = class {
     const chunkColumns = (await this.db.prepare("SELECT name FROM pragma_table_info('history_chunks')").all()).results;
     if (!chunkColumns.some((column) => column.name === "dataset_id"))
       this.db.exec("ALTER TABLE history_chunks ADD COLUMN dataset_id TEXT;");
+    const ownerColumns = (await this.db.prepare("SELECT name FROM pragma_table_info('history_dataset_owners')").all()).results;
+    if (!ownerColumns.some((column) => column.name === "round"))
+      this.db.exec(
+        "ALTER TABLE history_dataset_owners ADD COLUMN round INTEGER NOT NULL DEFAULT 0;"
+      );
     this.rawDir = `${dirname(this.path)}/history-chunks`;
     mkdirSync(this.rawDir, { recursive: true });
     this.ready = true;
   }
-  async acquireDatasetOwnership(datasetId, executorId, jobId = null) {
+  async acquireDatasetOwnership(datasetId, owner, jobId = null) {
     await this.ensure();
     if (!datasetId) throw new Error("\u6570\u636E\u96C6\u6240\u6709\u6743\u9700\u8981 datasetId");
+    const executorId = owner?.executorId;
+    const round = Number(owner?.round ?? 0);
+    if (!executorId) throw new Error("\u6570\u636E\u96C6\u6240\u6709\u6743\u9700\u8981 executorId");
     return this.db.transaction(async () => {
       const row = await this.db.prepare(
-        "SELECT job_id, executor_id, generation FROM history_dataset_owners WHERE dataset_id = ?"
+        "SELECT job_id, executor_id, round FROM history_dataset_owners WHERE dataset_id = ?"
       ).bind(datasetId).first();
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      if (row && row.executor_id === executorId) {
+      const existingRound = row ? Number(row.round) : null;
+      if (row && row.executor_id === executorId && existingRound === round) {
         if (jobId)
           await this.db.prepare(
             "UPDATE history_dataset_owners SET job_id = ?, updated_at = ? WHERE dataset_id = ?"
           ).bind(jobId, now, datasetId).run();
-        return { datasetId, executorId, generation: Number(row.generation) };
+        return { granted: true, datasetId, executorId, round };
       }
-      const generation = row ? Number(row.generation) + 1 : 1;
+      if (row && existingRound > round)
+        return {
+          granted: false,
+          datasetId,
+          executorId: row.executor_id,
+          round: existingRound
+        };
       await this.db.prepare(
-        "INSERT INTO history_dataset_owners (dataset_id, job_id, executor_id, generation, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (dataset_id) DO UPDATE SET job_id = excluded.job_id, executor_id = excluded.executor_id, generation = excluded.generation, updated_at = excluded.updated_at"
-      ).bind(datasetId, jobId ?? null, executorId, generation, now).run();
-      return { datasetId, executorId, generation };
+        "INSERT INTO history_dataset_owners (dataset_id, job_id, executor_id, round, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (dataset_id) DO UPDATE SET job_id = excluded.job_id, executor_id = excluded.executor_id, round = excluded.round, updated_at = excluded.updated_at"
+      ).bind(datasetId, jobId ?? null, executorId, round, now).run();
+      return { granted: true, datasetId, executorId, round };
     });
   }
   async _applyGuarded(datasetId, owner, apply) {
@@ -4200,10 +4217,10 @@ var HistoryDatasetStore = class {
         return { applied: true };
       }
       const row = await this.db.prepare(
-        "SELECT executor_id, generation FROM history_dataset_owners WHERE dataset_id = ?"
+        "SELECT executor_id, round FROM history_dataset_owners WHERE dataset_id = ?"
       ).bind(datasetId).first();
       if (row) {
-        if (!owner || row.executor_id !== owner.executorId || Number(row.generation) !== Number(owner.generation))
+        if (!owner || row.executor_id !== owner.executorId || Number(row.round) !== Number(owner.round))
           return { applied: false };
       } else if (owner) {
         return { applied: false };
@@ -4279,14 +4296,14 @@ var HistoryDatasetStore = class {
     await this.ensure();
     let storedRef = artifactRef ?? null;
     if (raw !== void 0 && stage === "DONE") {
-      const safeKey = chunkKey.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const suffix = owner ? `__g${owner.generation}` : "";
-      const fileName = `${jobId}__${safeKey}${suffix}.json`;
-      const artifactPath = `${this.rawDir}/${fileName}`;
-      const { writeFileSync } = await import("node:fs");
-      writeFileSync(artifactPath, JSON.stringify(raw), "utf8");
-      storedRef = `history-chunks/${fileName}`;
       rawDigest = await digestOf(raw);
+      const dirSegment = datasetId || jobId;
+      const dir = `${this.rawDir}/${dirSegment}`;
+      const { mkdirSync, writeFileSync } = await import("node:fs");
+      mkdirSync(dir, { recursive: true });
+      const fileName = `${rawDigest}.json`;
+      writeFileSync(`${dir}/${fileName}`, JSON.stringify(raw), "utf8");
+      storedRef = `history-chunks/${dirSegment}/${fileName}`;
     }
     const result = await this._applyGuarded(datasetId, owner, () => {
       this.db.prepare(
@@ -7278,7 +7295,6 @@ function createTencentHistoricalProvider(options = {}) {
 
 // backend/services/history.js
 var SCORING_VERSION2 = "rules-v1-historical";
-var EXECUTOR_ID2 = `history-${crypto.randomUUID()}`;
 var TAKEOVER_NOTICE = "\u4EFB\u52A1\u5DF2\u7531\u5176\u4ED6\u6267\u884C\u5668\u63A5\u7BA1\uFF0C\u672C\u6B21\u6267\u884C\u4E2D\u6B62\uFF08\u4E0D\u8986\u76D6\u63A5\u7BA1\u65B9\u72B6\u6001\uFF09";
 var ExecutorLostError = class extends Error {
   constructor() {
@@ -7366,18 +7382,26 @@ async function runHistoryImport(env, jobId, options = {}) {
       }
     });
   }
-  if (!await jobs.claimExecution(jobId, EXECUTOR_ID2))
+  const executorId = `history-${crypto.randomUUID()}`;
+  const claim = await jobs.claimExecution(jobId, executorId);
+  if (!claim)
     return {
       ...job,
       note: "\u53E6\u4E00\u4E2A\u6267\u884C\u5668\u6B63\u5728\u8FD0\u884C\u6B64\u5BFC\u5165\u4EFB\u52A1\uFF0C\u672C\u6B21\u672A\u63A5\u7BA1\uFF08\u907F\u514D\u5E76\u53D1\u8986\u76D6\uFF09"
     };
   try {
-    return await runHistoryImportInner(env, job, { jobs, store, options });
+    return await runHistoryImportInner(env, job, {
+      jobs,
+      store,
+      options,
+      executorId: claim.executorId,
+      round: claim.round
+    });
   } catch (error) {
     if (error instanceof ExecutorLostError)
       return { ...await jobs.getJob(jobId), note: TAKEOVER_NOTICE };
     const reason = String(error?.message ?? error).slice(0, 300);
-    const failedJob = await jobs.finishJob(jobId, EXECUTOR_ID2, {
+    const failedJob = await jobs.finishJob(jobId, claim.executorId, {
       stage: "FAILED",
       statusPayload: {
         error: reason,
@@ -7391,21 +7415,25 @@ async function runHistoryImport(env, jobId, options = {}) {
     };
   }
 }
-async function runHistoryImportInner(env, job, { jobs, store, options }) {
+async function runHistoryImportInner(env, job, { jobs, store, options, executorId, round }) {
   const jobId = job.id;
   const takeoverNotice = TAKEOVER_NOTICE;
   const guardOwnership = async () => {
-    if (!await jobs.stillOwner(jobId, EXECUTOR_ID2))
+    if (!await jobs.stillOwner(jobId, executorId))
       throw new ExecutorLostError();
   };
   const requireApplied = (result) => {
     if (result && result.applied === false) throw new ExecutorLostError();
     return result;
   };
+  const requireGranted = (result) => {
+    if (!result || result.granted === false) throw new ExecutorLostError();
+    return { executorId: result.executorId, round: Number(result.round) };
+  };
   const provider = historyProviders()[job.provider];
   if (!provider) throw new Error("\u672A\u77E5\u5386\u53F2\u6570\u636E\u4F9B\u5E94\u5546");
   const requestedStart = job.requestedRange.start, requestedEnd = job.requestedRange.end;
-  if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { stage: "PROBING" }))
+  if (!await jobs.progressJob(jobId, executorId, { stage: "PROBING" }))
     return { ...await jobs.getJob(jobId), note: takeoverNotice };
   const capabilities = await provider.capabilities({
     start: requestedStart,
@@ -7413,7 +7441,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   });
   await guardOwnership();
   if (job.kind === "LIMIT_FEATURES" && capabilities.limitFeatures.availableFrom === null) {
-    return jobs.finishJob(jobId, EXECUTOR_ID2, {
+    return jobs.finishJob(jobId, executorId, {
       stage: "BLOCKED",
       statusPayload: {
         capabilities,
@@ -7452,15 +7480,17 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       });
     }
   }
-  if (!await jobs.progressJob(jobId, EXECUTOR_ID2, {
+  if (!await jobs.progressJob(jobId, executorId, {
     stage: "DOWNLOADING",
     datasetId
   }))
     return { ...await jobs.getJob(jobId), note: takeoverNotice };
-  datasetOwner = await store.acquireDatasetOwnership(
-    datasetId,
-    EXECUTOR_ID2,
-    jobId
+  datasetOwner = requireGranted(
+    await store.acquireDatasetOwnership(
+      datasetId,
+      { executorId, round },
+      jobId
+    )
   );
   const calendar = await provider.tradingCalendar({
     start: requestedStart,
@@ -7564,11 +7594,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         for (const row of normalized) universeCodes.add(row.code);
       }
     }
-    if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { stage: "NORMALIZING" }))
+    if (!await jobs.progressJob(jobId, executorId, { stage: "NORMALIZING" }))
       return { ...await jobs.getJob(jobId), note: takeoverNotice };
     const weights = options.weights ?? PRESETS.balanced;
     const paramsDigest = await digestOf(weights);
-    if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { stage: "SCORING" }))
+    if (!await jobs.progressJob(jobId, executorId, { stage: "SCORING" }))
       return { ...await jobs.getJob(jobId), note: takeoverNotice };
     let dailyNormalized = null;
     if (options.withObservationReturns !== false && succeeded.length) {
@@ -7716,7 +7746,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   } else if (job.kind === "MINUTES") {
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
-      return jobs.finishJob(jobId, EXECUTOR_ID2, {
+      return jobs.finishJob(jobId, executorId, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
@@ -7735,12 +7765,14 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       clonedSourceTradingDates = Array.isArray(
         cloned.sourceCoverage.tradingDates
       ) ? cloned.sourceCoverage.tradingDates : [];
-      if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { datasetId }))
+      if (!await jobs.progressJob(jobId, executorId, { datasetId }))
         return { ...await jobs.getJob(jobId), note: takeoverNotice };
-      datasetOwner = await store.acquireDatasetOwnership(
-        datasetId,
-        EXECUTOR_ID2,
-        jobId
+      datasetOwner = requireGranted(
+        await store.acquireDatasetOwnership(
+          datasetId,
+          { executorId, round },
+          jobId
+        )
       );
       coverage.notes.push(
         `\u5206\u949F\u6570\u636E\u9644\u52A0\u4E3A\u65B0\u6570\u636E\u96C6\u7248\u672C ${datasetId}\uFF08\u514B\u9686\u81EA ${cloneSource}\uFF0C\u7EE7\u627F\u5DF2\u5B8C\u6210\u5206\u949F\u6570\u636E\uFF09\uFF1B\u6E90\u6570\u636E\u96C6\u4FDD\u6301\u53D1\u5E03\u65F6\u72B6\u6001\u4E0D\u88AB\u6539\u5199`
@@ -7823,11 +7855,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       }
     }
   } else if (job.kind === "DAILY") {
-    if (!await jobs.progressJob(jobId, EXECUTOR_ID2, { stage: "DOWNLOADING" }))
+    if (!await jobs.progressJob(jobId, executorId, { stage: "DOWNLOADING" }))
       return { ...await jobs.getJob(jobId), note: takeoverNotice };
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
-      return jobs.finishJob(jobId, EXECUTOR_ID2, {
+      return jobs.finishJob(jobId, executorId, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
@@ -7938,7 +7970,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     await store.updateDatasetCoverage(datasetId, coverage, datasetOwner)
   );
   if (!succeeded.length)
-    return jobs.finishJob(jobId, EXECUTOR_ID2, {
+    return jobs.finishJob(jobId, executorId, {
       stage: "FAILED",
       statusPayload: {
         capabilities,
@@ -7950,7 +7982,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       }
     });
   const finalStage = failed.length ? "PARTIAL" : "READY";
-  const finished = await jobs.finishJob(jobId, EXECUTOR_ID2, {
+  const finished = await jobs.finishJob(jobId, executorId, {
     stage: finalStage,
     datasetId,
     statusPayload: {

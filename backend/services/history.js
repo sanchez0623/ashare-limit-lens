@@ -15,7 +15,6 @@ import {
 } from "../storage/history.js";
 
 const SCORING_VERSION = "rules-v1-historical";
-const EXECUTOR_ID = `history-${crypto.randomUUID()}`;
 const TAKEOVER_NOTICE =
   "任务已由其他执行器接管，本次执行中止（不覆盖接管方状态）";
 class ExecutorLostError extends Error {
@@ -113,18 +112,26 @@ export async function runHistoryImport(env, jobId, options = {}) {
       },
     });
   }
-  if (!(await jobs.claimExecution(jobId, EXECUTOR_ID)))
+  const executorId = `history-${crypto.randomUUID()}`;
+  const claim = await jobs.claimExecution(jobId, executorId);
+  if (!claim)
     return {
       ...job,
       note: "另一个执行器正在运行此导入任务，本次未接管（避免并发覆盖）",
     };
   try {
-    return await runHistoryImportInner(env, job, { jobs, store, options });
+    return await runHistoryImportInner(env, job, {
+      jobs,
+      store,
+      options,
+      executorId: claim.executorId,
+      round: claim.round,
+    });
   } catch (error) {
     if (error instanceof ExecutorLostError)
       return { ...(await jobs.getJob(jobId)), note: TAKEOVER_NOTICE };
     const reason = String(error?.message ?? error).slice(0, 300);
-    const failedJob = await jobs.finishJob(jobId, EXECUTOR_ID, {
+    const failedJob = await jobs.finishJob(jobId, claim.executorId, {
       stage: "FAILED",
       statusPayload: {
         error: reason,
@@ -138,22 +145,30 @@ export async function runHistoryImport(env, jobId, options = {}) {
     };
   }
 }
-async function runHistoryImportInner(env, job, { jobs, store, options }) {
+async function runHistoryImportInner(
+  env,
+  job,
+  { jobs, store, options, executorId, round },
+) {
   const jobId = job.id;
   const takeoverNotice = TAKEOVER_NOTICE;
   const guardOwnership = async () => {
-    if (!(await jobs.stillOwner(jobId, EXECUTOR_ID)))
+    if (!(await jobs.stillOwner(jobId, executorId)))
       throw new ExecutorLostError();
   };
   const requireApplied = (result) => {
     if (result && result.applied === false) throw new ExecutorLostError();
     return result;
   };
+  const requireGranted = (result) => {
+    if (!result || result.granted === false) throw new ExecutorLostError();
+    return { executorId: result.executorId, round: Number(result.round) };
+  };
   const provider = historyProviders()[job.provider];
   if (!provider) throw new Error("未知历史数据供应商");
   const requestedStart = job.requestedRange.start,
     requestedEnd = job.requestedRange.end;
-  if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { stage: "PROBING" })))
+  if (!(await jobs.progressJob(jobId, executorId, { stage: "PROBING" })))
     return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
   const capabilities = await provider.capabilities({
     start: requestedStart,
@@ -164,7 +179,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     job.kind === "LIMIT_FEATURES" &&
     capabilities.limitFeatures.availableFrom === null
   ) {
-    return jobs.finishJob(jobId, EXECUTOR_ID, {
+    return jobs.finishJob(jobId, executorId, {
       stage: "BLOCKED",
       statusPayload: {
         capabilities,
@@ -204,16 +219,18 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     }
   }
   if (
-    !(await jobs.progressJob(jobId, EXECUTOR_ID, {
+    !(await jobs.progressJob(jobId, executorId, {
       stage: "DOWNLOADING",
       datasetId,
     }))
   )
     return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
-  datasetOwner = await store.acquireDatasetOwnership(
-    datasetId,
-    EXECUTOR_ID,
-    jobId,
+  datasetOwner = requireGranted(
+    await store.acquireDatasetOwnership(
+      datasetId,
+      { executorId, round },
+      jobId,
+    ),
   );
   const calendar = await provider.tradingCalendar({
     start: requestedStart,
@@ -317,11 +334,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         for (const row of normalized) universeCodes.add(row.code);
       }
     }
-    if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { stage: "NORMALIZING" })))
+    if (!(await jobs.progressJob(jobId, executorId, { stage: "NORMALIZING" })))
       return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
     const weights = options.weights ?? PRESETS.balanced;
     const paramsDigest = await digestOf(weights);
-    if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { stage: "SCORING" })))
+    if (!(await jobs.progressJob(jobId, executorId, { stage: "SCORING" })))
       return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
     let dailyNormalized = null;
     if (options.withObservationReturns !== false && succeeded.length) {
@@ -502,7 +519,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   } else if (job.kind === "MINUTES") {
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
-      return jobs.finishJob(jobId, EXECUTOR_ID, {
+      return jobs.finishJob(jobId, executorId, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
@@ -525,12 +542,14 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       )
         ? cloned.sourceCoverage.tradingDates
         : [];
-      if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { datasetId })))
+      if (!(await jobs.progressJob(jobId, executorId, { datasetId })))
         return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
-      datasetOwner = await store.acquireDatasetOwnership(
-        datasetId,
-        EXECUTOR_ID,
-        jobId,
+      datasetOwner = requireGranted(
+        await store.acquireDatasetOwnership(
+          datasetId,
+          { executorId, round },
+          jobId,
+        ),
       );
       coverage.notes.push(
         `分钟数据附加为新数据集版本 ${datasetId}（克隆自 ${cloneSource}，继承已完成分钟数据）；源数据集保持发布时状态不被改写`,
@@ -613,11 +632,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       }
     }
   } else if (job.kind === "DAILY") {
-    if (!(await jobs.progressJob(jobId, EXECUTOR_ID, { stage: "DOWNLOADING" })))
+    if (!(await jobs.progressJob(jobId, executorId, { stage: "DOWNLOADING" })))
       return { ...(await jobs.getJob(jobId)), note: takeoverNotice };
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
-      return jobs.finishJob(jobId, EXECUTOR_ID, {
+      return jobs.finishJob(jobId, executorId, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
@@ -730,7 +749,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     await store.updateDatasetCoverage(datasetId, coverage, datasetOwner),
   );
   if (!succeeded.length)
-    return jobs.finishJob(jobId, EXECUTOR_ID, {
+    return jobs.finishJob(jobId, executorId, {
       stage: "FAILED",
       statusPayload: {
         capabilities,
@@ -742,7 +761,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       },
     });
   const finalStage = failed.length ? "PARTIAL" : "READY";
-  const finished = await jobs.finishJob(jobId, EXECUTOR_ID, {
+  const finished = await jobs.finishJob(jobId, executorId, {
     stage: finalStage,
     datasetId,
     statusPayload: {
