@@ -23,6 +23,7 @@ import {
   proposeImprovement,
   promoteCandidate,
   researchStatus,
+  proposeBootstrapImprovement,
 } from "../services/research.js";
 import {
   createHistoryImport,
@@ -97,6 +98,7 @@ export async function api(request, env) {
     "/api/paper/export": ["GET"],
     "/api/paper/verify": ["GET"],
     "/api/paper/improve": ["POST"],
+    "/api/research/bootstrap": ["POST"],
     "/api/paper/activate": ["POST"],
     "/api/paper/live": ["GET"],
     "/api/paper/poll": ["POST"],
@@ -318,6 +320,14 @@ export async function api(request, env) {
     await repository.initialize(await readWeights(env));
     if (path === "/api/paper/improve")
       return json(await proposeImprovement(repository, env));
+    if (path === "/api/research/bootstrap") {
+      const body = await readJson(request);
+      return json(
+        await proposeBootstrapImprovement(repository, env, {
+          datasetId: body.datasetId,
+        }),
+      );
+    }
     const body = await readJson(request);
     if (
       typeof body.id !== "string" ||

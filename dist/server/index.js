@@ -3623,6 +3623,606 @@ function validateCandidatePatch({
   };
 }
 
+// scripts/local-db.mjs
+import { DatabaseSync } from "node:sqlite";
+import { readdirSync, readFileSync } from "node:fs";
+function localDatabase(path = ":memory:") {
+  const sqlite = new DatabaseSync(path);
+  sqlite.exec(
+    "PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS local_migrations (name TEXT PRIMARY KEY)"
+  );
+  for (const name of readdirSync("drizzle").filter((name2) => name2.endsWith(".sql")).sort()) {
+    if (sqlite.prepare("SELECT name FROM local_migrations WHERE name=?").get(name))
+      continue;
+    sqlite.exec("BEGIN");
+    try {
+      sqlite.exec(readFileSync(`drizzle/${name}`, "utf8"));
+      sqlite.prepare("INSERT INTO local_migrations (name) VALUES (?)").run(name);
+      sqlite.exec("COMMIT");
+    } catch (error) {
+      sqlite.exec("ROLLBACK");
+      throw error;
+    }
+  }
+  function prepare(sql) {
+    return {
+      args: [],
+      bind(...args) {
+        this.args = args;
+        return this;
+      },
+      async first() {
+        return sqlite.prepare(sql).get(...this.args) || null;
+      },
+      async all() {
+        return { results: sqlite.prepare(sql).all(...this.args) };
+      },
+      async run() {
+        const result = sqlite.prepare(sql).run(...this.args);
+        return { meta: { changes: Number(result.changes) } };
+      },
+      _run() {
+        const result = sqlite.prepare(sql).run(...this.args);
+        return { meta: { changes: Number(result.changes) } };
+      }
+    };
+  }
+  return {
+    prepare,
+    exec: (sql) => sqlite.exec(sql),
+    async batch(statements) {
+      sqlite.exec("BEGIN IMMEDIATE");
+      try {
+        const results = statements.map((statement) => statement._run());
+        sqlite.exec("COMMIT");
+        return results;
+      } catch (error) {
+        sqlite.exec("ROLLBACK");
+        throw error;
+      }
+    },
+    transactionQueue: Promise.resolve(),
+    async transaction(fn) {
+      const run = this.transactionQueue.then(async () => {
+        sqlite.exec("BEGIN IMMEDIATE");
+        try {
+          const result = await fn();
+          sqlite.exec("COMMIT");
+          return result;
+        } catch (error) {
+          sqlite.exec("ROLLBACK");
+          throw error;
+        }
+      });
+      this.transactionQueue = run.then(
+        () => void 0,
+        () => void 0
+      );
+      return run;
+    },
+    close() {
+      sqlite.close();
+    }
+  };
+}
+
+// backend/storage/history.js
+var RESEARCH_NAMESPACE = "main";
+var HISTORY_STAGES = [
+  "PLANNED",
+  "PROBING",
+  "DOWNLOADING",
+  "NORMALIZING",
+  "SCORING",
+  "READY",
+  "PARTIAL",
+  "BLOCKED",
+  "FAILED"
+];
+var HistoryJobRepository = class {
+  constructor(env) {
+    this.db = database(env);
+  }
+  async createJob({ id, provider, kind, start, end, name }) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT INTO history_import_jobs (id, namespace, provider, kind, requested_start, requested_end, name, stage, progress, status_payload, dataset_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'PLANNED', '{}', '{}', NULL, ?, ?)"
+    ).bind(
+      id,
+      RESEARCH_NAMESPACE,
+      provider,
+      kind,
+      start,
+      end,
+      name ?? null,
+      now,
+      now
+    ).run();
+    return this.getJob(id);
+  }
+  async getJob(id) {
+    const row = await this.db.prepare("SELECT * FROM history_import_jobs WHERE id = ?").bind(id).first();
+    return row ? this.mapJob(row) : null;
+  }
+  mapJob(row) {
+    return {
+      id: row.id,
+      namespace: row.namespace,
+      provider: row.provider,
+      kind: row.kind,
+      requestedRange: { start: row.requested_start, end: row.requested_end },
+      name: row.name,
+      stage: row.stage,
+      progress: JSON.parse(row.progress || "{}"),
+      statusPayload: JSON.parse(row.status_payload || "{}"),
+      datasetId: row.dataset_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+  async listJobs(limit = 20) {
+    const result = await this.db.prepare(
+      "SELECT * FROM history_import_jobs ORDER BY created_at DESC, id DESC LIMIT ?"
+    ).bind(limit).all();
+    return result.results.map((row) => this.mapJob(row));
+  }
+  async updateJob(id, { stage, progress, statusPayload, datasetId }) {
+    const job = await this.getJob(id);
+    if (!job) throw new Error("\u5386\u53F2\u5BFC\u5165\u4EFB\u52A1\u4E0D\u5B58\u5728");
+    if (stage && !HISTORY_STAGES.includes(stage))
+      throw new Error(`\u5386\u53F2\u4EFB\u52A1\u9636\u6BB5\u65E0\u6548\uFF1A${stage}`);
+    await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = ?, progress = ?, status_payload = ?, dataset_id = ?, updated_at = ? WHERE id = ?"
+    ).bind(
+      stage ?? job.stage,
+      JSON.stringify(progress ?? job.progress),
+      JSON.stringify(statusPayload ?? job.statusPayload),
+      datasetId ?? job.datasetId,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      id
+    ).run();
+    return this.getJob(id);
+  }
+};
+var HistoryDatasetStore = class {
+  constructor(path) {
+    this.path = path;
+    this.db = localDatabase(path);
+    this.ready = false;
+  }
+  async ensure() {
+    if (this.ready) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS history_dataset_versions (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        execution_model TEXT NOT NULL,
+        requested_start TEXT NOT NULL,
+        requested_end TEXT NOT NULL,
+        observed_start TEXT,
+        observed_end TEXT,
+        coverage_payload TEXT NOT NULL,
+        manifest_digest TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS history_daily_inputs (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date)
+      );
+      CREATE TABLE IF NOT EXISTS history_scores (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        scoring_version TEXT NOT NULL,
+        params_digest TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, scoring_version, params_digest)
+      );
+      CREATE TABLE IF NOT EXISTS history_reviews (
+        dataset_id TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        label_end_date TEXT NOT NULL,
+        review_version TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, signal_date, label_end_date, review_version)
+      );
+      CREATE TABLE IF NOT EXISTS history_chunks (
+        job_id TEXT NOT NULL,
+        chunk_key TEXT NOT NULL,
+        request_range TEXT NOT NULL,
+        actual_range TEXT,
+        rows INTEGER NOT NULL,
+        stage TEXT NOT NULL,
+        raw_digest TEXT,
+        artifact_ref TEXT,
+        PRIMARY KEY (job_id, chunk_key)
+      );
+      CREATE TABLE IF NOT EXISTS history_minute_inputs (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        code TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, code)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_runs (
+        id TEXT PRIMARY KEY,
+        dataset_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        strategy_version TEXT NOT NULL,
+        strategy_params TEXT NOT NULL,
+        params_digest TEXT NOT NULL,
+        fee_config TEXT NOT NULL,
+        fee_digest TEXT NOT NULL,
+        execution_model TEXT NOT NULL,
+        execution_version TEXT NOT NULL,
+        initial_book TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        coverage_payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS backtest_plans (
+        run_id TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (run_id, signal_date)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_ledger (
+        run_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        PRIMARY KEY (run_id, id)
+      );
+      CREATE TABLE IF NOT EXISTS backtest_equity (
+        run_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (run_id, trade_date)
+      );
+    `);
+    this.ready = true;
+  }
+  async createDatasetVersion({
+    id,
+    provider,
+    kind,
+    executionModel,
+    requestedStart,
+    requestedEnd,
+    coverage
+  }) {
+    await this.ensure();
+    const digest2 = await digestOf(coverage);
+    await this.db.prepare(
+      "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      id,
+      provider,
+      kind,
+      executionModel,
+      requestedStart,
+      requestedEnd,
+      coverage.observedStart ?? null,
+      coverage.observedEnd ?? null,
+      JSON.stringify(coverage),
+      digest2,
+      (/* @__PURE__ */ new Date()).toISOString()
+    ).run();
+    return { id, manifestDigest: digest2 };
+  }
+  async updateDatasetCoverage(id, coverage) {
+    await this.ensure();
+    const digest2 = await digestOf(coverage);
+    await this.db.prepare(
+      "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?"
+    ).bind(
+      JSON.stringify(coverage),
+      digest2,
+      coverage.observedStart ?? null,
+      coverage.observedEnd ?? null,
+      coverage.executionModel ?? "PENDING",
+      id
+    ).run();
+  }
+  async saveChunk(jobId, {
+    chunkKey,
+    requestRange,
+    actualRange,
+    rows,
+    stage,
+    rawDigest,
+    artifactRef
+  }) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT INTO history_chunks (job_id, chunk_key, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows"
+    ).bind(
+      jobId,
+      chunkKey,
+      requestRange,
+      actualRange ?? null,
+      rows ?? 0,
+      stage,
+      rawDigest ?? null,
+      artifactRef ?? null
+    ).run();
+  }
+  async completedChunkKeys(jobId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT chunk_key FROM history_chunks WHERE job_id = ? AND stage IN ('DONE','EMPTY')"
+    ).bind(jobId).all();
+    return new Set(result.results.map((row) => row.chunk_key));
+  }
+  async saveDailyInputs(datasetId, tradeDate, { normalized, provenance }) {
+    await this.ensure();
+    const payload = JSON.stringify({ normalized, provenance });
+    await this.db.prepare(
+      "INSERT OR REPLACE INTO history_daily_inputs (dataset_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)"
+    ).bind(datasetId, tradeDate, payload, await digestOf(payload)).run();
+  }
+  async saveScore(datasetId, tradeDate, scoringVersion, paramsDigest, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(
+      datasetId,
+      tradeDate,
+      scoringVersion,
+      paramsDigest,
+      JSON.stringify(payload),
+      await digestOf(payload)
+    ).run();
+  }
+  async saveReview(datasetId, signalDate, labelEndDate, reviewVersion, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO history_reviews (dataset_id, signal_date, label_end_date, review_version, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(
+      datasetId,
+      signalDate,
+      labelEndDate,
+      reviewVersion,
+      JSON.stringify(payload),
+      await digestOf(payload)
+    ).run();
+  }
+  async getDataset(id) {
+    await this.ensure();
+    const row = await this.db.prepare("SELECT * FROM history_dataset_versions WHERE id = ?").bind(id).first();
+    if (!row) return null;
+    return {
+      id: row.id,
+      provider: row.provider,
+      kind: row.kind,
+      executionModel: row.execution_model,
+      requestedRange: { start: row.requested_start, end: row.requested_end },
+      observedRange: { start: row.observed_start, end: row.observed_end },
+      coverage: JSON.parse(row.coverage_payload),
+      manifestDigest: row.manifest_digest,
+      createdAt: row.created_at
+    };
+  }
+  async listDatasetDates(id) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, digest FROM history_daily_inputs WHERE dataset_id = ? ORDER BY trade_date"
+    ).bind(id).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      digest: row.digest
+    }));
+  }
+  async getDailyInput(datasetId, tradeDate) {
+    await this.ensure();
+    const row = await this.db.prepare(
+      "SELECT payload FROM history_daily_inputs WHERE dataset_id = ? AND trade_date = ?"
+    ).bind(datasetId, tradeDate).first();
+    return row ? JSON.parse(row.payload) : null;
+  }
+  async saveMinuteInputs(datasetId, tradeDate, code, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR REPLACE INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
+    ).bind(
+      datasetId,
+      tradeDate,
+      code,
+      JSON.stringify(payload),
+      await digestOf(payload)
+    ).run();
+  }
+  async listMinuteInputs(datasetId, tradeDate) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT code, payload FROM history_minute_inputs WHERE dataset_id = ? AND trade_date = ?"
+    ).bind(datasetId, tradeDate).all();
+    return Object.fromEntries(
+      result.results.map((row) => [row.code, JSON.parse(row.payload)])
+    );
+  }
+  async listMinuteDates(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT DISTINCT trade_date FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date"
+    ).bind(datasetId).all();
+    return result.results.map((row) => row.trade_date);
+  }
+  async createBacktestRun({
+    id,
+    datasetId,
+    name,
+    strategyVersion,
+    strategyParams,
+    paramsDigest,
+    feeConfig,
+    feeDigest,
+    executionModel,
+    executionVersion,
+    initialBook
+  }) {
+    await this.ensure();
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT INTO backtest_runs (id, dataset_id, name, strategy_version, strategy_params, params_digest, fee_config, fee_digest, execution_model, execution_version, initial_book, stage, coverage_payload, digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', '{}', ?, ?)"
+    ).bind(
+      id,
+      datasetId,
+      name,
+      strategyVersion,
+      JSON.stringify(strategyParams),
+      paramsDigest,
+      JSON.stringify(feeConfig),
+      feeDigest,
+      executionModel,
+      executionVersion,
+      JSON.stringify(initialBook),
+      await digestOf({ initialBook, datasetId, strategyParams }),
+      now
+    ).run();
+    return this.getBacktestRun(id);
+  }
+  async saveBacktestPlan(runId, signalDate, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO backtest_plans (run_id, signal_date, payload, digest) VALUES (?, ?, ?, ?)"
+    ).bind(runId, signalDate, JSON.stringify(payload), await digestOf(payload)).run();
+  }
+  async appendBacktestLedger(runId, tradeDate, rows) {
+    await this.ensure();
+    for (const row of rows)
+      await this.db.prepare(
+        "INSERT OR IGNORE INTO backtest_ledger (run_id, id, trade_date, payload) VALUES (?, ?, ?, ?)"
+      ).bind(runId, row.id, tradeDate, JSON.stringify(row)).run();
+  }
+  async saveBacktestEquity(runId, tradeDate, payload) {
+    await this.ensure();
+    await this.db.prepare(
+      "INSERT OR REPLACE INTO backtest_equity (run_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)"
+    ).bind(runId, tradeDate, JSON.stringify(payload), await digestOf(payload)).run();
+  }
+  async finishBacktestRun(id, stage, coverage) {
+    await this.ensure();
+    const digest2 = await digestOf(coverage);
+    await this.db.prepare(
+      "UPDATE backtest_runs SET stage = ?, coverage_payload = ?, digest = ? WHERE id = ?"
+    ).bind(stage, JSON.stringify(coverage), digest2, id).run();
+    return this.getBacktestRun(id);
+  }
+  async getBacktestRun(id) {
+    await this.ensure();
+    const row = await this.db.prepare("SELECT * FROM backtest_runs WHERE id = ?").bind(id).first();
+    if (!row) return null;
+    return {
+      id: row.id,
+      datasetId: row.dataset_id,
+      name: row.name,
+      strategyVersion: row.strategy_version,
+      strategyParams: JSON.parse(row.strategy_params),
+      paramsDigest: row.params_digest,
+      feeConfig: JSON.parse(row.fee_config),
+      feeDigest: row.fee_digest,
+      executionModel: row.execution_model,
+      executionVersion: row.execution_version,
+      initialBook: JSON.parse(row.initial_book),
+      stage: row.stage,
+      coverage: JSON.parse(row.coverage_payload),
+      digest: row.digest,
+      createdAt: row.created_at
+    };
+  }
+  async listBacktestLedger(runId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT id, trade_date, payload FROM backtest_ledger WHERE run_id = ? ORDER BY trade_date, id"
+    ).bind(runId).all();
+    return result.results.map((row) => ({
+      id: row.id,
+      tradeDate: row.trade_date,
+      ...JSON.parse(row.payload)
+    }));
+  }
+  async listBacktestEquity(runId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, payload, digest FROM backtest_equity WHERE run_id = ? ORDER BY trade_date"
+    ).bind(runId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      ...JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
+  async listBacktestRuns(limit = 20) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT id, dataset_id, name, stage, execution_model, coverage_payload, created_at FROM backtest_runs ORDER BY created_at DESC, id DESC LIMIT ?"
+    ).bind(limit).all();
+    return result.results.map((row) => ({
+      id: row.id,
+      datasetId: row.dataset_id,
+      name: row.name,
+      stage: row.stage,
+      executionModel: row.execution_model,
+      coverage: JSON.parse(row.coverage_payload),
+      createdAt: row.created_at
+    }));
+  }
+  async listBacktestPlans(runId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT signal_date, payload, digest FROM backtest_plans WHERE run_id = ? ORDER BY signal_date"
+    ).bind(runId).all();
+    return result.results.map((row) => ({
+      signalDate: row.signal_date,
+      ...JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
+  async listScores(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT trade_date, scoring_version, params_digest, payload, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      tradeDate: row.trade_date,
+      scoringVersion: row.scoring_version,
+      paramsDigest: row.params_digest,
+      payload: JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
+  async listReviews(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT signal_date, label_end_date, review_version, payload, digest FROM history_reviews WHERE dataset_id = ? ORDER BY signal_date"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      signalDate: row.signal_date,
+      labelEndDate: row.label_end_date,
+      reviewVersion: row.review_version,
+      payload: JSON.parse(row.payload),
+      digest: row.digest
+    }));
+  }
+  close() {
+    this.db.close();
+  }
+};
+function openHistoryStore(env) {
+  const path = env?.LOCAL_RESEARCH_DB_PATH || ".sites-runtime/research-history.sqlite";
+  return new HistoryDatasetStore(path);
+}
+
 // backend/domain/research-windows.js
 function selectResearchWindows(pairs, policy) {
   const total = policy.trainDays + policy.histTestDays;
@@ -3684,7 +4284,7 @@ var RESEARCH_TERMINAL_STAGES = /* @__PURE__ */ new Set([
 ]);
 
 // backend/storage/research.js
-var RESEARCH_NAMESPACE = "main";
+var RESEARCH_NAMESPACE2 = "main";
 var mapRow = (row) => row ? {
   id: row.id,
   namespace: row.namespace,
@@ -3693,6 +4293,7 @@ var mapRow = (row) => row ? {
   policyId: row.policy_id,
   stage: row.stage,
   revision: row.revision,
+  kind: row.kind ?? "ROLLING",
   frozenAt: row.frozen_at,
   reservationPayload: JSON.parse(row.reservation_payload || "{}"),
   proposalManifest: row.proposal_manifest ? JSON.parse(row.proposal_manifest) : null,
@@ -3702,7 +4303,7 @@ var mapRow = (row) => row ? {
 var ResearchRepository = class {
   constructor(env) {
     this.db = database(env);
-    this.namespace = RESEARCH_NAMESPACE;
+    this.namespace = RESEARCH_NAMESPACE2;
   }
   async ensureRegistry() {
     let row = await this.db.prepare("SELECT * FROM research_registry WHERE namespace = ?").bind(this.namespace).first();
@@ -3815,6 +4416,7 @@ var ResearchRepository = class {
       legacyCutoff: row.legacy_cutoff,
       selectionCutoff: row.selection_cutoff,
       lastRunId: row.last_run_id,
+      bootstrapDone: (row.bootstrap_done ?? 0) === 1,
       payload: JSON.parse(row.payload || "{}")
     };
   }
@@ -4023,6 +4625,189 @@ var ResearchRepository = class {
       });
     return attempt();
   }
+  async reserveBootstrapAttempt({
+    policy,
+    month,
+    parentVersion,
+    windowPayload,
+    trainingDates,
+    samples,
+    datasetId,
+    datasetManifestDigest
+  }) {
+    const attempt = async () => {
+      await this.assertReservationFreshness(trainingDates);
+      const registryRow = await this.db.prepare(
+        "SELECT revision, attempt_sequence, bootstrap_done FROM research_registry WHERE namespace = ?"
+      ).bind(this.namespace).first();
+      if (!registryRow || registryRow.bootstrap_done === 1) return null;
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const nonce = crypto.randomUUID();
+      const experimentId = `exp-${crypto.randomUUID()}`;
+      const attemptSequence = registryRow.attempt_sequence + 1;
+      const reservation = {
+        experimentId,
+        namespace: this.namespace,
+        kind: "BOOTSTRAP",
+        attemptSequence,
+        parentVersion,
+        trainingDates,
+        testDates: [],
+        datasetId,
+        datasetManifestDigest,
+        policyId: policy.id,
+        policyDigest: policy.digest,
+        reservedAt: now
+      };
+      const reservationDigest = await digestOf(reservation);
+      const guardArgs = [this.namespace, registryRow.revision + 1, nonce];
+      const guarded = (sql, args) => this.db.prepare(
+        `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`
+      ).bind(...args, ...guardArgs);
+      const event = {
+        sequence: 1,
+        eventType: "BOOTSTRAP_RESERVED",
+        createdAt: now,
+        payload: { reservation, reservationDigest },
+        previousDigest: null
+      };
+      const statements = [
+        this.db.prepare(
+          "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, bootstrap_done = 1, last_run_id = ? WHERE namespace = ? AND revision = ? AND bootstrap_done = 0"
+        ).bind(nonce, this.namespace, registryRow.revision),
+        guarded(
+          "INSERT INTO research_active_slots (namespace, experiment_id, window_payload, created_at) SELECT ?, ?, ?, ?",
+          [
+            this.namespace,
+            experimentId,
+            JSON.stringify({ ...windowPayload, policyId: policy.id }),
+            now
+          ]
+        ),
+        guarded(
+          "INSERT INTO research_budget_slots (namespace, month, slot, experiment_id, created_at) SELECT ?, ?, 1, ?, ?",
+          [this.namespace, month, experimentId, now]
+        ),
+        ...samples.map(
+          (sample) => guarded(
+            "INSERT INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) SELECT ?, ?, 'HISTORICAL_TRAIN', ?, ?, ?, ?",
+            [
+              this.namespace,
+              experimentId,
+              sample.date,
+              sampleKey({
+                namespace: this.namespace,
+                experimentId,
+                role: "HISTORICAL_TRAIN",
+                outcomeDate: sample.date
+              }),
+              JSON.stringify(sample.payload),
+              sample.digest
+            ]
+          )
+        ),
+        guarded(
+          "INSERT INTO research_experiments (id, namespace, parent_version, candidate_version, policy_id, kind, stage, revision, frozen_at, reservation_payload, proposal_manifest, proposal_digest, created_at) SELECT ?, ?, ?, NULL, ?, 'BOOTSTRAP', 'PROPOSING', 0, NULL, ?, NULL, NULL, ?",
+          [
+            experimentId,
+            this.namespace,
+            parentVersion,
+            policy.id,
+            JSON.stringify(reservation),
+            now
+          ]
+        ),
+        guarded(
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+          [
+            experimentId,
+            event.sequence,
+            event.eventType,
+            event.createdAt,
+            JSON.stringify(event.payload),
+            event.previousDigest,
+            await eventDigest(event)
+          ]
+        )
+      ];
+      await this.executeReservation(statements);
+      const trainCount = (await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM research_sample_uses WHERE experiment_id = ?"
+      ).bind(experimentId).first()).n;
+      if (trainCount !== samples.length)
+        throw new Error(
+          "\u51B7\u542F\u52A8\u8BAD\u7EC3\u6837\u672C\u767B\u8BB0\u4E0D\u5B8C\u6574\uFF08\u9884\u7559\u5B88\u536B\u672A\u751F\u6548\uFF09\uFF0C\u9884\u7559\u5DF2\u7EC8\u6B62"
+        );
+      const after = await this.db.prepare(
+        "SELECT revision, last_run_id, bootstrap_done FROM research_registry WHERE namespace = ?"
+      ).bind(this.namespace).first();
+      if (after.revision !== registryRow.revision + 1 || after.last_run_id !== nonce || after.bootstrap_done !== 1)
+        return null;
+      return { experimentId, reservation, reservationDigest, attemptSequence };
+    };
+    if (typeof this.db.transaction === "function")
+      return this.db.transaction(async () => {
+        this.inTransaction = true;
+        try {
+          return await attempt();
+        } finally {
+          this.inTransaction = false;
+        }
+      });
+    return attempt();
+  }
+  async concludeBootstrap(experimentId, versionId, { report, reason }) {
+    const experiment = mapRow(
+      await this.db.prepare("SELECT * FROM research_experiments WHERE id = ?").bind(experimentId).first()
+    );
+    if (!experiment || experiment.stage !== "PROPOSING")
+      throw new Error("\u5B9E\u9A8C\u4E0D\u5728\u63D0\u6848\u9636\u6BB5");
+    const stage = "AWAITING_SHADOW";
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const reportDigest = await digestOf(report);
+    const previous = await this.lastEvent(experimentId);
+    const event = {
+      sequence: (previous?.sequence ?? 0) + 1,
+      eventType: "BOOTSTRAP_SCREENED",
+      createdAt: now,
+      payload: { reportDigest, reason },
+      previousDigest: previous?.digest ?? null
+    };
+    const statements = [
+      this.db.prepare(
+        "INSERT OR IGNORE INTO research_reports (experiment_id, stage, payload, digest, created_at) VALUES (?, 'dev_screen', ?, ?, ?)"
+      ).bind(experimentId, JSON.stringify(report), reportDigest, now),
+      this.db.prepare(
+        "UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? AND stage = 'PROPOSING'"
+      ).bind(stage, experimentId),
+      this.db.prepare(
+        "UPDATE strategy_versions SET status = 'SHADOW_PENDING' WHERE id = ? AND status = 'PROPOSING'"
+      ).bind(versionId),
+      this.db.prepare(
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)"
+      ).bind(
+        experimentId,
+        event.sequence,
+        event.eventType,
+        event.createdAt,
+        JSON.stringify(event.payload),
+        event.previousDigest,
+        await eventDigest(event),
+        experimentId,
+        stage
+      ),
+      this.db.prepare(
+        "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)"
+      ).bind(this.namespace, experimentId, experimentId, stage)
+    ];
+    await this.db.batch(statements);
+    const after = mapRow(
+      await this.db.prepare("SELECT * FROM research_experiments WHERE id = ?").bind(experimentId).first()
+    );
+    if (after?.stage !== stage)
+      throw new Error("\u5B9E\u9A8C\u72B6\u6001\u63A8\u8FDB\u5931\u8D25\uFF1A\u72B6\u6001\u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8");
+    return { stage, reportDigest };
+  }
   async executeReservation(statements) {
     if (this.inTransaction) {
       for (const statement of statements) await statement.run();
@@ -4082,7 +4867,7 @@ var ResearchRepository = class {
     initialCashCents,
     executionVersion,
     scoringVersion
-  }) {
+  }, targetStage = "HISTORICAL_CHECK") {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const manifest = {
       experimentId,
@@ -4118,16 +4903,17 @@ var ResearchRepository = class {
     };
     await this.db.batch([
       this.db.prepare(
-        "UPDATE research_experiments SET candidate_version = ?, frozen_at = ?, stage = 'HISTORICAL_CHECK', revision = revision + 1, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'"
+        "UPDATE research_experiments SET candidate_version = ?, frozen_at = ?, stage = ?, revision = revision + 1, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'"
       ).bind(
         versionId,
         now,
+        targetStage,
         JSON.stringify(manifest),
         manifestDigest,
         experimentId
       ),
       this.db.prepare(
-        "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK')"
+        "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)"
       ).bind(
         versionId,
         now,
@@ -4138,10 +4924,11 @@ var ResearchRepository = class {
           rationale,
           parentVersion
         }),
-        experimentId
+        experimentId,
+        targetStage
       ),
       this.db.prepare(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK')"
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)"
       ).bind(
         experimentId,
         event.sequence,
@@ -4150,13 +4937,14 @@ var ResearchRepository = class {
         JSON.stringify(event.payload),
         event.previousDigest,
         await eventDigest(event),
-        experimentId
+        experimentId,
+        targetStage
       )
     ]);
     const row = mapRow(
       await this.db.prepare("SELECT * FROM research_experiments WHERE id = ?").bind(experimentId).first()
     );
-    if (row?.stage !== "HISTORICAL_CHECK")
+    if (row?.stage !== targetStage)
       throw new Error("\u5019\u9009\u51BB\u7ED3\u5931\u8D25\uFF1A\u5B9E\u9A8C\u72B6\u6001\u5DF2\u53D8\u5316");
     return { manifest, manifestDigest };
   }
@@ -4833,6 +5621,268 @@ async function proposeImprovement(repository, env, propose = requestProposal) {
     };
   }
 }
+async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, propose = requestProposal) {
+  const research = new ResearchRepository(env);
+  const policy = await research.getPolicy();
+  const minTrainingDays = policy.payload.bootstrapMinTrainingDays ?? 20;
+  if (!aiConfig(env).configured)
+    return {
+      status: "NOT_CONFIGURED",
+      reason: "\u914D\u7F6E\u670D\u52A1\u7AEF\u5927\u6A21\u578B\u5BC6\u94A5\u540E\u542F\u7528 AI \u51B7\u542F\u52A8\u521D\u59CB\u5316"
+    };
+  const account = await repository.account();
+  const registry = await research.ensureRegistry();
+  if (registry.bootstrapDone)
+    return {
+      status: "BOOTSTRAP_DONE",
+      reason: "AI \u51B7\u542F\u52A8\u521D\u59CB\u5316\u5168\u5C40\u4EC5\u4E00\u6B21\uFF1B\u5931\u8D25\u4E0E\u9519\u8BEF\u540C\u6837\u89C6\u4E3A\u5DF2\u6D88\u8017"
+    };
+  const store = openHistoryStore(env);
+  const dataset = datasetId ? await store.getDataset(datasetId) : null;
+  if (!dataset)
+    return {
+      status: "NEED_DATA",
+      reason: "\u8BF7\u6307\u5B9A\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09"
+    };
+  if (dataset.executionModel !== "SIX_FACTOR_V1")
+    return {
+      status: "NEED_DATA",
+      reason: "\u51B7\u542F\u52A8\u8BAD\u7EC3\u9700\u8981\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6"
+    };
+  const scores = await store.listScores(datasetId);
+  const trainingPairs = [];
+  const trainingDates = [];
+  const samples = [];
+  for (let index = 0; index + 1 < scores.length; index++) {
+    const signal = scores[index];
+    const nextDate = scores[index + 1].tradeDate;
+    const daily = await store.getDailyInput(datasetId, nextDate);
+    if (!daily) continue;
+    const rows = Array.isArray(daily.normalized) ? daily.normalized : Object.entries(daily.normalized ?? {}).map(([code, row]) => ({
+      code,
+      name: null,
+      sector: "\u672A\u5206\u7C7B",
+      price: row.closeCents !== null ? row.closeCents / 100 : null,
+      change: null,
+      amount: null,
+      floatCap: null,
+      seal: null,
+      turnover: null,
+      first: null,
+      last: null,
+      breaks: null,
+      height: null
+    }));
+    const snapshotStocks = new Map(
+      (signal.payload.stocks ?? []).map((stock) => [
+        stock.code,
+        stock.price !== null && stock.price !== void 0 ? Math.round(stock.price * 100) : null
+      ])
+    );
+    const quotes = {};
+    for (const row of rows) {
+      if (!row.code || row.price === null) continue;
+      const previousCloseCents = snapshotStocks.get(row.code) ?? Math.round(row.price * 100);
+      quotes[row.code] = {
+        date: nextDate,
+        previousCloseCents,
+        openCents: row.openCents ?? previousCloseCents,
+        closeCents: Math.round(row.price * 100),
+        highCents: row.highCents ?? Math.round(row.price * 100),
+        lowCents: row.lowCents ?? Math.round(row.price * 100),
+        volumeShares: row.volumeShares ?? 1e7,
+        limitUpCents: Math.round(previousCloseCents * 1.1),
+        limitDownCents: Math.round(previousCloseCents * 0.9),
+        timestamp: `${nextDate}T15:00:00+08:00`
+      };
+    }
+    if (!Object.keys(quotes).length) continue;
+    trainingPairs.push({
+      snapshot: signal.payload,
+      dataset: {
+        date: nextDate,
+        quotes,
+        minutes: {},
+        source: `\u5386\u53F2\u51B7\u542F\u52A8\uFF08${dataset.provider}\uFF09`,
+        fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    });
+    trainingDates.push(nextDate);
+    samples.push({
+      date: nextDate,
+      payload: {
+        role: "HISTORICAL_TRAIN",
+        signalDate: signal.tradeDate,
+        datasetId,
+        datasetManifestDigest: dataset.manifestDigest,
+        scoreDigest: signal.digest
+      },
+      digest: await digestOf({
+        scoreDigest: signal.digest,
+        nextDate,
+        datasetManifestDigest: dataset.manifestDigest
+      })
+    });
+  }
+  if (trainingPairs.length < minTrainingDays)
+    return {
+      status: "NEED_DATA",
+      days: trainingPairs.length,
+      required: minTrainingDays,
+      reason: `\u5386\u53F2\u8BAD\u7EC3\u5BF9\u4E0D\u8DB3\uFF08\u9700\u8981\u81F3\u5C11 ${minTrainingDays} \u4E2A\u4FE1\u53F7-\u6B21\u65E5\u5BF9\uFF09`
+    };
+  const active = await research.activeExperiment();
+  if (active)
+    return {
+      status: "BUSY",
+      experimentId: active.experimentId,
+      reason: "\u5B58\u5728\u8FDB\u884C\u4E2D\u7684\u7814\u7A76\u5B9E\u9A8C\uFF08\u51B7\u542F\u52A8\u4E0E\u6EDA\u52A8\u63D0\u6848\u5171\u7528\u6D3B\u52A8\u69FD\uFF09"
+    };
+  const month = beijingMonth();
+  const used = await research.monthUsage(month);
+  if (used >= policy.payload.monthlyProposalLimit)
+    return {
+      status: "BUDGET_EXHAUSTED",
+      month,
+      used,
+      limit: policy.payload.monthlyProposalLimit,
+      reason: "\u672C\u6708\u63D0\u6848\u6B21\u6570\u5DF2\u7528\u5B8C\uFF1B\u51B7\u542F\u52A8\u540C\u6837\u6D88\u8017\u9884\u7B97"
+    };
+  const base = await repository.strategy(account.book);
+  const feeConfig = feesForBook(account.book);
+  let reserved;
+  try {
+    reserved = await research.reserveBootstrapAttempt({
+      policy,
+      month,
+      parentVersion: account.book.activeStrategy,
+      windowPayload: {
+        kind: "BOOTSTRAP",
+        datasetId,
+        datasetManifestDigest: dataset.manifestDigest,
+        trainingDays: trainingPairs.length,
+        note: "AI \u51B7\u542F\u52A8\u4E00\u6B21\u6027\u521D\u59CB\u5316\uFF1B\u8BAD\u7EC3\u65E5\u671F\u767B\u8BB0\u4E3A HISTORICAL_TRAIN\uFF0C\u4E0D\u518D\u7528\u4E8E\u672A\u6765\u524D\u77BB\u6D4B\u8BD5"
+      },
+      trainingDates,
+      samples,
+      datasetId,
+      datasetManifestDigest: dataset.manifestDigest
+    });
+  } catch {
+    return { status: "BUSY", reason: "\u5E76\u53D1\u9884\u7559\u51B2\u7A81\uFF0C\u672C\u6B21\u672A\u53D1\u8D77\u6A21\u578B\u8C03\u7528" };
+  }
+  if (!reserved)
+    return { status: "BOOTSTRAP_DONE", reason: "\u51B7\u542F\u52A8\u8D44\u683C\u5DF2\u88AB\u5E76\u53D1\u6D41\u7A0B\u6D88\u8017" };
+  const experimentId = reserved.experimentId;
+  await research.appendEvent(experimentId, "REQUEST_ISSUED", {
+    attemptSequence: reserved.attemptSequence,
+    executorId: EXECUTOR_ID,
+    requestIssuedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    trainingDates,
+    datasetId,
+    datasetManifestDigest: dataset.manifestDigest,
+    note: "\u51B7\u542F\u52A8\u63D0\u6848\u53EA\u643A\u5E26\u5386\u53F2\u8BAD\u7EC3\u7A97\u53E3\uFF1B\u65E0\u4E00\u6B21\u6027\u6D4B\u8BD5\u65E5\u671F\u6D88\u8D39"
+  });
+  let versionId = null;
+  try {
+    const proposal = await propose(
+      env,
+      base,
+      trainingPairs,
+      account.book.initialCashCents / 100,
+      feeConfig
+    );
+    const candidate = validateCandidatePatch({
+      proposal,
+      parentParams: base,
+      frozenPolicy: policy.payload
+    });
+    versionId = experimentId;
+    await research.freezeCandidate(
+      experimentId,
+      {
+        versionId,
+        params: candidate.params,
+        patch: candidate.patch,
+        rationale: candidate.rationale,
+        policyId: policy.id,
+        modelAlias: aiConfig(env).model,
+        modelVersionReported: null,
+        promptDigest: proposal.requestDigest ?? await digestOf({
+          modelAlias: aiConfig(env).model,
+          trainingDates,
+          evidenceDigest: proposal.evidenceDigest ?? null
+        }),
+        output: { rationale: candidate.rationale, patch: candidate.patch },
+        trainingDates,
+        testDates: [],
+        parentVersion: account.book.activeStrategy,
+        parentParamsDigest: await digestOf(base),
+        feeConfig,
+        feeConfigDigest: await digestOf(feeConfig),
+        initialCashCents: account.book.initialCashCents,
+        executionVersion: EXECUTION_VERSION,
+        scoringVersion: SCORING_VERSION
+      },
+      "PROPOSING"
+    );
+    const baselineReplay = replayStrategy(
+      trainingPairs,
+      base,
+      account.book.initialCashCents / 100,
+      feeConfig
+    );
+    const candidateReplay = replayStrategy(
+      trainingPairs,
+      candidate.params,
+      account.book.initialCashCents / 100,
+      feeConfig
+    );
+    const { stage } = await research.concludeBootstrap(
+      experimentId,
+      versionId,
+      {
+        report: {
+          experimentId,
+          attemptSequence: reserved.attemptSequence,
+          kind: "BOOTSTRAP",
+          datasetId,
+          datasetManifestDigest: dataset.manifestDigest,
+          trainingDates,
+          screen: {
+            baseline: {
+              totalReturn: baselineReplay.totalReturn,
+              maxDrawdown: baselineReplay.maxDrawdown,
+              fillCount: baselineReplay.fillCount
+            },
+            candidate: {
+              totalReturn: candidateReplay.totalReturn,
+              maxDrawdown: candidateReplay.maxDrawdown,
+              fillCount: candidateReplay.fillCount
+            },
+            note: "\u5F00\u53D1\u5C4F\u5E55\u4EC5\u4E3A\u8BB0\u5F55\u6027\u6307\u6807\uFF0C\u4E0D\u6784\u6210\u9A8C\u8BC1\u6216\u542F\u7528\u8D44\u683C\uFF1B\u5019\u9009\u7B49\u5F85\u672A\u6765\u524D\u77BB\u5F71\u5B50\u9A8C\u8BC1"
+          }
+        },
+        reason: "\u51B7\u542F\u52A8\u5019\u9009\u5DF2\u51BB\u7ED3\u5E76\u767B\u8BB0\u4E3A\u7B49\u5F85\u524D\u77BB\u5F71\u5B50\u9A8C\u8BC1"
+      }
+    );
+    return {
+      status: stage === "AWAITING_SHADOW" ? "AWAITING_SHADOW" : "ERROR",
+      experimentId,
+      version: versionId,
+      attemptSequence: reserved.attemptSequence,
+      reason: "\u51B7\u542F\u52A8\u5019\u9009\u5DF2\u51BB\u7ED3\uFF0C\u76F4\u63A5\u8FDB\u5165\u524D\u77BB\u5F71\u5B50\u961F\u5217\uFF1B\u671F\u95F4\u4E0D\u63D0\u4F9B\u4EFB\u4F55\u542F\u7528\u8D44\u683C"
+    };
+  } catch (error) {
+    await research.recordError(experimentId, versionId, safeError(error)).catch(() => {
+    });
+    return {
+      status: "ERROR",
+      experimentId,
+      reason: `\u51B7\u542F\u52A8\u63D0\u6848\u5931\u8D25\uFF08${safeError(error)}\uFF09\uFF1B\u4E00\u6B21\u6027\u8D44\u683C\u4E0E\u9884\u7B97\u5DF2\u6D88\u8017\uFF0C\u539F\u7B56\u7565\u7EE7\u7EED\u8FD0\u884C`
+    };
+  }
+}
 async function promoteCandidate(repository, env, id) {
   const research = new ResearchRepository(env);
   if (/^ai-\d{4}-\d{2}-\d{2}$/.test(id))
@@ -4857,6 +5907,7 @@ async function researchStatus(env) {
   const experiments = await research.listExperiments(20);
   return {
     namespace: registry.namespace,
+    bootstrapDone: registry.bootstrapDone,
     policy: {
       id: policy.id,
       digest: policy.digest,
@@ -5783,606 +6834,6 @@ function createTencentHistoricalProvider(options = {}) {
   };
 }
 
-// scripts/local-db.mjs
-import { DatabaseSync } from "node:sqlite";
-import { readdirSync, readFileSync } from "node:fs";
-function localDatabase(path = ":memory:") {
-  const sqlite = new DatabaseSync(path);
-  sqlite.exec(
-    "PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS local_migrations (name TEXT PRIMARY KEY)"
-  );
-  for (const name of readdirSync("drizzle").filter((name2) => name2.endsWith(".sql")).sort()) {
-    if (sqlite.prepare("SELECT name FROM local_migrations WHERE name=?").get(name))
-      continue;
-    sqlite.exec("BEGIN");
-    try {
-      sqlite.exec(readFileSync(`drizzle/${name}`, "utf8"));
-      sqlite.prepare("INSERT INTO local_migrations (name) VALUES (?)").run(name);
-      sqlite.exec("COMMIT");
-    } catch (error) {
-      sqlite.exec("ROLLBACK");
-      throw error;
-    }
-  }
-  function prepare(sql) {
-    return {
-      args: [],
-      bind(...args) {
-        this.args = args;
-        return this;
-      },
-      async first() {
-        return sqlite.prepare(sql).get(...this.args) || null;
-      },
-      async all() {
-        return { results: sqlite.prepare(sql).all(...this.args) };
-      },
-      async run() {
-        const result = sqlite.prepare(sql).run(...this.args);
-        return { meta: { changes: Number(result.changes) } };
-      },
-      _run() {
-        const result = sqlite.prepare(sql).run(...this.args);
-        return { meta: { changes: Number(result.changes) } };
-      }
-    };
-  }
-  return {
-    prepare,
-    exec: (sql) => sqlite.exec(sql),
-    async batch(statements) {
-      sqlite.exec("BEGIN IMMEDIATE");
-      try {
-        const results = statements.map((statement) => statement._run());
-        sqlite.exec("COMMIT");
-        return results;
-      } catch (error) {
-        sqlite.exec("ROLLBACK");
-        throw error;
-      }
-    },
-    transactionQueue: Promise.resolve(),
-    async transaction(fn) {
-      const run = this.transactionQueue.then(async () => {
-        sqlite.exec("BEGIN IMMEDIATE");
-        try {
-          const result = await fn();
-          sqlite.exec("COMMIT");
-          return result;
-        } catch (error) {
-          sqlite.exec("ROLLBACK");
-          throw error;
-        }
-      });
-      this.transactionQueue = run.then(
-        () => void 0,
-        () => void 0
-      );
-      return run;
-    },
-    close() {
-      sqlite.close();
-    }
-  };
-}
-
-// backend/storage/history.js
-var RESEARCH_NAMESPACE2 = "main";
-var HISTORY_STAGES = [
-  "PLANNED",
-  "PROBING",
-  "DOWNLOADING",
-  "NORMALIZING",
-  "SCORING",
-  "READY",
-  "PARTIAL",
-  "BLOCKED",
-  "FAILED"
-];
-var HistoryJobRepository = class {
-  constructor(env) {
-    this.db = database(env);
-  }
-  async createJob({ id, provider, kind, start, end, name }) {
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    await this.db.prepare(
-      "INSERT INTO history_import_jobs (id, namespace, provider, kind, requested_start, requested_end, name, stage, progress, status_payload, dataset_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'PLANNED', '{}', '{}', NULL, ?, ?)"
-    ).bind(
-      id,
-      RESEARCH_NAMESPACE2,
-      provider,
-      kind,
-      start,
-      end,
-      name ?? null,
-      now,
-      now
-    ).run();
-    return this.getJob(id);
-  }
-  async getJob(id) {
-    const row = await this.db.prepare("SELECT * FROM history_import_jobs WHERE id = ?").bind(id).first();
-    return row ? this.mapJob(row) : null;
-  }
-  mapJob(row) {
-    return {
-      id: row.id,
-      namespace: row.namespace,
-      provider: row.provider,
-      kind: row.kind,
-      requestedRange: { start: row.requested_start, end: row.requested_end },
-      name: row.name,
-      stage: row.stage,
-      progress: JSON.parse(row.progress || "{}"),
-      statusPayload: JSON.parse(row.status_payload || "{}"),
-      datasetId: row.dataset_id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-  async listJobs(limit = 20) {
-    const result = await this.db.prepare(
-      "SELECT * FROM history_import_jobs ORDER BY created_at DESC, id DESC LIMIT ?"
-    ).bind(limit).all();
-    return result.results.map((row) => this.mapJob(row));
-  }
-  async updateJob(id, { stage, progress, statusPayload, datasetId }) {
-    const job = await this.getJob(id);
-    if (!job) throw new Error("\u5386\u53F2\u5BFC\u5165\u4EFB\u52A1\u4E0D\u5B58\u5728");
-    if (stage && !HISTORY_STAGES.includes(stage))
-      throw new Error(`\u5386\u53F2\u4EFB\u52A1\u9636\u6BB5\u65E0\u6548\uFF1A${stage}`);
-    await this.db.prepare(
-      "UPDATE history_import_jobs SET stage = ?, progress = ?, status_payload = ?, dataset_id = ?, updated_at = ? WHERE id = ?"
-    ).bind(
-      stage ?? job.stage,
-      JSON.stringify(progress ?? job.progress),
-      JSON.stringify(statusPayload ?? job.statusPayload),
-      datasetId ?? job.datasetId,
-      (/* @__PURE__ */ new Date()).toISOString(),
-      id
-    ).run();
-    return this.getJob(id);
-  }
-};
-var HistoryDatasetStore = class {
-  constructor(path) {
-    this.path = path;
-    this.db = localDatabase(path);
-    this.ready = false;
-  }
-  async ensure() {
-    if (this.ready) return;
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS history_dataset_versions (
-        id TEXT PRIMARY KEY,
-        provider TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        execution_model TEXT NOT NULL,
-        requested_start TEXT NOT NULL,
-        requested_end TEXT NOT NULL,
-        observed_start TEXT,
-        observed_end TEXT,
-        coverage_payload TEXT NOT NULL,
-        manifest_digest TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS history_daily_inputs (
-        dataset_id TEXT NOT NULL,
-        trade_date TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        digest TEXT NOT NULL,
-        PRIMARY KEY (dataset_id, trade_date)
-      );
-      CREATE TABLE IF NOT EXISTS history_scores (
-        dataset_id TEXT NOT NULL,
-        trade_date TEXT NOT NULL,
-        scoring_version TEXT NOT NULL,
-        params_digest TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        digest TEXT NOT NULL,
-        PRIMARY KEY (dataset_id, trade_date, scoring_version, params_digest)
-      );
-      CREATE TABLE IF NOT EXISTS history_reviews (
-        dataset_id TEXT NOT NULL,
-        signal_date TEXT NOT NULL,
-        label_end_date TEXT NOT NULL,
-        review_version TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        digest TEXT NOT NULL,
-        PRIMARY KEY (dataset_id, signal_date, label_end_date, review_version)
-      );
-      CREATE TABLE IF NOT EXISTS history_chunks (
-        job_id TEXT NOT NULL,
-        chunk_key TEXT NOT NULL,
-        request_range TEXT NOT NULL,
-        actual_range TEXT,
-        rows INTEGER NOT NULL,
-        stage TEXT NOT NULL,
-        raw_digest TEXT,
-        artifact_ref TEXT,
-        PRIMARY KEY (job_id, chunk_key)
-      );
-      CREATE TABLE IF NOT EXISTS history_minute_inputs (
-        dataset_id TEXT NOT NULL,
-        trade_date TEXT NOT NULL,
-        code TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        digest TEXT NOT NULL,
-        PRIMARY KEY (dataset_id, trade_date, code)
-      );
-      CREATE TABLE IF NOT EXISTS backtest_runs (
-        id TEXT PRIMARY KEY,
-        dataset_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        strategy_version TEXT NOT NULL,
-        strategy_params TEXT NOT NULL,
-        params_digest TEXT NOT NULL,
-        fee_config TEXT NOT NULL,
-        fee_digest TEXT NOT NULL,
-        execution_model TEXT NOT NULL,
-        execution_version TEXT NOT NULL,
-        initial_book TEXT NOT NULL,
-        stage TEXT NOT NULL,
-        coverage_payload TEXT NOT NULL,
-        digest TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS backtest_plans (
-        run_id TEXT NOT NULL,
-        signal_date TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        digest TEXT NOT NULL,
-        PRIMARY KEY (run_id, signal_date)
-      );
-      CREATE TABLE IF NOT EXISTS backtest_ledger (
-        run_id TEXT NOT NULL,
-        id TEXT NOT NULL,
-        trade_date TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        PRIMARY KEY (run_id, id)
-      );
-      CREATE TABLE IF NOT EXISTS backtest_equity (
-        run_id TEXT NOT NULL,
-        trade_date TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        digest TEXT NOT NULL,
-        PRIMARY KEY (run_id, trade_date)
-      );
-    `);
-    this.ready = true;
-  }
-  async createDatasetVersion({
-    id,
-    provider,
-    kind,
-    executionModel,
-    requestedStart,
-    requestedEnd,
-    coverage
-  }) {
-    await this.ensure();
-    const digest2 = await digestOf(coverage);
-    await this.db.prepare(
-      "INSERT INTO history_dataset_versions (id, provider, kind, execution_model, requested_start, requested_end, observed_start, observed_end, coverage_payload, manifest_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(
-      id,
-      provider,
-      kind,
-      executionModel,
-      requestedStart,
-      requestedEnd,
-      coverage.observedStart ?? null,
-      coverage.observedEnd ?? null,
-      JSON.stringify(coverage),
-      digest2,
-      (/* @__PURE__ */ new Date()).toISOString()
-    ).run();
-    return { id, manifestDigest: digest2 };
-  }
-  async updateDatasetCoverage(id, coverage) {
-    await this.ensure();
-    const digest2 = await digestOf(coverage);
-    await this.db.prepare(
-      "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?"
-    ).bind(
-      JSON.stringify(coverage),
-      digest2,
-      coverage.observedStart ?? null,
-      coverage.observedEnd ?? null,
-      coverage.executionModel ?? "PENDING",
-      id
-    ).run();
-  }
-  async saveChunk(jobId, {
-    chunkKey,
-    requestRange,
-    actualRange,
-    rows,
-    stage,
-    rawDigest,
-    artifactRef
-  }) {
-    await this.ensure();
-    await this.db.prepare(
-      "INSERT INTO history_chunks (job_id, chunk_key, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows"
-    ).bind(
-      jobId,
-      chunkKey,
-      requestRange,
-      actualRange ?? null,
-      rows ?? 0,
-      stage,
-      rawDigest ?? null,
-      artifactRef ?? null
-    ).run();
-  }
-  async completedChunkKeys(jobId) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT chunk_key FROM history_chunks WHERE job_id = ? AND stage IN ('DONE','EMPTY')"
-    ).bind(jobId).all();
-    return new Set(result.results.map((row) => row.chunk_key));
-  }
-  async saveDailyInputs(datasetId, tradeDate, { normalized, provenance }) {
-    await this.ensure();
-    const payload = JSON.stringify({ normalized, provenance });
-    await this.db.prepare(
-      "INSERT OR REPLACE INTO history_daily_inputs (dataset_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)"
-    ).bind(datasetId, tradeDate, payload, await digestOf(payload)).run();
-  }
-  async saveScore(datasetId, tradeDate, scoringVersion, paramsDigest, payload) {
-    await this.ensure();
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO history_scores (dataset_id, trade_date, scoring_version, params_digest, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(
-      datasetId,
-      tradeDate,
-      scoringVersion,
-      paramsDigest,
-      JSON.stringify(payload),
-      await digestOf(payload)
-    ).run();
-  }
-  async saveReview(datasetId, signalDate, labelEndDate, reviewVersion, payload) {
-    await this.ensure();
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO history_reviews (dataset_id, signal_date, label_end_date, review_version, payload, digest) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(
-      datasetId,
-      signalDate,
-      labelEndDate,
-      reviewVersion,
-      JSON.stringify(payload),
-      await digestOf(payload)
-    ).run();
-  }
-  async getDataset(id) {
-    await this.ensure();
-    const row = await this.db.prepare("SELECT * FROM history_dataset_versions WHERE id = ?").bind(id).first();
-    if (!row) return null;
-    return {
-      id: row.id,
-      provider: row.provider,
-      kind: row.kind,
-      executionModel: row.execution_model,
-      requestedRange: { start: row.requested_start, end: row.requested_end },
-      observedRange: { start: row.observed_start, end: row.observed_end },
-      coverage: JSON.parse(row.coverage_payload),
-      manifestDigest: row.manifest_digest,
-      createdAt: row.created_at
-    };
-  }
-  async listDatasetDates(id) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT trade_date, digest FROM history_daily_inputs WHERE dataset_id = ? ORDER BY trade_date"
-    ).bind(id).all();
-    return result.results.map((row) => ({
-      tradeDate: row.trade_date,
-      digest: row.digest
-    }));
-  }
-  async getDailyInput(datasetId, tradeDate) {
-    await this.ensure();
-    const row = await this.db.prepare(
-      "SELECT payload FROM history_daily_inputs WHERE dataset_id = ? AND trade_date = ?"
-    ).bind(datasetId, tradeDate).first();
-    return row ? JSON.parse(row.payload) : null;
-  }
-  async saveMinuteInputs(datasetId, tradeDate, code, payload) {
-    await this.ensure();
-    await this.db.prepare(
-      "INSERT OR REPLACE INTO history_minute_inputs (dataset_id, trade_date, code, payload, digest) VALUES (?, ?, ?, ?, ?)"
-    ).bind(
-      datasetId,
-      tradeDate,
-      code,
-      JSON.stringify(payload),
-      await digestOf(payload)
-    ).run();
-  }
-  async listMinuteInputs(datasetId, tradeDate) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT code, payload FROM history_minute_inputs WHERE dataset_id = ? AND trade_date = ?"
-    ).bind(datasetId, tradeDate).all();
-    return Object.fromEntries(
-      result.results.map((row) => [row.code, JSON.parse(row.payload)])
-    );
-  }
-  async listMinuteDates(datasetId) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT DISTINCT trade_date FROM history_minute_inputs WHERE dataset_id = ? ORDER BY trade_date"
-    ).bind(datasetId).all();
-    return result.results.map((row) => row.trade_date);
-  }
-  async createBacktestRun({
-    id,
-    datasetId,
-    name,
-    strategyVersion,
-    strategyParams,
-    paramsDigest,
-    feeConfig,
-    feeDigest,
-    executionModel,
-    executionVersion,
-    initialBook
-  }) {
-    await this.ensure();
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    await this.db.prepare(
-      "INSERT INTO backtest_runs (id, dataset_id, name, strategy_version, strategy_params, params_digest, fee_config, fee_digest, execution_model, execution_version, initial_book, stage, coverage_payload, digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', '{}', ?, ?)"
-    ).bind(
-      id,
-      datasetId,
-      name,
-      strategyVersion,
-      JSON.stringify(strategyParams),
-      paramsDigest,
-      JSON.stringify(feeConfig),
-      feeDigest,
-      executionModel,
-      executionVersion,
-      JSON.stringify(initialBook),
-      await digestOf({ initialBook, datasetId, strategyParams }),
-      now
-    ).run();
-    return this.getBacktestRun(id);
-  }
-  async saveBacktestPlan(runId, signalDate, payload) {
-    await this.ensure();
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO backtest_plans (run_id, signal_date, payload, digest) VALUES (?, ?, ?, ?)"
-    ).bind(runId, signalDate, JSON.stringify(payload), await digestOf(payload)).run();
-  }
-  async appendBacktestLedger(runId, tradeDate, rows) {
-    await this.ensure();
-    for (const row of rows)
-      await this.db.prepare(
-        "INSERT OR IGNORE INTO backtest_ledger (run_id, id, trade_date, payload) VALUES (?, ?, ?, ?)"
-      ).bind(runId, row.id, tradeDate, JSON.stringify(row)).run();
-  }
-  async saveBacktestEquity(runId, tradeDate, payload) {
-    await this.ensure();
-    await this.db.prepare(
-      "INSERT OR REPLACE INTO backtest_equity (run_id, trade_date, payload, digest) VALUES (?, ?, ?, ?)"
-    ).bind(runId, tradeDate, JSON.stringify(payload), await digestOf(payload)).run();
-  }
-  async finishBacktestRun(id, stage, coverage) {
-    await this.ensure();
-    const digest2 = await digestOf(coverage);
-    await this.db.prepare(
-      "UPDATE backtest_runs SET stage = ?, coverage_payload = ?, digest = ? WHERE id = ?"
-    ).bind(stage, JSON.stringify(coverage), digest2, id).run();
-    return this.getBacktestRun(id);
-  }
-  async getBacktestRun(id) {
-    await this.ensure();
-    const row = await this.db.prepare("SELECT * FROM backtest_runs WHERE id = ?").bind(id).first();
-    if (!row) return null;
-    return {
-      id: row.id,
-      datasetId: row.dataset_id,
-      name: row.name,
-      strategyVersion: row.strategy_version,
-      strategyParams: JSON.parse(row.strategy_params),
-      paramsDigest: row.params_digest,
-      feeConfig: JSON.parse(row.fee_config),
-      feeDigest: row.fee_digest,
-      executionModel: row.execution_model,
-      executionVersion: row.execution_version,
-      initialBook: JSON.parse(row.initial_book),
-      stage: row.stage,
-      coverage: JSON.parse(row.coverage_payload),
-      digest: row.digest,
-      createdAt: row.created_at
-    };
-  }
-  async listBacktestLedger(runId) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT id, trade_date, payload FROM backtest_ledger WHERE run_id = ? ORDER BY trade_date, id"
-    ).bind(runId).all();
-    return result.results.map((row) => ({
-      id: row.id,
-      tradeDate: row.trade_date,
-      ...JSON.parse(row.payload)
-    }));
-  }
-  async listBacktestEquity(runId) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT trade_date, payload, digest FROM backtest_equity WHERE run_id = ? ORDER BY trade_date"
-    ).bind(runId).all();
-    return result.results.map((row) => ({
-      tradeDate: row.trade_date,
-      ...JSON.parse(row.payload),
-      digest: row.digest
-    }));
-  }
-  async listBacktestRuns(limit = 20) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT id, dataset_id, name, stage, execution_model, coverage_payload, created_at FROM backtest_runs ORDER BY created_at DESC, id DESC LIMIT ?"
-    ).bind(limit).all();
-    return result.results.map((row) => ({
-      id: row.id,
-      datasetId: row.dataset_id,
-      name: row.name,
-      stage: row.stage,
-      executionModel: row.execution_model,
-      coverage: JSON.parse(row.coverage_payload),
-      createdAt: row.created_at
-    }));
-  }
-  async listBacktestPlans(runId) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT signal_date, payload, digest FROM backtest_plans WHERE run_id = ? ORDER BY signal_date"
-    ).bind(runId).all();
-    return result.results.map((row) => ({
-      signalDate: row.signal_date,
-      ...JSON.parse(row.payload),
-      digest: row.digest
-    }));
-  }
-  async listScores(datasetId) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT trade_date, scoring_version, params_digest, payload, digest FROM history_scores WHERE dataset_id = ? ORDER BY trade_date"
-    ).bind(datasetId).all();
-    return result.results.map((row) => ({
-      tradeDate: row.trade_date,
-      scoringVersion: row.scoring_version,
-      paramsDigest: row.params_digest,
-      payload: JSON.parse(row.payload),
-      digest: row.digest
-    }));
-  }
-  async listReviews(datasetId) {
-    await this.ensure();
-    const result = await this.db.prepare(
-      "SELECT signal_date, label_end_date, review_version, payload, digest FROM history_reviews WHERE dataset_id = ? ORDER BY signal_date"
-    ).bind(datasetId).all();
-    return result.results.map((row) => ({
-      signalDate: row.signal_date,
-      labelEndDate: row.label_end_date,
-      reviewVersion: row.review_version,
-      payload: JSON.parse(row.payload),
-      digest: row.digest
-    }));
-  }
-  close() {
-    this.db.close();
-  }
-};
-function openHistoryStore(env) {
-  const path = env?.LOCAL_RESEARCH_DB_PATH || ".sites-runtime/research-history.sqlite";
-  return new HistoryDatasetStore(path);
-}
-
 // backend/services/history.js
 var SCORING_VERSION2 = "rules-v1-historical";
 function newId(prefix) {
@@ -7126,6 +7577,7 @@ async function api(request, env) {
     "/api/paper/export": ["GET"],
     "/api/paper/verify": ["GET"],
     "/api/paper/improve": ["POST"],
+    "/api/research/bootstrap": ["POST"],
     "/api/paper/activate": ["POST"],
     "/api/paper/live": ["GET"],
     "/api/paper/poll": ["POST"],
@@ -7319,6 +7771,14 @@ async function api(request, env) {
     await repository.initialize(await readWeights(env));
     if (path === "/api/paper/improve")
       return json(await proposeImprovement(repository, env));
+    if (path === "/api/research/bootstrap") {
+      const body2 = await readJson(request);
+      return json(
+        await proposeBootstrapImprovement(repository, env, {
+          datasetId: body2.datasetId
+        })
+      );
+    }
     const body = await readJson(request);
     if (typeof body.id !== "string" || !/^(?:ai-\d{4}-\d{2}-\d{2}|exp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(
       body.id

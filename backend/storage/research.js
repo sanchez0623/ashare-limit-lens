@@ -21,6 +21,7 @@ const mapRow = (row) =>
         policyId: row.policy_id,
         stage: row.stage,
         revision: row.revision,
+        kind: row.kind ?? "ROLLING",
         frozenAt: row.frozen_at,
         reservationPayload: JSON.parse(row.reservation_payload || "{}"),
         proposalManifest: row.proposal_manifest
@@ -186,6 +187,7 @@ export class ResearchRepository {
       legacyCutoff: row.legacy_cutoff,
       selectionCutoff: row.selection_cutoff,
       lastRunId: row.last_run_id,
+      bootstrapDone: (row.bootstrap_done ?? 0) === 1,
       payload: JSON.parse(row.payload || "{}"),
     };
   }
@@ -437,6 +439,225 @@ export class ResearchRepository {
       });
     return attempt();
   }
+  async reserveBootstrapAttempt({
+    policy,
+    month,
+    parentVersion,
+    windowPayload,
+    trainingDates,
+    samples,
+    datasetId,
+    datasetManifestDigest,
+  }) {
+    const attempt = async () => {
+      await this.assertReservationFreshness(trainingDates);
+      const registryRow = await this.db
+        .prepare(
+          "SELECT revision, attempt_sequence, bootstrap_done FROM research_registry WHERE namespace = ?",
+        )
+        .bind(this.namespace)
+        .first();
+      if (!registryRow || registryRow.bootstrap_done === 1) return null;
+      const now = new Date().toISOString();
+      const nonce = crypto.randomUUID();
+      const experimentId = `exp-${crypto.randomUUID()}`;
+      const attemptSequence = registryRow.attempt_sequence + 1;
+      const reservation = {
+        experimentId,
+        namespace: this.namespace,
+        kind: "BOOTSTRAP",
+        attemptSequence,
+        parentVersion,
+        trainingDates,
+        testDates: [],
+        datasetId,
+        datasetManifestDigest,
+        policyId: policy.id,
+        policyDigest: policy.digest,
+        reservedAt: now,
+      };
+      const reservationDigest = await digestOf(reservation);
+      const guardArgs = [this.namespace, registryRow.revision + 1, nonce];
+      const guarded = (sql, args) =>
+        this.db
+          .prepare(
+            `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`,
+          )
+          .bind(...args, ...guardArgs);
+      const event = {
+        sequence: 1,
+        eventType: "BOOTSTRAP_RESERVED",
+        createdAt: now,
+        payload: { reservation, reservationDigest },
+        previousDigest: null,
+      };
+      const statements = [
+        this.db
+          .prepare(
+            "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, bootstrap_done = 1, last_run_id = ? WHERE namespace = ? AND revision = ? AND bootstrap_done = 0",
+          )
+          .bind(nonce, this.namespace, registryRow.revision),
+        guarded(
+          "INSERT INTO research_active_slots (namespace, experiment_id, window_payload, created_at) SELECT ?, ?, ?, ?",
+          [
+            this.namespace,
+            experimentId,
+            JSON.stringify({ ...windowPayload, policyId: policy.id }),
+            now,
+          ],
+        ),
+        guarded(
+          "INSERT INTO research_budget_slots (namespace, month, slot, experiment_id, created_at) SELECT ?, ?, 1, ?, ?",
+          [this.namespace, month, experimentId, now],
+        ),
+        ...samples.map((sample) =>
+          guarded(
+            "INSERT INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) SELECT ?, ?, 'HISTORICAL_TRAIN', ?, ?, ?, ?",
+            [
+              this.namespace,
+              experimentId,
+              sample.date,
+              sampleKey({
+                namespace: this.namespace,
+                experimentId,
+                role: "HISTORICAL_TRAIN",
+                outcomeDate: sample.date,
+              }),
+              JSON.stringify(sample.payload),
+              sample.digest,
+            ],
+          ),
+        ),
+        guarded(
+          "INSERT INTO research_experiments (id, namespace, parent_version, candidate_version, policy_id, kind, stage, revision, frozen_at, reservation_payload, proposal_manifest, proposal_digest, created_at) SELECT ?, ?, ?, NULL, ?, 'BOOTSTRAP', 'PROPOSING', 0, NULL, ?, NULL, NULL, ?",
+          [
+            experimentId,
+            this.namespace,
+            parentVersion,
+            policy.id,
+            JSON.stringify(reservation),
+            now,
+          ],
+        ),
+        guarded(
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+          [
+            experimentId,
+            event.sequence,
+            event.eventType,
+            event.createdAt,
+            JSON.stringify(event.payload),
+            event.previousDigest,
+            await eventDigest(event),
+          ],
+        ),
+      ];
+      await this.executeReservation(statements);
+      const trainCount = (
+        await this.db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM research_sample_uses WHERE experiment_id = ?",
+          )
+          .bind(experimentId)
+          .first()
+      ).n;
+      if (trainCount !== samples.length)
+        throw new Error(
+          "冷启动训练样本登记不完整（预留守卫未生效），预留已终止",
+        );
+      const after = await this.db
+        .prepare(
+          "SELECT revision, last_run_id, bootstrap_done FROM research_registry WHERE namespace = ?",
+        )
+        .bind(this.namespace)
+        .first();
+      if (
+        after.revision !== registryRow.revision + 1 ||
+        after.last_run_id !== nonce ||
+        after.bootstrap_done !== 1
+      )
+        return null;
+      return { experimentId, reservation, reservationDigest, attemptSequence };
+    };
+    if (typeof this.db.transaction === "function")
+      return this.db.transaction(async () => {
+        this.inTransaction = true;
+        try {
+          return await attempt();
+        } finally {
+          this.inTransaction = false;
+        }
+      });
+    return attempt();
+  }
+  async concludeBootstrap(experimentId, versionId, { report, reason }) {
+    const experiment = mapRow(
+      await this.db
+        .prepare("SELECT * FROM research_experiments WHERE id = ?")
+        .bind(experimentId)
+        .first(),
+    );
+    if (!experiment || experiment.stage !== "PROPOSING")
+      throw new Error("实验不在提案阶段");
+    const stage = "AWAITING_SHADOW";
+    const now = new Date().toISOString();
+    const reportDigest = await digestOf(report);
+    const previous = await this.lastEvent(experimentId);
+    const event = {
+      sequence: (previous?.sequence ?? 0) + 1,
+      eventType: "BOOTSTRAP_SCREENED",
+      createdAt: now,
+      payload: { reportDigest, reason },
+      previousDigest: previous?.digest ?? null,
+    };
+    const statements = [
+      this.db
+        .prepare(
+          "INSERT OR IGNORE INTO research_reports (experiment_id, stage, payload, digest, created_at) VALUES (?, 'dev_screen', ?, ?, ?)",
+        )
+        .bind(experimentId, JSON.stringify(report), reportDigest, now),
+      this.db
+        .prepare(
+          "UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? AND stage = 'PROPOSING'",
+        )
+        .bind(stage, experimentId),
+      this.db
+        .prepare(
+          "UPDATE strategy_versions SET status = 'SHADOW_PENDING' WHERE id = ? AND status = 'PROPOSING'",
+        )
+        .bind(versionId),
+      this.db
+        .prepare(
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)",
+        )
+        .bind(
+          experimentId,
+          event.sequence,
+          event.eventType,
+          event.createdAt,
+          JSON.stringify(event.payload),
+          event.previousDigest,
+          await eventDigest(event),
+          experimentId,
+          stage,
+        ),
+      this.db
+        .prepare(
+          "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)",
+        )
+        .bind(this.namespace, experimentId, experimentId, stage),
+    ];
+    await this.db.batch(statements);
+    const after = mapRow(
+      await this.db
+        .prepare("SELECT * FROM research_experiments WHERE id = ?")
+        .bind(experimentId)
+        .first(),
+    );
+    if (after?.stage !== stage)
+      throw new Error("实验状态推进失败：状态已被其他流程改变");
+    return { stage, reportDigest };
+  }
   async executeReservation(statements) {
     if (this.inTransaction) {
       for (const statement of statements) await statement.run();
@@ -507,6 +728,7 @@ export class ResearchRepository {
       executionVersion,
       scoringVersion,
     },
+    targetStage = "HISTORICAL_CHECK",
   ) {
     const now = new Date().toISOString();
     const manifest = {
@@ -544,18 +766,19 @@ export class ResearchRepository {
     await this.db.batch([
       this.db
         .prepare(
-          "UPDATE research_experiments SET candidate_version = ?, frozen_at = ?, stage = 'HISTORICAL_CHECK', revision = revision + 1, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'",
+          "UPDATE research_experiments SET candidate_version = ?, frozen_at = ?, stage = ?, revision = revision + 1, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'",
         )
         .bind(
           versionId,
           now,
+          targetStage,
           JSON.stringify(manifest),
           manifestDigest,
           experimentId,
         ),
       this.db
         .prepare(
-          "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK')",
+          "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)",
         )
         .bind(
           versionId,
@@ -568,10 +791,11 @@ export class ResearchRepository {
             parentVersion,
           }),
           experimentId,
+          targetStage,
         ),
       this.db
         .prepare(
-          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK')",
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)",
         )
         .bind(
           experimentId,
@@ -582,6 +806,7 @@ export class ResearchRepository {
           event.previousDigest,
           await eventDigest(event),
           experimentId,
+          targetStage,
         ),
     ]);
     const row = mapRow(
@@ -590,7 +815,7 @@ export class ResearchRepository {
         .bind(experimentId)
         .first(),
     );
-    if (row?.stage !== "HISTORICAL_CHECK")
+    if (row?.stage !== targetStage)
       throw new Error("候选冻结失败：实验状态已变化");
     return { manifest, manifestDigest };
   }

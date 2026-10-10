@@ -1,8 +1,9 @@
 import { aiConfig } from "./review.js";
 import { feesForBook } from "../../shared/fees.js";
 import { requestProposal } from "./improvement.js";
-import { validateCandidate } from "../domain/validation.js";
+import { replayStrategy, validateCandidate } from "../domain/validation.js";
 import { validateCandidatePatch } from "../domain/research-policy.js";
+import { openHistoryStore } from "../storage/history.js";
 import {
   selectResearchWindows,
   beijingMonth,
@@ -535,6 +536,281 @@ export async function proposeImprovement(
     };
   }
 }
+export async function proposeBootstrapImprovement(
+  repository,
+  env,
+  { datasetId } = {},
+  propose = requestProposal,
+) {
+  const research = new ResearchRepository(env);
+  const policy = await research.getPolicy();
+  const minTrainingDays = policy.payload.bootstrapMinTrainingDays ?? 20;
+  if (!aiConfig(env).configured)
+    return {
+      status: "NOT_CONFIGURED",
+      reason: "配置服务端大模型密钥后启用 AI 冷启动初始化",
+    };
+  const account = await repository.account();
+  const registry = await research.ensureRegistry();
+  if (registry.bootstrapDone)
+    return {
+      status: "BOOTSTRAP_DONE",
+      reason: "AI 冷启动初始化全局仅一次；失败与错误同样视为已消耗",
+    };
+  const store = openHistoryStore(env);
+  const dataset = datasetId ? await store.getDataset(datasetId) : null;
+  if (!dataset)
+    return {
+      status: "NEED_DATA",
+      reason: "请指定六因子历史评分数据集（SIX_FACTOR_V1）",
+    };
+  if (dataset.executionModel !== "SIX_FACTOR_V1")
+    return {
+      status: "NEED_DATA",
+      reason: "冷启动训练需要六因子历史评分数据集",
+    };
+  const scores = await store.listScores(datasetId);
+  const trainingPairs = [];
+  const trainingDates = [];
+  const samples = [];
+  for (let index = 0; index + 1 < scores.length; index++) {
+    const signal = scores[index];
+    const nextDate = scores[index + 1].tradeDate;
+    const daily = await store.getDailyInput(datasetId, nextDate);
+    if (!daily) continue;
+    const rows = Array.isArray(daily.normalized)
+      ? daily.normalized
+      : Object.entries(daily.normalized ?? {}).map(([code, row]) => ({
+          code,
+          name: null,
+          sector: "未分类",
+          price: row.closeCents !== null ? row.closeCents / 100 : null,
+          change: null,
+          amount: null,
+          floatCap: null,
+          seal: null,
+          turnover: null,
+          first: null,
+          last: null,
+          breaks: null,
+          height: null,
+        }));
+    const snapshotStocks = new Map(
+      (signal.payload.stocks ?? []).map((stock) => [
+        stock.code,
+        stock.price !== null && stock.price !== undefined
+          ? Math.round(stock.price * 100)
+          : null,
+      ]),
+    );
+    const quotes = {};
+    for (const row of rows) {
+      if (!row.code || row.price === null) continue;
+      const previousCloseCents =
+        snapshotStocks.get(row.code) ?? Math.round(row.price * 100);
+      quotes[row.code] = {
+        date: nextDate,
+        previousCloseCents,
+        openCents: row.openCents ?? previousCloseCents,
+        closeCents: Math.round(row.price * 100),
+        highCents: row.highCents ?? Math.round(row.price * 100),
+        lowCents: row.lowCents ?? Math.round(row.price * 100),
+        volumeShares: row.volumeShares ?? 10000000,
+        limitUpCents: Math.round(previousCloseCents * 1.1),
+        limitDownCents: Math.round(previousCloseCents * 0.9),
+        timestamp: `${nextDate}T15:00:00+08:00`,
+      };
+    }
+    if (!Object.keys(quotes).length) continue;
+    trainingPairs.push({
+      snapshot: signal.payload,
+      dataset: {
+        date: nextDate,
+        quotes,
+        minutes: {},
+        source: `历史冷启动（${dataset.provider}）`,
+        fetchedAt: new Date().toISOString(),
+      },
+    });
+    trainingDates.push(nextDate);
+    samples.push({
+      date: nextDate,
+      payload: {
+        role: "HISTORICAL_TRAIN",
+        signalDate: signal.tradeDate,
+        datasetId,
+        datasetManifestDigest: dataset.manifestDigest,
+        scoreDigest: signal.digest,
+      },
+      digest: await digestOf({
+        scoreDigest: signal.digest,
+        nextDate,
+        datasetManifestDigest: dataset.manifestDigest,
+      }),
+    });
+  }
+  if (trainingPairs.length < minTrainingDays)
+    return {
+      status: "NEED_DATA",
+      days: trainingPairs.length,
+      required: minTrainingDays,
+      reason: `历史训练对不足（需要至少 ${minTrainingDays} 个信号-次日对）`,
+    };
+  const active = await research.activeExperiment();
+  if (active)
+    return {
+      status: "BUSY",
+      experimentId: active.experimentId,
+      reason: "存在进行中的研究实验（冷启动与滚动提案共用活动槽）",
+    };
+  const month = beijingMonth();
+  const used = await research.monthUsage(month);
+  if (used >= policy.payload.monthlyProposalLimit)
+    return {
+      status: "BUDGET_EXHAUSTED",
+      month,
+      used,
+      limit: policy.payload.monthlyProposalLimit,
+      reason: "本月提案次数已用完；冷启动同样消耗预算",
+    };
+  const base = await repository.strategy(account.book);
+  const feeConfig = feesForBook(account.book);
+  let reserved;
+  try {
+    reserved = await research.reserveBootstrapAttempt({
+      policy,
+      month,
+      parentVersion: account.book.activeStrategy,
+      windowPayload: {
+        kind: "BOOTSTRAP",
+        datasetId,
+        datasetManifestDigest: dataset.manifestDigest,
+        trainingDays: trainingPairs.length,
+        note: "AI 冷启动一次性初始化；训练日期登记为 HISTORICAL_TRAIN，不再用于未来前瞻测试",
+      },
+      trainingDates,
+      samples,
+      datasetId,
+      datasetManifestDigest: dataset.manifestDigest,
+    });
+  } catch {
+    return { status: "BUSY", reason: "并发预留冲突，本次未发起模型调用" };
+  }
+  if (!reserved)
+    return { status: "BOOTSTRAP_DONE", reason: "冷启动资格已被并发流程消耗" };
+  const experimentId = reserved.experimentId;
+  await research.appendEvent(experimentId, "REQUEST_ISSUED", {
+    attemptSequence: reserved.attemptSequence,
+    executorId: EXECUTOR_ID,
+    requestIssuedAt: new Date().toISOString(),
+    trainingDates,
+    datasetId,
+    datasetManifestDigest: dataset.manifestDigest,
+    note: "冷启动提案只携带历史训练窗口；无一次性测试日期消费",
+  });
+  let versionId = null;
+  try {
+    const proposal = await propose(
+      env,
+      base,
+      trainingPairs,
+      account.book.initialCashCents / 100,
+      feeConfig,
+    );
+    const candidate = validateCandidatePatch({
+      proposal,
+      parentParams: base,
+      frozenPolicy: policy.payload,
+    });
+    versionId = experimentId;
+    await research.freezeCandidate(
+      experimentId,
+      {
+        versionId,
+        params: candidate.params,
+        patch: candidate.patch,
+        rationale: candidate.rationale,
+        policyId: policy.id,
+        modelAlias: aiConfig(env).model,
+        modelVersionReported: null,
+        promptDigest:
+          proposal.requestDigest ??
+          (await digestOf({
+            modelAlias: aiConfig(env).model,
+            trainingDates,
+            evidenceDigest: proposal.evidenceDigest ?? null,
+          })),
+        output: { rationale: candidate.rationale, patch: candidate.patch },
+        trainingDates,
+        testDates: [],
+        parentVersion: account.book.activeStrategy,
+        parentParamsDigest: await digestOf(base),
+        feeConfig,
+        feeConfigDigest: await digestOf(feeConfig),
+        initialCashCents: account.book.initialCashCents,
+        executionVersion: EXECUTION_VERSION,
+        scoringVersion: SCORING_VERSION,
+      },
+      "PROPOSING",
+    );
+    const baselineReplay = replayStrategy(
+      trainingPairs,
+      base,
+      account.book.initialCashCents / 100,
+      feeConfig,
+    );
+    const candidateReplay = replayStrategy(
+      trainingPairs,
+      candidate.params,
+      account.book.initialCashCents / 100,
+      feeConfig,
+    );
+    const { stage } = await research.concludeBootstrap(
+      experimentId,
+      versionId,
+      {
+        report: {
+          experimentId,
+          attemptSequence: reserved.attemptSequence,
+          kind: "BOOTSTRAP",
+          datasetId,
+          datasetManifestDigest: dataset.manifestDigest,
+          trainingDates,
+          screen: {
+            baseline: {
+              totalReturn: baselineReplay.totalReturn,
+              maxDrawdown: baselineReplay.maxDrawdown,
+              fillCount: baselineReplay.fillCount,
+            },
+            candidate: {
+              totalReturn: candidateReplay.totalReturn,
+              maxDrawdown: candidateReplay.maxDrawdown,
+              fillCount: candidateReplay.fillCount,
+            },
+            note: "开发屏幕仅为记录性指标，不构成验证或启用资格；候选等待未来前瞻影子验证",
+          },
+        },
+        reason: "冷启动候选已冻结并登记为等待前瞻影子验证",
+      },
+    );
+    return {
+      status: stage === "AWAITING_SHADOW" ? "AWAITING_SHADOW" : "ERROR",
+      experimentId,
+      version: versionId,
+      attemptSequence: reserved.attemptSequence,
+      reason: "冷启动候选已冻结，直接进入前瞻影子队列；期间不提供任何启用资格",
+    };
+  } catch (error) {
+    await research
+      .recordError(experimentId, versionId, safeError(error))
+      .catch(() => {});
+    return {
+      status: "ERROR",
+      experimentId,
+      reason: `冷启动提案失败（${safeError(error)}）；一次性资格与预算已消耗，原策略继续运行`,
+    };
+  }
+}
 export async function promoteCandidate(repository, env, id) {
   const research = new ResearchRepository(env);
   if (/^ai-\d{4}-\d{2}-\d{2}$/.test(id))
@@ -559,6 +835,7 @@ export async function researchStatus(env) {
   const experiments = await research.listExperiments(20);
   return {
     namespace: registry.namespace,
+    bootstrapDone: registry.bootstrapDone,
     policy: {
       id: policy.id,
       digest: policy.digest,
