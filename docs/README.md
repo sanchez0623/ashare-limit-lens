@@ -9,6 +9,7 @@
 | 设计方案      | [AI 策略改进与前瞻验证](design/ai-strategy-walk-forward.md) | 待实施   | 完整血缘、一次性测试样本、影子账户、启用规则、数据库、接口与验证计划 |
 | 设计方案 · P1 | [主动告警与常驻执行可靠性](design/operations-alerting.md)   | 待实施   | 业务告警、去重与恢复、持久化通知队列、外部失联监测、接口与验收       |
 | 设计方案 · P2 | [历史冷启动与研究回测](design/historical-cold-start.md)     | 待实施   | 数据源能力探测、历史评分、分钟回测、输入隔离、AI 初始化与前瞻衔接    |
+| 设计方案 · P2 | [多策略并行模拟与赛马](design/multi-strategy-tournament.md) | 待实施   | 独立账本、联合行情、冻结候选批次、研究预算、统一排名及受控自动晋级   |
 
 ## 目录约定
 
@@ -21,6 +22,9 @@ docs/
     ai-strategy-walk-forward.md      AI 改进与前瞻验证设计
     operations-alerting.md           P1 主动告警与运维可靠性
     historical-cold-start.md         P2 历史冷启动与研究回测
+    multi-strategy-tournament.md     P2 多策略并行模拟、赛马与晋级
+    experiments/
+      benchmark-strategy-kernel.mjs  多账本纯交易内核合成探测
 ```
 
 - 新设计方案归入 `design/`，文件名使用小写英文与连字符。
