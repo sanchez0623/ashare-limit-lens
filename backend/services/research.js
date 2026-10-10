@@ -571,13 +571,33 @@ export async function proposeBootstrapImprovement(
       status: "NEED_DATA",
       reason: "冷启动训练需要六因子历史评分数据集",
     };
+  const integrity = await store.datasetIntegrity(datasetId);
+  if (integrity && !integrity.verified)
+    return {
+      status: "NEED_DATA",
+      reason:
+        "数据集 manifest 校验失败：输入与发布时不一致（可能被修改），拒绝用于冷启动训练",
+    };
   const scores = await store.listScores(datasetId);
   const trainingPairs = [];
   const trainingDates = [];
   const samples = [];
+  const succeededDates = Array.isArray(dataset.coverage?.succeededDates)
+    ? dataset.coverage.succeededDates
+    : [];
+  const succeededPosition = new Map(
+    succeededDates.map((date, index) => [date, index]),
+  );
   for (let index = 0; index + 1 < scores.length; index++) {
     const signal = scores[index];
     const nextDate = scores[index + 1].tradeDate;
+    const nextPosition = succeededPosition.get(nextDate);
+    if (
+      nextPosition === undefined ||
+      nextPosition === 0 ||
+      succeededDates[nextPosition - 1] !== signal.tradeDate
+    )
+      continue;
     const daily = await store.getDailyInput(datasetId, nextDate);
     if (!daily) continue;
     const rows = Array.isArray(daily.normalized)
@@ -628,6 +648,7 @@ export async function proposeBootstrapImprovement(
       snapshot: signal.payload,
       dataset: {
         date: nextDate,
+        previousTradingDate: signal.tradeDate,
         quotes,
         minutes: {},
         source: `历史冷启动（${dataset.provider}）`,
@@ -677,6 +698,19 @@ export async function proposeBootstrapImprovement(
     };
   const base = await repository.strategy(account.book);
   const feeConfig = feesForBook(account.book);
+  const dryRun = replayStrategy(
+    trainingPairs,
+    base,
+    account.book.initialCashCents / 100,
+    feeConfig,
+  );
+  if (dryRun.covered === false || !dryRun.days)
+    return {
+      status: "NEED_DATA",
+      days: trainingPairs.length,
+      replayDays: dryRun.days,
+      reason: `历史训练窗口无法重放（${dryRun.reason ?? "无有效重放日"}）；未消耗冷启动资格`,
+    };
   let reserved;
   try {
     reserved = await research.reserveBootstrapAttempt({

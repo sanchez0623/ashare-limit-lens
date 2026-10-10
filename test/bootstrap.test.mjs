@@ -38,7 +38,7 @@ function stubProposal(patch = { minScore: 82 }) {
   };
 }
 const CODES = ["600001", "600002"];
-function snapshotPayload(date) {
+function snapshotPayload(date, dayIndex = 0) {
   return {
     date,
     createdAt: `${date}T07:05:00.000Z`,
@@ -47,7 +47,7 @@ function snapshotPayload(date) {
       code,
       name: `样本${index + 1}`,
       sector: "测试行业",
-      price: 10.5 + index * 0.5,
+      price: 10.5 + index * 0.5 + dayIndex * 0.1,
       deduction: 0,
       factors: FACTORS.map((factor, i) => ({
         key: factor.key,
@@ -63,7 +63,7 @@ function snapshotPayload(date) {
 function dailyInput(date, closeShift = 0) {
   const normalized = {};
   for (const [index, code] of CODES.entries()) {
-    const closeCents = 1050 + index * 50 + closeShift;
+    const closeCents = 1050 + index * 50 + closeShift * 10;
     normalized[code] = {
       openCents: closeCents - 10,
       closeCents,
@@ -102,10 +102,17 @@ async function seedDataset(env, store, dayCount) {
       date,
       "rules-v1-historical",
       "test-params",
-      snapshotPayload(date),
+      snapshotPayload(date, index),
     );
     await store.saveDailyInputs(datasetId, date, dailyInput(date, index));
   }
+  await store.updateDatasetCoverage(datasetId, {
+    observedStart: dates[0],
+    observedEnd: dates.at(-1),
+    succeededDates: dates,
+    failedDates: [],
+    executionModel: "SIX_FACTOR_V1",
+  });
   return datasetId;
 }
 test("AI 冷启动：一次性初始化进入影子队列并消耗资格", async () => {
@@ -178,6 +185,45 @@ test("训练对不足返回 NEED_DATA 且不消耗一次性资格", async () => 
     const research = new ResearchRepository(env);
     const registry = await research.ensureRegistry();
     assert.equal(registry.bootstrapDone, false);
+  } finally {
+    stub.restore();
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("训练窗口无法重放（0 天）时返回 NEED_DATA 且不消耗资格", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-boot-${crypto.randomUUID()}.sqlite`;
+  const env = {
+    DB,
+    LOCAL_RESEARCH_DB_PATH: researchPath,
+    AI_API_KEY: "test-only-secret",
+    AI_BASE_URL: "https://api.deepseek.com/v1",
+    AI_MODEL: "test-model",
+  };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const store = openHistoryStore(env);
+  const stub = stubProposal();
+  try {
+    const datasetId = await seedDataset(env, store, 25);
+    await store.updateDatasetCoverage(datasetId, {
+      executionModel: "SIX_FACTOR_V1",
+      succeededDates: ["2026-01-05", "2026-01-08", "2026-01-12"],
+    });
+    const result = await proposeBootstrapImprovement(repository, env, {
+      datasetId,
+    });
+    assert.equal(result.status, "NEED_DATA");
+    assert.equal(stub.calls(), 0);
+    const research = new ResearchRepository(env);
+    const registry = await research.ensureRegistry();
+    assert.equal(registry.bootstrapDone, false);
+    const status = await researchStatus(env);
+    assert.equal(status.bootstrapDone, false);
   } finally {
     stub.restore();
     DB.close();

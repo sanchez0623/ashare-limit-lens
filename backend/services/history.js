@@ -15,6 +15,7 @@ import {
 } from "../storage/history.js";
 
 const SCORING_VERSION = "rules-v1-historical";
+const EXECUTOR_ID = `history-${crypto.randomUUID()}`;
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -27,7 +28,7 @@ export async function probeHistoryCapabilities(env, { start, end }) {
 }
 export async function createHistoryImport(
   env,
-  { provider = "tencent-free", kind, start, end, name, codes },
+  { provider = "tencent-free", kind, start, end, name, codes, datasetId },
 ) {
   if (!["LIMIT_FEATURES", "DAILY", "MINUTES"].includes(kind))
     throw new Error("历史导入类型无效（LIMIT_FEATURES、DAILY 或 MINUTES）");
@@ -57,10 +58,15 @@ export async function createHistoryImport(
     end,
     name,
   });
-  if (declaredCodes.length)
-    return jobs.updateJob(job.id, {
-      statusPayload: { ...job.statusPayload, codes: declaredCodes },
-    });
+  const statusPayload = {};
+  if (declaredCodes.length) statusPayload.codes = declaredCodes;
+  if (datasetId) {
+    if (kind !== "MINUTES")
+      throw new Error("仅 MINUTES 导入支持附加到已有数据集（datasetId）");
+    statusPayload.datasetId = datasetId;
+  }
+  if (Object.keys(statusPayload).length)
+    return jobs.updateJob(job.id, { statusPayload });
   return job;
 }
 function orNull(value) {
@@ -98,18 +104,27 @@ export async function runHistoryImport(env, jobId, options = {}) {
       },
     });
   }
+  if (!(await jobs.claimExecution(jobId, EXECUTOR_ID)))
+    return {
+      ...job,
+      note: "另一个执行器正在运行此导入任务，本次未接管（避免并发覆盖）",
+    };
   try {
     return await runHistoryImportInner(env, job, { jobs, store, options });
   } catch (error) {
     const reason = String(error?.message ?? error).slice(0, 300);
-    return jobs.updateJob(jobId, {
+    const failedJob = await jobs.finishJob(jobId, EXECUTOR_ID, {
       stage: "FAILED",
       statusPayload: {
-        ...(job.statusPayload ?? {}),
         error: reason,
         note: "导入过程中发生未预期错误；已完成的下载块保留，可重试续传",
       },
     });
+    if (failedJob) return failedJob;
+    return {
+      ...(await jobs.getJob(jobId)),
+      note: "任务已由其他执行器接管或进入终态，本次错误未写入",
+    };
   }
 }
 async function runHistoryImportInner(env, job, { jobs, store, options }) {
@@ -127,7 +142,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     job.kind === "LIMIT_FEATURES" &&
     capabilities.limitFeatures.availableFrom === null
   ) {
-    return jobs.updateJob(jobId, {
+    return jobs.finishJob(jobId, EXECUTOR_ID, {
       stage: "BLOCKED",
       statusPayload: {
         capabilities,
@@ -142,6 +157,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     failedDates: [],
     notes: [],
   };
+  let preservedExecutionModel = null;
   let datasetId = job.datasetId;
   if (!datasetId) {
     datasetId = newId("hds");
@@ -215,12 +231,13 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           });
           await store.saveChunk(jobId, {
             chunkKey,
+            datasetId,
             requestRange: date,
             actualRange: date,
             rows: normalized.length,
             stage: "DONE",
             rawDigest: await digestOf(features),
-            artifactRef: `history_chunks:${jobId}:${chunkKey}`,
+            raw: features,
           });
         } catch (error) {
           await store.saveChunk(jobId, {
@@ -334,11 +351,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         const dailyPrev = dailyByCode
           ? (dailyByCode.get(row.code) ?? null)
           : null;
-        const quoteCents = dailyPrev
-          ? dailyPrev.closeCents
-          : row.price !== null
-            ? Math.round(row.price * 100)
-            : null;
+        const quoteCents = dailyPrev ? dailyPrev.closeCents : null;
         const returnPct = (cents) =>
           nextDaily && quoteCents !== null
             ? ((cents - quoteCents) / quoteCents) * 100
@@ -404,7 +417,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           allOpenReturnPct: mean(withReturns.map((row) => row.openReturnPct)),
           allCloseReturnPct: mean(withReturns.map((row) => row.closeReturnPct)),
           priceBasis:
-            "信号日基准价优先取同源前复权日线收盘（QFQ），缺失时回退涨停池价格；收益为观察口径",
+            "信号日基准价取同源前复权日线收盘（QFQ）；信号日日线缺失时不计算收益，不与涨停池未复权价格混用",
           note: "历史观察反馈：基于相邻交易日日线收盘数据的观察收益；不含可成交性保证，不代表可执行策略收益",
           universe: universe.slice(0, 200),
         },
@@ -413,13 +426,28 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   } else if (job.kind === "MINUTES") {
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
-      return jobs.updateJob(jobId, {
+      return jobs.finishJob(jobId, EXECUTOR_ID, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
           reason: "MINUTES 导入需要显式声明研究股票池（codes）",
         },
       });
+    }
+    const targetDatasetId = options.datasetId ?? job.statusPayload?.datasetId;
+    if (targetDatasetId) {
+      const target = await store.getDataset(targetDatasetId);
+      if (!target)
+        return jobs.finishJob(jobId, EXECUTOR_ID, {
+          stage: "BLOCKED",
+          statusPayload: {
+            capabilities,
+            reason: `指定的目标数据集不存在：${targetDatasetId}`,
+          },
+        });
+      datasetId = targetDatasetId;
+      preservedExecutionModel = target.executionModel;
+      await jobs.updateJob(jobId, { datasetId });
     }
     for (const date of calendar.dates) {
       let dayRows = 0;
@@ -440,12 +468,13 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           });
           await store.saveChunk(jobId, {
             chunkKey,
+            datasetId,
             requestRange: date,
             actualRange: date,
             rows: series.inSession.length,
             stage: "DONE",
             rawDigest: await digestOf(series),
-            artifactRef: `history_chunks:${jobId}:${chunkKey}`,
+            raw: series,
           });
           dayRows++;
         } catch (error) {
@@ -477,7 +506,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     await jobs.updateJob(jobId, { stage: "DOWNLOADING" });
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
-      return jobs.updateJob(jobId, {
+      return jobs.finishJob(jobId, EXECUTOR_ID, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
@@ -493,19 +522,30 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     const dates = new Set();
     for (const code of Object.keys(daily.rows))
       for (const row of daily.rows[code]) dates.add(row.tradeDate);
+    for (const calendarDate of calendar.dates)
+      if (!dates.has(calendarDate))
+        failed.push({
+          date: calendarDate,
+          reason: "交易日历中的日期缺少任何股票的日线数据",
+        });
     for (const date of [...dates].sort()) {
       const perCode = {};
       for (const code of codes) {
         const row = daily.rows[code]?.find((item) => item.tradeDate === date);
-        if (row) {
-          try {
-            perCode[code] = normalizeDailyBarRow(row);
-          } catch (error) {
-            failed.push({
-              date,
-              reason: `日线行规范化失败（${code}）：${String(error.message ?? error).slice(0, 120)}`,
-            });
-          }
+        if (!row) {
+          failed.push({
+            date,
+            reason: `缺少日线数据：${code}`,
+          });
+          continue;
+        }
+        try {
+          perCode[code] = normalizeDailyBarRow(row);
+        } catch (error) {
+          failed.push({
+            date,
+            reason: `日线行规范化失败（${code}）：${String(error.message ?? error).slice(0, 120)}`,
+          });
         }
       }
       if (Object.keys(perCode).length) {
@@ -520,12 +560,13 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         });
         await store.saveChunk(jobId, {
           chunkKey: `daily:${date}`,
+          datasetId,
           requestRange: date,
           actualRange: date,
           rows: Object.keys(perCode).length,
           stage: "DONE",
           rawDigest: await digestOf(perCode),
-          artifactRef: `history_chunks:${jobId}:daily:${date}`,
+          raw: perCode,
         });
         succeeded.push({ date });
       }
@@ -544,23 +585,16 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     if (entry.normalized) allNormalizedRows.push(...entry.normalized);
   const coverageCheck = assessFieldCoverage(allNormalizedRows);
   coverage.coverage = coverageCheck;
-  const executionModel = classifyExecutionModel(
-    coverageCheck.ratio,
-    job.kind === "LIMIT_FEATURES" && allNormalizedRows.length > 0,
-  );
+  const executionModel =
+    preservedExecutionModel ??
+    classifyExecutionModel(
+      coverageCheck.ratio,
+      job.kind === "LIMIT_FEATURES" && allNormalizedRows.length > 0,
+    );
   coverage.executionModel = executionModel;
-  const chunkRows = await store.completedChunkKeys(jobId);
-  const chunkRefs = [...chunkRows].map((chunkKey) => ({
-    jobId,
-    chunkKey,
-  }));
-  const finalCoverage = await store.updateDatasetCoverage(
-    datasetId,
-    coverage,
-    chunkRefs,
-  );
+  const finalCoverage = await store.updateDatasetCoverage(datasetId, coverage);
   if (!succeeded.length)
-    return jobs.updateJob(jobId, {
+    return jobs.finishJob(jobId, EXECUTOR_ID, {
       stage: "FAILED",
       statusPayload: {
         capabilities,
@@ -572,8 +606,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       },
     });
   const finalStage = failed.length ? "PARTIAL" : "READY";
-  return jobs.updateJob(jobId, {
+  const finished = await jobs.finishJob(jobId, EXECUTOR_ID, {
     stage: finalStage,
+    datasetId,
     statusPayload: {
       capabilities,
       datasetId,
@@ -586,6 +621,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           : "六因子历史评分数据集就绪",
     },
   });
+  if (finished) return finished;
+  return {
+    ...(await jobs.getJob(jobId)),
+    note: "任务终态已由其他执行器写入，本次结果未覆盖",
+  };
 }
 export async function historyImportDetail(env, jobId) {
   const jobs = new HistoryJobRepository(env);
@@ -594,6 +634,8 @@ export async function historyImportDetail(env, jobId) {
   const store = openHistoryStore(env);
   const dataset =
     store && job.datasetId ? await store.getDataset(job.datasetId) : null;
+  const integrity =
+    store && job.datasetId ? await store.datasetIntegrity(job.datasetId) : null;
   const dates =
     store && job.datasetId ? await store.listDatasetDates(job.datasetId) : [];
   const scores =
@@ -603,6 +645,16 @@ export async function historyImportDetail(env, jobId) {
   return {
     job,
     dataset,
+    integrity: integrity
+      ? {
+          verified: integrity.verified,
+          manifestDigest: integrity.manifestDigest,
+          chunkCount: integrity.manifest.chunkRefs.length,
+          note: integrity.verified
+            ? "数据集 manifest 与当前输入一致"
+            : "警告：数据集输入与发布时的 manifest 摘要不一致（可能被修改），回测与训练将拒绝使用",
+        }
+      : null,
     dates,
     scoreCount: scores.length,
     reviewCount: reviews.length,

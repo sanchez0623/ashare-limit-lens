@@ -168,6 +168,7 @@ export async function api(request, env) {
         end: body.end,
         name: body.name,
         codes: body.codes,
+        datasetId: body.datasetId,
       });
       return json({ job });
     }

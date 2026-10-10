@@ -143,12 +143,43 @@ export class HistoryJobRepository {
       .bind(
         stage ?? job.stage,
         JSON.stringify(progress ?? job.progress),
-        JSON.stringify(statusPayload ?? job.statusPayload),
+        JSON.stringify({ ...job.statusPayload, ...(statusPayload ?? {}) }),
         datasetId ?? job.datasetId,
         new Date().toISOString(),
         id,
       )
       .run();
+    return this.getJob(id);
+  }
+  async claimExecution(id, executorId) {
+    const result = await this.db
+      .prepare(
+        "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PLANNED','PARTIAL','FAILED','BLOCKED')",
+      )
+      .bind(executorId, new Date().toISOString(), new Date().toISOString(), id)
+      .run();
+    return result.meta.changes > 0;
+  }
+  async finishJob(id, executorId, { stage, statusPayload, datasetId }) {
+    if (!HISTORY_STAGES.includes(stage))
+      throw new Error(`历史任务阶段无效：${stage}`);
+    const job = await this.getJob(id);
+    if (!job) throw new Error("历史导入任务不存在");
+    const result = await this.db
+      .prepare(
+        "UPDATE history_import_jobs SET stage = ?, progress = ?, status_payload = ?, dataset_id = COALESCE(?, dataset_id), updated_at = ? WHERE id = ? AND json_extract(progress, '$.executorId') = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING')",
+      )
+      .bind(
+        stage,
+        JSON.stringify(job.progress),
+        JSON.stringify({ ...job.statusPayload, ...(statusPayload ?? {}) }),
+        datasetId ?? null,
+        new Date().toISOString(),
+        id,
+        executorId,
+      )
+      .run();
+    if (!result.meta.changes) return null;
     return this.getJob(id);
   }
   async claimDataset(id, datasetId) {
@@ -169,7 +200,12 @@ export class HistoryDatasetStore {
   }
   async ensure() {
     if (this.ready) return;
-    const { DatabaseSync } = await import("node:sqlite");
+    const [{ DatabaseSync }, { mkdirSync }, { dirname }] = await Promise.all([
+      import("node:sqlite"),
+      import("node:fs"),
+      import("node:path"),
+    ]);
+    mkdirSync(dirname(this.path), { recursive: true });
     const sqlite = new DatabaseSync(this.path);
     sqlite.exec("PRAGMA busy_timeout=5000;");
     this.db = historySqliteAdapter(sqlite);
@@ -215,6 +251,7 @@ export class HistoryDatasetStore {
       CREATE TABLE IF NOT EXISTS history_chunks (
         job_id TEXT NOT NULL,
         chunk_key TEXT NOT NULL,
+        dataset_id TEXT,
         request_range TEXT NOT NULL,
         actual_range TEXT,
         rows INTEGER NOT NULL,
@@ -270,6 +307,15 @@ export class HistoryDatasetStore {
         PRIMARY KEY (run_id, trade_date)
       );
     `);
+    const chunkColumns = (
+      await this.db
+        .prepare("SELECT name FROM pragma_table_info('history_chunks')")
+        .all()
+    ).results;
+    if (!chunkColumns.some((column) => column.name === "dataset_id"))
+      this.db.exec("ALTER TABLE history_chunks ADD COLUMN dataset_id TEXT;");
+    this.rawDir = `${dirname(this.path)}/history-chunks`;
+    mkdirSync(this.rawDir, { recursive: true });
     this.ready = true;
   }
   async createDatasetVersion({
@@ -309,15 +355,12 @@ export class HistoryDatasetStore {
       .run();
     return { id, manifestDigest: digest };
   }
-  async updateDatasetCoverage(id, coverage, chunkRefs = []) {
+  async updateDatasetCoverage(id, coverage) {
     await this.ensure();
-    const inputs = await this.listDatasetDates(id);
-    const manifest = {
+    const manifest = await this.buildDatasetManifest(id, {
       executionModel: coverage.executionModel ?? null,
       coverage,
-      chunkRefs,
-      inputs,
-    };
+    });
     const digest = await digestOf(manifest);
     await this.db
       .prepare(
@@ -338,28 +381,39 @@ export class HistoryDatasetStore {
     jobId,
     {
       chunkKey,
+      datasetId,
       requestRange,
       actualRange,
       rows,
       stage,
       rawDigest,
+      raw,
       artifactRef,
     },
   ) {
     await this.ensure();
+    let storedRef = artifactRef ?? null;
+    if (raw !== undefined && stage === "DONE") {
+      const safeKey = chunkKey.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const artifactPath = `${this.rawDir}/${jobId}__${safeKey}.json`;
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(artifactPath, JSON.stringify(raw), "utf8");
+      storedRef = `history-chunks/${jobId}__${safeKey}.json`;
+    }
     await this.db
       .prepare(
-        "INSERT INTO history_chunks (job_id, chunk_key, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows",
+        "INSERT INTO history_chunks (job_id, chunk_key, dataset_id, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows, dataset_id = excluded.dataset_id, raw_digest = excluded.raw_digest, artifact_ref = excluded.artifact_ref",
       )
       .bind(
         jobId,
         chunkKey,
+        datasetId ?? null,
         requestRange,
         actualRange ?? null,
         rows ?? 0,
         stage,
         rawDigest ?? null,
-        artifactRef ?? null,
+        storedRef,
       )
       .run();
   }
@@ -372,6 +426,48 @@ export class HistoryDatasetStore {
       .bind(jobId)
       .all();
     return new Set(result.results.map((row) => row.chunk_key));
+  }
+  async datasetChunkRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db
+      .prepare(
+        "SELECT job_id, chunk_key, raw_digest, artifact_ref FROM history_chunks WHERE dataset_id = ? AND stage = 'DONE' AND raw_digest IS NOT NULL ORDER BY chunk_key, job_id",
+      )
+      .bind(datasetId)
+      .all();
+    return result.results.map((row) => ({
+      jobId: row.job_id,
+      chunkKey: row.chunk_key,
+      rawDigest: row.raw_digest,
+      artifactRef: row.artifact_ref,
+    }));
+  }
+  async buildDatasetManifest(datasetId, { executionModel, coverage }) {
+    const inputs = await this.listDatasetDates(datasetId);
+    const chunkRefs = await this.datasetChunkRefs(datasetId);
+    return {
+      executionModel: executionModel ?? null,
+      coverage: coverage ?? null,
+      chunkRefs,
+      inputs,
+    };
+  }
+  async datasetIntegrity(datasetId) {
+    const dataset = await this.getDataset(datasetId);
+    if (!dataset) return null;
+    const manifest = await this.buildDatasetManifest(datasetId, {
+      executionModel:
+        dataset.executionModel === "PENDING" ? null : dataset.executionModel,
+      coverage: dataset.coverage,
+    });
+    const recomputedDigest = await digestOf(manifest);
+    return {
+      datasetId,
+      verified: recomputedDigest === dataset.manifestDigest,
+      manifestDigest: dataset.manifestDigest,
+      recomputedDigest,
+      manifest,
+    };
   }
   async saveDailyInputs(datasetId, tradeDate, { normalized, provenance }) {
     await this.ensure();

@@ -169,3 +169,55 @@ test("非六因子数据集拒绝回测", async () => {
     } catch {}
   }
 });
+test("账本被清空后收益核验必须失败而非通过", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = await seedDataset(env, store, { minuteOn: DATES.slice(1) });
+  try {
+    const run = await runBacktest(env, { datasetId, initialCapital: 1000000 });
+    const before = await backtestDetail(env, run.id);
+    assert.equal(before.verification.totalReturnMatches, true);
+    await store.db
+      .prepare("DELETE FROM backtest_ledger WHERE run_id = ?")
+      .bind(run.id)
+      .run();
+    const after = await backtestDetail(env, run.id);
+    assert.equal(after.verification.totalReturnMatches, false);
+    assert.equal(after.verification.ledgerCountMatches, false);
+    assert.ok(after.verification.note.includes("无法核验"));
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("数据集输入被篡改后回测拒绝并提示校验失败", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = await seedDataset(env, store, { minuteOn: DATES.slice(1) });
+  try {
+    await store.updateDatasetCoverage(datasetId, {
+      executionModel: "SIX_FACTOR_V1",
+    });
+    await store.saveDailyInputs(datasetId, DATES[1], {
+      normalized: [{ tampered: true }],
+      provenance: {},
+    });
+    await assert.rejects(
+      () => runBacktest(env, { datasetId, initialCapital: 1000000 }),
+      /manifest 校验失败/,
+    );
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});

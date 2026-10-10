@@ -88,20 +88,27 @@ function observationsForDay({ date, minuteByCode, templates }) {
 }
 function endOfDayQuotes({ date, minuteByCode, templates }) {
   const quotes = {};
+  const sampledCloseTimes = {};
   for (const [code, series] of Object.entries(minuteByCode)) {
     const template = templates[code];
     const bars = series.bars ?? [];
     const last = bars.at(-1);
     if (!template || !last) continue;
+    sampledCloseTimes[code] = last.time;
     quotes[code] = {
       ...template,
       date,
       closeCents: last.priceCents,
       volumeShares: last.volumeShares,
       timestamp: `${date}T15:00:00+08:00`,
+      sampledCloseTime: last.time,
+      sampledCloseNote:
+        last.time === "15:00"
+          ? null
+          : `收盘价以采样末端 ${last.time} 近似（采样未覆盖收盘时段）`,
     };
   }
-  return quotes;
+  return { quotes, sampledCloseTimes };
 }
 export async function runBacktest(
   env,
@@ -111,6 +118,11 @@ export async function runBacktest(
   if (!store)
     throw new Error(
       "历史研究存储仅本机可用：请配置 LOCAL_RESEARCH_DB_PATH 后在本机常驻实例运行回测",
+    );
+  const integrity = await store.datasetIntegrity(datasetId);
+  if (integrity && !integrity.verified)
+    throw new Error(
+      "历史数据集 manifest 校验失败：数据集输入与发布时不一致（可能被修改），拒绝用于回测",
     );
   const dataset = await store.getDataset(datasetId);
   if (!dataset) throw new Error("历史数据集不存在");
@@ -222,7 +234,7 @@ export async function runBacktest(
         })),
       );
     }
-    const eodQuotes = endOfDayQuotes({
+    const { quotes: eodQuotes, sampledCloseTimes } = endOfDayQuotes({
       date: tradeDate,
       minuteByCode,
       templates,
@@ -239,12 +251,23 @@ export async function runBacktest(
     const drawdown = book.peakEquityCents
       ? 1 - book.equityCents / book.peakEquityCents
       : 0;
+    const sampledCloseIncomplete = Object.values(sampledCloseTimes).some(
+      (time) => time !== "15:00",
+    );
+    if (sampledCloseIncomplete)
+      coverage.notes.push(
+        `${tradeDate} 收盘价以分钟采样末端 ${Object.entries(sampledCloseTimes)
+          .filter(([, time]) => time !== "15:00")
+          .map(([code, time]) => `${code}@${time}`)
+          .join("、")} 近似，未覆盖真实收盘时段`,
+      );
     const equityRow = {
       tradeDate,
       equityCents: book.equityCents,
       cashCents: book.cashCents,
       drawdown,
       positions: book.positions.length,
+      sampledCloseTimes,
     };
     coverage.equity.push(equityRow);
     await store.saveBacktestEquity(runId, tradeDate, equityRow);
@@ -281,6 +304,7 @@ export async function backtestDetail(env, runId) {
     equity.length && run.initialBook?.initialCashCents
       ? equity.at(-1).equityCents / run.initialBook.initialCashCents - 1
       : null;
+  const ledgerCountMatches = ledger.length === (run.coverage?.fillCount ?? -1);
   return {
     run,
     plans,
@@ -288,13 +312,18 @@ export async function backtestDetail(env, runId) {
     ledgerCount: ledger.length,
     equity,
     verification: {
+      ledgerCountMatches,
       totalReturnMatches:
-        recomputedTotalReturn === null
-          ? null
+        recomputedTotalReturn === null || !ledgerCountMatches || !ledger.length
+          ? false
           : Math.abs(
               (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0),
             ) < 1e-9,
       recomputedTotalReturn,
+      note:
+        ledger.length && ledgerCountMatches
+          ? "收益核验基于当前账本行数与权益终值"
+          : "账本缺失或与运行记录不一致，无法核验收益；不得将 totalReturn 视为已验证",
     },
   };
 }

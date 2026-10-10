@@ -210,7 +210,6 @@ export function sanitizeMinuteSeries(rows, date) {
   const inSession = [];
   const anomalies = [];
   let previousTime = null;
-  let previousVolume = null;
   for (const row of rows ?? []) {
     const time = String(row?.time ?? "");
     const price = Number(row?.priceCents);
@@ -235,13 +234,12 @@ export function sanitizeMinuteSeries(rows, date) {
       anomalies.push({ time, reason: "时间倒序或重复" });
       continue;
     }
-    if (previousVolume !== null && volume < previousVolume) {
-      anomalies.push({ time, reason: "累计成交量回落" });
+    if (!(volume >= 0) || !Number.isFinite(volume)) {
+      anomalies.push({ time, reason: "成交量无效" });
       continue;
     }
     inSession.push({ ...row, time, date });
     previousTime = time;
-    previousVolume = volume;
   }
   return { inSession, anomalies };
 }

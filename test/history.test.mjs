@@ -57,6 +57,9 @@ function installFetchStub({
   poolFailureDates = [],
   poolOverrides = {},
   dailyCloseYuan = "10.50",
+  dailySkipCodes = [],
+  dailySkipDates = [],
+  minuteQuery = null,
 }) {
   const calls = [];
   const fetchBefore = globalThis.fetch;
@@ -90,13 +93,28 @@ function installFetchStub({
         },
       });
     }
+    if (url.includes("appstock/app/day/query")) {
+      const code = new URL(url).searchParams.get("code");
+      if (minuteQuery) return Response.json(minuteQuery(code));
+      return new Response("not found", { status: 404 });
+    }
     if (url.includes("fqkline/get")) {
       const param = new URL(url).searchParams.get("param");
       const [symbolCode, , windowStart, windowEnd, countParam] =
         param.split(",");
       const maxRows = Number(countParam) || 80;
+      const codeMatch = symbolCode.match(/\d{6}/);
+      const code = codeMatch ? codeMatch[0] : null;
+      const isIndex = symbolCode.startsWith("sh000001");
+      if (code && !isIndex && dailySkipCodes.includes(code))
+        return Response.json({ data: { [symbolCode]: {} } });
       const rows = tradingDays
-        .filter((date) => date >= windowStart && date <= windowEnd)
+        .filter(
+          (date) =>
+            date >= windowStart &&
+            date <= windowEnd &&
+            (isIndex || !dailySkipDates.includes(date)),
+        )
         .slice(-maxRows)
         .map((date) => [
           date,
@@ -193,11 +211,14 @@ test("历史输入规范化：缺失与零区分、单位转换与异常隔离",
     { time: "09:25", priceCents: 1000, volumeShares: 100 },
     { time: "12:00", priceCents: 1000, volumeShares: 100 },
     { time: "10:00", priceCents: 1000, volumeShares: 50 },
+    { time: "10:01", priceCents: 1000, volumeShares: -5 },
   ]);
-  assert.equal(sanitized.inSession.length, 1);
+  assert.equal(sanitized.inSession.length, 2);
   assert.ok(sanitized.anomalies.some((row) => row.reason.includes("时段外")));
   assert.ok(sanitized.anomalies.some((row) => row.reason.includes("午休")));
-  assert.ok(sanitized.anomalies.some((row) => row.reason.includes("回落")));
+  assert.ok(
+    sanitized.anomalies.some((row) => row.reason.includes("成交量无效")),
+  );
 });
 test("能力探测：区分涨停池不可用日期与日线分段覆盖", async () => {
   const { createTencentHistoricalProvider } = await import(
@@ -510,13 +531,26 @@ test("数据集摘要绑定真实输入与原始下载块引用", async () => {
       normalized: [],
       provenance: {},
     });
-    const withChunks = await store.updateDatasetCoverage(probeId, {}, [
-      { jobId: "j1", chunkKey: "limit:2026-03-02" },
-    ]);
+    await store.saveChunk("j1", {
+      chunkKey: "limit:2026-03-02",
+      datasetId: probeId,
+      requestRange: "2026-03-02",
+      rows: 1,
+      stage: "DONE",
+      rawDigest: "raw-digest-1",
+    });
+    const withChunks = await store.updateDatasetCoverage(probeId, {});
     assert.equal(withChunks.manifest.inputs.length, 1);
     assert.equal(withChunks.manifest.chunkRefs.length, 1);
-    const withoutChunks = await store.updateDatasetCoverage(probeId, {}, []);
-    assert.notEqual(withChunks.manifestDigest, withoutChunks.manifestDigest);
+    const integrityA = await store.datasetIntegrity(probeId);
+    assert.equal(integrityA.verified, true);
+    await store.saveDailyInputs(probeId, "2026-03-02", {
+      normalized: [{ tampered: true }],
+      provenance: {},
+    });
+    const integrityB = await store.datasetIntegrity(probeId);
+    assert.equal(integrityB.verified, false);
+    assert.equal(integrityB.manifestDigest, integrityA.manifestDigest);
   } finally {
     stub.restore();
     DB.close();
@@ -601,6 +635,195 @@ test("从 main 已发布迁移升级：不重命名已应用迁移", async () =>
     assert.ok(jobs.n >= 0);
   } finally {
     DB.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("日线部分缺失如实 PARTIAL：逐只缺失与日历缺口都计入", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const tradingDays = weekdays("2026-01-01", "2026-03-31");
+  const stub = installFetchStub({
+    tradingDays,
+    poolDates: tradingDays,
+    dailySkipCodes: ["600002"],
+    dailySkipDates: ["2026-03-04"],
+  });
+  try {
+    const job = await createHistoryImport(env, {
+      kind: "DAILY",
+      start: "2026-03-02",
+      end: "2026-03-04",
+      codes: ["600001", "600002"],
+    });
+    const done = await runHistoryImport(env, job.id);
+    assert.equal(done.stage, "PARTIAL");
+    const failedDates = done.statusPayload.coverage.failedDates;
+    assert.ok(
+      failedDates.some(
+        (row) => row.date === "2026-03-02" && row.reason.includes("600002"),
+      ),
+    );
+    assert.ok(
+      failedDates.some((row) => row.date === "2026-03-04"),
+      "日历日缺失也要计入",
+    );
+    const info = await historyImportDetail(env, job.id);
+    assert.equal(info.integrity.verified, true);
+  } finally {
+    stub.restore();
+    DB.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("信号日日线缺失时不与涨停池原价混算收益", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const tradingDays = weekdays("2026-01-01", "2026-03-31");
+  const stub = installFetchStub({
+    tradingDays,
+    poolDates: tradingDays,
+    dailySkipDates: ["2026-03-02"],
+  });
+  try {
+    const job = await createHistoryImport(env, {
+      kind: "LIMIT_FEATURES",
+      start: "2026-03-02",
+      end: "2026-03-03",
+    });
+    const done = await runHistoryImport(env, job.id, {
+      withObservationReturns: true,
+    });
+    assert.equal(done.stage, "READY");
+    const info = await historyImportDetail(env, job.id);
+    const review = info.reviews.at(0).payload;
+    assert.equal(review.observationCoverage, 0);
+    assert.ok(
+      review.universe.every(
+        (row) => row.openReturnPct === null && row.closeReturnPct === null,
+      ),
+    );
+  } finally {
+    stub.restore();
+    DB.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("执行所有权：迟到执行器无法覆盖终态", async () => {
+  const DB = localDatabase();
+  const env = { DB };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const jobs = new HistoryJobRepository(env);
+  try {
+    const job = await jobs.createJob({
+      id: "hjob-lease-test",
+      provider: "tencent-free",
+      kind: "DAILY",
+      start: "2026-03-02",
+      end: "2026-03-04",
+      name: null,
+    });
+    assert.equal(await jobs.claimExecution(job.id, "executor-a"), true);
+    assert.equal(await jobs.claimExecution(job.id, "executor-b"), false);
+    assert.equal(
+      await jobs.finishJob(job.id, "executor-b", {
+        stage: "READY",
+        statusPayload: { fake: true },
+      }),
+      null,
+    );
+    const finished = await jobs.finishJob(job.id, "executor-a", {
+      stage: "READY",
+      statusPayload: { datasetId: "hds-x" },
+    });
+    assert.equal(finished.stage, "READY");
+    assert.equal(finished.statusPayload.datasetId, "hds-x");
+    assert.equal(await jobs.claimExecution(job.id, "executor-c"), false);
+  } finally {
+    DB.close();
+  }
+});
+test("评分与分钟导入可组合为同一数据集并回测", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-history-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const tradingDays = weekdays("2026-01-01", "2026-03-31");
+  const minuteDay = (baseYuan) => ({
+    date: null,
+    data: [
+      "0930 " + baseYuan + " 100",
+      "1000 " + baseYuan + " 220",
+      "1100 " + baseYuan + " 340",
+      "1400 " + baseYuan + " 460",
+      "1500 " + baseYuan + " 580",
+    ],
+  });
+  const stub = installFetchStub({
+    tradingDays,
+    poolDates: tradingDays,
+    minuteQuery: (symbolCode) => {
+      const code = symbolCode.match(/\d{6}/)?.[0] ?? "600001";
+      const index = Number(code.slice(-1)) % 2;
+      return {
+        data: {
+          [symbolCode]: {
+            data: [
+              {
+                ...minuteDay(index === 0 ? "10.20" : "10.70"),
+                date: "20260303",
+              },
+              {
+                ...minuteDay(index === 0 ? "10.30" : "10.80"),
+                date: "20260304",
+              },
+            ],
+          },
+        },
+      };
+    },
+  });
+  try {
+    const scoreJob = await createHistoryImport(env, {
+      kind: "LIMIT_FEATURES",
+      start: "2026-03-02",
+      end: "2026-03-03",
+    });
+    const scoreDone = await runHistoryImport(env, scoreJob.id);
+    assert.equal(scoreDone.stage, "READY");
+    const datasetId = scoreDone.statusPayload.datasetId;
+    const minuteJob = await createHistoryImport(env, {
+      kind: "MINUTES",
+      start: "2026-03-03",
+      end: "2026-03-04",
+      codes: ["600001", "600002"],
+      datasetId,
+    });
+    const minuteDone = await runHistoryImport(env, minuteJob.id);
+    assert.equal(minuteDone.stage, "READY");
+    assert.equal(minuteDone.statusPayload.datasetId, datasetId);
+    const run = await runBacktest(env, { datasetId, initialCapital: 1000000 });
+    assert.ok(run.coverage.executedPairs >= 1);
+    assert.ok(Number.isFinite(run.coverage.totalReturn));
+  } finally {
+    stub.restore();
+    DB.close();
+    storeCleanup();
+  }
+  function storeCleanup() {
     try {
       unlinkSync(researchPath);
     } catch {}

@@ -3323,7 +3323,7 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
       book = result.book;
       equities.push(result.equity);
       fills.push(...result.ledger);
-      if (!result.equity.complete || result.equity.missingMinuteOrders || result.outcomes.some(
+      if (!result.equity.complete || pair.dataset.executionMode === "realtime" && result.equity.missingMinuteOrders || result.outcomes.some(
         (order) => /缺少日期|可能除权/.test(order.reason || "")
       ))
         covered = false;
@@ -3755,11 +3755,36 @@ var HistoryJobRepository = class {
     ).bind(
       stage ?? job.stage,
       JSON.stringify(progress ?? job.progress),
-      JSON.stringify(statusPayload ?? job.statusPayload),
+      JSON.stringify({ ...job.statusPayload, ...statusPayload ?? {} }),
       datasetId ?? job.datasetId,
       (/* @__PURE__ */ new Date()).toISOString(),
       id
     ).run();
+    return this.getJob(id);
+  }
+  async claimExecution(id, executorId) {
+    const result = await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = 'PROBING', progress = json_object('executorId', ?, 'claimedAt', ?), updated_at = ? WHERE id = ? AND stage IN ('PLANNED','PARTIAL','FAILED','BLOCKED')"
+    ).bind(executorId, (/* @__PURE__ */ new Date()).toISOString(), (/* @__PURE__ */ new Date()).toISOString(), id).run();
+    return result.meta.changes > 0;
+  }
+  async finishJob(id, executorId, { stage, statusPayload, datasetId }) {
+    if (!HISTORY_STAGES.includes(stage))
+      throw new Error(`\u5386\u53F2\u4EFB\u52A1\u9636\u6BB5\u65E0\u6548\uFF1A${stage}`);
+    const job = await this.getJob(id);
+    if (!job) throw new Error("\u5386\u53F2\u5BFC\u5165\u4EFB\u52A1\u4E0D\u5B58\u5728");
+    const result = await this.db.prepare(
+      "UPDATE history_import_jobs SET stage = ?, progress = ?, status_payload = ?, dataset_id = COALESCE(?, dataset_id), updated_at = ? WHERE id = ? AND json_extract(progress, '$.executorId') = ? AND stage IN ('PROBING','DOWNLOADING','NORMALIZING','SCORING')"
+    ).bind(
+      stage,
+      JSON.stringify(job.progress),
+      JSON.stringify({ ...job.statusPayload, ...statusPayload ?? {} }),
+      datasetId ?? null,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      id,
+      executorId
+    ).run();
+    if (!result.meta.changes) return null;
     return this.getJob(id);
   }
   async claimDataset(id, datasetId) {
@@ -3777,7 +3802,12 @@ var HistoryDatasetStore = class {
   }
   async ensure() {
     if (this.ready) return;
-    const { DatabaseSync } = await import("node:sqlite");
+    const [{ DatabaseSync }, { mkdirSync }, { dirname }] = await Promise.all([
+      import("node:sqlite"),
+      import("node:fs"),
+      import("node:path")
+    ]);
+    mkdirSync(dirname(this.path), { recursive: true });
     const sqlite = new DatabaseSync(this.path);
     sqlite.exec("PRAGMA busy_timeout=5000;");
     this.db = historySqliteAdapter(sqlite);
@@ -3823,6 +3853,7 @@ var HistoryDatasetStore = class {
       CREATE TABLE IF NOT EXISTS history_chunks (
         job_id TEXT NOT NULL,
         chunk_key TEXT NOT NULL,
+        dataset_id TEXT,
         request_range TEXT NOT NULL,
         actual_range TEXT,
         rows INTEGER NOT NULL,
@@ -3878,6 +3909,11 @@ var HistoryDatasetStore = class {
         PRIMARY KEY (run_id, trade_date)
       );
     `);
+    const chunkColumns = (await this.db.prepare("SELECT name FROM pragma_table_info('history_chunks')").all()).results;
+    if (!chunkColumns.some((column) => column.name === "dataset_id"))
+      this.db.exec("ALTER TABLE history_chunks ADD COLUMN dataset_id TEXT;");
+    this.rawDir = `${dirname(this.path)}/history-chunks`;
+    mkdirSync(this.rawDir, { recursive: true });
     this.ready = true;
   }
   async createDatasetVersion({
@@ -3914,15 +3950,12 @@ var HistoryDatasetStore = class {
     ).run();
     return { id, manifestDigest: digest2 };
   }
-  async updateDatasetCoverage(id, coverage, chunkRefs = []) {
+  async updateDatasetCoverage(id, coverage) {
     await this.ensure();
-    const inputs = await this.listDatasetDates(id);
-    const manifest = {
+    const manifest = await this.buildDatasetManifest(id, {
       executionModel: coverage.executionModel ?? null,
-      coverage,
-      chunkRefs,
-      inputs
-    };
+      coverage
+    });
     const digest2 = await digestOf(manifest);
     await this.db.prepare(
       "UPDATE history_dataset_versions SET coverage_payload = ?, manifest_digest = ?, observed_start = ?, observed_end = ?, execution_model = ? WHERE id = ?"
@@ -3938,25 +3971,36 @@ var HistoryDatasetStore = class {
   }
   async saveChunk(jobId, {
     chunkKey,
+    datasetId,
     requestRange,
     actualRange,
     rows,
     stage,
     rawDigest,
+    raw,
     artifactRef
   }) {
     await this.ensure();
+    let storedRef = artifactRef ?? null;
+    if (raw !== void 0 && stage === "DONE") {
+      const safeKey = chunkKey.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const artifactPath = `${this.rawDir}/${jobId}__${safeKey}.json`;
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(artifactPath, JSON.stringify(raw), "utf8");
+      storedRef = `history-chunks/${jobId}__${safeKey}.json`;
+    }
     await this.db.prepare(
-      "INSERT INTO history_chunks (job_id, chunk_key, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows"
+      "INSERT INTO history_chunks (job_id, chunk_key, dataset_id, request_range, actual_range, rows, stage, raw_digest, artifact_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (job_id, chunk_key) DO UPDATE SET stage = excluded.stage, actual_range = excluded.actual_range, rows = excluded.rows, dataset_id = excluded.dataset_id, raw_digest = excluded.raw_digest, artifact_ref = excluded.artifact_ref"
     ).bind(
       jobId,
       chunkKey,
+      datasetId ?? null,
       requestRange,
       actualRange ?? null,
       rows ?? 0,
       stage,
       rawDigest ?? null,
-      artifactRef ?? null
+      storedRef
     ).run();
   }
   async completedChunkKeys(jobId) {
@@ -3965,6 +4009,44 @@ var HistoryDatasetStore = class {
       "SELECT chunk_key FROM history_chunks WHERE job_id = ? AND stage IN ('DONE','EMPTY')"
     ).bind(jobId).all();
     return new Set(result.results.map((row) => row.chunk_key));
+  }
+  async datasetChunkRefs(datasetId) {
+    await this.ensure();
+    const result = await this.db.prepare(
+      "SELECT job_id, chunk_key, raw_digest, artifact_ref FROM history_chunks WHERE dataset_id = ? AND stage = 'DONE' AND raw_digest IS NOT NULL ORDER BY chunk_key, job_id"
+    ).bind(datasetId).all();
+    return result.results.map((row) => ({
+      jobId: row.job_id,
+      chunkKey: row.chunk_key,
+      rawDigest: row.raw_digest,
+      artifactRef: row.artifact_ref
+    }));
+  }
+  async buildDatasetManifest(datasetId, { executionModel, coverage }) {
+    const inputs = await this.listDatasetDates(datasetId);
+    const chunkRefs = await this.datasetChunkRefs(datasetId);
+    return {
+      executionModel: executionModel ?? null,
+      coverage: coverage ?? null,
+      chunkRefs,
+      inputs
+    };
+  }
+  async datasetIntegrity(datasetId) {
+    const dataset = await this.getDataset(datasetId);
+    if (!dataset) return null;
+    const manifest = await this.buildDatasetManifest(datasetId, {
+      executionModel: dataset.executionModel === "PENDING" ? null : dataset.executionModel,
+      coverage: dataset.coverage
+    });
+    const recomputedDigest = await digestOf(manifest);
+    return {
+      datasetId,
+      verified: recomputedDigest === dataset.manifestDigest,
+      manifestDigest: dataset.manifestDigest,
+      recomputedDigest,
+      manifest
+    };
   }
   async saveDailyInputs(datasetId, tradeDate, { normalized, provenance }) {
     await this.ensure();
@@ -5653,13 +5735,26 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
       status: "NEED_DATA",
       reason: "\u51B7\u542F\u52A8\u8BAD\u7EC3\u9700\u8981\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6"
     };
+  const integrity = await store.datasetIntegrity(datasetId);
+  if (integrity && !integrity.verified)
+    return {
+      status: "NEED_DATA",
+      reason: "\u6570\u636E\u96C6 manifest \u6821\u9A8C\u5931\u8D25\uFF1A\u8F93\u5165\u4E0E\u53D1\u5E03\u65F6\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u4FEE\u6539\uFF09\uFF0C\u62D2\u7EDD\u7528\u4E8E\u51B7\u542F\u52A8\u8BAD\u7EC3"
+    };
   const scores = await store.listScores(datasetId);
   const trainingPairs = [];
   const trainingDates = [];
   const samples = [];
+  const succeededDates = Array.isArray(dataset.coverage?.succeededDates) ? dataset.coverage.succeededDates : [];
+  const succeededPosition = new Map(
+    succeededDates.map((date, index) => [date, index])
+  );
   for (let index = 0; index + 1 < scores.length; index++) {
     const signal = scores[index];
     const nextDate = scores[index + 1].tradeDate;
+    const nextPosition = succeededPosition.get(nextDate);
+    if (nextPosition === void 0 || nextPosition === 0 || succeededDates[nextPosition - 1] !== signal.tradeDate)
+      continue;
     const daily = await store.getDailyInput(datasetId, nextDate);
     if (!daily) continue;
     const rows = Array.isArray(daily.normalized) ? daily.normalized : Object.entries(daily.normalized ?? {}).map(([code, row]) => ({
@@ -5705,6 +5800,7 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
       snapshot: signal.payload,
       dataset: {
         date: nextDate,
+        previousTradingDate: signal.tradeDate,
         quotes,
         minutes: {},
         source: `\u5386\u53F2\u51B7\u542F\u52A8\uFF08${dataset.provider}\uFF09`,
@@ -5754,6 +5850,19 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
     };
   const base = await repository.strategy(account.book);
   const feeConfig = feesForBook(account.book);
+  const dryRun = replayStrategy(
+    trainingPairs,
+    base,
+    account.book.initialCashCents / 100,
+    feeConfig
+  );
+  if (dryRun.covered === false || !dryRun.days)
+    return {
+      status: "NEED_DATA",
+      days: trainingPairs.length,
+      replayDays: dryRun.days,
+      reason: `\u5386\u53F2\u8BAD\u7EC3\u7A97\u53E3\u65E0\u6CD5\u91CD\u653E\uFF08${dryRun.reason ?? "\u65E0\u6709\u6548\u91CD\u653E\u65E5"}\uFF09\uFF1B\u672A\u6D88\u8017\u51B7\u542F\u52A8\u8D44\u683C`
+    };
   let reserved;
   try {
     reserved = await research.reserveBootstrapAttempt({
@@ -6620,7 +6729,6 @@ function sanitizeMinuteSeries(rows, date) {
   const inSession2 = [];
   const anomalies = [];
   let previousTime = null;
-  let previousVolume = null;
   for (const row of rows ?? []) {
     const time = String(row?.time ?? "");
     const price = Number(row?.priceCents);
@@ -6645,13 +6753,12 @@ function sanitizeMinuteSeries(rows, date) {
       anomalies.push({ time, reason: "\u65F6\u95F4\u5012\u5E8F\u6216\u91CD\u590D" });
       continue;
     }
-    if (previousVolume !== null && volume < previousVolume) {
-      anomalies.push({ time, reason: "\u7D2F\u8BA1\u6210\u4EA4\u91CF\u56DE\u843D" });
+    if (!(volume >= 0) || !Number.isFinite(volume)) {
+      anomalies.push({ time, reason: "\u6210\u4EA4\u91CF\u65E0\u6548" });
       continue;
     }
     inSession2.push({ ...row, time, date });
     previousTime = time;
-    previousVolume = volume;
   }
   return { inSession: inSession2, anomalies };
 }
@@ -6871,6 +6978,7 @@ function createTencentHistoricalProvider(options = {}) {
 
 // backend/services/history.js
 var SCORING_VERSION2 = "rules-v1-historical";
+var EXECUTOR_ID2 = `history-${crypto.randomUUID()}`;
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -6881,7 +6989,7 @@ async function probeHistoryCapabilities(env, { start, end }) {
   const provider = createTencentHistoricalProvider();
   return provider.capabilities({ start, end });
 }
-async function createHistoryImport(env, { provider = "tencent-free", kind, start, end, name, codes }) {
+async function createHistoryImport(env, { provider = "tencent-free", kind, start, end, name, codes, datasetId }) {
   if (!["LIMIT_FEATURES", "DAILY", "MINUTES"].includes(kind))
     throw new Error("\u5386\u53F2\u5BFC\u5165\u7C7B\u578B\u65E0\u6548\uFF08LIMIT_FEATURES\u3001DAILY \u6216 MINUTES\uFF09");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end))
@@ -6905,10 +7013,15 @@ async function createHistoryImport(env, { provider = "tencent-free", kind, start
     end,
     name
   });
-  if (declaredCodes.length)
-    return jobs.updateJob(job.id, {
-      statusPayload: { ...job.statusPayload, codes: declaredCodes }
-    });
+  const statusPayload = {};
+  if (declaredCodes.length) statusPayload.codes = declaredCodes;
+  if (datasetId) {
+    if (kind !== "MINUTES")
+      throw new Error("\u4EC5 MINUTES \u5BFC\u5165\u652F\u6301\u9644\u52A0\u5230\u5DF2\u6709\u6570\u636E\u96C6\uFF08datasetId\uFF09");
+    statusPayload.datasetId = datasetId;
+  }
+  if (Object.keys(statusPayload).length)
+    return jobs.updateJob(job.id, { statusPayload });
   return job;
 }
 function orNull(value) {
@@ -6945,18 +7058,27 @@ async function runHistoryImport(env, jobId, options = {}) {
       }
     });
   }
+  if (!await jobs.claimExecution(jobId, EXECUTOR_ID2))
+    return {
+      ...job,
+      note: "\u53E6\u4E00\u4E2A\u6267\u884C\u5668\u6B63\u5728\u8FD0\u884C\u6B64\u5BFC\u5165\u4EFB\u52A1\uFF0C\u672C\u6B21\u672A\u63A5\u7BA1\uFF08\u907F\u514D\u5E76\u53D1\u8986\u76D6\uFF09"
+    };
   try {
     return await runHistoryImportInner(env, job, { jobs, store, options });
   } catch (error) {
     const reason = String(error?.message ?? error).slice(0, 300);
-    return jobs.updateJob(jobId, {
+    const failedJob = await jobs.finishJob(jobId, EXECUTOR_ID2, {
       stage: "FAILED",
       statusPayload: {
-        ...job.statusPayload ?? {},
         error: reason,
         note: "\u5BFC\u5165\u8FC7\u7A0B\u4E2D\u53D1\u751F\u672A\u9884\u671F\u9519\u8BEF\uFF1B\u5DF2\u5B8C\u6210\u7684\u4E0B\u8F7D\u5757\u4FDD\u7559\uFF0C\u53EF\u91CD\u8BD5\u7EED\u4F20"
       }
     });
+    if (failedJob) return failedJob;
+    return {
+      ...await jobs.getJob(jobId),
+      note: "\u4EFB\u52A1\u5DF2\u7531\u5176\u4ED6\u6267\u884C\u5668\u63A5\u7BA1\u6216\u8FDB\u5165\u7EC8\u6001\uFF0C\u672C\u6B21\u9519\u8BEF\u672A\u5199\u5165"
+    };
   }
 }
 async function runHistoryImportInner(env, job, { jobs, store, options }) {
@@ -6970,7 +7092,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     end: requestedEnd
   });
   if (job.kind === "LIMIT_FEATURES" && capabilities.limitFeatures.availableFrom === null) {
-    return jobs.updateJob(jobId, {
+    return jobs.finishJob(jobId, EXECUTOR_ID2, {
       stage: "BLOCKED",
       statusPayload: {
         capabilities,
@@ -6985,6 +7107,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     failedDates: [],
     notes: []
   };
+  let preservedExecutionModel = null;
   let datasetId = job.datasetId;
   if (!datasetId) {
     datasetId = newId("hds");
@@ -7058,12 +7181,13 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           });
           await store.saveChunk(jobId, {
             chunkKey,
+            datasetId,
             requestRange: date,
             actualRange: date,
             rows: normalized.length,
             stage: "DONE",
             rawDigest: await digestOf(features),
-            artifactRef: `history_chunks:${jobId}:${chunkKey}`
+            raw: features
           });
         } catch (error) {
           await store.saveChunk(jobId, {
@@ -7167,7 +7291,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       const universe = entry.normalized.map((row) => {
         const nextDaily = nextQuotes ? nextQuotes.get(row.code) ?? null : null;
         const dailyPrev = dailyByCode ? dailyByCode.get(row.code) ?? null : null;
-        const quoteCents = dailyPrev ? dailyPrev.closeCents : row.price !== null ? Math.round(row.price * 100) : null;
+        const quoteCents = dailyPrev ? dailyPrev.closeCents : null;
         const returnPct = (cents) => nextDaily && quoteCents !== null ? (cents - quoteCents) / quoteCents * 100 : null;
         const openReturnPct = nextDaily ? returnPct(nextDaily.openCents) : null;
         const closeReturnPct = nextDaily ? returnPct(nextDaily.closeCents) : null;
@@ -7210,7 +7334,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           topCloseReturnPct: mean2(topQuantile.map((row) => row.closeReturnPct)),
           allOpenReturnPct: mean2(withReturns.map((row) => row.openReturnPct)),
           allCloseReturnPct: mean2(withReturns.map((row) => row.closeReturnPct)),
-          priceBasis: "\u4FE1\u53F7\u65E5\u57FA\u51C6\u4EF7\u4F18\u5148\u53D6\u540C\u6E90\u524D\u590D\u6743\u65E5\u7EBF\u6536\u76D8\uFF08QFQ\uFF09\uFF0C\u7F3A\u5931\u65F6\u56DE\u9000\u6DA8\u505C\u6C60\u4EF7\u683C\uFF1B\u6536\u76CA\u4E3A\u89C2\u5BDF\u53E3\u5F84",
+          priceBasis: "\u4FE1\u53F7\u65E5\u57FA\u51C6\u4EF7\u53D6\u540C\u6E90\u524D\u590D\u6743\u65E5\u7EBF\u6536\u76D8\uFF08QFQ\uFF09\uFF1B\u4FE1\u53F7\u65E5\u65E5\u7EBF\u7F3A\u5931\u65F6\u4E0D\u8BA1\u7B97\u6536\u76CA\uFF0C\u4E0D\u4E0E\u6DA8\u505C\u6C60\u672A\u590D\u6743\u4EF7\u683C\u6DF7\u7528",
           note: "\u5386\u53F2\u89C2\u5BDF\u53CD\u9988\uFF1A\u57FA\u4E8E\u76F8\u90BB\u4EA4\u6613\u65E5\u65E5\u7EBF\u6536\u76D8\u6570\u636E\u7684\u89C2\u5BDF\u6536\u76CA\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA",
           universe: universe.slice(0, 200)
         }
@@ -7219,13 +7343,28 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
   } else if (job.kind === "MINUTES") {
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
-      return jobs.updateJob(jobId, {
+      return jobs.finishJob(jobId, EXECUTOR_ID2, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
           reason: "MINUTES \u5BFC\u5165\u9700\u8981\u663E\u5F0F\u58F0\u660E\u7814\u7A76\u80A1\u7968\u6C60\uFF08codes\uFF09"
         }
       });
+    }
+    const targetDatasetId = options.datasetId ?? job.statusPayload?.datasetId;
+    if (targetDatasetId) {
+      const target = await store.getDataset(targetDatasetId);
+      if (!target)
+        return jobs.finishJob(jobId, EXECUTOR_ID2, {
+          stage: "BLOCKED",
+          statusPayload: {
+            capabilities,
+            reason: `\u6307\u5B9A\u7684\u76EE\u6807\u6570\u636E\u96C6\u4E0D\u5B58\u5728\uFF1A${targetDatasetId}`
+          }
+        });
+      datasetId = targetDatasetId;
+      preservedExecutionModel = target.executionModel;
+      await jobs.updateJob(jobId, { datasetId });
     }
     for (const date of calendar.dates) {
       let dayRows = 0;
@@ -7246,12 +7385,13 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
           });
           await store.saveChunk(jobId, {
             chunkKey,
+            datasetId,
             requestRange: date,
             actualRange: date,
             rows: series.inSession.length,
             stage: "DONE",
             rawDigest: await digestOf(series),
-            artifactRef: `history_chunks:${jobId}:${chunkKey}`
+            raw: series
           });
           dayRows++;
         } catch (error) {
@@ -7283,7 +7423,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     await jobs.updateJob(jobId, { stage: "DOWNLOADING" });
     const codes = options.codes ?? job.statusPayload?.codes ?? [];
     if (!codes.length) {
-      return jobs.updateJob(jobId, {
+      return jobs.finishJob(jobId, EXECUTOR_ID2, {
         stage: "BLOCKED",
         statusPayload: {
           capabilities,
@@ -7299,19 +7439,30 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     const dates = /* @__PURE__ */ new Set();
     for (const code of Object.keys(daily.rows))
       for (const row of daily.rows[code]) dates.add(row.tradeDate);
+    for (const calendarDate of calendar.dates)
+      if (!dates.has(calendarDate))
+        failed.push({
+          date: calendarDate,
+          reason: "\u4EA4\u6613\u65E5\u5386\u4E2D\u7684\u65E5\u671F\u7F3A\u5C11\u4EFB\u4F55\u80A1\u7968\u7684\u65E5\u7EBF\u6570\u636E"
+        });
     for (const date of [...dates].sort()) {
       const perCode = {};
       for (const code of codes) {
         const row = daily.rows[code]?.find((item) => item.tradeDate === date);
-        if (row) {
-          try {
-            perCode[code] = normalizeDailyBarRow(row);
-          } catch (error) {
-            failed.push({
-              date,
-              reason: `\u65E5\u7EBF\u884C\u89C4\u8303\u5316\u5931\u8D25\uFF08${code}\uFF09\uFF1A${String(error.message ?? error).slice(0, 120)}`
-            });
-          }
+        if (!row) {
+          failed.push({
+            date,
+            reason: `\u7F3A\u5C11\u65E5\u7EBF\u6570\u636E\uFF1A${code}`
+          });
+          continue;
+        }
+        try {
+          perCode[code] = normalizeDailyBarRow(row);
+        } catch (error) {
+          failed.push({
+            date,
+            reason: `\u65E5\u7EBF\u884C\u89C4\u8303\u5316\u5931\u8D25\uFF08${code}\uFF09\uFF1A${String(error.message ?? error).slice(0, 120)}`
+          });
         }
       }
       if (Object.keys(perCode).length) {
@@ -7326,12 +7477,13 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
         });
         await store.saveChunk(jobId, {
           chunkKey: `daily:${date}`,
+          datasetId,
           requestRange: date,
           actualRange: date,
           rows: Object.keys(perCode).length,
           stage: "DONE",
           rawDigest: await digestOf(perCode),
-          artifactRef: `history_chunks:${jobId}:daily:${date}`
+          raw: perCode
         });
         succeeded.push({ date });
       }
@@ -7350,23 +7502,14 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
     if (entry.normalized) allNormalizedRows.push(...entry.normalized);
   const coverageCheck = assessFieldCoverage(allNormalizedRows);
   coverage.coverage = coverageCheck;
-  const executionModel = classifyExecutionModel(
+  const executionModel = preservedExecutionModel ?? classifyExecutionModel(
     coverageCheck.ratio,
     job.kind === "LIMIT_FEATURES" && allNormalizedRows.length > 0
   );
   coverage.executionModel = executionModel;
-  const chunkRows = await store.completedChunkKeys(jobId);
-  const chunkRefs = [...chunkRows].map((chunkKey) => ({
-    jobId,
-    chunkKey
-  }));
-  const finalCoverage = await store.updateDatasetCoverage(
-    datasetId,
-    coverage,
-    chunkRefs
-  );
+  const finalCoverage = await store.updateDatasetCoverage(datasetId, coverage);
   if (!succeeded.length)
-    return jobs.updateJob(jobId, {
+    return jobs.finishJob(jobId, EXECUTOR_ID2, {
       stage: "FAILED",
       statusPayload: {
         capabilities,
@@ -7378,8 +7521,9 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       }
     });
   const finalStage = failed.length ? "PARTIAL" : "READY";
-  return jobs.updateJob(jobId, {
+  const finished = await jobs.finishJob(jobId, EXECUTOR_ID2, {
     stage: finalStage,
+    datasetId,
     statusPayload: {
       capabilities,
       datasetId,
@@ -7389,6 +7533,11 @@ async function runHistoryImportInner(env, job, { jobs, store, options }) {
       note: executionModel === "DAILY_OBSERVATION_V1" ? "\u65E5\u7EBF\u89C2\u5BDF\u6570\u636E\u96C6\uFF1A\u65E0\u5C01\u677F\u7279\u5F81\uFF0C\u4E0D\u80FD\u91CD\u5EFA\u516D\u56E0\u5B50\u8BC4\u5206\uFF0C\u4EC5\u7528\u4E8E\u89C2\u5BDF\u7814\u7A76" : "\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\u5C31\u7EEA"
     }
   });
+  if (finished) return finished;
+  return {
+    ...await jobs.getJob(jobId),
+    note: "\u4EFB\u52A1\u7EC8\u6001\u5DF2\u7531\u5176\u4ED6\u6267\u884C\u5668\u5199\u5165\uFF0C\u672C\u6B21\u7ED3\u679C\u672A\u8986\u76D6"
+  };
 }
 async function historyImportDetail(env, jobId) {
   const jobs = new HistoryJobRepository(env);
@@ -7396,12 +7545,19 @@ async function historyImportDetail(env, jobId) {
   if (!job) return null;
   const store = openHistoryStore(env);
   const dataset = store && job.datasetId ? await store.getDataset(job.datasetId) : null;
+  const integrity = store && job.datasetId ? await store.datasetIntegrity(job.datasetId) : null;
   const dates = store && job.datasetId ? await store.listDatasetDates(job.datasetId) : [];
   const scores = store && job.datasetId ? await store.listScores(job.datasetId) : [];
   const reviews = store && job.datasetId ? await store.listReviews(job.datasetId) : [];
   return {
     job,
     dataset,
+    integrity: integrity ? {
+      verified: integrity.verified,
+      manifestDigest: integrity.manifestDigest,
+      chunkCount: integrity.manifest.chunkRefs.length,
+      note: integrity.verified ? "\u6570\u636E\u96C6 manifest \u4E0E\u5F53\u524D\u8F93\u5165\u4E00\u81F4" : "\u8B66\u544A\uFF1A\u6570\u636E\u96C6\u8F93\u5165\u4E0E\u53D1\u5E03\u65F6\u7684 manifest \u6458\u8981\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u4FEE\u6539\uFF09\uFF0C\u56DE\u6D4B\u4E0E\u8BAD\u7EC3\u5C06\u62D2\u7EDD\u4F7F\u7528"
+    } : null,
     dates,
     scoreCount: scores.length,
     reviewCount: reviews.length,
@@ -7495,26 +7651,35 @@ function observationsForDay({ date, minuteByCode, templates }) {
 }
 function endOfDayQuotes({ date, minuteByCode, templates }) {
   const quotes = {};
+  const sampledCloseTimes = {};
   for (const [code, series] of Object.entries(minuteByCode)) {
     const template = templates[code];
     const bars = series.bars ?? [];
     const last = bars.at(-1);
     if (!template || !last) continue;
+    sampledCloseTimes[code] = last.time;
     quotes[code] = {
       ...template,
       date,
       closeCents: last.priceCents,
       volumeShares: last.volumeShares,
-      timestamp: `${date}T15:00:00+08:00`
+      timestamp: `${date}T15:00:00+08:00`,
+      sampledCloseTime: last.time,
+      sampledCloseNote: last.time === "15:00" ? null : `\u6536\u76D8\u4EF7\u4EE5\u91C7\u6837\u672B\u7AEF ${last.time} \u8FD1\u4F3C\uFF08\u91C7\u6837\u672A\u8986\u76D6\u6536\u76D8\u65F6\u6BB5\uFF09`
     };
   }
-  return quotes;
+  return { quotes, sampledCloseTimes };
 }
 async function runBacktest(env, { datasetId, name, strategy, initialCapital, weights }) {
   const store = openHistoryStore(env);
   if (!store)
     throw new Error(
       "\u5386\u53F2\u7814\u7A76\u5B58\u50A8\u4EC5\u672C\u673A\u53EF\u7528\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u5E38\u9A7B\u5B9E\u4F8B\u8FD0\u884C\u56DE\u6D4B"
+    );
+  const integrity = await store.datasetIntegrity(datasetId);
+  if (integrity && !integrity.verified)
+    throw new Error(
+      "\u5386\u53F2\u6570\u636E\u96C6 manifest \u6821\u9A8C\u5931\u8D25\uFF1A\u6570\u636E\u96C6\u8F93\u5165\u4E0E\u53D1\u5E03\u65F6\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u4FEE\u6539\uFF09\uFF0C\u62D2\u7EDD\u7528\u4E8E\u56DE\u6D4B"
     );
   const dataset = await store.getDataset(datasetId);
   if (!dataset) throw new Error("\u5386\u53F2\u6570\u636E\u96C6\u4E0D\u5B58\u5728");
@@ -7626,7 +7791,7 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
         }))
       );
     }
-    const eodQuotes = endOfDayQuotes({
+    const { quotes: eodQuotes, sampledCloseTimes } = endOfDayQuotes({
       date: tradeDate,
       minuteByCode,
       templates
@@ -7641,12 +7806,20 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
     if (dayLedger.length)
       await store.appendBacktestLedger(runId, tradeDate, dayLedger);
     const drawdown = book.peakEquityCents ? 1 - book.equityCents / book.peakEquityCents : 0;
+    const sampledCloseIncomplete = Object.values(sampledCloseTimes).some(
+      (time) => time !== "15:00"
+    );
+    if (sampledCloseIncomplete)
+      coverage.notes.push(
+        `${tradeDate} \u6536\u76D8\u4EF7\u4EE5\u5206\u949F\u91C7\u6837\u672B\u7AEF ${Object.entries(sampledCloseTimes).filter(([, time]) => time !== "15:00").map(([code, time]) => `${code}@${time}`).join("\u3001")} \u8FD1\u4F3C\uFF0C\u672A\u8986\u76D6\u771F\u5B9E\u6536\u76D8\u65F6\u6BB5`
+      );
     const equityRow = {
       tradeDate,
       equityCents: book.equityCents,
       cashCents: book.cashCents,
       drawdown,
-      positions: book.positions.length
+      positions: book.positions.length,
+      sampledCloseTimes
     };
     coverage.equity.push(equityRow);
     await store.saveBacktestEquity(runId, tradeDate, equityRow);
@@ -7677,6 +7850,7 @@ async function backtestDetail(env, runId) {
     store.listBacktestEquity(runId)
   ]);
   const recomputedTotalReturn = equity.length && run.initialBook?.initialCashCents ? equity.at(-1).equityCents / run.initialBook.initialCashCents - 1 : null;
+  const ledgerCountMatches = ledger.length === (run.coverage?.fillCount ?? -1);
   return {
     run,
     plans,
@@ -7684,10 +7858,12 @@ async function backtestDetail(env, runId) {
     ledgerCount: ledger.length,
     equity,
     verification: {
-      totalReturnMatches: recomputedTotalReturn === null ? null : Math.abs(
+      ledgerCountMatches,
+      totalReturnMatches: recomputedTotalReturn === null || !ledgerCountMatches || !ledger.length ? false : Math.abs(
         (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0)
       ) < 1e-9,
-      recomputedTotalReturn
+      recomputedTotalReturn,
+      note: ledger.length && ledgerCountMatches ? "\u6536\u76CA\u6838\u9A8C\u57FA\u4E8E\u5F53\u524D\u8D26\u672C\u884C\u6570\u4E0E\u6743\u76CA\u7EC8\u503C" : "\u8D26\u672C\u7F3A\u5931\u6216\u4E0E\u8FD0\u884C\u8BB0\u5F55\u4E0D\u4E00\u81F4\uFF0C\u65E0\u6CD5\u6838\u9A8C\u6536\u76CA\uFF1B\u4E0D\u5F97\u5C06 totalReturn \u89C6\u4E3A\u5DF2\u9A8C\u8BC1"
     }
   };
 }
@@ -7809,7 +7985,8 @@ async function api(request, env) {
         start: body2.start,
         end: body2.end,
         name: body2.name,
-        codes: body2.codes
+        codes: body2.codes,
+        datasetId: body2.datasetId
       });
       return json({ job });
     }
