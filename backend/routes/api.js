@@ -11,7 +11,7 @@ import {
   gradeWithAI,
   historyList,
 } from "../services/review.js";
-import { marketData } from "../services/market.js";
+import { marketData, latestTradingDate } from "../services/market.js";
 import {
   paperOverview,
   runPaperDay,
@@ -113,6 +113,7 @@ export async function api(request, env) {
     "/api/run-daily": ["POST"],
     "/api/ai-grade": ["POST"],
     "/api/market": ["GET"],
+    "/api/market/latest-date": ["GET"],
     "/api/paper": ["GET"],
     "/api/paper/settings": ["POST"],
     "/api/paper/export": ["GET"],
@@ -270,6 +271,8 @@ export async function api(request, env) {
         return json({ error: "请选择今天或历史有效日期" }, 400);
       return json(await marketData(date));
     }
+    if (path === "/api/market/latest-date")
+      return json({ date: await latestTradingDate() });
     if (path === "/api/paper") return json(await paperOverview(env));
     if (path === "/api/paper/live") return json(await realtimeStatus(env));
     if (path === "/api/paper/poll") {
