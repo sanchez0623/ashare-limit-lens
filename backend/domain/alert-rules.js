@@ -364,13 +364,31 @@ export function fingerprintOf(event) {
   return `${event.ruleType}:${event.entityRef ?? "primary"}`;
 }
 
-// 规则评估：输入当前事实、既有活动实例、策略与市场上下文，
-// 输出状态机动作。不读写数据库。
+// 事实的观测时段（§3.2）：从事实自带的 occurredAt 推导北京市场时钟，换算与
+// realtime.marketClock 一致（+8h 截断，weekday 取 UTC 星期）。评估必须用事实
+// 被观测到的时刻判定时段，而不是处理时刻——迟到入库的旧事实按它被观测到的
+// 时段定级，隔天补处理时不得把已升级的 CRITICAL 降级。
+function phaseOf(occurredAt) {
+  const value = new Date(
+    new Date(occurredAt).getTime() + 8 * 3600000,
+  ).toISOString();
+  return marketPhase({
+    date: value.slice(0, 10),
+    time: value.slice(11, 19),
+    weekday: new Date(occurredAt).getUTCDay(),
+    calendarConfirmed: true,
+  });
+}
+
+// 规则评估：输入当前事实、既有活动实例与策略，输出状态机动作。
+// 不读写数据库。评估时钟是事实的源观测时间（occurredAt，as-of 语义）：
+// 时段、持续时间与恢复宽限都按观测时序计算；调用方必须逐条事实基于
+// 最新实例状态评估并提交（同指纹多条事实不允许一次性批量评估后依序
+// 提交——批量评估看不到组内前序事实提交后的状态）。
 export function evaluateAlertRules({
   events,
   previousIncident,
   policy = DEFAULT_ALERT_POLICY,
-  marketContext,
   now = new Date().toISOString(),
 }) {
   const evaluations = [];
@@ -378,11 +396,12 @@ export function evaluateAlertRules({
   for (const event of events) {
     const fingerprint = fingerprintOf(event);
     byFingerprint.set(fingerprint, event);
-    const phase = marketPhase(marketContext);
-    // 持续时间取自实例首次发生时刻，而不是本批事件的到达时间：升级要看
-    // "已经持续多久"，只看本轮事件永远得不到持续时间，升级规则永不触发。
+    const phase = phaseOf(event.occurredAt ?? now);
+    // 持续时间取自实例首次发生时刻到本事实的观测时刻：升级要看"到观测
+    // 时为止已经持续多久"。用处理时间计算会让迟到事实凭空放大时长；
     // 已恢复实例不作为持续时间基准：补读旧事件触发"重新打开"时是新一段
     // 故障，拿旧 firstSeen 算时长会凭空报出荒谬的持续时间并直接跳到 CRITICAL。
+    const observedAt = event.occurredAt ?? now;
     const related =
       previousIncident &&
       previousIncident.fingerprint === fingerprint &&
@@ -392,7 +411,8 @@ export function evaluateAlertRules({
     const activeSeconds = related
       ? Math.max(
           0,
-          (new Date(now).getTime() - new Date(related.firstSeen).getTime()) /
+          (new Date(observedAt).getTime() -
+            new Date(related.firstSeen).getTime()) /
             1000,
         )
       : 0;
@@ -405,17 +425,12 @@ export function evaluateAlertRules({
     const enriched = durationFacts
       ? { ...event, safeFacts: { ...event.safeFacts, ...durationFacts } }
       : event;
-    // 同批内"问题事实"优先于"已清除事实"：一轮既能报问题也能报清除时，
-    // 只有问题才是当前状态。
     if (event.cleared) {
-      const hasProblem = events.some(
-        (row) => !row.cleared && fingerprintOf(row) === fingerprint,
-      );
-      if (hasProblem) continue;
       evaluations.push({
         event: enriched,
         fingerprint,
         severity: related?.severity ?? SEVERITIES.WARNING,
+        observedAt,
         activeSeconds,
         cleared: true,
         suppressed: false,
@@ -443,6 +458,7 @@ export function evaluateAlertRules({
       event: enriched,
       fingerprint,
       severity,
+      observedAt,
       activeSeconds,
       suppressed,
     });
@@ -513,6 +529,8 @@ export function suppressedByMaintenance(ruleType, until, now) {
 
 // 状态机转换（§5.3）：OPEN → 升级/提醒 → RESOLVED；ACK 只静默提醒不阻止升级。
 // 恢复只能由正向证据（cleared）驱动：没有新证据既不恢复也不升级。
+// 评估时钟（P1-1）是事实的源观测时间（evaluation.observedAt，as-of 语义）：
+// firstSeen/lastSeen/resolvedAt 记录的都是观测时刻，恢复宽限按源观测时序计算。
 // 幂等性（P1-4）：补读旧事件（occurredAt <= resolvedAt）不得重新打开已恢复实例。
 export function transitionIncident({
   incident,
@@ -520,6 +538,7 @@ export function transitionIncident({
   now,
   policy = DEFAULT_ALERT_POLICY,
 }) {
+  const observedAt = evaluation.observedAt ?? now;
   // 新实例：只有问题事实能开实例。
   if (!incident)
     return evaluation.absent || evaluation.suppressed || evaluation.cleared
@@ -529,18 +548,19 @@ export function transitionIncident({
           patch: {
             status: "OPEN",
             severity: evaluation.severity,
-            firstSeen: now,
-            lastSeen: now,
+            firstSeen: observedAt,
+            lastSeen: observedAt,
             ackUntil: null,
             resolvedAt: null,
           },
           notify: { type: "OPEN", severity: evaluation.severity },
         };
 
-  // 观测顺序守卫（P1-1）：迟到的执行器 now 早于实例已记录的最后观测时，它读到
-  // 的是旧世界。严重度随时长/时段单调不减，旧观测恒被更新的观测支配，写回只会
-  // 把已升级的 CRITICAL 降级、把 lastSeen 回退。更新的观测已覆盖本批事实，静默保持。
-  if (incident.lastSeen && now < incident.lastSeen)
+  // 观测顺序守卫（P1-1）：事实的观测时刻早于实例已记录的最后观测时，它是
+  // 旧信息——不管它何时被处理。旧观测的严重度与恢复结论恒被更新的观测支配，
+  // 写回只会把已升级的 CRITICAL 降级、把 lastSeen 回退、甚至用过期的 cleared
+  // 证据恢复已被新故障推翻的实例。更新的观测已覆盖本批事实，静默保持。
+  if (incident.lastSeen && observedAt < incident.lastSeen)
     return { action: "KEEP", patch: {}, notify: null };
 
   // 幂等性：实例已恢复且本批事件为旧事件重放（发生时刻不晚于恢复时刻），忽略。
@@ -558,14 +578,18 @@ export function transitionIncident({
   // 正向证据表明条件消失：宽限期后恢复（§3 各规则的恢复条件）。
   if (evaluation.cleared) {
     if (incident.status === "RESOLVED") return null;
-    const silent = Boolean(incident.ackUntil && incident.ackUntil > now);
+    const silent = Boolean(incident.ackUntil && incident.ackUntil > observedAt);
+    // 恢复宽限按源观测时序计算：从最后一次问题观测（lastSeen）到本条恢复
+    // 事实的观测时刻。宽限内保持——连续两轮 RUNNING 的第一轮先记录、不写库，
+    // 第二轮越过宽限才恢复；写库刷新 lastSeen 会让宽限永远走不完。
     const clearedSeconds =
-      (new Date(now).getTime() - new Date(incident.lastSeen).getTime()) / 1000;
+      (new Date(observedAt).getTime() - new Date(incident.lastSeen).getTime()) /
+      1000;
     if (clearedSeconds < policy.resumeGraceSeconds)
       return { action: "KEEP", patch: {}, notify: null, silent };
     return {
       action: "RESOLVE",
-      patch: { status: "RESOLVED", resolvedAt: now },
+      patch: { status: "RESOLVED", resolvedAt: observedAt },
       notify: incident.notifiedOnce
         ? { type: "RESOLVED" }
         : { type: "RESOLVED_SUMMARY" },
@@ -584,9 +608,9 @@ export function transitionIncident({
     incident.firstSeen ??
     incident.lastSeen;
   const sinceScheduled =
-    (new Date(now).getTime() - new Date(scheduledAt).getTime()) / 1000;
+    (new Date(observedAt).getTime() - new Date(scheduledAt).getTime()) / 1000;
   const ackActive =
-    Boolean(incident.ackUntil && incident.ackUntil > now) && !reopened;
+    Boolean(incident.ackUntil && incident.ackUntil > observedAt) && !reopened;
   let notify = null;
   if (escalated) notify = { type: "ESCALATED", severity: SEVERITIES.CRITICAL };
   else if (reopened || !incident.notifyScheduledAt)
@@ -599,13 +623,13 @@ export function transitionIncident({
     patch: {
       status: "OPEN",
       severity: evaluation.severity,
-      lastSeen: now,
+      lastSeen: observedAt,
       ...(escalated || reopened
         ? {
             ackUntil: null,
             // 重开必须清除恢复标记并重置起始时刻：resolved_at 残留会让
             // 活动实例查询永远漏掉它，旧 firstSeen 会伪造超长持续时间。
-            ...(reopened ? { resolvedAt: null, firstSeen: now } : {}),
+            ...(reopened ? { resolvedAt: null, firstSeen: observedAt } : {}),
           }
         : {}),
     },

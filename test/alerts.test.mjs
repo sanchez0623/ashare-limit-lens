@@ -41,19 +41,6 @@ function buildEnv(patch = {}) {
 
 const NOW = "2026-10-09T01:35:00.000Z"; // 周五 09:35 北京时间，连续竞价期间
 
-// marketPhase 消费北京时间字符串（与 marketClock 一致），从 UTC 转换。
-function marketContext(now = NOW) {
-  const beijing = new Date(new Date(now).getTime() + 8 * 3600 * 1000)
-    .toISOString()
-    .slice(0, 19);
-  return {
-    date: beijing.slice(0, 10),
-    time: beijing.slice(11, 19),
-    weekday: new Date(`${beijing}Z`).getUTCDay(),
-    calendarConfirmed: true,
-  };
-}
-
 function loopInput(result, { now = NOW, sequence = 1 } = {}) {
   return {
     source: "loop",
@@ -214,20 +201,15 @@ test("时段语义：异常类故障全天有效，结算迟延按时间升级",
   assert.equal(lunch.phase, "LUNCH");
   // ERROR 轮次来自未捕获异常，是程序故障而非"不成交"：午休与盘后都不抑制。
   // 旧实现按 reasonCode 把缺 error 字段的 ERROR 归为普通执行错误并抑制，
-  // 盘后抛出的异常因此漏报（P1-5）。
+  // 盘后抛出的异常因此漏报（P1-5）。时段按事实的观测时刻（occurredAt）判定。
   const evaluation = evaluateAlertRules({
-    events: classifyOperationalFacts(loopInput({ status: "ERROR" })),
+    events: classifyOperationalFacts(
+      loopInput({ status: "ERROR" }, { now: "2026-10-09T03:45:00.000Z" }),
+    ),
     previousIncident: null,
     policy,
-    marketContext: lunch,
   });
   assert.equal(evaluation[0].suppressed, false, "异常类循环失败不受午休抑制");
-  const offHours = marketPhase({
-    date: "2026-10-09",
-    time: "20:00:00",
-    weekday: 5,
-    calendarConfirmed: true,
-  });
   const afterClose = evaluateAlertRules({
     events: classifyOperationalFacts(
       loopInput(
@@ -237,26 +219,13 @@ test("时段语义：异常类故障全天有效，结算迟延按时间升级",
     ),
     previousIncident: null,
     policy,
-    marketContext: offHours,
   });
   assert.equal(
     afterClose[0].suppressed,
     false,
     "盘后抛出的异常同样不得被时段抑制",
   );
-  // 结算迟延：15:20 警告，15:30 升级。
-  const warningPhase = marketPhase({
-    date: "2026-10-09",
-    time: "15:22:00",
-    weekday: 5,
-    calendarConfirmed: true,
-  });
-  const criticalPhase = marketPhase({
-    date: "2026-10-09",
-    time: "15:31:00",
-    weekday: 5,
-    calendarConfirmed: true,
-  });
+  // 结算迟延：15:20 警告，15:30 升级（按观测时刻定级）。
   const dailyEvent = classifyOperationalFacts({
     source: "daily",
     result: { paper: { status: "BEFORE_CLOSE" }, snapshot: { saved: false } },
@@ -266,7 +235,6 @@ test("时段语义：异常类故障全天有效，结算迟延按时间升级",
     events: dailyEvent,
     previousIncident: null,
     policy,
-    marketContext: warningPhase,
   })[0];
   assert.equal(warning.severity, "WARNING");
   const critical = evaluateAlertRules({
@@ -277,9 +245,21 @@ test("时段语义：异常类故障全天有效，结算迟延按时间升级",
     }),
     previousIncident: null,
     policy,
-    marketContext: criticalPhase,
   })[0];
   assert.equal(critical.severity, "CRITICAL");
+  // 迟到的旧事实按它被观测到的时段定级：15:10 观测仍是 WARNING，
+  // 不因处理时刻已越过升级时点而变成 CRITICAL。
+  const stale = evaluateAlertRules({
+    events: classifyOperationalFacts({
+      source: "daily",
+      result: { paper: { status: "BEFORE_CLOSE" }, snapshot: { saved: false } },
+      now: "2026-10-09T07:10:00.000Z",
+    }),
+    previousIncident: null,
+    policy,
+    now: "2026-10-09T09:00:00.000Z",
+  })[0];
+  assert.equal(stale.severity, "WARNING", "迟到的旧事实按观测时段定级");
   // 日历无法确认是独立 WARNING 语义：marketContext 标注，不自动按休市处理。
   const unknown = marketPhase({
     date: "2026-10-09",
@@ -297,11 +277,21 @@ test("状态机：去重升级提醒、确认不掩盖升级、恢复只通知�
     events: [event],
     previousIncident: null,
     policy,
-    marketContext: marketContext(),
   })[0];
   const opened = transitionIncident({ incident: null, evaluation, now: NOW });
   assert.equal(opened.action, "OPEN");
   assert.equal(opened.notify.type, "OPEN");
+  // 评估时钟是事实的观测时刻（as-of）：每个步骤用各自观测时刻的事实评估。
+  const observed = (at, severity) => ({
+    ...evaluateAlertRules({
+      events: classifyOperationalFacts(
+        loopInput({ status: "ERROR" }, { now: at }),
+      ),
+      previousIncident: null,
+      policy,
+    })[0],
+    severity,
+  });
   // 同一问题持续：不重复 OPEN；5 分钟后升级 CRITICAL。
   const stillOpen = transitionIncident({
     incident: {
@@ -316,7 +306,7 @@ test("状态机：去重升级提醒、确认不掩盖升级、恢复只通知�
       notifyScheduledAt: NOW,
       payload: {},
     },
-    evaluation: { ...evaluation, severity: "WARNING" },
+    evaluation: observed("2026-10-09T01:40:00.000Z", "WARNING"),
     now: "2026-10-09T01:40:00.000Z",
   });
   assert.equal(stillOpen.action, "KEEP");
@@ -334,7 +324,7 @@ test("状态机：去重升级提醒、确认不掩盖升级、恢复只通知�
       notifyScheduledAt: NOW,
       payload: {},
     },
-    evaluation: { ...evaluation, severity: "WARNING" },
+    evaluation: observed("2026-10-09T01:50:00.000Z", "WARNING"),
     now: "2026-10-09T01:50:00.000Z",
   });
   assert.equal(reminded.notify?.type, "REMIND");
@@ -352,7 +342,7 @@ test("状态机：去重升级提醒、确认不掩盖升级、恢复只通知�
       notifyScheduledAt: NOW,
       payload: {},
     },
-    evaluation: { ...evaluation, severity: "WARNING" },
+    evaluation: observed("2026-10-09T01:50:00.000Z", "WARNING"),
     now: "2026-10-09T01:50:00.000Z",
   });
   assert.equal(acked.notify, null, "确认期内提醒被静默");
@@ -370,7 +360,7 @@ test("状态机：去重升级提醒、确认不掩盖升级、恢复只通知�
       notifyScheduledAt: NOW,
       payload: {},
     },
-    evaluation: { ...evaluation, severity: "CRITICAL" },
+    evaluation: observed("2026-10-09T01:50:00.000Z", "CRITICAL"),
     now: "2026-10-09T01:50:00.000Z",
   });
   assert.equal(escalatedUnderAck.action, "ESCALATE");
@@ -1077,7 +1067,6 @@ test("同轮多条事实同时落库：事件 ID 必须区分规则", async () =
 });
 
 test("升级与提醒按持续时间推进：只看本轮事件永远得不到升级", () => {
-  const event = classifyOperationalFacts(loopInput({ status: "ERROR" }))[0];
   const previous = {
     status: "OPEN",
     severity: "WARNING",
@@ -1091,14 +1080,16 @@ test("升级与提醒按持续时间推进：只看本轮事件永远得不到�
     lastNotifiedAt: "2026-10-09T01:35:00.000Z",
     payload: {},
   };
-  // 持续 100 秒（超过 loopFailedEscalateSeconds=90）→ 升级为 CRITICAL。
+  // 观测于 01:36:40 的新事实：持续 100 秒（超过 loopFailedEscalateSeconds=90）
+  // → 升级为 CRITICAL。评估时钟取事实自身的观测时刻（as-of）。
   const at = "2026-10-09T01:36:40.000Z";
+  const event = classifyOperationalFacts(
+    loopInput({ status: "ERROR" }, { now: at, sequence: 2 }),
+  )[0];
   const evaluation = evaluateAlertRules({
     events: [event],
     previousIncident: previous,
     policy: DEFAULT_ALERT_POLICY,
-    marketContext: marketContext(at),
-    now: at,
   })[0];
   assert.equal(evaluation.severity, "CRITICAL", "持续时间驱动升级");
   const escalated = transitionIncident({
@@ -1108,10 +1099,25 @@ test("升级与提醒按持续时间推进：只看本轮事件永远得不到�
   });
   assert.equal(escalated.action, "ESCALATE");
   assert.equal(escalated.notify.type, "ESCALATED");
-  // 提醒按"上次成功通知时刻"推进，而不是被每轮事件刷新的 lastSeen。
+  // 提醒按"上次成功通知时刻"推进，而不是被每轮事件刷新的 lastSeen：
+  // 观测于 01:50:50 的事实距上次通知已超过 15 分钟。
+  const remindEvent = classifyOperationalFacts(
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:50:50.000Z", sequence: 3 },
+    ),
+  )[0];
+  const remindEvaluation = {
+    ...evaluateAlertRules({
+      events: [remindEvent],
+      previousIncident: previous,
+      policy: DEFAULT_ALERT_POLICY,
+    })[0],
+    severity: "WARNING",
+  };
   const reminded = transitionIncident({
     incident: { ...previous, lastSeen: "2026-10-09T01:36:35.000Z" },
-    evaluation: { ...evaluation, severity: "WARNING" },
+    evaluation: remindEvaluation,
     now: "2026-10-09T01:50:50.000Z",
   });
   assert.equal(reminded.action, "KEEP");
@@ -1560,8 +1566,8 @@ test("迁移防重：补读旧事件不重开已恢复实例，恢复后的新�
   assert.equal(reopened.resolvedAt, null, "重开时清除恢复标记");
   assert.equal(
     reopened.firstSeen,
-    "2026-10-09T01:50:10.000Z",
-    "重开重置起始时刻，不继承旧故障的持续时间",
+    "2026-10-09T01:50:00.000Z",
+    "重开重置起始时刻为观测时刻，不继承旧故障的持续时间",
   );
   assert.ok(
     await store.activeIncident("LOOP_FAILED:primary"),
@@ -1751,6 +1757,76 @@ test("同批补读：组内历史重放被忽略，后续新故障仍必须处�
   assert.equal(
     (await store.processorState()).lastEventCursor.ingestSeq,
     8,
+    "组内全部事实处理完成后游标推进到批尾",
+  );
+  env.DB.close();
+});
+
+test("观测顺序守卫按源观测时间判定：迟到的旧事实不得降级已升级实例", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  const daily = (now, sequence) => ({
+    source: "daily",
+    result: { paper: { status: "BEFORE_CLOSE" }, snapshot: { saved: false } },
+    now,
+    tradeDate: "2026-10-09",
+    sourceSequence: sequence,
+  });
+  // 15:31 观测的结算迟延已越过升级时点：实例 CRITICAL，lastSeen 记录观测时刻。
+  await recordOperationEvents(env, [daily("2026-10-09T07:31:00.000Z", 1)]);
+  await processAlerts(env, { now: "2026-10-09T07:31:10.000Z" });
+  const opened = await store.recentIncident("SETTLEMENT_LATE:primary");
+  assert.equal(opened.severity, "CRITICAL");
+  // 15:10 观测的旧事实迟到最后才入库（处理时刻 17:00，已越过升级时点）：
+  // 按处理时间评估会把它判成 WARNING 并覆盖写回。守卫必须比较源观测时间——
+  // 旧观测早于 lastSeen 即为旧信息，无论它何时被处理都不得写回。
+  await recordOperationEvents(env, [daily("2026-10-09T07:10:00.000Z", 2)]);
+  await processAlerts(env, { now: "2026-10-09T09:00:00.000Z" });
+  const after = await store.getIncident(opened.id);
+  assert.equal(after.severity, "CRITICAL", "迟到的旧观测不得把实例降级");
+  assert.equal(
+    after.lastSeen,
+    "2026-10-09T07:31:00.000Z",
+    "lastSeen 保持为最新观测时刻",
+  );
+  env.DB.close();
+});
+
+test("同批恢复证据不随问题事实丢弃：逐条应用后实例恢复且游标推进", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  await recordOperationEvents(env, [loopInput({ status: "ERROR" })]);
+  await processAlerts(env, { now: "2026-10-09T01:35:05.000Z" });
+  // 同一页内：01:37 的新故障（持续 120s → CRITICAL），随后连续两轮 RUNNING。
+  // 旧实现批量评估发现组内有问题事实后把同组 cleared 全部过滤，两轮恢复
+  // 证据随游标一起被吞掉，实例永远停在 OPEN/CRITICAL。
+  await recordOperationEvents(env, [
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:37:00.000Z", sequence: 2 },
+    ),
+    loopInput(
+      { status: "RUNNING" },
+      { now: "2026-10-09T01:38:00.000Z", sequence: 3 },
+    ),
+    loopInput(
+      { status: "RUNNING" },
+      { now: "2026-10-09T01:41:00.000Z", sequence: 4 },
+    ),
+  ]);
+  await processAlerts(env, { now: "2026-10-09T01:41:30.000Z" });
+  const resolved = await store.recentIncident("LOOP_FAILED:primary");
+  assert.equal(resolved.severity, "CRITICAL", "页内新故障先完成升级");
+  assert.equal(resolved.status, "RESOLVED", "同页恢复证据驱动恢复");
+  assert.equal(
+    resolved.resolvedAt,
+    "2026-10-09T01:41:00.000Z",
+    "恢复标记取恢复事实的观测时刻（01:38 距故障仅 60s，宽限内保持）",
+  );
+  // 摄取序号按每条落库事实计数：1 条 ERROR + 两轮 RUNNING 各 5 条 cleared = 11。
+  assert.equal(
+    (await store.processorState()).lastEventCursor.ingestSeq,
+    1 + 11,
     "组内全部事实处理完成后游标推进到批尾",
   );
   env.DB.close();

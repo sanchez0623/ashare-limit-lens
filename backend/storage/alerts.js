@@ -257,7 +257,10 @@ export class AlertRepository {
               create.severity,
               create.ruleType,
               create.firstSeen ?? now,
-              now,
+              // 观测时刻（as-of）：创建记录的是事实被观测到的时间，处理时刻
+              // 只兜底。last_seen 被 last_seen DESC 排序依赖，混入处理时间会
+              // 让迟到的旧事实排到更新观测之前。
+              create.lastSeen ?? create.firstSeen ?? now,
               create.ruleVersion,
               runId,
               JSON.stringify(create.payload ?? {}),
