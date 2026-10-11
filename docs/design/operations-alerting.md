@@ -139,14 +139,14 @@ heartbeat 负责最新状态；事件表负责历史事实。一般循环失败�
 
 | 表                      | 关键字段与约束                                                                                                                                 | 作用                                          |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `operation_events`      | `id PK, instance_id, account_id, trade_date, source_sequence, type, reason_code, occurred_at, payload`                                         | 追加事实；源事件 ID 幂等                      |
+| `operation_events`      | `id PK, instance_id, account_id, trade_date, source_sequence, type, reason_code, occurred_at, entity_ref, payload, ingest_seq`                  | 追加事实；源事件 ID 幂等                      |
 | `alert_rule_versions`   | `id PK, created_at, payload, digest`                                                                                                           | 所有者告警阈值与路由规则的不可变版本          |
 | `alert_incidents`       | `id PK, fingerprint, generation, status, severity, first_seen, last_seen, ack_until, resolved_at, rule_version, revision`                      | 同一问题的一次持续事件；活动 fingerprint 唯一 |
 | `alert_events`          | `(incident_id, sequence) PK, type, created_at, payload`                                                                                        | 首次、升级、提醒、确认、恢复的追加审计        |
 | `alert_outbox`          | `id PK, incident_id, event_sequence, channel_ref, status, attempt, next_attempt_at, lease_until, lease_owner, provider_ref`；事件/通道组合唯一 | 有界重试与重启恢复，不保存密钥                |
 | `alert_processor_state` | `id PK, revision, last_event_cursor, last_progress_at, last_run_id`                                                                            | 消费游标、分发器与规则执行器健康              |
 
-SQLite 继续使用事务，D1 使用项目现有 revision/CAS + nonce batch。原因去重以结构化枚举和实体为准，不使用可能带敏感信息的原始异常文本做 fingerprint。
+分发游标按 `operation_events.ingest_seq`（插入时取当前最大值 +1）推进，而不是按 `occurred_at`：各执行器时钟不一致时，迟到入库的事件发生时间可能早于已消费游标，用发生时间做游标会把它永久漏读。升级前已写入的按发生时间游标在读取时折算为对应行的 `ingest_seq`，既不重放历史事件也不漏读。SQLite 继续使用事务，D1 使用项目现有 revision/CAS + nonce batch。原因去重以结构化枚举和实体为准，不使用可能带敏感信息的原始异常文本做 fingerprint。
 
 ### 5.3 生命周期与去重
 
@@ -163,6 +163,8 @@ SQLite 继续使用事务，D1 使用项目现有 revision/CAS + nonce batch。�
 
 已确认的事件仍显示未恢复；确认可以有限期静默提醒，但新的严重程度升级仍通知。未曾成功通知就恢复的问题，在恢复后发送简短“发生并恢复”摘要；不能只发一条莫名的恢复消息。
 
+恢复只由正向证据驱动：只有事件源给出“本轮已验证该条件不成立”的事实（一轮成功执行、三项都完成的盘后任务、该股票重新获得合格报价）才允许恢复，且仍受 `resumeGraceSeconds` 约束。长时间没有新事件不等于问题消失——交易循环停摆时最需要告警继续在案，因此不会自动恢复。`DRAWDOWN_TRIPPED` 与 `LEDGER_INVARIANT_FAILED` 属于需要处置的风险状态，不由后续事实自动清除（不能仅因价格反弹就宣布风险处置完成）。
+
 ### 5.4 异步发送与重试
 
 - 通知任务运行在独立子进程；网络请求设短超时、禁止凭据随重定向转发。
@@ -172,6 +174,7 @@ SQLite 继续使用事务，D1 使用项目现有 revision/CAS + nonce batch。�
 - 配置错误不重复撞接口；关键通知可切备用通道，分发故障进入外部检查。
 - 重启后先判断消息是否过期，旧问题已恢复则合并为摘要，不能补发几十条过时故障。
 - API 接收消息不等于手机已经显示或用户已经阅读；界面分别显示排队、服务商接收、失败和用户确认。
+- 入队与送达分开记账：入队记录“已安排通知”（用于去重，避免供应商故障时每轮重复入队），送达成功才记录“已通知”（用于恢复摘要与提醒节奏）。重试耗尽的失败保留为失败信号，外部监测持续不健康，直到所有者确认该实例。
 
 网络超时可能发生在服务商已经接收之后，故不能承诺严格恰好一次。优先使用供应商提供的幂等能力；没有时允许少量重复并携带事件编号。通知重试绝不重放交易指令或金融扣款。
 

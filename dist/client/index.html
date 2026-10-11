@@ -43,6 +43,9 @@
           <button data-view="strategies" class="nav-item">
             <span data-icon="sliders"></span>策略赛马
           </button>
+          <button data-view="alerts" class="nav-item">
+            <span data-icon="shield"></span>运维告警
+          </button>
           <button data-view="model" class="nav-item">
             <span data-icon="sliders"></span>评分模型
           </button>
@@ -674,6 +677,72 @@
               </div>
             </section>
             <section class="panel" id="strategies-detail"></section>
+          </section>
+          <section id="alerts-view" hidden>
+            <div class="paper-toolbar">
+              <div>
+                <span id="alerts-status-note" class="outline-tag"
+                  >检查告警配置</span
+                >
+              </div>
+              <div>
+                <button id="alerts-test" class="secondary">发送测试通知</button>
+                <button id="alerts-maintenance" class="secondary">
+                  设置维护窗口
+                </button>
+                <button id="alerts-refresh" class="primary">刷新</button>
+              </div>
+            </div>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>通道与外部监测</h2>
+                  <p>飞书机器人接收业务告警；外部监测发现整机离线</p>
+                </div>
+                <span class="outline-tag" id="alerts-enabled-tag">未启用</span>
+              </div>
+              <div id="alerts-channel-list" class="metrics"></div>
+              <p class="panel-footnote">
+                密钥（FEISHU_WEBHOOK_URL / FEISHU_SECRET /
+                WATCHDOG_*_URL）只保存在服务端
+                .env，页面只显示配置状态。断电或断网时本机无法发消息，由外部监测按缺失信号告警。
+              </p>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>告警事件</h2>
+                  <p>按持续时间去重与升级；确认只静默提醒，不掩盖未恢复</p>
+                </div>
+                <label class="text-button"
+                  ><input
+                    type="checkbox"
+                    id="alerts-active-only"
+                  />只看未恢复</label
+                >
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>规则</th>
+                      <th>级别</th>
+                      <th>状态</th>
+                      <th>首次发生</th>
+                      <th>最近发生</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="alerts-incident-rows"></tbody>
+                </table>
+              </div>
+              <div class="table-footer">
+                <span id="alerts-list-status">正在读取…</span>
+                <button class="text-button" id="alerts-more" hidden>
+                  加载更多
+                </button>
+              </div>
+            </section>
           </section>
           <footer class="page-footer">
             <span>LIMIT LENS <i>·</i> 每日涨停研究</span

@@ -45,7 +45,17 @@ export class RealtimeRepository extends PaperRepository {
       .bind(JSON.stringify(payload))
       .run();
   }
-  async commitObservation(expectedRevision, result, observation) {
+  // 运维事件（operationEvents）与账户状态在同一 batch（原子事务）里提交：
+  // 账户提交成功而事件写入失败、或进程在两步之间突然终止（SIGKILL/断电），
+  // 都会把回撤、保护退出阻塞这类一次性风险事实永久丢掉。同事务写入保证
+  // "已提交的账户风险"必然有对应事件，事件写入失败时账户提交一并回滚，
+  // 下一轮按帧重新观察并再次产出事实。
+  async commitObservation(
+    expectedRevision,
+    result,
+    observation,
+    operationEvents = [],
+  ) {
     const runId = crypto.randomUUID(),
       stamp = observation.observedAt;
     const guard =
@@ -88,6 +98,30 @@ export class RealtimeRepository extends PaperRepository {
         guarded(
           "INSERT INTO paper_ledger (id,trade_date,payload) SELECT ?,?,?",
           [row.id, row.date, JSON.stringify(row)],
+        ),
+      );
+    // 事件 INSERT 必须同样走账户 CAS 守卫：两个重叠的执行器会读到同一
+    // revision 并各自产出事件，输家的 UPDATE 已输（changes=0），它携带的
+    // 是"从未成为权威状态"的事实（observedAt 各不相同 → 事件 ID 不同，
+    // INSERT OR IGNORE 挡不住）。无守卫时输家事件照常落库，制造幻影
+    // 风险事实与重复通知。守卫失败只插入 0 行——事件与账户提交同生共死。
+    for (const event of operationEvents)
+      statements.push(
+        guarded(
+          "INSERT OR IGNORE INTO operation_events (id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, occurred_at, entity_ref, payload, ingest_seq) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(ingest_seq), 0) + 1 FROM operation_events)",
+          [
+            event.id,
+            event.instanceId,
+            event.accountId,
+            event.tradeDate ?? null,
+            event.sourceSequence ?? null,
+            event.type,
+            event.ruleType ?? null,
+            event.reasonCode ?? null,
+            event.occurredAt,
+            event.entityRef ?? null,
+            JSON.stringify(event.payload ?? {}),
+          ],
         ),
       );
     const results = await this.db.batch(statements);

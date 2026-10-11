@@ -7,6 +7,7 @@ import {
 } from "../shared/scoring.js";
 import { initializePaper } from "./paper.js";
 import { initializeStrategies } from "./strategies.js";
+import { initializeAlerts } from "./alerts.js";
 const $ = (id) => document.getElementById(id);
 const escape = (value) =>
   String(value ?? "").replace(
@@ -112,6 +113,11 @@ const titles = {
     "多策略并行赛马与受控晋级",
     "同一份行情、同一冻结起点，固定窗口内比较，只有合格报告支持启用。",
   ],
+  alerts: [
+    "运维告警",
+    "常驻执行不静默失联",
+    "执行错误、风险处置与盘后失败主动通知；整机离线由外部监测发现。",
+  ],
 };
 function setView(view) {
   if (!titles[view]) return;
@@ -130,17 +136,23 @@ function setView(view) {
   $("sectors-view").hidden = view !== "sectors";
   $("model-view").hidden = view !== "model";
   $("review-view").hidden = view !== "review";
-  $("summary").hidden = ["model", "review", "paper", "strategies"].includes(
-    view,
-  );
+  $("summary").hidden = [
+    "model",
+    "review",
+    "paper",
+    "strategies",
+    "alerts",
+  ].includes(view);
   $("paper-view").hidden = view !== "paper";
   $("strategies-view").hidden = view !== "strategies";
+  $("alerts-view").hidden = view !== "alerts";
   document.querySelector(".heading-actions").hidden =
-    view === "paper" || view === "strategies";
+    view === "paper" || view === "strategies" || view === "alerts";
   document.querySelector(".data-strip").hidden =
-    view === "paper" || view === "strategies";
+    view === "paper" || view === "strategies" || view === "alerts";
   if (view === "paper") void paper.refresh();
   if (view === "strategies") initializeStrategies();
+  if (view === "alerts") initializeAlerts();
   document.querySelector(".right-column").hidden = view === "stocks";
   $("overview-content").style.gridTemplateColumns =
     view === "stocks" ? "minmax(0,1fr)" : "";

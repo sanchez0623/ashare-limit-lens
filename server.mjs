@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { spawn } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -29,6 +30,12 @@ const DB = localDatabase(dbPath),
     TRADING_POLL_SECONDS: process.env.TRADING_POLL_SECONDS || "10",
     TRADING_RUNNER:
       process.env.TRADING_ENABLED === "false" ? "disabled" : "server",
+    ALERTS_ENABLED: process.env.ALERTS_ENABLED,
+    FEISHU_WEBHOOK_URL: process.env.FEISHU_WEBHOOK_URL,
+    FEISHU_SECRET: process.env.FEISHU_SECRET,
+    WATCHDOG_PROGRESS_URL: process.env.WATCHDOG_PROGRESS_URL,
+    WATCHDOG_PIPELINE_URL: process.env.WATCHDOG_PIPELINE_URL,
+    ALERT_INSTANCE_ALIAS: process.env.ALERT_INSTANCE_ALIAS,
   };
 const hash = (value) => createHash("sha256").update(value).digest();
 const authorized = (req) => {
@@ -87,9 +94,34 @@ server.listen(port, host, () => {
         )
       ).json(),
     );
+  // 独立告警子进程（§6）：规则推进与通知发送不阻塞交易循环；进程崩溃时
+  // 停止管道健康信号，由外部监测兜底。未配置通知通道时静默空转。
+  if (process.env.ALERTS_ENABLED !== "false") {
+    const child = spawn(process.execPath, ["scripts/alert-runner.mjs"], {
+      env: process.env,
+      stdio: "ignore",
+      detached: false,
+    });
+    child.on("exit", (code) => {
+      if (!stopped)
+        console.log(`Alert runner exited (${code}); restarting in 30s`);
+      if (!stopped)
+        setTimeout(
+          () =>
+            spawn(process.execPath, ["scripts/alert-runner.mjs"], {
+              env: process.env,
+              stdio: "ignore",
+              detached: false,
+            }).on("exit", () => {}),
+          30000,
+        );
+    });
+  }
 });
+let stopped = false;
 for (const signal of ["SIGTERM", "SIGINT"])
   process.on(signal, () => {
+    stopped = true;
     runner?.stop();
     server.close(() => {
       DB.close();

@@ -45,6 +45,15 @@ import {
 } from "../services/strategy-tournament.js";
 import { promoteCohortChampion } from "../services/promotion.js";
 import { CohortRepository } from "../storage/cohorts.js";
+import {
+  alertsStatus,
+  listAlertIncidents,
+  incidentDetail,
+  ackIncident,
+  saveAlertRules,
+  sendTestNotification,
+  setMaintenanceWindow,
+} from "../services/alerts.js";
 
 async function runDaily(env) {
   const date = beijingDate();
@@ -129,6 +138,11 @@ export async function api(request, env) {
     "/api/history/capabilities": ["GET"],
     "/api/history/imports": ["GET", "POST"],
     "/api/backtests": ["GET", "POST"],
+    "/api/alerts/status": ["GET"],
+    "/api/alerts/incidents": ["GET"],
+    "/api/alerts/rules": ["POST"],
+    "/api/alerts/test": ["POST"],
+    "/api/alerts/maintenance": ["POST"],
   };
   const historyImportMatch = path.match(
     /^\/api\/history\/imports\/([a-z0-9-]+)(\/run)?$/,
@@ -137,7 +151,18 @@ export async function api(request, env) {
   const cohortMatch = path.match(
     /^\/api\/strategies\/cohorts\/([a-z0-9-]+)(\/lineage|\/export)?$/,
   );
-  if (!methods[path] && !historyImportMatch && !backtestMatch && !cohortMatch)
+  // 告警实例 ID 形如 inc-<ISO 时间戳>-<随机段>，含 ":" 与 "."；
+  // 只允许 [a-z0-9-] 会让确认按钮永远 404。
+  const incidentMatch = path.match(
+    /^\/api\/alerts\/incidents\/([A-Za-z0-9._:-]+)\/ack$/,
+  );
+  if (
+    !methods[path] &&
+    !historyImportMatch &&
+    !backtestMatch &&
+    !cohortMatch &&
+    !incidentMatch
+  )
     return json({ error: "接口不存在" }, 404);
   const allowedMethods = methods[path] ?? ["GET", "POST"];
   if (!allowedMethods.includes(request.method))
@@ -308,6 +333,42 @@ export async function api(request, env) {
         return json({ error: "存在活动研究窗口，不能保存新的赛马政策" }, 409);
       const saved = await cohorts.saveTournamentPolicy(body);
       return json({ policyId: saved.id, digest: saved.digest });
+    }
+    if (path === "/api/alerts/status") return json(await alertsStatus(env));
+    if (path === "/api/alerts/incidents") {
+      if (request.method === "GET")
+        return json(
+          await listAlertIncidents(env, {
+            cursor: Number(url.searchParams.get("cursor") ?? 0),
+            activeOnly: url.searchParams.get("active") === "true",
+          }),
+        );
+      return json({ error: "不支持此请求方法" }, 405);
+    }
+    if (incidentMatch) {
+      if (request.method !== "POST")
+        return json({ error: "不支持此请求方法" }, 405);
+      const body = await readJson(request);
+      const result = await ackIncident(env, incidentMatch[1], {
+        hours: Number(body?.hours ?? 1),
+      });
+      return result ? json(result) : json({ error: "告警实例不存在" }, 404);
+    }
+    if (path === "/api/alerts/rules") {
+      const body = await readJson(request);
+      const version = await saveAlertRules(env, body?.policy ?? body ?? {});
+      return json({ ruleVersion: version.id, digest: version.digest });
+    }
+    if (path === "/api/alerts/test")
+      return json(await sendTestNotification(env));
+    if (path === "/api/alerts/maintenance") {
+      const body = await readJson(request);
+      return json(
+        await setMaintenanceWindow(env, {
+          minutes: Number(body?.minutes ?? 60),
+          reason: body?.reason,
+        }),
+      );
     }
     if (cohortMatch) {
       const [, cohortId, action] = cohortMatch;

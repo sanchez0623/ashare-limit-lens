@@ -17,6 +17,7 @@ import {
 } from "../backend/domain/realtime.js";
 import { RealtimeRepository } from "../backend/storage/realtime.js";
 import { pollTrading } from "../backend/services/realtime.js";
+import { buildOperationEvents } from "../backend/services/alerts.js";
 import { parseTencentQuotes } from "../backend/services/market.js";
 import { exportPaper, verifyExport } from "../backend/services/paper.js";
 import { localDatabase } from "../scripts/local-db.mjs";
@@ -227,6 +228,353 @@ test("常驻循环无需网页触发就执行盘后任务，并写入心跳", as
     assert.equal((await new RealtimeRepository(env).health()).automatic, true);
   } finally {
     runner?.stop();
+    db.close();
+  }
+});
+test("常驻循环保留独立轮询的失败结果：BLOCKED 必须写入运维事件", async () => {
+  const db = localDatabase(),
+    env = { DB: db };
+  let runner;
+  try {
+    runner = startTradingRunner(env, async () => null, {
+      // 周五 09:35 北京时间，处于连续竞价时段，走独立轮询分支。
+      now: () => new Date("2026-01-02T01:35:00.000Z"),
+      providers: {
+        calendar: async () => ({ dates: ["2026-01-02"], benchmark: [] }),
+        quotes: async () => ({}),
+      },
+    });
+    await runner.ready;
+    // 上一交易日未结算 → BLOCKED；旧实现把它丢成 SKIPPED，规则器收不到事实。
+    const rows = await db
+      .prepare(
+        "SELECT type, rule_type, reason_code FROM operation_events ORDER BY ingest_seq",
+      )
+      .all();
+    assert.equal(rows.results.length, 1);
+    assert.equal(rows.results[0].rule_type, "SESSION_BLOCKED");
+    assert.equal(rows.results[0].reason_code, "MISSING_SETTLEMENT");
+  } finally {
+    runner?.stop();
+    db.close();
+  }
+});
+test("除权不匹配：引擎拒收报价并留下结构化标记，报价恢复后清除", async () => {
+  const db = localDatabase(),
+    repo = new RealtimeRepository({ DB: db });
+  try {
+    await baseline(repo);
+    let account = await repo.account();
+    const intent = createPlan(
+      snapshot(dateAt(0)),
+      account.book,
+      BASE_STRATEGY,
+      "baseline-v1",
+      `${dateAt(0)}T07:10:00.000Z`,
+    );
+    await repo.savePlan(intent);
+    let session = openSession(account.book, intent, dateAt(1));
+    for (const [time, volume] of [
+      ["09:30:00", 100000],
+      ["09:30:05", 3000000],
+    ]) {
+      const obs = observation(dateAt(1), time, 1000, volume);
+      obs.quotes["600002"] = { ...obs.quotes["600001"] };
+      account = await repo.account();
+      const step = advanceSession(account.book, session, obs);
+      await repo.commitObservation(account.revision, step, obs);
+      session = step.session;
+    }
+    account = await repo.account();
+    const day = closing(dateAt(1));
+    day.quotes["600002"] = { ...day.quotes["600001"] };
+    const settled = closeSession(account.book, session, day);
+    await repo.close(account.revision, settled, day);
+    // 第二日已有持仓：昨收与冻结参考价严重不一致 → 疑似除权，报价被拒收。
+    account = await repo.account();
+    const hold = frozen([["HOLD", 0]], dateAt(1));
+    await repo.savePlan(hold);
+    session = openSession(account.book, hold, dateAt(2));
+    const previous = account.book.positions[0].markCents;
+    const mismatched = observation(
+      dateAt(2),
+      "10:00:00",
+      previous,
+      100000,
+      previous,
+      { previousCloseCents: Math.round(previous * 1.5) },
+    );
+    const rejected = advanceSession(account.book, session, mismatched);
+    const flagged = rejected.session.orders.filter(
+      (order) => order.holdCode === "CORPORATE_ACTION_UNVERIFIED",
+    );
+    assert.ok(
+      flagged.length >= 1,
+      "拒收报价必须留下结构化标记，否则系统仍报 RUNNING 且没有告警",
+    );
+    assert.ok(flagged.every((order) => order.reason.includes("除权")));
+    // 报价恢复一致：标记清除，不会永久挂着误报。
+    const restored = observation(
+      dateAt(2),
+      "10:00:10",
+      previous,
+      200000,
+      previous,
+    );
+    const accepted = advanceSession(rejected.book, rejected.session, restored);
+    assert.deepEqual(
+      accepted.session.orders.filter((order) => order.holdCode),
+      [],
+      "报价恢复后不再持有除权标记",
+    );
+  } finally {
+    db.close();
+  }
+});
+test("事件写入与账户提交同事务：写入失败提交回滚，下轮重放补齐风险事实", async () => {
+  const db = localDatabase(),
+    env = { DB: db, TRADING_POLL_SECONDS: "3" };
+  // 预置：前一日已结算并冻结计划，本日轮询才能走到账户提交路径。
+  const repo = new RealtimeRepository(env);
+  await baseline(repo);
+  await repo.savePlan(frozen([["HOLD", 0]], dateAt(0)));
+  const realPrepare = db.prepare.bind(db);
+  let failEventWrite = true;
+  // 让事务里的第一条事件写入失败：事件与账户状态在同一个 batch 里，
+  // 必须整体回滚——退出钩子覆盖不了 SIGKILL/断电，只有同事务写入才能
+  // 保证"已提交的账户风险"必然有对应事件。
+  db.prepare = (sql) => {
+    if (
+      failEventWrite &&
+      sql.includes("INSERT OR IGNORE INTO operation_events")
+    ) {
+      failEventWrite = false;
+      return {
+        bind: () => ({
+          run: async () => {
+            throw new Error("disk unavailable");
+          },
+          _run: () => {
+            throw new Error("disk unavailable");
+          },
+        }),
+      };
+    }
+    return realPrepare(sql);
+  };
+  let runner,
+    calls = 0;
+  try {
+    runner = startTradingRunner(env, async () => null, {
+      // 每次取时刻都前进 20 秒：让循环按最短间隔调度，测试不必等轮询周期。
+      now: () =>
+        new Date(Date.parse("2026-01-02T01:35:00.000Z") + ++calls * 20000),
+      providers: {
+        calendar: async () => ({
+          dates: [dateAt(0), "2026-01-02"],
+          benchmark: [],
+        }),
+        quotes: async () =>
+          observation("2026-01-02", "09:30:00", 1000, 100000).quotes,
+      },
+    });
+    await runner.ready;
+    const sessions = await db
+      .prepare("SELECT COUNT(*) AS n FROM paper_live_sessions")
+      .first();
+    assert.equal(
+      Number(sessions.n),
+      0,
+      "事件写入失败时账户提交一并回滚，不留无事件的风险敞口",
+    );
+    // 提交失败轮次由 runner 以 ERROR 事实入账（缓冲补写），失败不静默。
+    const first = await db
+      .prepare(
+        "SELECT type, rule_type FROM operation_events ORDER BY ingest_seq",
+      )
+      .all();
+    assert.ok(
+      first.results.some((row) => row.rule_type === "LOOP_FAILED"),
+      `提交失败轮次必须以 RUNNER_FAILED 事实入账：${JSON.stringify(first.results)}`,
+    );
+    // 下一轮：账户提交成功，运行事实随同一事务落库。
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    const second = await db
+      .prepare(
+        "SELECT type, rule_type FROM operation_events ORDER BY ingest_seq",
+      )
+      .all();
+    assert.ok(
+      second.results.length >= 2,
+      `下轮提交成功后事实齐备，实际 ${JSON.stringify(second.results)}`,
+    );
+    const settled = await db
+      .prepare("SELECT COUNT(*) AS n FROM paper_live_sessions")
+      .first();
+    assert.equal(Number(settled.n), 1, "下轮账户提交成功");
+  } finally {
+    runner?.stop();
+    db.close();
+  }
+});
+test("风险事实随账户提交同事务落库：已提交账户的回撤与保护退出阻塞必然有事件", async () => {
+  const db = localDatabase(),
+    repo = new RealtimeRepository({ DB: db });
+  try {
+    await baseline(repo);
+    let account = await repo.account();
+    const intent = createPlan(
+      snapshot(dateAt(0)),
+      account.book,
+      BASE_STRATEGY,
+      "baseline-v1",
+      `${dateAt(0)}T07:10:00.000Z`,
+    );
+    await repo.savePlan(intent);
+    let session = openSession(account.book, intent, dateAt(1));
+    account = await repo.account();
+    const obs = observation(dateAt(1), "09:30:00", 800, 100000, 1000, {
+      // 前收一致（不触发除权拒收），但价格跌破止损 → 保护退出触发且
+      // 跌停无法成交 → 保护退出阻塞；净值回撤超限。
+      limitDownCents: 700,
+    });
+    const step = advanceSession(account.book, session, obs);
+    const summary = {
+      status: "RUNNING",
+      drawdown: 0.2,
+      drawdownBreached: true,
+      blockedProtectiveExits: ["600001"],
+      incompleteRecoveries: [],
+      corporateActionHolds: [],
+    };
+    const events = buildOperationEvents(
+      {
+        source: "loop",
+        result: summary,
+        now: obs.observedAt,
+        tradeDate: dateAt(1),
+        sourceSequence: step.session.sequence,
+      },
+      "test-instance",
+    );
+    assert.ok(
+      events.some((event) => event.ruleType === "DRAWDOWN_TRIPPED") &&
+        events.some((event) => event.ruleType === "PROTECTIVE_EXIT_BLOCKED"),
+      "风险事实已分类",
+    );
+    assert.equal(
+      await repo.commitObservation(account.revision, step, obs, events),
+      true,
+    );
+    const rows = await db
+      .prepare(
+        "SELECT rule_type, payload FROM operation_events WHERE rule_type IN ('DRAWDOWN_TRIPPED','PROTECTIVE_EXIT_BLOCKED')",
+      )
+      .all();
+    const rules = rows.results.map((row) => row.rule_type).sort();
+    assert.deepEqual(
+      rules,
+      ["DRAWDOWN_TRIPPED", "PROTECTIVE_EXIT_BLOCKED"],
+      "账户提交成功时风险事件必然已在同一事务落库",
+    );
+  } finally {
+    db.close();
+  }
+});
+test("输家 CAS 批次不泄漏事件：账户提交失败时风险事件全部不落库", async () => {
+  const db = localDatabase(),
+    repo = new RealtimeRepository({ DB: db });
+  try {
+    await baseline(repo);
+    let account = await repo.account();
+    const intent = createPlan(
+      snapshot(dateAt(0)),
+      account.book,
+      BASE_STRATEGY,
+      "baseline-v1",
+      `${dateAt(0)}T07:10:00.000Z`,
+    );
+    await repo.savePlan(intent);
+    const session = openSession(account.book, intent, dateAt(1));
+    const staleRevision = account.revision;
+    // 两个重叠执行器读到同一 revision、各自产出事件；observedAt 不同
+    // （独立轮询路径）→ 事件 ID 不同，INSERT OR IGNORE 无法兜底去重。
+    const obsWinner = observation(dateAt(1), "09:30:00", 1000, 100000);
+    const stepWinner = advanceSession(account.book, session, obsWinner);
+    const eventsWinner = buildOperationEvents(
+      {
+        source: "loop",
+        result: { status: "RUNNING", drawdown: 0.2, drawdownBreached: true },
+        now: obsWinner.observedAt,
+        tradeDate: dateAt(1),
+        sourceSequence: stepWinner.session.sequence,
+      },
+      "test-instance",
+    );
+    assert.ok(eventsWinner.length >= 1, "赢家批次带事件");
+    assert.equal(
+      await repo.commitObservation(
+        staleRevision,
+        stepWinner,
+        obsWinner,
+        eventsWinner,
+      ),
+      true,
+      "赢家先提交成功",
+    );
+    const obsLoser = observation(dateAt(1), "09:30:10", 990, 100000);
+    const stepLoser = advanceSession(account.book, session, obsLoser);
+    const eventsLoser = buildOperationEvents(
+      {
+        source: "loop",
+        result: { status: "RUNNING", drawdown: 0.25, drawdownBreached: true },
+        now: obsLoser.observedAt,
+        tradeDate: dateAt(1),
+        sourceSequence: stepLoser.session.sequence,
+      },
+      "test-instance",
+    );
+    assert.ok(
+      eventsLoser.every(
+        (event) => !eventsWinner.some((row) => row.id === event.id),
+      ),
+      "输家事件 ID 与赢家不同（observedAt 不同）",
+    );
+    // 输家：基于同一 revision 提交，账户 UPDATE 必输（changes=0）。
+    // 修复前它携带的事件已随 batch 落库——这些是"从未成为权威状态"的
+    // 风险事实，会制造幻影 incident 与重复通知。
+    assert.equal(
+      await repo.commitObservation(
+        staleRevision,
+        stepLoser,
+        obsLoser,
+        eventsLoser,
+      ),
+      false,
+      "输家的账户提交失败",
+    );
+    const leaked = [];
+    for (const event of eventsLoser) {
+      const row = await db
+        .prepare("SELECT id FROM operation_events WHERE id = ?")
+        .bind(event.id)
+        .first();
+      if (row) leaked.push(event.id);
+    }
+    assert.deepEqual(
+      leaked,
+      [],
+      "输家批次的事件不得落库：提交失败与事件写入同生共死",
+    );
+    // 赢家的事件原样保留。
+    for (const event of eventsWinner) {
+      const row = await db
+        .prepare("SELECT id FROM operation_events WHERE id = ?")
+        .bind(event.id)
+        .first();
+      assert.ok(row, `赢家事件 ${event.ruleType} 已落库`);
+    }
+  } finally {
     db.close();
   }
 });
