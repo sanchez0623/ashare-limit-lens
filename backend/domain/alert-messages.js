@@ -12,7 +12,7 @@ export function instanceAlias(env) {
 
 // 库里的时刻一律是 UTC ISO；直接截断字符串会把 UTC 当成北京时间显示，
 // 与操作者墙上的时钟差 8 小时。展示统一换算到北京时间。
-function beijingStamp(iso) {
+export function beijingStamp(iso) {
   if (!iso) return "";
   const at = new Date(iso);
   if (!Number.isFinite(at.getTime())) return "";

@@ -599,7 +599,7 @@ test("API 状态与确认：未配置通道明确显示未启用，确认写入�
   env.DB.close();
 });
 
-test("测试通知：未配置通道拒绝；配置错误不重复撞接口", async () => {
+test("测试通知：未配置通道拒绝；配置错误不重复撞接口；时间按北京时间显示", async () => {
   const env = buildEnv();
   await assert.rejects(() => sendTestNotification(env), /未启用/);
   const mock = installFetchMock({
@@ -619,6 +619,29 @@ test("测试通知：未配置通道拒绝；配置错误不重复撞接口", as
     assert.equal(mock.calls.length, 1);
   } finally {
     mock.restore();
+  }
+  // 测试通知同样不得把 UTC 时刻贴上"北京时间"标签。
+  const ok = installFetchMock({
+    "https://open.feishu.cn/": { code: 0, msgId: "om_test" },
+  });
+  try {
+    const sent = await sendTestNotification({
+      ...env,
+      FEISHU_WEBHOOK_URL: "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+    });
+    assert.equal(sent.sent, true);
+    const text = JSON.parse(ok.bodies[0]).content.text;
+    const stamp = text.match(/北京时间: (\S+ \S+)/)?.[1];
+    const eventId = text.match(/事件: \S+:test:na:0:TEST:test:(\S+)/)?.[1];
+    assert.ok(stamp && eventId, `消息应含北京时间与事件时间：${text}`);
+    // 事件时间（UTC）换算到北京时间必须相差 8 小时。
+    const offsetHours =
+      (Date.parse(`${stamp.replace(" ", "T")}Z`) -
+        Date.parse(eventId.replace(/\.\d+Z$/, "Z"))) /
+      3600000;
+    assert.equal(offsetHours, 8, `北京时间应为 UTC+8：${text}`);
+  } finally {
+    ok.restore();
   }
   env.DB.close();
 });

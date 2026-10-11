@@ -12386,6 +12386,13 @@ function instanceAlias(env) {
   const alias = env?.ALERT_INSTANCE_ALIAS;
   return typeof alias === "string" && alias.trim() ? alias.trim().slice(0, 40) : "paper-instance";
 }
+function beijingStamp(iso) {
+  if (!iso) return "";
+  const at = new Date(iso);
+  if (!Number.isFinite(at.getTime())) return "";
+  const clock = marketClock(at);
+  return `${clock.date} ${clock.time}`;
+}
 
 // backend/services/notifications.js
 var TIMEOUT_MS = 8e3;
@@ -12576,7 +12583,7 @@ async function sendTestNotification(env) {
       title: "[\u6D4B\u8BD5] \u544A\u8B66\u901A\u9053",
       text: `[\u6D4B\u8BD5] \u544A\u8B66\u901A\u9053
 \u5B9E\u4F8B: ${instanceId}
-\u5317\u4EAC\u65F6\u95F4: ${now.replace("T", " ").slice(0, 19)}
+\u5317\u4EAC\u65F6\u95F4: ${beijingStamp(now)}
 \u8FD9\u662F\u4E00\u6761\u7528\u6237\u4E3B\u52A8\u89E6\u53D1\u7684\u6D4B\u8BD5\u901A\u77E5`
     },
     eventId: event.id

@@ -17,6 +17,7 @@ import {
 import {
   formatSafeNotification,
   formatResolvedNotification,
+  beijingStamp,
   instanceAlias,
 } from "../domain/alert-messages.js";
 import {
@@ -455,7 +456,7 @@ export async function sendTestNotification(env) {
     env,
     safeMessage: {
       title: "[测试] 告警通道",
-      text: `[测试] 告警通道\n实例: ${instanceId}\n北京时间: ${now.replace("T", " ").slice(0, 19)}\n这是一条用户主动触发的测试通知`,
+      text: `[测试] 告警通道\n实例: ${instanceId}\n北京时间: ${beijingStamp(now)}\n这是一条用户主动触发的测试通知`,
     },
     eventId: event.id,
   });
