@@ -451,12 +451,17 @@ export class AlertRepository {
 
   // 队列健康：overdue 是"现在就该发却没人领"的项，是分发器停滞的直接证据；
   // 只看 pending 总量会把空闲队列当成健康（分发器已死时队列恰好是空的）。
+  // longPending: 在 PENDING/SENDING 状态超过 2 分钟的关键通知——这类积压即使
+  // 未达 maxAttempts 也应视为不健康，直到被送达或所有者 ACK。
   async outboxHealth({ now = new Date().toISOString() } = {}) {
+    const twoMinutesAgo = new Date(
+      new Date(now).getTime() - 2 * 60 * 1000,
+    ).toISOString();
     const row = await this.db
       .prepare(
-        "SELECT SUM(CASE WHEN status IN ('PENDING','SENDING') THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status = 'PENDING' AND next_attempt_at > ? THEN 1 ELSE 0 END) AS scheduled, SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) AS sent, SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END) AS expired, SUM(CASE WHEN (status = 'PENDING' AND next_attempt_at <= ?) OR (status = 'SENDING' AND lease_until < ?) THEN 1 ELSE 0 END) AS overdue FROM alert_outbox",
+        "SELECT SUM(CASE WHEN status IN ('PENDING','SENDING') THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status = 'PENDING' AND next_attempt_at > ? THEN 1 ELSE 0 END) AS scheduled, SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) AS sent, SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END) AS expired, SUM(CASE WHEN (status = 'PENDING' AND next_attempt_at <= ?) OR (status = 'SENDING' AND lease_until < ?) THEN 1 ELSE 0 END) AS overdue, SUM(CASE WHEN status IN ('PENDING','SENDING') AND updated_at <= ? THEN 1 ELSE 0 END) AS long_pending FROM alert_outbox",
       )
-      .bind(now, now, now)
+      .bind(now, now, now, twoMinutesAgo)
       .first();
     return {
       pending: Number(row?.pending ?? 0),
@@ -464,6 +469,7 @@ export class AlertRepository {
       sent: Number(row?.sent ?? 0),
       expired: Number(row?.expired ?? 0),
       overdue: Number(row?.overdue ?? 0),
+      longPending: Number(row?.long_pending ?? 0),
     };
   }
 
@@ -531,21 +537,31 @@ export class AlertRepository {
     const current = await this.processorState(id);
     const runId = crypto.randomUUID();
     if (!current) {
+      // 首次启动：先尝试插入，若并发已插入则重读其游标而非回退到 null。
       const created = await this.db
         .prepare(
           "INSERT OR IGNORE INTO alert_processor_state (id, revision, last_event_cursor, last_progress_at, last_run_id) VALUES (?, 1, ?, ?, ?)",
         )
         .bind(id, JSON.stringify(lastEventCursor ?? null), now, runId)
         .run();
-      if (created.meta.changes !== 1)
-        return { applied: false, reason: "CONTENTION", revision: null };
-      return { applied: true, revision: 1, runId };
+      if (created.meta.changes === 1)
+        return { applied: true, revision: 1, runId };
+      // 并发插入：读取胜出者的状态，用其游标避免回退。
+      const winner = await this.processorState(id);
+      return {
+        applied: false,
+        reason: "CONTENTION",
+        revision: winner?.revision ?? null,
+        // 不回退游标：返回胜出者的游标供调用方保留。
+        winnerCursor: winner?.lastEventCursor ?? lastEventCursor,
+      };
     }
     if (expectedRevision !== null && expectedRevision !== current.revision)
       return {
         applied: false,
         reason: "CONTENTION",
         revision: current.revision,
+        winnerCursor: current.lastEventCursor,
       };
     const result = await this.db
       .prepare(
@@ -564,6 +580,7 @@ export class AlertRepository {
         applied: false,
         reason: "CONTENTION",
         revision: current.revision,
+        winnerCursor: current.lastEventCursor,
       };
     return { applied: true, revision: current.revision + 1, runId };
   }

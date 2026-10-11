@@ -154,14 +154,17 @@ export function classifyOperationalFacts(input) {
   if (source === "loop") {
     const status = result?.status;
     const problems = [];
+    const isException = Boolean(result?.error && result.error instanceof Error);
     if (status === "ERROR" || result?.error)
       problems.push({
         ...base,
         type: EVENT_TYPES.LOOP_ERROR,
         ruleType: RULE_TYPES.LOOP_FAILED,
-        reasonCode: REASON_CODES.EXECUTION_ERROR,
+        reasonCode: isException
+          ? REASON_CODES.RUNNER_FAILED
+          : REASON_CODES.EXECUTION_ERROR,
         entityRef: "primary",
-        safeFacts: { status: status ?? "ERROR" },
+        safeFacts: { status: status ?? "ERROR", isException },
       });
     else if (status === "BLOCKED")
       // 缺前日结算/缺事前计划是不可执行条件（SESSION_BLOCKED）；
@@ -414,18 +417,28 @@ export function evaluateAlertRules({
       continue;
     }
     const severity = severityOf(enriched, policy, phase);
+    // 午休与非交易时段不把"运行健康"类告警视为故障（§3.2）：
+    // LOOP_FAILED(普通错误 EXECUTION_ERROR)、REQUIRED_QUOTE_STALE、RUNNER_STALLED 只在
+    // 连续竞价期间推进；但 LOOP_FAILED 对应的 RUNNER_FAILED（进程抛异常）、
+    // 以及 LEDGER_INVARIANT_FAILED、SESSION_BLOCKED、DRAWDOWN_TRIPPED、
+    // PROTECTIVE_EXIT_BLOCKED、T_RECOVERY_INCOMPLETE、AI_OR_RESEARCH_FAILED
+    // 属于风险暴露或阻塞类，全天有效，不受时段抑制。
+    const isExceptionLoopFailed =
+      event.ruleType === RULE_TYPES.LOOP_FAILED &&
+      (event.reasonCode === REASON_CODES.RUNNER_FAILED ||
+        event.safeFacts?.isException === true);
+    const suppressed =
+      !isExceptionLoopFailed &&
+      (event.ruleType === RULE_TYPES.LOOP_FAILED ||
+        event.ruleType === RULE_TYPES.REQUIRED_QUOTE_STALE ||
+        event.ruleType === RULE_TYPES.RUNNER_STALLED) &&
+      !["MORNING", "AFTERNOON"].includes(phase.phase);
     evaluations.push({
       event: enriched,
       fingerprint,
       severity,
       activeSeconds,
-      // 午休与非交易时段不把不成交视为故障（§3.2）：LOOP_FAILED 与
-      // REQUIRED_QUOTE_STALE 只在连续竞价期间推进；其余规则全天有效。
-      suppressed:
-        (event.ruleType === RULE_TYPES.LOOP_FAILED ||
-          event.ruleType === RULE_TYPES.REQUIRED_QUOTE_STALE ||
-          event.ruleType === RULE_TYPES.RUNNER_STALLED) &&
-        !["MORNING", "AFTERNOON"].includes(phase.phase),
+      suppressed,
     });
   }
   // 本批完全没有事实的既有实例：只是"本轮没有新证据"，既不是恢复也不是问题，
@@ -494,6 +507,7 @@ export function suppressedByMaintenance(ruleType, until, now) {
 
 // 状态机转换（§5.3）：OPEN → 升级/提醒 → RESOLVED；ACK 只静默提醒不阻止升级。
 // 恢复只能由正向证据（cleared）驱动：没有新证据既不恢复也不升级。
+// 幂等性（P1-4）：补读旧事件（occurredAt <= resolvedAt）不得重新打开已恢复实例。
 export function transitionIncident({
   incident,
   evaluation,
@@ -516,6 +530,16 @@ export function transitionIncident({
           },
           notify: { type: "OPEN", severity: evaluation.severity },
         };
+
+  // 幂等性：实例已恢复且本批事件为旧事件重放（发生时刻不晚于恢复时刻），忽略。
+  if (
+    incident.status === "RESOLVED" &&
+    incident.resolvedAt &&
+    evaluation.event?.occurredAt &&
+    evaluation.event.occurredAt <= incident.resolvedAt
+  ) {
+    return { action: "KEEP", patch: {}, notify: null };
+  }
   // 本批没有任何事实：保持现状，不写库、不通知。
   if (evaluation.absent) return { action: "KEEP", patch: {}, notify: null };
   if (evaluation.suppressed) return { action: "KEEP", patch: {}, notify: null };

@@ -19,20 +19,46 @@ export function startTradingRunner(env, runDaily, options = {}) {
   // 事件缓冲：账户提交已经成功，随后的事件写入失败不能把这一帧的风险事实
   // 直接丢掉（回撤、保护退出阻塞这类一次性风险错过就永久漏报）。缓冲有界，
   // 超限丢弃最旧的并让进度健康停止上报，由外部监测暴露主库异常。
+  // 进程退出前必须尽力刷盘：通过 shutdown handler 强制同步写入，失败则记录供外部监测感知。
   const MAX_BUFFERED_EVENTS = 200;
   const buffered = [];
-  const flushOperationEvents = async () => {
+  let shuttingDown = false;
+  const flushOperationEvents = async (force = false) => {
     if (!buffered.length) return true;
-    try {
-      await recordOperationEvents(env, buffered);
-      buffered.length = 0;
-      return true;
-    } catch {
-      if (buffered.length > MAX_BUFFERED_EVENTS)
-        buffered.splice(0, buffered.length - MAX_BUFFERED_EVENTS);
-      return false;
+    // 关机时无限重试直到成功或进程被强杀；平时失败保留缓冲等待下一轮。
+    const maxAttempts = force ? 10 : 1;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        await recordOperationEvents(env, buffered);
+        buffered.length = 0;
+        return true;
+      } catch {
+        if (!force) {
+          if (buffered.length > MAX_BUFFERED_EVENTS)
+            buffered.splice(0, buffered.length - MAX_BUFFERED_EVENTS);
+          return false;
+        }
+        // 关机重试：指数退避，最长等待 2 秒
+        await new Promise((r) =>
+          setTimeout(r, Math.min(100 * 2 ** attempt, 2000)),
+        );
+      }
     }
+    return false;
   };
+  // 关机钩子：尽力把内存里的风险事实落库，失败则由外部监测感知存储不可用。
+  const shutdownHandler = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    stopped = true;
+    clearTimeout(timer);
+    await flushOperationEvents(true);
+  };
+  if (typeof process !== "undefined" && process.on) {
+    process.on("SIGTERM", shutdownHandler);
+    process.on("SIGINT", shutdownHandler);
+    process.on("beforeExit", shutdownHandler);
+  }
   const loop = async () => {
     if (stopped) return;
     const current = now(),

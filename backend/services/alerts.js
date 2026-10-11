@@ -184,7 +184,7 @@ export async function processAlerts(
     return true;
   };
   for (const [fingerprint, group] of grouped) {
-    const previous = await store.activeIncident(fingerprint);
+    let previous = await store.activeIncident(fingerprint);
     const evaluations = evaluateAlertRules({
       events: group,
       previousIncident: previous,
@@ -195,7 +195,28 @@ export async function processAlerts(
     // 同一指纹的多条事件按根因聚合：一次评估，摘要列出受影响角色（§5.3）。
     const evaluation = evaluations.find((row) => !row.absent) ?? evaluations[0];
     if (!evaluation || evaluation.suppressed) continue;
-    await commit({ previous, evaluation, group });
+    // 并发冲突时重读实例并重新评估：避免基于旧快照的评估丢失 CRITICAL 升级
+    // 或把已恢复的状态覆盖回旧值。最多重试 3 次，仍失败则记录冲突交由下一轮。
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await commit({ previous, evaluation, group });
+      if (result) break; // 成功推进
+      // 冲突：重读最新实例，基于新状态重新评估同一批事实
+      previous = await store.activeIncident(fingerprint);
+      if (!previous) break; // 实例已消失（如被并发恢复），放弃本轮
+      const reEval = evaluateAlertRules({
+        events: group,
+        previousIncident: previous,
+        policy,
+        marketContext,
+        now,
+      });
+      const re = reEval.find((row) => row.fingerprint === fingerprint);
+      if (!re || re.suppressed || re.absent) break;
+      // 若严重度未变且无新通知动作，无需继续重试
+      if (re.severity === evaluation.severity && !re.cleared) break;
+      // 否则用新评估继续
+      Object.assign(evaluation, re);
+    }
   }
   // 游标只按摄取顺序前进；无事件时不回退（null 表示从头读，绝不能写回）。
   const nextCursor = events.length
@@ -208,11 +229,15 @@ export async function processAlerts(
     // 本次评估依据的分发器 revision：并发执行器已推进时不得把游标写回旧位置。
     expectedRevision: state?.revision ?? null,
   });
+  // 并发冲突时不回退游标：用胜出者的游标继续，避免首次启动或并发时游标倒退。
+  const effectiveCursor = advanced.applied
+    ? nextCursor
+    : (advanced.winnerCursor ?? cursor);
   return {
     processed: events.length,
     incidents,
     contended,
-    cursor: advanced.applied ? nextCursor : cursor,
+    cursor: effectiveCursor,
     maintenanceUntil: maintenance,
   };
 }
