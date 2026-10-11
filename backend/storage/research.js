@@ -261,9 +261,11 @@ export class ResearchRepository {
     };
   }
   async monthUsage(month) {
+    // 月度批次额度按批次数计（owner 去重）：赛马一批占用 N 个槽位，
+    // 不能把候选槽位数当成已用批次数。
     const row = await this.db
       .prepare(
-        "SELECT COUNT(*) AS n FROM research_generation_slots WHERE namespace = ? AND month = ?",
+        "SELECT COUNT(DISTINCT owner_id) AS n FROM research_generation_slots WHERE namespace = ? AND month = ?",
       )
       .bind(this.namespace, month)
       .first();

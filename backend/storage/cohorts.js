@@ -485,15 +485,16 @@ export class CohortRepository {
         ? set[key]
         : JSON.stringify(set[key]),
     );
+    const expectedRevision = cohort.revision;
     const statements = [
       this.db
         .prepare(
-          `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, updated_at = ?${setSql} WHERE id = ? AND stage = ?`,
+          `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, updated_at = ?${setSql} WHERE id = ? AND stage = ? AND revision = ?`,
         )
-        .bind(to, now, ...setArgs, id, from),
+        .bind(to, now, ...setArgs, id, from, expectedRevision),
       this.db
         .prepare(
-          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM strategy_cohorts WHERE id = ? AND stage = ? AND revision = ?)",
+          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(
           id,
@@ -503,12 +504,13 @@ export class CohortRepository {
           JSON.stringify(event.payload),
           event.previousDigest,
           await eventDigest(event),
-          id,
-          to,
-          cohort.revision + 1,
         ),
     ];
-    await this.db.batch(statements);
+    const results = await this.db.batch(statements);
+    if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1)
+      throw new Error(
+        `批次状态迁移冲突：预期 revision ${expectedRevision} 已被其他流程改变`,
+      );
     const after = await this.getCohort(id);
     if (after.stage !== to)
       throw new Error("批次状态写入失败：状态已被其他流程改变");
@@ -662,20 +664,31 @@ export class CohortRepository {
       payload: { memberId, from, to, failureReason },
       previousDigest: previous?.digest ?? null,
     };
+    const expectedRevision = Number(experiment?.revision ?? 0);
     const statements = [
       this.db
         .prepare(
-          `UPDATE strategy_cohort_members SET stage = ?, failure_reason = ?, updated_at = ?${setSql} WHERE cohort_id = ? AND member_id = ? AND stage = ?`,
+          `UPDATE strategy_cohort_members SET stage = ?, failure_reason = ?, updated_at = ?${setSql} WHERE cohort_id = ? AND member_id = ? AND stage = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)`,
         )
-        .bind(to, failureReason, now, ...setArgs, cohortId, memberId, from),
+        .bind(
+          to,
+          failureReason,
+          now,
+          ...setArgs,
+          cohortId,
+          memberId,
+          from,
+          member.experimentId,
+          expectedRevision,
+        ),
       this.db
         .prepare(
-          "UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? AND stage = ?",
+          "UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? AND stage = ? AND revision = ?",
         )
-        .bind(to, member.experimentId, from),
+        .bind(to, member.experimentId, from, expectedRevision),
       this.db
         .prepare(
-          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)",
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(
           member.experimentId,
@@ -685,9 +698,6 @@ export class CohortRepository {
           JSON.stringify(experimentEvent.payload),
           experimentEvent.previousDigest,
           await eventDigest(experimentEvent),
-          member.experimentId,
-          to,
-          nextRevision,
         ),
       this.db
         .prepare(
@@ -717,7 +727,16 @@ export class CohortRepository {
             nextRevision,
           ),
       );
-    await this.db.batch(statements);
+    const results = await this.db.batch(statements);
+    if (
+      results[0].meta.changes !== 1 ||
+      results[1].meta.changes !== 1 ||
+      results[2].meta.changes !== 1 ||
+      results[3].meta.changes !== 1
+    )
+      throw new Error(
+        `成员状态迁移冲突：实验 revision ${expectedRevision} 已被其他流程改变`,
+      );
     const after = await this.member(cohortId, memberId);
     if (after.stage !== to)
       throw new Error("成员状态写入失败：状态已被其他流程改变");

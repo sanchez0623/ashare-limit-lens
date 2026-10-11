@@ -85,6 +85,19 @@ export class QuoteFrameRepository {
     ).results;
     return rows.map((row) => this.mapFrame(row));
   }
+  // 从指定日期起（含）的全部已落盘帧，按 trade_date, sequence 排序：
+  // 用于账户按序重放，覆盖重启恢复与跨日未消费缺口。
+  async framesSince(fromDate) {
+    const rows = (
+      await this.db
+        .prepare(
+          "SELECT * FROM quote_frames WHERE trade_date >= ? ORDER BY trade_date, sequence",
+        )
+        .bind(fromDate)
+        .all()
+    ).results;
+    return rows.map((row) => this.mapFrame(row));
+  }
   mapFrame(row) {
     return {
       tradeDate: row.trade_date,

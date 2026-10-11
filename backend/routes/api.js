@@ -273,11 +273,13 @@ export async function api(request, env) {
     if (path === "/api/paper") return json(await paperOverview(env));
     if (path === "/api/paper/live") return json(await realtimeStatus(env));
     if (path === "/api/paper/poll") {
-      const result = await pollTrading(env);
+      // 赛马批次运行时：主账户由联合行情帧驱动一次观察，不再独立拉取，
+      // 避免同一轮对主账本做两次行情观察（§7.1 一次采集，多账本消费）。
       let tournament = null;
       try {
         tournament = await runTournamentPoll(env, new Date());
       } catch {}
+      const result = tournament?.primary ?? (await pollTrading(env));
       return json({ ...result, tournament });
     }
     if (path === "/api/strategies/cohorts") {

@@ -17,15 +17,17 @@ export function startTradingRunner(env, runDaily, options = {}) {
     const current = now(),
       clock = marketClock(current);
     try {
-      await pollTrading(
+      // 赛马批次或连续基线运行时：一次联合采集行情帧，主账户随帧观察一次，
+      // 影子账本按序重放消费；无联合采集需求时保持独立主账户轮询（§7.1）。
+      const tournament = await runTournamentPoll(
         { ...env, TRADING_RUNNER: "server", TRADING_POLL_SECONDS: interval },
         current,
       );
-      // 赛马批次运行时：一次联合采集行情帧，主账户优先消费，影子账本随后独立推进。
-      await runTournamentPoll(
-        { ...env, TRADING_RUNNER: "server", TRADING_POLL_SECONDS: interval },
-        current,
-      );
+      if (!tournament)
+        await pollTrading(
+          { ...env, TRADING_RUNNER: "server", TRADING_POLL_SECONDS: interval },
+          current,
+        );
       if (
         clock.time >= "15:05:00" &&
         dailyDate !== clock.date &&

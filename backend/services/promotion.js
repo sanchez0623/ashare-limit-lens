@@ -1,5 +1,6 @@
 import { RealtimeRepository } from "../storage/realtime.js";
 import { CohortRepository } from "../storage/cohorts.js";
+import { ShadowAccountRepository } from "../storage/shadow.js";
 import {
   digestOf,
   EXECUTION_VERSION,
@@ -8,10 +9,12 @@ import {
 import { feesForBook } from "../../shared/fees.js";
 
 // 统一晋级入口（§8.3）：全部自动、人工和旧 API 启用入口共用。
-// 验证报告摘要、成员资格、当前父策略与配置指纹后，以主账户 revision CAS
+// 验证报告摘要、成员资格、当前父策略和配置指纹后，以主账户 revision CAS
 // 更新未来策略引用；当前计划已冻结时从之后第一个尚未冻结的计划起生效。
 // 主账户现金、持仓、累计费用、历史峰值和旧计划不被影子账户覆盖；
 // 冠军较少的持仓上限只限制新增，已有多余持仓按新计划逐步退出。
+
+const REPORT_UNTRUSTED = "没有通过全部闸门的报告不能启用";
 
 export async function promoteCohortChampion(
   env,
@@ -20,6 +23,7 @@ export async function promoteCohortChampion(
 ) {
   const cohorts = new CohortRepository(env);
   const papers = new RealtimeRepository(env);
+  const shadows = new ShadowAccountRepository(env);
   const cohort = await cohorts.getCohort(cohortId);
   if (!cohort) throw new Error("赛马批次不存在");
   const report =
@@ -36,11 +40,53 @@ export async function promoteCohortChampion(
     };
   const championVersionId = member.strategyVersion;
   if (!championVersionId) throw new Error("冠军成员缺少冻结的策略版本");
+  // 报告完整性（§8.3）：重算报告摘要，防篡改的报告输入才可晋级。
+  const { digest: reportDigest, ...digestSource } = report;
+  if (!reportDigest || (await digestOf(digestSource)) !== reportDigest)
+    throw new Error(`晋级报告摘要缺失或不匹配；${REPORT_UNTRUSTED}`);
+  const forwardManifest = cohort.forwardManifest ?? {};
+  // 净值摘要（§6/§8.2）：捕获期初快照清单完整且未被篡改。
+  if (!forwardManifest.initialAccountsDigest)
+    throw new Error(`捕获清单缺少期初净值摘要；${REPORT_UNTRUSTED}`);
+  const initialAccountsDigest = await digestOf(
+    forwardManifest.initialAccounts ?? {},
+  );
+  if (initialAccountsDigest !== forwardManifest.initialAccountsDigest)
+    throw new Error(`期初净值摘要与捕获清单不一致；${REPORT_UNTRUSTED}`);
+  // 共同日期占用（§8.2）：窗口每个交易日都必须登记在批次名下。
+  const windowDates = report.windowDates ?? [];
+  for (const date of windowDates) {
+    const claim = await papers.db
+      .prepare(
+        "SELECT owner_type, owner_id FROM research_test_claims WHERE namespace = 'main' AND outcome_date = ?",
+      )
+      .bind(date)
+      .first();
+    if (!claim || claim.owner_type !== "COHORT" || claim.owner_id !== cohortId)
+      throw new Error(
+        `共同市场日 ${date} 缺少批次占用登记；${REPORT_UNTRUSTED}`,
+      );
+  }
+  // 冠军期末净值（§8.2）：报告中的期末权益必须与影子账本窗口末日一致。
+  const championAccountId =
+    forwardManifest.accounts?.candidates?.find(
+      (accountId) => accountId === `shadow-${member.experimentId}`,
+    ) ?? `shadow-${member.experimentId}`;
+  const championShadow = await shadows.account(championAccountId);
+  if (!championShadow) throw new Error(`冠军影子账户缺失；${REPORT_UNTRUSTED}`);
+  const championEquities = await shadows.equities(championAccountId);
+  const windowEndEquity = championEquities
+    .filter((row) => windowDates.includes(row.tradeDate ?? row.trade_date))
+    .at(-1);
+  if (
+    !windowEndEquity ||
+    windowEndEquity.equityCents !== report.champion.finalEquityCents
+  )
+    throw new Error(`冠军期末净值与影子账本不一致；${REPORT_UNTRUSTED}`);
   // 环境指纹核验：费用、父策略、执行与评分源码在窗口期内未变化。
   const account = await papers.account();
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
-  const forwardManifest = cohort.forwardManifest ?? {};
   if (feeConfigDigest !== forwardManifest.feeConfigDigest)
     throw new Error("费用配置在窗口期内变化，本批资格失效");
   if (account.book.activeStrategy !== cohort.parentVersion)

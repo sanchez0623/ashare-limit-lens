@@ -24,6 +24,16 @@ export async function consumePortfolioFrame(
     return { skipped: true, consumed: true };
   if (account.cursorDate && frame.tradeDate < account.cursorDate)
     return { skipped: true, reason: "行情帧早于账户消费游标" };
+  // 按序消费（§7.2）：同日游标之后的帧必须先消费前序帧，
+  // 不能越过未消费的持久帧直接处理后续帧（乱序回填也不允许）。
+  const cursorSequence =
+    account.cursorDate === frame.tradeDate ? account.cursorSequence : 0;
+  if (frame.sequence > cursorSequence + 1)
+    return {
+      stalled: true,
+      accountId,
+      reason: `存在未消费的前序帧（游标 ${frame.tradeDate}/${cursorSequence}），按序等待重放`,
+    };
   const session = await shadows.session(accountId, frame.tradeDate);
   let working = session;
   if (!working) {

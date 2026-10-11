@@ -40,6 +40,7 @@ import {
 } from "../domain/cohort-metrics.js";
 import { safeError } from "../http.js";
 import { pollTrading } from "./realtime.js";
+import { marketClock, inSession } from "../domain/realtime.js";
 import { captureQuoteFrame } from "./quote-stream.js";
 import {
   consumePortfolioFrame,
@@ -87,14 +88,13 @@ export async function reserveCohort(
       reason: windows.reason,
     };
   const owner = await cohorts.windowOwner();
-  if (owner)
+  if (owner && owner.ownerType !== "COHORT")
     return {
       status: "BUSY",
-      reason:
-        owner.ownerType === "COHORT"
-          ? "已有赛马批次占用研究窗口"
-          : "已有单候选实验占用研究窗口",
+      reason: "已有单候选实验占用研究窗口",
     };
+  // COHORT 窗口占用不在此返回 BUSY：落入下方活动批次检查，
+  // 使 PROPOSING 停机恢复可达，避免过期批次死锁研究窗口。
   const active = await cohorts.activeCohort();
   if (active) {
     if (active.stage === "PROPOSING") {
@@ -421,6 +421,14 @@ export async function reserveCohort(
         frozenAt: new Date().toISOString(),
         historical,
         members,
+        // 历史筛查起点与配置（§6）：统一期初资金、冻结费用与冻结测试窗口，
+        // 候选与共同对照在同一冻结输入上比较，事后不回填、不换配置。
+        historicalInputs: {
+          initialCashCents: account.book.initialCashCents,
+          feeConfigDigest,
+          trainingDates: windows.trainingDates,
+          testDates: windows.testDates,
+        },
         statisticsBudget: {
           alphaPerComparison: budget.alphaPerComparison,
           resamples: budget.resamples,
@@ -467,7 +475,10 @@ async function closeCohort(cohorts, cohortId, from, reason) {
 async function recoverStuckCohort(env, cohort) {
   const cohorts = new CohortRepository(env);
   const events = await cohorts.events(cohort.id);
-  const issued = events.find((event) => event.eventType === "REQUEST_ISSUED");
+  // 取最后一次模型请求事件：同批次多次请求时以最新租约判定是否停机。
+  const issued = [...events]
+    .reverse()
+    .find((event) => event.eventType === "REQUEST_ISSUED");
   const leaseStart =
     issued?.payload?.requestIssuedAt ?? issued?.createdAt ?? cohort.createdAt;
   const leaseMs = Number(env.RESEARCH_REQUEST_LEASE_MS ?? REQUEST_LEASE_MS);
@@ -509,6 +520,13 @@ export async function scheduleCohortForward(
   if (!cohort) throw new Error("赛马批次不存在");
   if (cohort.stage !== "SCHEDULED")
     return { scheduled: false, reason: `批次处于 ${cohort.stage} 阶段` };
+  // §6：只能在已结算、没有进行中盘中会话/时段的闭市时点捕获匹配起点。
+  const clock = marketClock(new Date(now));
+  if (inSession(clock.time))
+    return {
+      scheduled: false,
+      reason: "存在进行中的盘中时段，等待闭市后捕获匹配起点",
+    };
   const account = await papers.account();
   if (!account?.book?.lastDate)
     return { scheduled: false, reason: "主账户尚未结算，无法捕获匹配起点" };
@@ -532,98 +550,180 @@ export async function scheduleCohortForward(
     .first();
   if (!parentRow) throw new Error("父策略版本缺失");
   const parentParams = JSON.parse(parentRow.params);
+  // 历史可重放起点（§6）：捕获日快照缺失时拒绝捕获，等待评分快照补齐。
   const snapshot = await papers.snapshot(account.book.lastDate);
+  if (!snapshot)
+    return {
+      scheduled: false,
+      reason: "捕获日评分快照缺失，无法冻结候选计划；等待数据补齐后重试",
+    };
+  const captureRevision = account.revision;
   const captureBook = structuredClone(account.book);
-  const initialAccounts = {};
   const members = await cohorts.members(cohortId);
   const scheduledMembers = members.filter(
     (member) => member.stage === "SCHEDULED",
   );
+  // 原子捕获（§6）：捕获 revision、创建组合与冻结计划在一个事务内完成；
+  // 期间主账本 revision 变化则整体中止，不基于陈旧起点开跑。
+  const createdAccountIds = [];
   const planJobs = [];
-  const candidateAccountIds = [];
-  for (const member of scheduledMembers) {
-    const accountId = `shadow-${member.experimentId}`;
-    await shadows.ensureAccount(accountId, {
-      kind: SHADOW_ACCOUNT_KINDS.CANDIDATE,
+  const initialAccounts = {};
+  const initialPositions = {};
+  const atomic =
+    typeof papers.db.transaction === "function"
+      ? (fn) => papers.db.transaction(fn)
+      : async (fn) => fn();
+  let captured = null;
+  try {
+    captured = await atomic(async () => {
+      const begin = await papers.account();
+      if (begin.revision !== captureRevision)
+        throw new Error("主账本在捕获前被并发更新");
+      const candidateAccountIds = [];
+      for (const member of scheduledMembers) {
+        const accountId = `shadow-${member.experimentId}`;
+        await shadows.ensureAccount(accountId, {
+          kind: SHADOW_ACCOUNT_KINDS.CANDIDATE,
+          cohortId,
+          memberId: member.memberId,
+          book: structuredClone(captureBook),
+        });
+        if (!createdAccountIds.includes(accountId))
+          createdAccountIds.push(accountId);
+        initialAccounts[accountId] = captureState(captureBook);
+        initialPositions[accountId] = (captureBook.positions ?? []).map(
+          (position) => ({
+            code: position.code,
+            quantity: position.lots.reduce((a, lot) => a + lot.quantity, 0),
+          }),
+        );
+        candidateAccountIds.push(accountId);
+        planJobs.push({
+          accountId,
+          strategy: member.params,
+          strategyVersion: member.strategyVersion,
+        });
+      }
+      const parentAccountId = `shadow-parent-${cohortId}`;
+      await shadows.ensureAccount(parentAccountId, {
+        kind: SHADOW_ACCOUNT_KINDS.PARENT_MATCH,
+        cohortId,
+        memberId: "parent",
+        book: structuredClone(captureBook),
+      });
+      if (!createdAccountIds.includes(parentAccountId))
+        createdAccountIds.push(parentAccountId);
+      initialAccounts[parentAccountId] = captureState(captureBook);
+      initialPositions[parentAccountId] = (captureBook.positions ?? []).map(
+        (position) => ({
+          code: position.code,
+          quantity: position.lots.reduce((a, lot) => a + lot.quantity, 0),
+        }),
+      );
+      planJobs.push({
+        accountId: parentAccountId,
+        strategy: parentParams,
+        strategyVersion: cohort.parentVersion,
+      });
+      const baselineAccountId = `shadow-baseline-${cohortId}`;
+      await shadows.ensureAccount(baselineAccountId, {
+        kind: SHADOW_ACCOUNT_KINDS.BASELINE_MATCH,
+        cohortId,
+        memberId: "baseline",
+        book: structuredClone(captureBook),
+      });
+      if (!createdAccountIds.includes(baselineAccountId))
+        createdAccountIds.push(baselineAccountId);
+      initialAccounts[baselineAccountId] = captureState(captureBook);
+      initialPositions[baselineAccountId] = (captureBook.positions ?? []).map(
+        (position) => ({
+          code: position.code,
+          quantity: position.lots.reduce((a, lot) => a + lot.quantity, 0),
+        }),
+      );
+      planJobs.push({
+        accountId: baselineAccountId,
+        strategy: BASE_STRATEGY,
+        strategyVersion: "baseline-v1",
+      });
+      // 连续固定基线：自升级起点连续运行，跨批次保留；不冒充实验内匹配对照。
+      const existingContinuous = await shadows.account(continuousBaselineId);
+      if (!existingContinuous) {
+        await shadows.ensureAccount(continuousBaselineId, {
+          kind: SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS,
+          cohortId,
+          memberId: "baseline-continuous",
+          book: structuredClone(captureBook),
+        });
+        createdAccountIds.push(continuousBaselineId);
+        initialAccounts[continuousBaselineId] = captureState(captureBook);
+        initialPositions[continuousBaselineId] = (
+          captureBook.positions ?? []
+        ).map((position) => ({
+          code: position.code,
+          quantity: position.lots.reduce((a, lot) => a + lot.quantity, 0),
+        }));
+      }
+      planJobs.push({
+        accountId: continuousBaselineId,
+        strategy: BASE_STRATEGY,
+        strategyVersion: "baseline-v1",
+      });
+      for (const job of planJobs)
+        await freezePortfolioPlan(
+          env,
+          job.accountId,
+          {
+            snapshot,
+            strategy: job.strategy,
+            strategyVersion: job.strategyVersion,
+            now,
+          },
+          { shadows },
+        );
+      const after = await papers.account();
+      if (after.revision !== captureRevision)
+        throw new Error("主账本在捕获期间被并发更新");
+      return {
+        candidateAccountIds,
+        parentAccountId,
+        baselineAccountId,
+      };
+    });
+  } catch (error) {
+    // 事务不可用（D1）时补偿：使本次创建的组合失效，不留下陈旧起点。
+    for (const accountId of createdAccountIds)
+      await shadows.setStatus(accountId, "INVALIDATED").catch(() => {});
+    await closeCohort(
+      cohorts,
       cohortId,
-      memberId: member.memberId,
-      book: structuredClone(captureBook),
-    });
-    initialAccounts[accountId] = captureState(captureBook);
-    candidateAccountIds.push(accountId);
-    planJobs.push({
-      accountId,
-      strategy: member.params,
-      strategyVersion: member.strategyVersion,
-    });
+      "SCHEDULED",
+      `捕获匹配起点时主账本被并发更新，批次失效：${safeError(error)}`,
+    ).catch(() => {});
+    return {
+      scheduled: false,
+      reason: "捕获起点时主账本被并发更新，批次失效；占用保留可重新核验",
+    };
   }
-  const parentAccountId = `shadow-parent-${cohortId}`;
-  await shadows.ensureAccount(parentAccountId, {
-    kind: SHADOW_ACCOUNT_KINDS.PARENT_MATCH,
-    cohortId,
-    memberId: "parent",
-    book: structuredClone(captureBook),
-  });
-  initialAccounts[parentAccountId] = captureState(captureBook);
-  planJobs.push({
-    accountId: parentAccountId,
-    strategy: parentParams,
-    strategyVersion: cohort.parentVersion,
-  });
-  const baselineAccountId = `shadow-baseline-${cohortId}`;
-  await shadows.ensureAccount(baselineAccountId, {
-    kind: SHADOW_ACCOUNT_KINDS.BASELINE_MATCH,
-    cohortId,
-    memberId: "baseline",
-    book: structuredClone(captureBook),
-  });
-  initialAccounts[baselineAccountId] = captureState(captureBook);
-  planJobs.push({
-    accountId: baselineAccountId,
-    strategy: BASE_STRATEGY,
-    strategyVersion: "baseline-v1",
-  });
-  // 连续固定基线：自升级起点连续运行，跨批次保留；不冒充实验内匹配对照。
-  const existingContinuous = await shadows.account(continuousBaselineId);
-  if (!existingContinuous)
-    await shadows.ensureAccount(continuousBaselineId, {
-      kind: SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS,
-      cohortId,
-      memberId: "baseline-continuous",
-      book: structuredClone(captureBook),
-    });
-  planJobs.push({
-    accountId: continuousBaselineId,
-    strategy: BASE_STRATEGY,
-    strategyVersion: "baseline-v1",
-  });
-  for (const job of planJobs)
-    await freezePortfolioPlan(
-      env,
-      job.accountId,
-      {
-        snapshot,
-        strategy: job.strategy,
-        strategyVersion: job.strategyVersion,
-        now,
-      },
-      { shadows },
-    );
   const forwardManifest = {
     capturedAt: now,
     captureDate: account.book.lastDate,
-    primaryRevision: account.revision,
+    primaryRevision: captureRevision,
     initialEquityCents: captureBook.equityCents,
     feeConfig,
     feeConfigDigest,
     parentVersion: cohort.parentVersion,
     requiredDays: cohort.forwardDays,
+    // 固定窗口日历：随 runDaily 交易日历冻结，窗口结束日不因缺失顺延（§8.2）。
+    windowDates: [],
     tradingDates: [],
     initialAccounts,
+    initialAccountsDigest: await digestOf(initialAccounts),
+    initialPositions,
     accounts: {
-      candidates: candidateAccountIds,
-      parentMatch: parentAccountId,
-      baselineMatch: baselineAccountId,
+      candidates: captured.candidateAccountIds,
+      parentMatch: captured.parentAccountId,
+      baselineMatch: captured.baselineAccountId,
       baselineContinuous: continuousBaselineId,
     },
     note: "六个匹配组合共享同一期初权益、现金和持仓状态；期间指标从捕获时点起算，不重复累计",
@@ -646,11 +746,15 @@ export async function scheduleCohortForward(
 // ---------- 一次联合采集，多账本独立消费（§7.1/§7.2） ----------
 export async function runTournamentPoll(env, now, { providers = {} } = {}) {
   const cohorts = new CohortRepository(env);
+  const shadows = new ShadowAccountRepository(env);
   const cohort = await cohorts.activeCohort();
-  if (!cohort || cohort.stage !== "RUNNING") return null;
+  const running = cohort?.stage === "RUNNING";
+  // 连续固定基线跨批次持续运行（§6）：无活动批次时仍采集并喂给持续基线。
+  const continuous = await shadows.account(continuousBaselineId);
+  if (!running && continuous?.status !== "ACTIVE") return null;
   const frame = await captureQuoteFrame(env, now, { providers });
   if (!frame) return null;
-  const shadows = new ShadowAccountRepository(env);
+  const frames = new QuoteFrameRepository(env);
   let primary = null;
   try {
     primary = await pollTrading(env, now, {
@@ -667,32 +771,59 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
     primary = { status: "ERROR", reason: safeError(error) };
   }
   const accounts = await shadows.accounts();
-  const ordered = accounts
-    .filter(
-      (account) =>
-        account.kind === SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS ||
-        (account.cohortId === cohort.id &&
-          account.kind !== SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS),
-    )
-    .sort((a, b) => {
-      const rank = (kind) => (kind === SHADOW_ACCOUNT_KINDS.CANDIDATE ? 1 : 0);
-      return (
-        rank(a.kind) - rank(b.kind) || a.accountId.localeCompare(b.accountId)
-      );
-    });
+  const activeAccounts = accounts.filter(
+    (account) => account.status === "ACTIVE",
+  );
+  const ordered = (
+    running
+      ? activeAccounts.filter(
+          (account) =>
+            account.kind === SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS ||
+            account.cohortId === cohort.id,
+        )
+      : activeAccounts.filter(
+          (account) =>
+            account.kind === SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS,
+        )
+  ).sort((a, b) => {
+    const rank = (kind) => (kind === SHADOW_ACCOUNT_KINDS.CANDIDATE ? 1 : 0);
+    return (
+      rank(a.kind) - rank(b.kind) || a.accountId.localeCompare(b.accountId)
+    );
+  });
   const results = [];
   for (const account of ordered) {
+    // 按序重放已落盘帧（§7.2）：从账户游标日期起补齐"已采集未消费"的帧，
+    // 重启恢复与跨日缺口都从这里修复；一账户失败不阻塞其他账户。
+    const since = account.cursorDate ?? frame.tradeDate;
+    let replay = [frame];
     try {
-      results.push(
-        await consumePortfolioFrame(env, account.accountId, frame, { shadows }),
-      );
-    } catch (error) {
-      results.push({
-        accountId: account.accountId,
-        stalled: true,
-        reason: safeError(error),
-      });
+      const persisted = await frames.framesSince(since);
+      if (persisted.length) replay = persisted;
+    } catch {
+      replay = [frame];
     }
+    let lastResult = null;
+    for (const replayFrame of replay) {
+      try {
+        lastResult = await consumePortfolioFrame(
+          env,
+          account.accountId,
+          replayFrame,
+          { shadows },
+        );
+        if (lastResult.stalled) break;
+      } catch (error) {
+        lastResult = {
+          accountId: account.accountId,
+          frameSequence: replayFrame.sequence,
+          stalled: true,
+          reason: safeError(error),
+        };
+        break;
+      }
+    }
+    results.push(lastResult ?? { accountId: account.accountId, skipped: true });
   }
   return {
     tradeDate: frame.tradeDate,
@@ -705,6 +836,46 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
 }
 
 // ---------- 盘后：影子结算、共同市场日登记与窗口收口（§6/§10） ----------
+// 用当日已落盘帧为 dataset 缺失的候选独有代码补齐收盘盯市记录（§8.2）：
+// 有真实观测价的代码不因缺席日线而无法结算；时间戳固定为收盘时点，
+// 缺少任何观测价的代码保持缺失，由结算或覆盖闸门如实暴露。
+export function closingQuotesFromFrames(frameRows, datasetQuotes, date) {
+  const enriched = { ...datasetQuotes };
+  for (const frame of [...frameRows].sort((a, b) => a.sequence - b.sequence)) {
+    const quotes = frame.payload?.quotes ?? frame.quotes ?? {};
+    for (const [code, quote] of Object.entries(quotes)) {
+      if (enriched[code]) continue;
+      const closeCents = quote.closeCents ?? quote.lastCents;
+      if (!(Number(closeCents) > 0)) continue;
+      enriched[code] = {
+        ...quote,
+        date,
+        timestamp: `${date}T15:00:00+08:00`,
+        closeCents,
+      };
+    }
+  }
+  return enriched;
+}
+
+async function settleAccounts(env, accountIds, date, dataset, { shadows }) {
+  const settlements = [];
+  for (const accountId of accountIds) {
+    try {
+      settlements.push(
+        await settlePortfolioDay(env, accountId, date, dataset, { shadows }),
+      );
+    } catch (error) {
+      settlements.push({
+        accountId,
+        stalled: true,
+        reason: safeError(error),
+      });
+    }
+  }
+  return settlements;
+}
+
 export async function settleTournamentDay(
   env,
   date,
@@ -722,11 +893,70 @@ export async function settleTournamentDay(
       status: "CAPTURE_DAY",
       reason: "捕获日不是前瞻窗口市场日；窗口从下一交易日起计数",
     };
-  if (manifest.tradingDates.includes(date))
+  // 冻结窗口日历（§8.2）：合并 runDaily 提供的交易日历与当日共同市场日，
+  // 窗口取捕获日之后的前 requiredDays 个交易日；窗口结束日固定，
+  // 缺失日不由后续日补满。
+  const windowDates = [
+    ...new Set([...(manifest.windowDates ?? []), ...calendarDates, date]),
+  ]
+    .filter((day) => day > manifest.captureDate)
+    .sort()
+    .slice(0, manifest.requiredDays);
+  const windowFrozen = windowDates.length >= manifest.requiredDays;
+  const accountIds = [
+    ...manifest.accounts.candidates,
+    manifest.accounts.parentMatch,
+    manifest.accounts.baselineMatch,
+    manifest.accounts.baselineContinuous,
+  ];
+  if (manifest.tradingDates.includes(date)) {
+    // 已登记日：仍幂等重结算未完成账户（不重复 claim、样本或事件），
+    // 修复"部分账户结算失败后被 DUPLICATE 早退卡住"的缺口。
+    const datasetRow = await papers.db
+      .prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?")
+      .bind(date)
+      .first();
+    const settlements = datasetRow
+      ? await settleAccounts(
+          env,
+          accountIds,
+          date,
+          JSON.parse(datasetRow.payload),
+          {
+            shadows,
+          },
+        )
+      : [];
     return {
       status: "DUPLICATE",
+      settlements,
       reason: "该共同市场日已登记，幂等跳过；不重复结算或延长窗口",
     };
+  }
+  if (windowFrozen && !windowDates.includes(date)) {
+    // 窗口已冻结完整且该日在窗口之外：不登记、不延长。
+    let evaluation = null;
+    if (manifest.tradingDates.length < manifest.requiredDays) {
+      // 窗口结束仍有缺口：按原固定日历收口评估，缺失日使覆盖与共同数据
+      // 检查失败，整批无资格；不用窗口外的日期补满晋级。
+      await cohorts.transitionCohort(cohort.id, {
+        from: "RUNNING",
+        to: "EVALUATING",
+        eventType: "FORWARD_WINDOW_COMPLETE",
+        payload: {
+          days: manifest.tradingDates.length,
+          missing: manifest.requiredDays - manifest.tradingDates.length,
+          note: "固定窗口结束仍有缺失交易日，按原窗口收口评估",
+        },
+      });
+      evaluation = await evaluateCohort(env, cohort.id, { calendarDates });
+    }
+    return {
+      status: "WINDOW_ENDED",
+      evaluation,
+      reason: "固定窗口已结束；窗口外交易日不登记、不延长窗口",
+    };
+  }
   const datasetRow = await papers.db
     .prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?")
     .bind(date)
@@ -736,12 +966,16 @@ export async function settleTournamentDay(
       status: "WAITING_PRIMARY",
       reason: "主账户当日尚未结算；影子账本与主账户结算保持追平，不提前结算",
     };
+  const frameRows = await frames.framesForDate(date);
   const dataset = JSON.parse(datasetRow.payload);
+  const enrichedDataset = {
+    ...dataset,
+    quotes: closingQuotesFromFrames(frameRows, dataset.quotes ?? {}, date),
+  };
   const snapshot = await papers.snapshot(date);
   // 共同市场日先登记（claim 先于样本用途写入，满足一次性触发器约束）。
   await cohorts.claimCohortForwardDate(date, cohort.id);
   const previousDate = manifest.tradingDates.at(-1) ?? manifest.captureDate;
-  const frameRows = await frames.framesForDate(date);
   const quoteManifestDigest = await digestOf({
     date,
     count: frameRows.length,
@@ -751,26 +985,13 @@ export async function settleTournamentDay(
       digest: row.digest,
     })),
   });
-  const accountIds = [
-    ...manifest.accounts.candidates,
-    manifest.accounts.parentMatch,
-    manifest.accounts.baselineMatch,
-    manifest.accounts.baselineContinuous,
-  ];
-  const settlements = [];
-  for (const accountId of accountIds) {
-    try {
-      settlements.push(
-        await settlePortfolioDay(env, accountId, date, dataset, { shadows }),
-      );
-    } catch (error) {
-      settlements.push({
-        accountId,
-        stalled: true,
-        reason: safeError(error),
-      });
-    }
-  }
+  const settlements = await settleAccounts(
+    env,
+    accountIds,
+    date,
+    enrichedDataset,
+    { shadows },
+  );
   const members = await cohorts.members(cohort.id);
   for (const member of members) {
     if (member.stage !== "RUNNING") continue;
@@ -783,7 +1004,7 @@ export async function settleTournamentDay(
       cohortId: cohort.id,
       memberId: member.memberId,
       snapshotDigest: snapshot ? await digestOf(snapshot) : null,
-      marketDigest: await digestOf(dataset),
+      marketDigest: await digestOf(enrichedDataset),
       quoteManifestDigest,
     };
     await cohorts.recordMemberSampleUse({
@@ -853,16 +1074,22 @@ export async function settleTournamentDay(
     eventType: "FORWARD_DAY_SETTLED",
     payload: { date, tradingDates: tradingDates.length },
     set: {
-      forward_manifest: JSON.stringify({ ...manifest, tradingDates }),
+      forward_manifest: JSON.stringify({
+        ...manifest,
+        tradingDates,
+        windowDates,
+      }),
     },
   });
+  // 评估只由固定窗口的最后一个交易日触发（§8.2）：
+  // 缺失日不补满，窗口末日结算后即按原窗口收口，缺失由覆盖闸门暴露。
   let evaluation = null;
-  if (tradingDates.length >= manifest.requiredDays) {
+  if (windowFrozen && date === windowDates.at(-1)) {
     await cohorts.transitionCohort(cohort.id, {
       from: "RUNNING",
       to: "EVALUATING",
       eventType: "FORWARD_WINDOW_COMPLETE",
-      payload: { days: tradingDates.length },
+      payload: { days: tradingDates.length, windowEnd: windowDates.at(-1) },
     });
     evaluation = await evaluateCohort(env, cohort.id, { calendarDates });
   }
@@ -881,17 +1108,79 @@ export async function settleTournamentDay(
 export async function runDailyTournament(
   env,
   date,
-  { calendarDates = [] } = {},
+  { calendarDates = [], now = null } = {},
 ) {
   const cohorts = new CohortRepository(env);
+  const papers = new RealtimeRepository(env);
+  const shadows = new ShadowAccountRepository(env);
   const scheduled = await cohorts.activeCohort();
   let schedule = null;
   if (scheduled?.stage === "SCHEDULED")
     schedule = await scheduleCohortForward(env, scheduled.id, {
-      now: new Date().toISOString(),
+      now: now ?? new Date().toISOString(),
     });
-  const settle = await settleTournamentDay(env, date, { calendarDates });
-  return { schedule, settle };
+  const settle = await settleTournamentDay(env, date, {
+    calendarDates,
+    now,
+  });
+  // 连续固定基线跨批次持续（§6）：无运行中批次时仍按日结算净值并冻结次计划。
+  let continuous = null;
+  const stillRunning = (await cohorts.activeCohort())?.stage === "RUNNING";
+  if (!stillRunning) {
+    const account = await shadows.account(continuousBaselineId);
+    if (
+      account?.status === "ACTIVE" &&
+      account.book.lastDate &&
+      account.book.lastDate < date
+    ) {
+      const datasetRow = await papers.db
+        .prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?")
+        .bind(date)
+        .first();
+      if (datasetRow) {
+        const dataset = JSON.parse(datasetRow.payload);
+        const frameRows = await new QuoteFrameRepository(env).framesForDate(
+          date,
+        );
+        const enrichedDataset = {
+          ...dataset,
+          quotes: closingQuotesFromFrames(
+            frameRows,
+            dataset.quotes ?? {},
+            date,
+          ),
+        };
+        continuous = await settlePortfolioDay(
+          env,
+          continuousBaselineId,
+          date,
+          enrichedDataset,
+          { shadows },
+        ).catch((error) => ({ stalled: true, reason: safeError(error) }));
+        try {
+          const snapshot = await papers.snapshot(date);
+          await freezePortfolioPlan(
+            env,
+            continuousBaselineId,
+            {
+              snapshot,
+              strategy: BASE_STRATEGY,
+              strategyVersion: "baseline-v1",
+              now: now ?? new Date().toISOString(),
+            },
+            { shadows },
+          );
+        } catch (error) {
+          continuous = {
+            ...(continuous ?? {}),
+            planStalled: true,
+            planReason: safeError(error),
+          };
+        }
+      }
+    }
+  }
+  return { schedule, settle, continuous };
 }
 
 // ---------- 最终评估、固定排序与受控晋级（§8） ----------
@@ -908,10 +1197,39 @@ export async function evaluateCohort(
   if (cohort.stage !== "EVALUATING")
     throw new Error(`批次处于 ${cohort.stage} 阶段，不能评估`);
   const manifest = cohort.forwardManifest;
-  const windowDates = manifest.tradingDates;
+  // 固定窗口（§8.2）：评估用冻结窗口日历（含缺失日），缺失由覆盖与共同数据
+  // 检查暴露；窗口内的 tradingDates 只包含实际结算并登记的共同市场日。
+  const windowDates = manifest.windowDates?.length
+    ? manifest.windowDates
+    : manifest.tradingDates;
   const frozenPolicy = cohort.reservationManifest?.cohortPolicy;
   const budget = cohort.proposalManifest?.statisticsBudget;
   const minimumRounds = frozenPolicy?.minimumCompletedRounds ?? 10;
+  // 统计任务隔离与幂等（§10）：评估输入以任务记录隔离归档；
+  // 同一冻结输入的重放复用已发布报告，不产生新的选优机会。
+  const statisticsInputDigest = await digestOf({
+    cohortId,
+    windowDates,
+    budget: budget ?? null,
+    minimumRounds,
+  });
+  const priorTasks = await cohorts.tasksForOwner(cohortId, "COHORT_STATISTICS");
+  const priorDone = priorTasks.find(
+    (task) =>
+      task.stage === "DONE" && task.inputDigest === statisticsInputDigest,
+  );
+  if (priorDone) {
+    const existing = await cohorts.report(cohortId, "EVALUATION");
+    if (existing?.payload) return existing.payload;
+  }
+  const statisticsTaskId = await cohorts.createTask({
+    ownerId: cohortId,
+    taskType: "COHORT_STATISTICS",
+    inputDigest: statisticsInputDigest,
+  });
+  await cohorts.leaseTask(statisticsTaskId, {
+    leaseOwner: `evaluate-${cohortId}`,
+  });
   // 共同数据覆盖：每个窗口日必须有主账户结算数据与 cohort 名下的日期登记。
   const commonCoverage = [];
   for (const date of windowDates) {
@@ -973,7 +1291,12 @@ export async function evaluateCohort(
       windowDates,
     });
     const ledger = await shadows.ledger(accountId);
-    const rounds = completeRounds(ledger, windowDates);
+    // 完整轮次从捕获时点的继承持仓数量起步重建（§8.2）：
+    // 继承持仓平仓与 T 两腿不凑次数。
+    const initialPositions = {};
+    for (const position of manifest.initialPositions?.[accountId] ?? [])
+      initialPositions[position.code] = position.quantity;
+    const rounds = completeRounds(ledger, windowDates, initialPositions);
     return { account, equities, metrics, rounds };
   };
   const parentMetrics = await metricsOf(manifest.accounts.parentMatch);
@@ -1084,6 +1407,9 @@ export async function evaluateCohort(
     }
     let verdict;
     if (!checks.fingerprint) verdict = "INVALIDATED";
+    else if (commonDataMissing)
+      // §8.2：共同对照或共同数据缺失使整个批次无资格，任何成员不晋级。
+      verdict = "INCONCLUSIVE";
     else if (!checks.coverage) verdict = "INCONCLUSIVE";
     else if (!checks.rounds) verdict = "INCONCLUSIVE";
     else if (!checks.statistics) verdict = "INCONCLUSIVE";
@@ -1134,6 +1460,9 @@ export async function evaluateCohort(
     scoringVersion: SCORING_VERSION,
     note: "仅从通过全部闸门的合格集合按冻结排序启用至多一个候选；全部不通过时保持当前策略",
   };
+  // 报告摘要在晋级之前冻结：晋级服务重算摘要核验报告输入未被篡改。
+  report.digest = await digestOf(report);
+  await cohorts.completeTask(statisticsTaskId, { outputDigest: report.digest });
   // 批次结束时的唯一自动晋级：验证报告摘要、成员资格与配置指纹后 CAS 切换。
   // 已冻结计划（信号日=窗口末日）不替换：新策略从之后第一个尚未冻结的计划起生效，
   // 其执行日为窗口末日的下一交易日的下一交易日。

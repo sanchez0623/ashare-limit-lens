@@ -20,17 +20,21 @@ import {
   scheduleCohortForward,
   runTournamentPoll,
   settleTournamentDay,
+  runDailyTournament,
   tournamentStatus,
   cohortDetail,
   cohortLineage,
+  closingQuotesFromFrames,
 } from "../backend/services/strategy-tournament.js";
 import {
   consumePortfolioFrame,
   settlePortfolioDay,
+  freezePortfolioPlan,
 } from "../backend/services/portfolio-runner.js";
 import { promoteCohortChampion } from "../backend/services/promotion.js";
 import { proposeImprovement } from "../backend/services/research.js";
 import { beijingMonth } from "../backend/domain/research-windows.js";
+import { newBook } from "../backend/domain/trading.js";
 import {
   computeStatisticsBudget,
   validateCohortPolicy,
@@ -48,8 +52,12 @@ import {
   resampleIndexMatrix,
 } from "../backend/domain/research-statistics.js";
 import { pairs, dateAt } from "./fixtures/trading.mjs";
-import { DEFAULT_FEES } from "../shared/fees.js";
-import { digestOf } from "../backend/domain/research-lineage.js";
+import { DEFAULT_FEES, feesForBook } from "../shared/fees.js";
+import {
+  digestOf,
+  EXECUTION_VERSION,
+  SCORING_VERSION,
+} from "../backend/domain/research-lineage.js";
 
 const SEED = 260;
 const FORWARD_DAYS = 30;
@@ -146,7 +154,8 @@ async function settlePrimaryToCaptureDay(env, repository, all) {
 function makeQuotes(datasetByDate, dayIndex, time, volume) {
   const day = datasetByDate.get(dateAt(dayIndex));
   return async (codes, date) => {
-    assert.equal(date, day.date);
+    assert.equal(date, day ? day.date : date);
+    if (!day) return {};
     const quotes = {};
     for (const code of codes) {
       const quote = day.quotes[code];
@@ -278,7 +287,8 @@ test("统计预算、政策校验与固定排序由代码强制校验", async ()
     ["2026-01-01", "2026-01-05"],
   );
   assert.equal(rounds.rounds, 1, "继承持仓清仓不计，新轮次完整闭合计一次");
-  // 窗口指标：净收益、费用增量、回撤与覆盖率
+  // 窗口指标：净收益、费用增量、回撤与覆盖率；期初快照与账本守恒一致
+  // （权益变化 = 已实现增量 + 未实现增量，不一致的快照会被拒绝）。
   const metrics = windowMetrics({
     initial: {
       equityCents: 100000000,
@@ -289,10 +299,10 @@ test("统计预算、政策校验与固定排序由代码强制校验", async ()
     finalBook: {
       equityCents: 101000000,
       feesCents: 300,
-      realizedPnlCents: 500,
+      realizedPnlCents: 0,
       positions: [
         {
-          markCents: 1100,
+          markCents: 1001,
           lots: [{ quantity: 1000, costCents: 1000 }],
         },
       ],
@@ -1017,3 +1027,581 @@ test("费用或父策略变化使批次资格失效；旧 API 仍拒绝绕过前
 function totalQuantityOf(position) {
   return position.lots.reduce((sum, lot) => sum + lot.quantity, 0);
 }
+
+test("继承持仓期间做 T 不计完整轮次；期间盈利与权益变化守恒", async () => {
+  // P1-3：继承 500 股底仓 + 11 次做 T（买 100 卖 100）→ 0 个完整轮次
+  const fills = [];
+  let seq = 0;
+  for (let i = 0; i < 11; i++) {
+    fills.push({
+      code: "600001",
+      side: "BUY",
+      quantity: 100,
+      date: "2026-01-05",
+      sequence: seq++,
+    });
+    fills.push({
+      code: "600001",
+      side: "SELL",
+      quantity: 100,
+      date: "2026-01-05",
+      sequence: seq++,
+    });
+  }
+  fills.push({
+    code: "600001",
+    side: "SELL",
+    quantity: 500,
+    date: "2026-01-06",
+    sequence: seq++,
+  });
+  const inherited = completeRounds(fills, ["2026-01-05", "2026-01-06"], {
+    600001: 500,
+  });
+  assert.equal(inherited.rounds, 0, "继承持仓未清零前，T 两腿不凑次数");
+  // 继承清仓后从零新建仓并清仓 → 恰好 1 个完整轮次
+  fills.push({
+    code: "600002",
+    side: "BUY",
+    quantity: 1000,
+    date: "2026-01-07",
+    sequence: seq++,
+  });
+  fills.push({
+    code: "600002",
+    side: "SELL",
+    quantity: 1000,
+    date: "2026-01-08",
+    sequence: seq++,
+  });
+  const mixed = completeRounds(fills, ["2026-01-05", "2026-01-08"], {
+    600001: 500,
+  });
+  assert.equal(mixed.rounds, 1, "继承清仓不计数，新轮次完整闭合计一次");
+  // P2-1：期初浮盈持仓按捕获价平价退出 → 浮盈实现而非新增，期间盈利为 0
+  const initial = {
+    equityCents: 100000000,
+    feesCents: 0,
+    realizedPnlCents: 0,
+    unrealizedPnlCents: 900000,
+  };
+  const metrics = windowMetrics({
+    initial,
+    finalBook: {
+      equityCents: 100000000,
+      feesCents: 0,
+      realizedPnlCents: 900000,
+      positions: [],
+    },
+    equities: [{ tradeDate: "2026-01-06", equityCents: 100000000 }],
+    windowDates: ["2026-01-06"],
+  });
+  assert.equal(metrics.profitCents, 0, "平价退出的期间盈利为 0，不虚增浮盈");
+  // 净值摘要与账本不一致的期初快照被守恒校验拒绝，而不是输出矛盾指标
+  assert.throws(
+    () =>
+      windowMetrics({
+        initial: { ...initial, unrealizedPnlCents: 0 },
+        finalBook: {
+          equityCents: 100000000,
+          feesCents: 0,
+          realizedPnlCents: 900000,
+          positions: [],
+        },
+        equities: [],
+        windowDates: ["2026-01-06"],
+      }),
+    /期初快照与账本状态不匹配/,
+  );
+});
+
+test("重启恢复按序重放未消费帧；帧价补齐候选独有持仓收盘", async () => {
+  const { DB, env } = await buildEnv({ count: 5 });
+  const shadows = new ShadowAccountRepository(env);
+  const framesRepo = new QuoteFrameRepository(env);
+  const day = dateAt(2);
+  const accountId = "replay-a";
+  const book = newBook();
+  book.lastDate = dateAt(1);
+  await shadows.ensureAccount(accountId, {
+    kind: "CANDIDATE",
+    cohortId: "c-replay",
+    memberId: "m1",
+    book,
+  });
+  for (let sequence = 0; sequence < 3; sequence++)
+    await framesRepo.appendFrame({
+      tradeDate: day,
+      observedAt: `${day}T01:31:0${sequence}.000Z`,
+      quotes: {},
+      pollIntervalSeconds: 10,
+      pool: { codes: [], sources: {} },
+    });
+  const persisted = await framesRepo.framesForDate(day);
+  assert.equal(persisted.length, 3);
+  // frame 1：无执行日计划 → stalled，不消费
+  const first = await consumePortfolioFrame(env, accountId, persisted[0], {
+    shadows,
+  });
+  assert.equal(first.stalled, true, "缺少执行日计划，账户暂停消费");
+  // frame 2：直接消费被按序守卫拒绝，不越过未消费的持久帧
+  const second = await consumePortfolioFrame(env, accountId, persisted[1], {
+    shadows,
+  });
+  assert.equal(second.stalled, true, "不越过未消费的前序帧");
+  // 模拟重启后恢复：计划就绪，按序重放全部持久帧
+  await freezePortfolioPlan(
+    env,
+    accountId,
+    {
+      snapshot: null,
+      strategy: BASE_STRATEGY,
+      strategyVersion: "baseline-v1",
+      now: `${dateAt(1)}T07:00:00.000Z`,
+    },
+    { shadows },
+  );
+  const replayResults = [];
+  for (const frame of await framesRepo.framesSince(dateAt(0)))
+    replayResults.push(
+      await consumePortfolioFrame(env, accountId, frame, { shadows }),
+    );
+  assert.equal(
+    replayResults.filter((row) => row.applied).length,
+    3,
+    "重启后按序重放，未消费帧全部补齐且不重复",
+  );
+  const account = await shadows.account(accountId);
+  assert.equal(
+    `${account.cursorDate}/${account.cursorSequence}`,
+    `${day}/3`,
+    "游标停最后消费帧",
+  );
+  // P1-6：候选独有代码由当日帧观测价补齐收盘记录；已有日线收盘不被覆盖
+  const enriched = closingQuotesFromFrames(
+    [
+      {
+        sequence: 1,
+        payload: {
+          quotes: {
+            600999: {
+              closeCents: 1050,
+              previousCloseCents: 1000,
+              timestamp: `${day}T10:00:00+08:00`,
+            },
+          },
+        },
+      },
+    ],
+    { 600001: { closeCents: 900, timestamp: `${day}T15:00:00+08:00` } },
+    day,
+  );
+  assert.equal(enriched["600999"].closeCents, 1050, "候选独有代码由帧价补齐");
+  assert.match(enriched["600999"].timestamp, /T15:00:00/, "补齐按收盘时点盯市");
+  assert.equal(enriched["600001"].closeCents, 900, "日线收盘优先，不被帧覆盖");
+  DB.close();
+});
+
+test("固定窗口缺日不补满：窗口外日期收口评估且整批无资格", async () => {
+  const { DB, env, repository, all } = await buildEnv();
+  await settlePrimaryToCaptureDay(env, repository, all);
+  await new CohortRepository(env).saveTournamentPolicy({
+    forwardDays: FORWARD_DAYS,
+    minimumCompletedRounds: 1,
+  });
+  const reserved = await reserveScheduledCohort(env, repository);
+  const forwardPairs = await seedForwardData(DB, env);
+  const datasetByDate = datasetByDateOf(all, forwardPairs);
+  const calendar = {
+    dates: [...all, ...forwardPairs].map((p) => p.dataset.date),
+    benchmark: [],
+  };
+  await scheduleCohortForward(env, reserved.cohortId, {
+    now: `${dateAt(SEED)}T07:30:00.000Z`,
+  });
+  const cohorts = new CohortRepository(env);
+  // 第 15 日主账户未结算、无帧；第 30 日（窗口末日）同样缺失
+  const missingOffsets = new Set([15, FORWARD_DAYS]);
+  for (let offset = 1; offset < FORWARD_DAYS; offset++) {
+    if (missingOffsets.has(offset)) continue;
+    const dayIndex = SEED + offset;
+    const date = dateAt(dayIndex);
+    for (const [utc, beijing, volume] of forwardFrames())
+      await runTournamentPoll(env, new Date(`${date}T${utc}Z`), {
+        providers: {
+          calendar,
+          quotes: makeQuotes(datasetByDate, dayIndex, beijing, volume),
+        },
+      });
+    await settleTournamentDay(env, date, {
+      calendarDates: [dateAt(dayIndex + 1), dateAt(dayIndex + 2)],
+      now: `${date}T07:30:00.000Z`,
+    });
+  }
+  // 窗口末日缺失后，第 31 日不能补满窗口：按原固定窗口收口评估
+  const ended = await settleTournamentDay(
+    env,
+    dateAt(SEED + FORWARD_DAYS + 1),
+    {
+      calendarDates: [dateAt(SEED + FORWARD_DAYS + 2)],
+      now: `${dateAt(SEED + FORWARD_DAYS + 1)}T07:30:00.000Z`,
+    },
+  );
+  assert.equal(ended.status, "WINDOW_ENDED");
+  assert.ok(ended.evaluation, "固定窗口结束仍有缺口时按原窗口收口评估");
+  assert.equal(
+    ended.evaluation.windowDates.length,
+    FORWARD_DAYS,
+    "评估窗口仍是冻结的 30 个交易日，不含窗口外日期",
+  );
+  assert.ok(ended.evaluation.commonDataMissing, "缺失日使共同数据检查失败");
+  assert.equal(
+    ended.evaluation.verdicts.filter((row) => row.stage === "ELIGIBLE").length,
+    0,
+    "共同数据缺失使整批无资格，无成员可晋级",
+  );
+  assert.ok(
+    ended.evaluation.verdicts.some((row) => row.stage === "INCONCLUSIVE"),
+    "窗口成员保留 INCONCLUSIVE 失败路径",
+  );
+  assert.equal(ended.evaluation.promotion, null, "整批无资格时无自动晋级");
+  const cohort = await cohorts.getCohort(reserved.cohortId);
+  assert.equal(cohort.stage, "CLOSED");
+  assert.equal(await cohorts.windowOwner(), null, "窗口锁释放");
+  const primary = await new RealtimeRepository(env).account();
+  assert.equal(primary.book.activeStrategy, "baseline-v1", "保持当前策略");
+  DB.close();
+});
+
+test("过期批次恢复可达且盘中拒绝捕获起点", async () => {
+  const { DB, env, repository, all } = await buildEnv();
+  await settlePrimaryToCaptureDay(env, repository, all);
+  const reserved = await reserveScheduledCohort(env, repository);
+  const cohorts = new CohortRepository(env);
+  // 盘中时段拒绝捕获匹配起点，批次保持 SCHEDULED
+  const intraday = await scheduleCohortForward(env, reserved.cohortId, {
+    now: `${dateAt(SEED)}T03:00:00.000Z`,
+  });
+  assert.equal(intraday.scheduled, false);
+  assert.match(intraday.reason, /盘中时段/);
+  assert.equal(
+    (await cohorts.getCohort(reserved.cohortId)).stage,
+    "SCHEDULED",
+    "盘中捕获被拒绝且不改变批次状态",
+  );
+  // 模拟候选请求发出后停机：批次回到 PROPOSING 且请求租约过期
+  await DB.prepare(
+    "UPDATE strategy_cohorts SET stage = 'PROPOSING' WHERE id = ?",
+  )
+    .bind(reserved.cohortId)
+    .run();
+  const last = await cohorts.lastEvent(reserved.cohortId);
+  await cohorts.appendEvent(reserved.cohortId, {
+    sequence: last.sequence + 1,
+    eventType: "REQUEST_ISSUED",
+    createdAt: "2020-01-01T00:00:00.000Z",
+    payload: { requestIssuedAt: "2020-01-01T00:00:00.000Z" },
+    previousDigest: last.digest,
+  });
+  // 再次预留：恢复逻辑可达，按错误收尾并释放窗口，而不是被窗口锁 BUSY 卡死
+  const recovered = await reserveCohort(repository, env);
+  assert.equal(recovered.status, "ERROR", JSON.stringify(recovered));
+  assert.match(recovered.reason, /候选冻结前中断/);
+  assert.equal(await cohorts.windowOwner(), null, "过期批次恢复后释放窗口");
+  assert.equal((await cohorts.getCohort(reserved.cohortId)).stage, "CLOSED");
+  DB.close();
+});
+
+test("并发状态迁移由 revision CAS 保证，更新与事件不丢失", async () => {
+  const { DB, env } = await buildEnv({ count: 5 });
+  const cohorts = new CohortRepository(env);
+  const now = new Date().toISOString();
+  await DB.prepare(
+    "INSERT INTO strategy_cohorts (id, namespace, revision, parent_version, policy_id, policy_digest, research_policy_id, research_policy_digest, stage, max_candidates, forward_days, reservation_manifest, created_at, updated_at) VALUES ('c-cas', 'main', 0, 'baseline-v1', 'p', 'd', 'rp', 'rd', 'RUNNING', 4, 30, '{}', ?, ?)",
+  )
+    .bind(now, now)
+    .run();
+  const attempts = await Promise.allSettled([
+    cohorts.transitionCohort("c-cas", {
+      from: "RUNNING",
+      to: "RUNNING",
+      eventType: "FORWARD_DAY_SETTLED",
+      payload: { tag: "A" },
+      set: { forward_manifest: JSON.stringify({ tag: "A" }) },
+    }),
+    cohorts.transitionCohort("c-cas", {
+      from: "RUNNING",
+      to: "RUNNING",
+      eventType: "FORWARD_DAY_SETTLED",
+      payload: { tag: "B" },
+      set: { forward_manifest: JSON.stringify({ tag: "B" }) },
+    }),
+  ]);
+  assert.equal(
+    attempts.filter((row) => row.status === "fulfilled").length,
+    1,
+    "并发迁移只有一个成功",
+  );
+  assert.match(
+    attempts.find((row) => row.status === "rejected").reason.message,
+    /冲突|已被其他流程改变|UNIQUE constraint/,
+    "被拒者整体回滚，不产生部分写入",
+  );
+  const cohort = await cohorts.getCohort("c-cas");
+  assert.ok(cohort.forwardManifest?.tag, "成功者的清单更新完整生效");
+  const events = await cohorts.events("c-cas");
+  assert.equal(events.length, 1, "事件链无缺口：被拒者不留事件");
+  assert.equal(events[0].sequence, 1);
+  DB.close();
+});
+
+test("晋级输入验证：报告摘要、净值摘要、共同占用与期末净值缺一不可", async () => {
+  const { DB, env } = await buildEnv({ count: 5 });
+  const cohorts = new CohortRepository(env);
+  const papers = new RealtimeRepository(env);
+  const shadows = new ShadowAccountRepository(env);
+  await papers.initialize();
+  const account = await papers.account();
+  const feeConfig = feesForBook(account.book);
+  const feeConfigDigest = await digestOf(feeConfig);
+  const initialAccounts = {
+    "shadow-exp-x": {
+      equityCents: account.book.equityCents,
+      feesCents: account.book.feesCents,
+      realizedPnlCents: account.book.realizedPnlCents,
+      unrealizedPnlCents: 0,
+    },
+  };
+  const forwardManifest = {
+    captureDate: dateAt(4),
+    requiredDays: 30,
+    feeConfig,
+    feeConfigDigest,
+    initialAccounts,
+    initialAccountsDigest: await digestOf(initialAccounts),
+    accounts: { candidates: ["shadow-exp-x"] },
+    tradingDates: [dateAt(5)],
+    windowDates: [dateAt(5)],
+  };
+  const now = new Date().toISOString();
+  await DB.prepare(
+    "INSERT INTO strategy_cohorts (id, namespace, revision, parent_version, policy_id, policy_digest, research_policy_id, research_policy_digest, stage, max_candidates, forward_days, reservation_manifest, forward_manifest, created_at, updated_at) VALUES ('c-promo', 'main', 0, 'baseline-v1', 'p', 'd', 'rp', 'rd', 'EVALUATING', 4, 30, '{}', ?, ?, ?)",
+  )
+    .bind(JSON.stringify(forwardManifest), now, now)
+    .run();
+  await DB.prepare(
+    "INSERT INTO strategy_cohort_members (cohort_id, member_id, slot_index, experiment_id, strategy_version, k, params, params_digest, params_distance, stage, created_at, updated_at) VALUES ('c-promo', 'm1', 1, 'exp-x', 'v-champ', 1, '{}', 'd', 1, 'ELIGIBLE', ?, ?)",
+  )
+    .bind(now, now)
+    .run();
+  const baseReport = (finalEquityCents) => ({
+    cohortId: "c-promo",
+    evaluatedAt: now,
+    windowDates: [dateAt(5)],
+    requiredDays: 30,
+    commonCoverage: [],
+    commonDataMissing: false,
+    fingerprint: { environmentValid: true },
+    minimumCompletedRounds: 1,
+    statisticsBudget: null,
+    verdicts: [],
+    ranked: [],
+    champion: { memberId: "m1", finalEquityCents },
+    promotion: null,
+    executionVersion: EXECUTION_VERSION,
+    scoringVersion: SCORING_VERSION,
+  });
+  // 报告摘要缺失或与内容不匹配 → 拒绝
+  await assert.rejects(
+    () => promoteCohortChampion(env, "c-promo", { evaluation: baseReport(1) }),
+    /报告摘要/,
+    "缺少报告摘要的晋级输入被拒绝",
+  );
+  const tampered = baseReport(1_000_000_000);
+  tampered.digest = await digestOf({
+    ...tampered,
+    champion: { memberId: "m1", finalEquityCents: 2 },
+  });
+  await assert.rejects(
+    () => promoteCohortChampion(env, "c-promo", { evaluation: tampered }),
+    /报告摘要/,
+    "摘要与内容不一致的报告被拒绝",
+  );
+  // 净值摘要与捕获清单不一致 → 拒绝
+  const badDigest = baseReport(1_000_000_000);
+  badDigest.digest = await digestOf(badDigest);
+  await DB.prepare(
+    "UPDATE strategy_cohorts SET forward_manifest = ? WHERE id = 'c-promo'",
+  )
+    .bind(
+      JSON.stringify({
+        ...forwardManifest,
+        initialAccounts: {
+          "shadow-exp-x": {
+            ...initialAccounts["shadow-exp-x"],
+            equityCents: 42,
+          },
+        },
+      }),
+    )
+    .run();
+  await assert.rejects(
+    () => promoteCohortChampion(env, "c-promo", { evaluation: badDigest }),
+    /期初净值摘要/,
+    "期初净值摘要被篡改时拒绝晋级",
+  );
+  await DB.prepare(
+    "UPDATE strategy_cohorts SET forward_manifest = ? WHERE id = 'c-promo'",
+  )
+    .bind(JSON.stringify(forwardManifest))
+    .run();
+  // 共同市场日缺少批次占用登记 → 拒绝
+  await assert.rejects(
+    () => promoteCohortChampion(env, "c-promo", { evaluation: badDigest }),
+    /占用登记/,
+    "共同日期 claim 缺失时拒绝晋级",
+  );
+  await DB.prepare(
+    "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at, owner_type, owner_id) VALUES ('main', ?, 'c-promo', 'FORWARD_TEST', ?, 'COHORT', 'c-promo')",
+  )
+    .bind(dateAt(5), now)
+    .run();
+  // 冠军期末净值与影子账本不一致 → 拒绝（账户存在但净值对不上）
+  await shadows.ensureAccount("shadow-exp-x", {
+    kind: "CANDIDATE",
+    cohortId: "c-promo",
+    memberId: "m1",
+    book: structuredClone(account.book),
+  });
+  await shadows.commitSettlement({
+    accountId: "shadow-exp-x",
+    expectedRevision: 0,
+    runId: "run-0",
+    tradeDate: dateAt(5),
+    book: { ...structuredClone(account.book), lastDate: dateAt(5) },
+    equity: { date: dateAt(5), equityCents: 1_999_999_999 },
+    session: { date: dateAt(5), status: "CLOSED" },
+  });
+  await assert.rejects(
+    () => promoteCohortChampion(env, "c-promo", { evaluation: badDigest }),
+    /期末净值/,
+    "冠军期末净值与影子账本不一致时拒绝晋级",
+  );
+  await DB.prepare(
+    "DELETE FROM shadow_equity WHERE account_id = 'shadow-exp-x' AND trade_date = ?",
+  )
+    .bind(dateAt(5))
+    .run();
+  await shadows.commitSettlement({
+    accountId: "shadow-exp-x",
+    expectedRevision: 1,
+    runId: "run-1",
+    tradeDate: dateAt(5),
+    book: { ...structuredClone(account.book), lastDate: dateAt(5) },
+    equity: { date: dateAt(5), equityCents: 1_000_000_000 },
+    session: { date: dateAt(5), status: "CLOSED" },
+  });
+  // 输入完整且一致时晋级成功，主账户未来策略引用切换
+  const promoted = await promoteCohortChampion(env, "c-promo", {
+    evaluation: badDigest,
+    effectiveTradeDate: dateAt(6),
+  });
+  assert.equal(promoted.promoted, true);
+  const after = await papers.account();
+  assert.equal(after.book.activeStrategy, "v-champ");
+  DB.close();
+});
+
+test("月度额度按批次数计；连续基线跨批次持续运行", async () => {
+  const { DB, env, repository, all } = await buildEnv();
+  await settlePrimaryToCaptureDay(env, repository, all);
+  const research = new ResearchRepository(env);
+  const reserved = await reserveScheduledCohort(env, repository);
+  assert.equal(
+    await research.monthUsage(beijingMonth()),
+    1,
+    "4 个候选槽位的批次按批次数计为 1",
+  );
+  const cohorts = new CohortRepository(env);
+  const shadows = new ShadowAccountRepository(env);
+  // 模拟批次已收口：窗口锁释放，但连续基线账户保留
+  await DB.prepare("UPDATE strategy_cohorts SET stage = 'CLOSED' WHERE id = ?")
+    .bind(reserved.cohortId)
+    .run();
+  await cohorts.releaseWindowOwner("COHORT", reserved.cohortId);
+  const papers = new RealtimeRepository(env);
+  const account = await papers.account();
+  const continuousBook = structuredClone(account.book);
+  continuousBook.lastDate = dateAt(SEED - 1);
+  await shadows.ensureAccount("shadow-baseline-continuous", {
+    kind: "BASELINE_CONTINUOUS",
+    cohortId: reserved.cohortId,
+    memberId: "baseline-continuous",
+    book: continuousBook,
+  });
+  const snapshot = await papers.snapshot(dateAt(SEED - 1));
+  await freezePortfolioPlan(
+    env,
+    "shadow-baseline-continuous",
+    {
+      snapshot,
+      strategy: BASE_STRATEGY,
+      strategyVersion: "baseline-v1",
+      now: `${dateAt(SEED - 1)}T07:00:00.000Z`,
+    },
+    { shadows },
+  );
+  // 无运行批次但存在连续基线：盘中仍联合采集，基线消费帧（SEED+1 日）
+  const calendar = {
+    dates: all.map((p) => p.dataset.date),
+    benchmark: [],
+  };
+  const poll = await runTournamentPoll(
+    env,
+    new Date(`${dateAt(SEED + 1)}T01:31:00Z`),
+    {
+      providers: {
+        calendar,
+        quotes: makeQuotes(
+          datasetByDateOf(all, []),
+          SEED + 1,
+          "09:31:00",
+          8000000,
+        ),
+      },
+    },
+  );
+  assert.ok(poll, "无运行批次但有连续基线时仍采集");
+  assert.ok(
+    poll.shadows.some(
+      (row) => row.accountId === "shadow-baseline-continuous" && row.applied,
+    ),
+    "连续基线消费联合帧",
+  );
+  // 盘后：无批次时连续基线仍按日结算并冻结次计划
+  const seedDayRow = await DB.prepare(
+    "SELECT payload FROM paper_market_days WHERE trade_date = ?",
+  )
+    .bind(dateAt(SEED))
+    .first();
+  const nextDataset = JSON.parse(seedDayRow.payload);
+  nextDataset.date = dateAt(SEED + 1);
+  for (const quote of Object.values(nextDataset.quotes)) {
+    quote.date = dateAt(SEED + 1);
+    quote.previousCloseCents = quote.closeCents;
+    quote.timestamp = `${dateAt(SEED + 1)}T15:00:00+08:00`;
+  }
+  await DB.prepare(
+    "INSERT INTO paper_market_days (trade_date, payload, digest) VALUES (?, ?, 'fixture')",
+  )
+    .bind(dateAt(SEED + 1), JSON.stringify(nextDataset))
+    .run();
+  const daily = await runDailyTournament(env, dateAt(SEED + 1), {
+    calendarDates: [dateAt(SEED + 2), dateAt(SEED + 3)],
+    now: `${dateAt(SEED + 1)}T07:30:00.000Z`,
+  });
+  assert.ok(daily.continuous?.applied, "连续基线跨批次按日结算");
+  const continuousAccount = await shadows.account("shadow-baseline-continuous");
+  assert.equal(continuousAccount.book.lastDate, dateAt(SEED + 1));
+  DB.close();
+});
