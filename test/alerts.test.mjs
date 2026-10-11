@@ -66,10 +66,12 @@ function loopInput(result, { now = NOW, sequence = 1 } = {}) {
 // 网络替身：按 URL 前缀返回预设供应商响应（{status, body}），杜绝真实外呼。
 function installFetchMock(routes) {
   const calls = [];
+  const bodies = [];
   const original = globalThis.fetch;
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, init) => {
     const target = String(url);
     calls.push(target);
+    bodies.push(init?.body ?? null);
     const route = Object.entries(routes).find(([prefix]) =>
       target.startsWith(prefix),
     );
@@ -81,7 +83,7 @@ function installFetchMock(routes) {
       json: async () => body,
     };
   };
-  return { calls, restore: () => (globalThis.fetch = original) };
+  return { calls, bodies, restore: () => (globalThis.fetch = original) };
 }
 
 test("事实分类：正常执行结果不产生告警事件，运行阻塞与故障如实入账", () => {
@@ -473,6 +475,92 @@ test("脱敏：消息不含金额、持仓、URL、密钥或堆栈；fingerprint
     now: "2026-10-09T07:30:00.000Z",
   });
   assert.ok(resolved.title.includes("已恢复"));
+});
+
+test("消息时间按北京时间显示：库里的 UTC 时刻不得直接当北京时间展示", () => {
+  const incident = {
+    id: "inc-tz",
+    fingerprint: "LOOP_FAILED:primary",
+    ruleType: RULE_TYPES.LOOP_FAILED,
+    severity: "WARNING",
+    firstSeen: "2026-10-11T10:41:46.000Z", // 北京时间 18:41:46
+    lastSeen: "2026-10-11T10:41:46.000Z",
+    entityRef: "primary",
+  };
+  const message = formatSafeNotification({
+    event: { reasonCode: REASON_CODES.EXECUTION_ERROR },
+    incident,
+    instanceAlias: "windows-paper",
+    now: "2026-10-11T10:41:46.925Z",
+  });
+  assert.ok(
+    message.text.includes("北京时间: 2026-10-11 18:41:46"),
+    `北京时间应为 UTC+8，实际消息：${message.text}`,
+  );
+  assert.ok(!message.text.includes("10:41:46"), "不得出现未换算的 UTC 时刻");
+  const resolved = formatResolvedNotification({
+    incident,
+    instanceAlias: "windows-paper",
+    now: "2026-10-11T11:02:03.000Z",
+  });
+  assert.ok(resolved.text.includes("发生: 2026-10-11 18:41:46"));
+  assert.ok(resolved.text.includes("恢复: 2026-10-11 19:02:03"));
+});
+
+test("消息不编造持续时间：刚触发的告警不写“持续时间: 1 分钟”", () => {
+  const incident = {
+    id: "inc-dur",
+    fingerprint: "LOOP_FAILED:primary",
+    ruleType: RULE_TYPES.LOOP_FAILED,
+    severity: "WARNING",
+    firstSeen: "2026-10-09T01:35:00.000Z",
+    lastSeen: "2026-10-09T01:35:00.000Z",
+    entityRef: "primary",
+  };
+  const opened = formatSafeNotification({
+    event: { reasonCode: REASON_CODES.EXECUTION_ERROR },
+    incident,
+    instanceAlias: "windows-paper",
+    now: "2026-10-09T01:35:01.000Z",
+  });
+  assert.ok(
+    !opened.text.includes("持续时间"),
+    `刚触发不应报持续时间：${opened.text}`,
+  );
+  // 满一分钟才给出，且数值如实反映间隔。
+  const later = formatSafeNotification({
+    event: { reasonCode: REASON_CODES.EXECUTION_ERROR },
+    incident,
+    instanceAlias: "windows-paper",
+    now: "2026-10-09T01:47:30.000Z",
+  });
+  assert.ok(later.text.includes("持续时间: 13 分钟"), later.text);
+});
+
+test("告警消息带结构化原因：操作者能分辨是哪一类失败", async () => {
+  const env = buildEnv();
+  const enabled = {
+    ...env,
+    FEISHU_WEBHOOK_URL: "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+  };
+  const mock = installFetchMock({
+    "https://open.feishu.cn/": { code: 0, msgId: "om_reason" },
+  });
+  try {
+    await recordOperationEvents(enabled, [loopInput({ status: "ERROR" })]);
+    await processAlerts(enabled, { now: NOW });
+    await processAlertOutbox(enabled, { now: "2026-10-09T01:35:01.000Z" });
+    const sent = JSON.parse(mock.bodies[0]);
+    assert.ok(
+      sent.content.text.includes(`原因: ${REASON_CODES.EXECUTION_ERROR}`),
+      `消息应含结构化原因：${sent.content.text}`,
+    );
+    // 原始异常文本永不进消息。
+    assert.ok(!sent.content.text.includes("http"));
+  } finally {
+    mock.restore();
+  }
+  env.DB.close();
 });
 
 test("恢复摘要与维护窗口：维护期抑制非风险规则，账本异常不受静默", async () => {

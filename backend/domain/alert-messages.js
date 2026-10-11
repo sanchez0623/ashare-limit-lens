@@ -1,12 +1,23 @@
 // 最小消息模板与脱敏（§7）：默认不含资产金额、持仓数量、真实账户标识、
 // 原始 URL、Key 或堆栈。中文只用于展示。
 import { fingerprintOf } from "./alert-rules.js";
+import { marketClock } from "./realtime.js";
 
 export function instanceAlias(env) {
   const alias = env?.ALERT_INSTANCE_ALIAS;
   return typeof alias === "string" && alias.trim()
     ? alias.trim().slice(0, 40)
     : "paper-instance";
+}
+
+// 库里的时刻一律是 UTC ISO；直接截断字符串会把 UTC 当成北京时间显示，
+// 与操作者墙上的时钟差 8 小时。展示统一换算到北京时间。
+function beijingStamp(iso) {
+  if (!iso) return "";
+  const at = new Date(iso);
+  if (!Number.isFinite(at.getTime())) return "";
+  const clock = marketClock(at);
+  return `${clock.date} ${clock.time}`;
 }
 
 const RULE_LABELS = {
@@ -33,24 +44,22 @@ export function formatSafeNotification({
   privacyMode = true,
 }) {
   const ruleLabel = RULE_LABELS[incident.ruleType] ?? incident.ruleType;
-  const clock = now ? now.replace("T", " ").slice(0, 19) : "";
-  const durationMinutes = incident.firstSeen
-    ? Math.max(
-        1,
-        Math.round(
-          (new Date(now).getTime() - new Date(incident.firstSeen).getTime()) /
-            60000,
-        ),
-      )
-    : null;
   const header = `[${SEVERITY_LABELS[incident.severity] ?? incident.severity}] ${ruleLabel}`;
   const lines = [
     header,
     `实例: ${alias}`,
     `规则: ${incident.ruleType} / ${incident.fingerprint === fingerprintOf({ ruleType: incident.ruleType, entityRef: incident.entityRef }) ? (incident.entityRef ?? "primary") : incident.fingerprint}`,
-    `北京时间: ${clock}`,
+    `北京时间: ${beijingStamp(now)}`,
   ];
-  if (durationMinutes) lines.push(`持续时间: ${durationMinutes} 分钟`);
+  // 刚触发的告警不显示"持续时间: 1 分钟"这类凑数结论；满一分钟才给出。
+  const durationMinutes =
+    incident.firstSeen && now
+      ? Math.round(
+          (new Date(now).getTime() - new Date(incident.firstSeen).getTime()) /
+            60000,
+        )
+      : 0;
+  if (durationMinutes >= 1) lines.push(`持续时间: ${durationMinutes} 分钟`);
   if (event?.reasonCode) lines.push(`原因: ${event.reasonCode}`);
   if (!privacyMode && event?.safeFacts)
     lines.push(
@@ -69,15 +78,14 @@ export function formatResolvedNotification({
   now,
 }) {
   const ruleLabel = RULE_LABELS[incident.ruleType] ?? incident.ruleType;
-  const clock = now ? now.replace("T", " ").slice(0, 19) : "";
   return {
     title: `[已恢复] ${ruleLabel}`,
     text: [
       `[已恢复] ${ruleLabel}`,
       `实例: ${alias}`,
       `规则: ${incident.ruleType}`,
-      `发生: ${incident.firstSeen?.replace("T", " ").slice(0, 19) ?? ""}`,
-      `恢复: ${clock}`,
+      `发生: ${beijingStamp(incident.firstSeen)}`,
+      `恢复: ${beijingStamp(now)}`,
     ].join("\n"),
   };
 }

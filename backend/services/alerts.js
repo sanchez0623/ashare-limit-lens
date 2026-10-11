@@ -158,6 +158,8 @@ export async function processAlerts(
       eventType: notifying ? notify.type : null,
       eventPayload: {
         severity: notify?.severity ?? evaluation.severity,
+        // 结构化原因随审计事件落库，发送时据此如实说明触发原因（不含原始异常文本）。
+        reasonCode: evaluation.event?.reasonCode ?? null,
         ...(transition.action === "RESOLVE" ? { resolvedBy: "rules" } : {}),
       },
       channels: notifying ? channels : [],
@@ -290,7 +292,9 @@ export async function processAlertOutbox(
             now,
           })
         : formatSafeNotification({
-            event: null,
+            // 结构化原因来自审计事件本身：操作者需要知道"哪一类失败"，
+            // 但原始异常文本绝不进消息。
+            event: { reasonCode: alertEvent.payload?.reasonCode ?? null },
             incident,
             instanceAlias: instanceAlias(env),
             now,
