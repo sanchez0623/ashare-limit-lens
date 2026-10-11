@@ -537,6 +537,12 @@ export function transitionIncident({
           notify: { type: "OPEN", severity: evaluation.severity },
         };
 
+  // 观测顺序守卫（P1-1）：迟到的执行器 now 早于实例已记录的最后观测时，它读到
+  // 的是旧世界。严重度随时长/时段单调不减，旧观测恒被更新的观测支配，写回只会
+  // 把已升级的 CRITICAL 降级、把 lastSeen 回退。更新的观测已覆盖本批事实，静默保持。
+  if (incident.lastSeen && now < incident.lastSeen)
+    return { action: "KEEP", patch: {}, notify: null };
+
   // 幂等性：实例已恢复且本批事件为旧事件重放（发生时刻不晚于恢复时刻），忽略。
   if (
     incident.status === "RESOLVED" &&

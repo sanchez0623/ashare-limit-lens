@@ -209,37 +209,48 @@ export async function processAlerts(
       marketContext,
       now,
     });
-    // 同一指纹的多条事件按根因聚合：一次评估，摘要列出受影响角色（§5.3）。
-    const evaluation = evaluations.find((row) => !row.absent) ?? evaluations[0];
-    if (!evaluation || evaluation.suppressed) continue;
-    // 并发冲突时重读实例并重新评估，然后必须重试提交："严重度相同"不代表
-    // 结果已被胜出者提交——胜出者可能只是无关的 ACK 或心跳 patch，它推进
-    // 了 revision 却没有处理本批事实。只有重评后动作本身变成无需写库
-    // （commit 返回 skipped）才算完成。最多重试 3 次，仍冲突则不推进游标，
-    // 下一轮按摄取顺序重放（状态机与入队对重放幂等）。
-    let contendedOut = false;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const result = await commit({ previous, evaluation, group });
-      if (!result.contended) {
-        contendedOut = false;
+    // 同一指纹的多条事件按观测顺序逐条应用（§5.3）：组内第一条可能是被幂等
+    // 守卫忽略的历史重放，但后面仍可能有真实的新故障。只取一条评估会让新故障
+    // 随游标一起被永久吞掉——必须处理组内全部事实，全部提交成功后才允许推进游标。
+    let groupContended = false;
+    for (const evaluation of evaluations) {
+      if (!evaluation || evaluation.absent || evaluation.suppressed) continue;
+      // 并发冲突时重读实例并重新评估，然后必须重试提交："严重度相同"不代表
+      // 结果已被胜出者提交——胜出者可能只是无关的 ACK 或心跳 patch，它推进
+      // 了 revision 却没有处理本批事实。只有重评后动作本身变成无需写库
+      // （commit 返回 skipped）才算完成。最多重试 3 次，仍冲突则不推进游标，
+      // 下一轮按摄取顺序重放（状态机与入队对重放幂等）。
+      let contendedOut = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const result = await commit({ previous, evaluation, group });
+        if (!result.contended) {
+          contendedOut = false;
+          break;
+        }
+        contendedOut = true;
+        // 冲突：重读最新实例（含已恢复），基于新状态重新评估同一条事实。
+        previous = await store.recentIncident(fingerprint);
+        const reEval = evaluateAlertRules({
+          events: [evaluation.event],
+          previousIncident: previous,
+          policy,
+          marketContext,
+          now,
+        });
+        const re = reEval.find((row) => row.fingerprint === fingerprint);
+        if (!re || re.absent) break;
+        Object.assign(evaluation, re);
+      }
+      // 重试耗尽仍冲突：本批事实未提交，游标不得越过它们。
+      if (contendedOut) {
+        groupContended = true;
         break;
       }
-      contendedOut = true;
-      // 冲突：重读最新实例（含已恢复），基于新状态重新评估同一批事实。
+      // 逐条应用的评估必须基于上一条提交后的最新状态：否则第二条会用过期
+      // revision 提交，白白制造一次冲突重试。
       previous = await store.recentIncident(fingerprint);
-      const reEval = evaluateAlertRules({
-        events: group,
-        previousIncident: previous,
-        policy,
-        marketContext,
-        now,
-      });
-      const re = reEval.find((row) => row.fingerprint === fingerprint);
-      if (!re || re.absent) break;
-      Object.assign(evaluation, re);
     }
-    // 重试耗尽仍冲突：本批事实未提交，游标不得越过它们。
-    if (contendedOut) unresolvedContention = true;
+    if (groupContended) unresolvedContention = true;
   }
   // 游标只按摄取顺序前进；无事件时不回退（null 表示从头读，绝不能写回）。
   // 有未提交的冲突事实时也不前进：推进等于宣布"这批已消费"，升级会被
