@@ -100,13 +100,16 @@ export class RealtimeRepository extends PaperRepository {
           [row.id, row.date, JSON.stringify(row)],
         ),
       );
+    // 事件 INSERT 必须同样走账户 CAS 守卫：两个重叠的执行器会读到同一
+    // revision 并各自产出事件，输家的 UPDATE 已输（changes=0），它携带的
+    // 是"从未成为权威状态"的事实（observedAt 各不相同 → 事件 ID 不同，
+    // INSERT OR IGNORE 挡不住）。无守卫时输家事件照常落库，制造幻影
+    // 风险事实与重复通知。守卫失败只插入 0 行——事件与账户提交同生共死。
     for (const event of operationEvents)
       statements.push(
-        this.db
-          .prepare(
-            "INSERT OR IGNORE INTO operation_events (id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, occurred_at, entity_ref, payload, ingest_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(ingest_seq), 0) + 1 FROM operation_events))",
-          )
-          .bind(
+        guarded(
+          "INSERT OR IGNORE INTO operation_events (id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, occurred_at, entity_ref, payload, ingest_seq) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(ingest_seq), 0) + 1 FROM operation_events)",
+          [
             event.id,
             event.instanceId,
             event.accountId,
@@ -118,7 +121,8 @@ export class RealtimeRepository extends PaperRepository {
             event.occurredAt,
             event.entityRef ?? null,
             JSON.stringify(event.payload ?? {}),
-          ),
+          ],
+        ),
       );
     const results = await this.db.batch(statements);
     return results[0].meta.changes === 1;

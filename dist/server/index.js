@@ -6870,20 +6870,21 @@ var RealtimeRepository = class extends PaperRepository {
       );
     for (const event of operationEvents)
       statements.push(
-        this.db.prepare(
-          "INSERT OR IGNORE INTO operation_events (id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, occurred_at, entity_ref, payload, ingest_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(ingest_seq), 0) + 1 FROM operation_events))"
-        ).bind(
-          event.id,
-          event.instanceId,
-          event.accountId,
-          event.tradeDate ?? null,
-          event.sourceSequence ?? null,
-          event.type,
-          event.ruleType ?? null,
-          event.reasonCode ?? null,
-          event.occurredAt,
-          event.entityRef ?? null,
-          JSON.stringify(event.payload ?? {})
+        guarded(
+          "INSERT OR IGNORE INTO operation_events (id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, occurred_at, entity_ref, payload, ingest_seq) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(ingest_seq), 0) + 1 FROM operation_events)",
+          [
+            event.id,
+            event.instanceId,
+            event.accountId,
+            event.tradeDate ?? null,
+            event.sourceSequence ?? null,
+            event.type,
+            event.ruleType ?? null,
+            event.reasonCode ?? null,
+            event.occurredAt,
+            event.entityRef ?? null,
+            JSON.stringify(event.payload ?? {})
+          ]
         )
       );
     const results = await this.db.batch(statements);

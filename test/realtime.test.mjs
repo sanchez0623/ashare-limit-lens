@@ -481,6 +481,103 @@ test("风险事实随账户提交同事务落库：已提交账户的回撤与�
     db.close();
   }
 });
+test("输家 CAS 批次不泄漏事件：账户提交失败时风险事件全部不落库", async () => {
+  const db = localDatabase(),
+    repo = new RealtimeRepository({ DB: db });
+  try {
+    await baseline(repo);
+    let account = await repo.account();
+    const intent = createPlan(
+      snapshot(dateAt(0)),
+      account.book,
+      BASE_STRATEGY,
+      "baseline-v1",
+      `${dateAt(0)}T07:10:00.000Z`,
+    );
+    await repo.savePlan(intent);
+    const session = openSession(account.book, intent, dateAt(1));
+    const staleRevision = account.revision;
+    // 两个重叠执行器读到同一 revision、各自产出事件；observedAt 不同
+    // （独立轮询路径）→ 事件 ID 不同，INSERT OR IGNORE 无法兜底去重。
+    const obsWinner = observation(dateAt(1), "09:30:00", 1000, 100000);
+    const stepWinner = advanceSession(account.book, session, obsWinner);
+    const eventsWinner = buildOperationEvents(
+      {
+        source: "loop",
+        result: { status: "RUNNING", drawdown: 0.2, drawdownBreached: true },
+        now: obsWinner.observedAt,
+        tradeDate: dateAt(1),
+        sourceSequence: stepWinner.session.sequence,
+      },
+      "test-instance",
+    );
+    assert.ok(eventsWinner.length >= 1, "赢家批次带事件");
+    assert.equal(
+      await repo.commitObservation(
+        staleRevision,
+        stepWinner,
+        obsWinner,
+        eventsWinner,
+      ),
+      true,
+      "赢家先提交成功",
+    );
+    const obsLoser = observation(dateAt(1), "09:30:10", 990, 100000);
+    const stepLoser = advanceSession(account.book, session, obsLoser);
+    const eventsLoser = buildOperationEvents(
+      {
+        source: "loop",
+        result: { status: "RUNNING", drawdown: 0.25, drawdownBreached: true },
+        now: obsLoser.observedAt,
+        tradeDate: dateAt(1),
+        sourceSequence: stepLoser.session.sequence,
+      },
+      "test-instance",
+    );
+    assert.ok(
+      eventsLoser.every(
+        (event) => !eventsWinner.some((row) => row.id === event.id),
+      ),
+      "输家事件 ID 与赢家不同（observedAt 不同）",
+    );
+    // 输家：基于同一 revision 提交，账户 UPDATE 必输（changes=0）。
+    // 修复前它携带的事件已随 batch 落库——这些是"从未成为权威状态"的
+    // 风险事实，会制造幻影 incident 与重复通知。
+    assert.equal(
+      await repo.commitObservation(
+        staleRevision,
+        stepLoser,
+        obsLoser,
+        eventsLoser,
+      ),
+      false,
+      "输家的账户提交失败",
+    );
+    const leaked = [];
+    for (const event of eventsLoser) {
+      const row = await db
+        .prepare("SELECT id FROM operation_events WHERE id = ?")
+        .bind(event.id)
+        .first();
+      if (row) leaked.push(event.id);
+    }
+    assert.deepEqual(
+      leaked,
+      [],
+      "输家批次的事件不得落库：提交失败与事件写入同生共死",
+    );
+    // 赢家的事件原样保留。
+    for (const event of eventsWinner) {
+      const row = await db
+        .prepare("SELECT id FROM operation_events WHERE id = ?")
+        .bind(event.id)
+        .first();
+      assert.ok(row, `赢家事件 ${event.ruleType} 已落库`);
+    }
+  } finally {
+    db.close();
+  }
+});
 test("实时 AI 重放不以日线补造收益，缺少实时覆盖时禁止验证通过", () => {
   const pair = { snapshot: snapshot(dateAt(0)), dataset: closing(dateAt(1)) };
   const result = replayStrategy([pair], BASE_STRATEGY);
