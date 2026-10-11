@@ -1684,3 +1684,74 @@ test("游标写入单调：首次启动路径也不得把游标写回旧位置",
   );
   env.DB.close();
 });
+
+test("观测顺序守卫：迟到的执行器不得把已升级实例降级，也不得回退 lastSeen", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  await recordOperationEvents(env, [loopInput({ status: "ERROR" })]);
+  await processAlerts(env, { now: NOW }); // 实例 WARNING，lastSeen=NOW
+  const opened = await store.activeIncident("LOOP_FAILED:primary");
+  // 并发执行器 B 用更晚的观测把实例升级为 CRITICAL，lastSeen 也推进到更晚。
+  const bNow = "2026-10-09T01:36:31.000Z"; // 距 firstSeen 91s，越过升级阈值
+  await store.commitIncidentTransition({
+    id: opened.id,
+    patch: { severity: "CRITICAL", lastSeen: bNow },
+    now: bNow,
+    expectedRevision: opened.revision,
+  });
+  // 迟到的执行器 A 用更早的观测（now < lastSeen=01:36:31）重放同一批事实：
+  // 其评估时长仅 60s，按旧逻辑会被判为 WARNING 并写回，把 CRITICAL 降级、
+  // lastSeen 拉回。观测顺序守卫必须整体跳过这次陈旧评估。
+  await recordOperationEvents(env, [
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:36:00.000Z", sequence: 2 },
+    ),
+  ]);
+  await processAlerts(env, { now: "2026-10-09T01:36:00.000Z" });
+  const after = await store.getIncident(opened.id);
+  assert.equal(after.severity, "CRITICAL", "迟到的旧评估不得把实例降级");
+  assert.equal(after.lastSeen, bNow, "lastSeen 不得被旧观测回退");
+  env.DB.close();
+});
+
+test("同批补读：组内历史重放被忽略，后续新故障仍必须处理并推进游标", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  // 建立实例 → 正向证据恢复它。
+  await recordOperationEvents(env, [loopInput({ status: "ERROR" })]);
+  await processAlerts(env, { now: NOW });
+  await recordOperationEvents(env, [
+    loopInput(
+      { status: "RUNNING" },
+      { now: "2026-10-09T01:45:00.000Z", sequence: 2 },
+    ),
+  ]);
+  await processAlerts(env, { now: "2026-10-09T01:45:10.000Z" });
+  const resolved = await store.recentIncident("LOOP_FAILED:primary");
+  assert.equal(resolved.status, "RESOLVED");
+  // 同一批里两条同指纹事实：一条是恢复前的历史重放（应被幂等守卫忽略），
+  // 另一条是恢复之后发生的真实新故障。修复前只取组内第一条评估，
+  // 历史重放被判为无需写库，同组的新故障随之被游标永久吞掉。
+  await recordOperationEvents(env, [
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:40:00.000Z", sequence: 3 },
+    ),
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:50:00.000Z", sequence: 4 },
+    ),
+  ]);
+  await processAlerts(env, { now: "2026-10-09T01:50:10.000Z" });
+  const reopened = await store.recentIncident("LOOP_FAILED:primary");
+  assert.equal(reopened.status, "OPEN", "同组新故障必须重新打开实例");
+  assert.equal(reopened.resolvedAt, null, "重开时清除恢复标记");
+  // 摄取序号按每条落库事实计数：1 条 ERROR + RUNNING 的 5 条恢复证据 + 本批 2 条 = 8。
+  assert.equal(
+    (await store.processorState()).lastEventCursor.ingestSeq,
+    8,
+    "组内全部事实处理完成后游标推进到批尾",
+  );
+  env.DB.close();
+});
