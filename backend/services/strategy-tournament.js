@@ -803,9 +803,14 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
         },
         observedAt: primaryFrame.observedAt,
       });
-      // CAS 冲突或错误意味着该帧观察没有生效：停在当前帧等待下一轮
-      // 重放，绝不带着未生效的前序帧继续处理后续帧（§7.2 按序消费）。
-      if (primary?.status === "CONFLICT" || primary?.status === "ERROR") break;
+      // 只有"观察已提交"的状态才推进到后续帧（§7.2 按序消费）：CAS 冲突、
+      // 错误、BLOCKED（上一交易日未结算）、MARKET_CLOSED / NON_TRADING_DAY /
+      // SETTLED（当日尚未开盘或已结算）等状态都意味着当前帧观察未生效，
+      // 必须停在当前帧等待下一轮重放。否则带上未生效的前序帧继续处理后帧，
+      // 会跳过止损清仓帧等关键观察（上一日结算恰好完成时第二帧就生效了）。
+      const committed =
+        primary?.status === "RUNNING" || primary?.status === "STALE_QUOTES";
+      if (!committed) break;
     } catch (error) {
       primary = { status: "ERROR", reason: safeError(error) };
       break;
@@ -953,30 +958,6 @@ export async function settleTournamentDay(
     manifest.accounts.baselineMatch,
     manifest.accounts.baselineContinuous,
   ];
-  if (manifest.tradingDates.includes(date)) {
-    // 已登记日：仍幂等重结算未完成账户（不重复 claim、样本或事件），
-    // 修复"部分账户结算失败后被 DUPLICATE 早退卡住"的缺口。
-    const datasetRow = await papers.db
-      .prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?")
-      .bind(date)
-      .first();
-    const settlements = datasetRow
-      ? await settleAccounts(
-          env,
-          accountIds,
-          date,
-          JSON.parse(datasetRow.payload),
-          {
-            shadows,
-          },
-        )
-      : [];
-    return {
-      status: "DUPLICATE",
-      settlements,
-      reason: "该共同市场日已登记，幂等跳过；不重复结算或延长窗口",
-    };
-  }
   // 窗口日历（§8.2）：以**主账户结算日序列**为准。主账户的盘后流程
   // 保证不跳日（上一交易日未结算即 BLOCKED 停摆），其已结算交易日就是
   // 可验证的真实交易日历；腾讯指数日线只含已收盘历史日期，未来日历
@@ -998,6 +979,62 @@ export async function settleTournamentDay(
       .bind(manifest.captureDate, manifest.requiredDays)
       .all()
   ).results.map((row) => row.trade_date);
+  // 统一收口（§8.2/§10）：窗口已满足评估条件却仍 RUNNING 时，冻结窗口、
+  // 进入 EVALUATING 并评估。用于正常收口与"已登记但尚未评估即中断"的
+  // 恢复；幂等——收口后阶段变为 EVALUATING，重入在阶段入口被拦截，不会
+  // 重复评估。缺失日不补满，留待共同覆盖闸门暴露、整批无资格。
+  const closeWindow = async (tradingDates) => {
+    await cohorts.transitionCohort(cohort.id, {
+      from: "RUNNING",
+      to: "EVALUATING",
+      eventType: "FORWARD_WINDOW_COMPLETE",
+      payload: {
+        days: tradingDates.length,
+        missing: Math.max(0, manifest.requiredDays - tradingDates.length),
+        windowEnd: windowDates.at(-1) ?? null,
+        primaryOrdinal,
+      },
+      set: {
+        forward_manifest: JSON.stringify({
+          ...manifest,
+          tradingDates,
+          windowDates,
+        }),
+      },
+    });
+    return evaluateCohort(env, cohort.id, { calendarDates });
+  };
+  if (manifest.tradingDates.includes(date)) {
+    // 已登记日：仍幂等重结算未完成账户（不重复 claim、样本或事件），
+    // 修复"部分账户结算失败后被 DUPLICATE 早退卡住"的缺口。
+    const datasetRow = await papers.db
+      .prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?")
+      .bind(date)
+      .first();
+    const settlements = datasetRow
+      ? await settleAccounts(
+          env,
+          accountIds,
+          date,
+          JSON.parse(datasetRow.payload),
+          {
+            shadows,
+          },
+        )
+      : [];
+    // 末日登记已落库、尚未进入 EVALUATING 时进程退出：同日重试按已满足的
+    // 主账户结算序数恢复收口，避免批次永久 RUNNING 占锁（§10）。
+    const evaluation =
+      primaryOrdinal >= manifest.requiredDays
+        ? await closeWindow(manifest.tradingDates)
+        : null;
+    return {
+      status: "DUPLICATE",
+      settlements,
+      evaluation,
+      reason: "该共同市场日已登记，幂等跳过；窗口已满足则恢复收口",
+    };
+  }
   const datasetRow = await papers.db
     .prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?")
     .bind(date)
@@ -1008,26 +1045,10 @@ export async function settleTournamentDay(
       reason: "主账户当日尚未结算；影子账本与主账户结算保持追平，不提前结算",
     };
   if (primaryOrdinal > manifest.requiredDays) {
-    // 主账户已进入窗口外的结算日：不登记、不延长。
-    let evaluation = null;
-    if (manifest.tradingDates.length < manifest.requiredDays) {
-      // 窗口结束仍有缺口：按主账户结算序列冻结的窗口收口评估，
-      // 赛马侧漏登记的日子在共同覆盖检查中暴露，整批无资格。
-      await cohorts.transitionCohort(cohort.id, {
-        from: "RUNNING",
-        to: "EVALUATING",
-        eventType: "FORWARD_WINDOW_COMPLETE",
-        payload: {
-          days: manifest.tradingDates.length,
-          missing: manifest.requiredDays - manifest.tradingDates.length,
-          note: "固定窗口结束仍有缺失交易日，按主账户结算序列收口评估",
-        },
-        set: {
-          forward_manifest: JSON.stringify({ ...manifest, windowDates }),
-        },
-      });
-      evaluation = await evaluateCohort(env, cohort.id, { calendarDates });
-    }
+    // 主账户已进入窗口外的结算日：不登记、不延长。窗口若因此前中断而
+    // 始终未收口（阶段仍 RUNNING），在此兜底收口；缺失日由共同覆盖闸门
+    // 暴露，整批无资格。
+    const evaluation = await closeWindow(manifest.tradingDates);
     return {
       status: "WINDOW_ENDED",
       evaluation,
@@ -1154,20 +1175,10 @@ export async function settleTournamentDay(
   // 评估由主账户结算序列触发（§8.2）：捕获日之后第 requiredDays 个
   // 主账户结算日结算完成即收口；缺失日不补满，赛马侧漏登记的日子
   // 保留在窗口列表内由共同覆盖闸门暴露。
-  let evaluation = null;
-  if (primaryOrdinal >= manifest.requiredDays) {
-    await cohorts.transitionCohort(cohort.id, {
-      from: "RUNNING",
-      to: "EVALUATING",
-      eventType: "FORWARD_WINDOW_COMPLETE",
-      payload: {
-        days: tradingDates.length,
-        windowEnd: windowDates.at(-1) ?? null,
-        primaryOrdinal,
-      },
-    });
-    evaluation = await evaluateCohort(env, cohort.id, { calendarDates });
-  }
+  const evaluation =
+    primaryOrdinal >= manifest.requiredDays
+      ? await closeWindow(tradingDates)
+      : null;
   return {
     status: "SETTLED",
     date,
@@ -1332,7 +1343,10 @@ export async function evaluateCohort(
   await cohorts.leaseTask(statisticsTaskId, {
     leaseOwner: `evaluate-${cohortId}`,
   });
-  // 共同数据覆盖：每个窗口日必须有主账户结算数据与 cohort 名下的日期登记。
+  // 共同数据覆盖：每个窗口日必须有主账户结算数据、cohort 名下的日期登记，
+  // 且该日已计入 tradingDates（即完整日登记——claim/样本用途/窗口推进全部
+  // 落库）。只校验 claim 不够：claim 成功但完整登记失败时，该日会缺席
+  // tradingDates，必须让整批无资格，而不是放行 29 天的批次晋级（§8.2）。
   const commonCoverage = [];
   for (const date of windowDates) {
     const datasetRow = await papers.db
@@ -1349,10 +1363,14 @@ export async function evaluateCohort(
       date,
       datasetSettled: Boolean(datasetRow),
       claimOwner: claim ? `${claim.owner_type}:${claim.owner_id}` : null,
+      registered: manifest.tradingDates.includes(date),
     });
   }
   const commonDataMissing = commonCoverage.some(
-    (row) => !row.datasetSettled || row.claimOwner !== `COHORT:${cohortId}`,
+    (row) =>
+      !row.datasetSettled ||
+      row.claimOwner !== `COHORT:${cohortId}` ||
+      !row.registered,
   );
   // 环境指纹（闸门 6）：费用、父策略、执行/评分版本与冻结成员清单一致性。
   const members = await cohorts.members(cohortId);

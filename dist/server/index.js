@@ -10978,7 +10978,8 @@ async function runTournamentPoll(env, now, { providers = {} } = {}) {
         },
         observedAt: primaryFrame.observedAt
       });
-      if (primary?.status === "CONFLICT" || primary?.status === "ERROR") break;
+      const committed = primary?.status === "RUNNING" || primary?.status === "STALE_QUOTES";
+      if (!committed) break;
     } catch (error) {
       primary = { status: "ERROR", reason: safeError(error) };
       break;
@@ -11102,6 +11103,34 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
     manifest.accounts.baselineMatch,
     manifest.accounts.baselineContinuous
   ];
+  const ordinalRow = await papers.db.prepare(
+    "SELECT COUNT(*) AS n FROM paper_market_days WHERE trade_date > ? AND trade_date <= ?"
+  ).bind(manifest.captureDate, date).first();
+  const primaryOrdinal = Number(ordinalRow?.n ?? 0);
+  const windowDates = (await papers.db.prepare(
+    "SELECT trade_date FROM paper_market_days WHERE trade_date > ? ORDER BY trade_date LIMIT ?"
+  ).bind(manifest.captureDate, manifest.requiredDays).all()).results.map((row) => row.trade_date);
+  const closeWindow = async (tradingDates2) => {
+    await cohorts.transitionCohort(cohort.id, {
+      from: "RUNNING",
+      to: "EVALUATING",
+      eventType: "FORWARD_WINDOW_COMPLETE",
+      payload: {
+        days: tradingDates2.length,
+        missing: Math.max(0, manifest.requiredDays - tradingDates2.length),
+        windowEnd: windowDates.at(-1) ?? null,
+        primaryOrdinal
+      },
+      set: {
+        forward_manifest: JSON.stringify({
+          ...manifest,
+          tradingDates: tradingDates2,
+          windowDates
+        })
+      }
+    });
+    return evaluateCohort(env, cohort.id, { calendarDates });
+  };
   if (manifest.tradingDates.includes(date)) {
     const datasetRow2 = await papers.db.prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?").bind(date).first();
     const settlements2 = datasetRow2 ? await settleAccounts(
@@ -11113,19 +11142,14 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
         shadows
       }
     ) : [];
+    const evaluation2 = primaryOrdinal >= manifest.requiredDays ? await closeWindow(manifest.tradingDates) : null;
     return {
       status: "DUPLICATE",
       settlements: settlements2,
-      reason: "\u8BE5\u5171\u540C\u5E02\u573A\u65E5\u5DF2\u767B\u8BB0\uFF0C\u5E42\u7B49\u8DF3\u8FC7\uFF1B\u4E0D\u91CD\u590D\u7ED3\u7B97\u6216\u5EF6\u957F\u7A97\u53E3"
+      evaluation: evaluation2,
+      reason: "\u8BE5\u5171\u540C\u5E02\u573A\u65E5\u5DF2\u767B\u8BB0\uFF0C\u5E42\u7B49\u8DF3\u8FC7\uFF1B\u7A97\u53E3\u5DF2\u6EE1\u8DB3\u5219\u6062\u590D\u6536\u53E3"
     };
   }
-  const ordinalRow = await papers.db.prepare(
-    "SELECT COUNT(*) AS n FROM paper_market_days WHERE trade_date > ? AND trade_date <= ?"
-  ).bind(manifest.captureDate, date).first();
-  const primaryOrdinal = Number(ordinalRow?.n ?? 0);
-  const windowDates = (await papers.db.prepare(
-    "SELECT trade_date FROM paper_market_days WHERE trade_date > ? ORDER BY trade_date LIMIT ?"
-  ).bind(manifest.captureDate, manifest.requiredDays).all()).results.map((row) => row.trade_date);
   const datasetRow = await papers.db.prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?").bind(date).first();
   if (!datasetRow)
     return {
@@ -11133,23 +11157,7 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
       reason: "\u4E3B\u8D26\u6237\u5F53\u65E5\u5C1A\u672A\u7ED3\u7B97\uFF1B\u5F71\u5B50\u8D26\u672C\u4E0E\u4E3B\u8D26\u6237\u7ED3\u7B97\u4FDD\u6301\u8FFD\u5E73\uFF0C\u4E0D\u63D0\u524D\u7ED3\u7B97"
     };
   if (primaryOrdinal > manifest.requiredDays) {
-    let evaluation2 = null;
-    if (manifest.tradingDates.length < manifest.requiredDays) {
-      await cohorts.transitionCohort(cohort.id, {
-        from: "RUNNING",
-        to: "EVALUATING",
-        eventType: "FORWARD_WINDOW_COMPLETE",
-        payload: {
-          days: manifest.tradingDates.length,
-          missing: manifest.requiredDays - manifest.tradingDates.length,
-          note: "\u56FA\u5B9A\u7A97\u53E3\u7ED3\u675F\u4ECD\u6709\u7F3A\u5931\u4EA4\u6613\u65E5\uFF0C\u6309\u4E3B\u8D26\u6237\u7ED3\u7B97\u5E8F\u5217\u6536\u53E3\u8BC4\u4F30"
-        },
-        set: {
-          forward_manifest: JSON.stringify({ ...manifest, windowDates })
-        }
-      });
-      evaluation2 = await evaluateCohort(env, cohort.id, { calendarDates });
-    }
+    const evaluation2 = await closeWindow(manifest.tradingDates);
     return {
       status: "WINDOW_ENDED",
       evaluation: evaluation2,
@@ -11265,20 +11273,7 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
       })
     }
   });
-  let evaluation = null;
-  if (primaryOrdinal >= manifest.requiredDays) {
-    await cohorts.transitionCohort(cohort.id, {
-      from: "RUNNING",
-      to: "EVALUATING",
-      eventType: "FORWARD_WINDOW_COMPLETE",
-      payload: {
-        days: tradingDates.length,
-        windowEnd: windowDates.at(-1) ?? null,
-        primaryOrdinal
-      }
-    });
-    evaluation = await evaluateCohort(env, cohort.id, { calendarDates });
-  }
+  const evaluation = primaryOrdinal >= manifest.requiredDays ? await closeWindow(tradingDates) : null;
   return {
     status: "SETTLED",
     date,
@@ -11420,11 +11415,12 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     commonCoverage.push({
       date,
       datasetSettled: Boolean(datasetRow),
-      claimOwner: claim ? `${claim.owner_type}:${claim.owner_id}` : null
+      claimOwner: claim ? `${claim.owner_type}:${claim.owner_id}` : null,
+      registered: manifest.tradingDates.includes(date)
     });
   }
   const commonDataMissing = commonCoverage.some(
-    (row) => !row.datasetSettled || row.claimOwner !== `COHORT:${cohortId}`
+    (row) => !row.datasetSettled || row.claimOwner !== `COHORT:${cohortId}` || !row.registered
   );
   const members = await cohorts.members(cohortId);
   const membersIntact = (await Promise.all(

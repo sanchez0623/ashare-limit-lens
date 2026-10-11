@@ -2001,3 +2001,310 @@ test("评估中断由盘后任务恢复收尾，重入复用已发布报告", as
   );
   DB.close();
 });
+
+// 前瞻窗口的通用前置：政策、捕获起点、预留批次、前瞻数据、日历与冻结窗口。
+async function prepareForwardCohort() {
+  const { DB, env, repository, all } = await buildEnv();
+  await new CohortRepository(env).saveTournamentPolicy({
+    forwardDays: FORWARD_DAYS,
+    minimumCompletedRounds: 1,
+  });
+  await settlePrimaryToCaptureDay(env, repository, all);
+  const reserved = await reserveScheduledCohort(env, repository);
+  const forwardPairs = await seedForwardData(DB, env);
+  const datasetByDate = datasetByDateOf(all, forwardPairs);
+  const calendar = {
+    dates: [...all, ...forwardPairs].map((p) => p.dataset.date),
+    benchmark: [],
+  };
+  await scheduleCohortForward(env, reserved.cohortId, {
+    now: `${dateAt(SEED)}T07:30:00.000Z`,
+  });
+  return { DB, env, cohortId: reserved.cohortId, datasetByDate, calendar };
+}
+
+// 驱动单日前瞻：先按帧采集，再按主账户结算序列登记窗口日。
+async function driveForwardDay(
+  env,
+  { dayIndex, datasetByDate, calendar, calendarDates, now },
+) {
+  const date = dateAt(dayIndex);
+  for (const [utc, beijing, volume] of forwardFrames())
+    await runTournamentPoll(env, new Date(`${date}T${utc}Z`), {
+      providers: {
+        calendar,
+        quotes: makeQuotes(datasetByDate, dayIndex, beijing, volume),
+      },
+    });
+  return settleTournamentDay(env, date, {
+    calendarDates: calendarDates ?? [
+      dateAt(dayIndex + 1),
+      dateAt(dayIndex + 2),
+    ],
+    now: now ?? `${date}T07:30:00.000Z`,
+  });
+}
+
+// 驱动 1..29 日正常结算，第 30 日帧已落盘、末日登记已落库，但在进入
+// EVALUATING 前进程退出（交由调用方断言两种恢复路径）。
+async function driveToInterruptedFinalDay() {
+  const { DB, env, cohortId, datasetByDate, calendar } =
+    await prepareForwardCohort();
+  const cohorts = new CohortRepository(env);
+  for (let offset = 1; offset < FORWARD_DAYS; offset++)
+    assert.equal(
+      (
+        await driveForwardDay(env, {
+          dayIndex: SEED + offset,
+          datasetByDate,
+          calendar,
+        })
+      ).status,
+      "SETTLED",
+    );
+  const lastIndex = SEED + FORWARD_DAYS;
+  const lastDate = dateAt(lastIndex);
+  for (const [utc, beijing, volume] of forwardFrames())
+    await runTournamentPoll(env, new Date(`${lastDate}T${utc}Z`), {
+      providers: {
+        calendar,
+        quotes: makeQuotes(datasetByDate, lastIndex, beijing, volume),
+      },
+    });
+  const original = CohortRepository.prototype.transitionCohort;
+  CohortRepository.prototype.transitionCohort = function (id, options) {
+    if (options.to === "EVALUATING") throw new Error("模拟进入评估前进程退出");
+    return original.call(this, id, options);
+  };
+  try {
+    await assert.rejects(
+      () =>
+        settleTournamentDay(env, lastDate, {
+          calendarDates: [dateAt(lastIndex + 1), dateAt(lastIndex + 2)],
+          now: `${lastDate}T07:30:00.000Z`,
+        }),
+      /模拟进入评估前进程退出/,
+    );
+  } finally {
+    CohortRepository.prototype.transitionCohort = original;
+  }
+  const interrupted = await cohorts.getCohort(cohortId);
+  assert.equal(interrupted.stage, "RUNNING", "未进入评估，批次仍为运行中");
+  assert.equal(
+    interrupted.forwardManifest.tradingDates.length,
+    FORWARD_DAYS,
+    "末日登记已落库",
+  );
+  assert.ok(await cohorts.windowOwner(), "未收口期间窗口锁仍被占用");
+  return { DB, env, cohortId, cohorts, lastDate, lastIndex };
+}
+
+test("末日登记后中断：同日重试由 DUPLICATE 恢复收口", async () => {
+  const { DB, env, cohortId, cohorts, lastDate } =
+    await driveToInterruptedFinalDay();
+  // 同日重试：该日已在 tradingDates，走幂等 DUPLICATE 分支；窗口已满足
+  // 主账户结算序数，必须借此恢复收口，而不是永久 RUNNING 占锁。
+  const retry = await settleTournamentDay(env, lastDate, {
+    now: `${lastDate}T07:35:00.000Z`,
+  });
+  assert.equal(retry.status, "DUPLICATE", JSON.stringify(retry).slice(0, 160));
+  assert.ok(retry.evaluation, "DUPLICATE 分支按已满足窗口恢复收口评估");
+  assert.equal(
+    (await cohorts.getCohort(cohortId)).stage,
+    "CLOSED",
+    "恢复收口后批次关闭",
+  );
+  assert.equal(await cohorts.windowOwner(), null, "窗口锁释放");
+  DB.close();
+});
+
+test("末日登记后中断：次日由 WINDOW_ENDED 兜底收口", async () => {
+  const { DB, env, cohortId, cohorts, lastIndex } =
+    await driveToInterruptedFinalDay();
+  // 不重试同日，直接进入窗口外第 31 个主账户结算日：必须按原冻结窗口
+  // 兜底收口，缺口由共同覆盖闸门暴露，而不是永久 RUNNING 占锁。
+  const nextIndex = lastIndex + 1;
+  const nextDate = dateAt(nextIndex);
+  const ended = await settleTournamentDay(env, nextDate, {
+    calendarDates: [dateAt(nextIndex + 1)],
+    now: `${nextDate}T07:30:00.000Z`,
+  });
+  assert.equal(
+    ended.status,
+    "WINDOW_ENDED",
+    JSON.stringify(ended).slice(0, 160),
+  );
+  assert.ok(ended.evaluation, "窗口外交易日兜底收口评估");
+  assert.equal(
+    ended.evaluation.windowDates.length,
+    FORWARD_DAYS,
+    "评估窗口仍是冻结的 30 个交易日",
+  );
+  assert.equal((await cohorts.getCohort(cohortId)).stage, "CLOSED");
+  assert.equal(await cohorts.windowOwner(), null, "窗口锁释放");
+  DB.close();
+});
+
+test("部分登记不晋级：claim 成功但完整日登记失败使整批无资格", async () => {
+  const { DB, env, cohortId, datasetByDate, calendar } =
+    await prepareForwardCohort();
+  const cohorts = new CohortRepository(env);
+  const faultIndex = SEED + 5;
+  const faultDate = dateAt(faultIndex);
+  let evaluation = null;
+  for (let offset = 1; offset <= FORWARD_DAYS; offset++) {
+    const dayIndex = SEED + offset;
+    const date = dateAt(dayIndex);
+    for (const [utc, beijing, volume] of forwardFrames())
+      await runTournamentPoll(env, new Date(`${date}T${utc}Z`), {
+        providers: {
+          calendar,
+          quotes: makeQuotes(datasetByDate, dayIndex, beijing, volume),
+        },
+      });
+    if (offset === 5) {
+      // 完整日登记前的 claim 与样本用途已提交，但 FORWARD_DAY_SETTLED
+      // 失败且未恢复：该日缺席 tradingDates，必须让整批无资格。
+      const original = CohortRepository.prototype.transitionCohort;
+      CohortRepository.prototype.transitionCohort = function (id, options) {
+        if (
+          options.eventType === "FORWARD_DAY_SETTLED" &&
+          options.payload?.date === faultDate
+        )
+          throw new Error("模拟完整日登记失败");
+        return original.call(this, id, options);
+      };
+      try {
+        await assert.rejects(
+          () =>
+            settleTournamentDay(env, date, {
+              calendarDates: [dateAt(dayIndex + 1), dateAt(dayIndex + 2)],
+              now: `${date}T07:30:00.000Z`,
+            }),
+          /模拟完整日登记失败/,
+        );
+      } finally {
+        CohortRepository.prototype.transitionCohort = original;
+      }
+      continue;
+    }
+    const settled = await driveForwardDay(env, {
+      dayIndex,
+      datasetByDate,
+      calendar,
+    });
+    assert.equal(
+      settled.status,
+      "SETTLED",
+      JSON.stringify(settled).slice(0, 160),
+    );
+    if (offset === FORWARD_DAYS) evaluation = settled.evaluation;
+  }
+  assert.ok(evaluation, "第 30 个主账户结算日触发收口评估");
+  const manifest = (await cohorts.getCohort(cohortId)).forwardManifest;
+  assert.equal(
+    manifest.tradingDates.length,
+    FORWARD_DAYS - 1,
+    "只有 29 个完整登记日",
+  );
+  assert.ok(
+    !manifest.tradingDates.includes(faultDate),
+    "登记失败日未计入 tradingDates",
+  );
+  assert.equal(evaluation.commonDataMissing, true, "登记不完整使共同覆盖失败");
+  assert.equal(
+    evaluation.verdicts.filter((row) => row.stage === "ELIGIBLE").length,
+    0,
+    "部分登记使整批无资格，无成员可晋级",
+  );
+  assert.ok(
+    evaluation.verdicts.some((row) => row.stage === "INCONCLUSIVE"),
+    "窗口成员保留 INCONCLUSIVE 失败路径",
+  );
+  assert.equal(evaluation.promotion, null, "整批无资格时无自动晋级");
+  const cohort = await cohorts.getCohort(cohortId);
+  assert.equal(cohort.stage, "CLOSED");
+  assert.equal(await cohorts.windowOwner(), null, "窗口锁释放");
+  const primary = await new RealtimeRepository(env).account();
+  assert.equal(primary.book.activeStrategy, "baseline-v1", "保持当前策略");
+  DB.close();
+});
+
+test("BLOCKED 后中断：未提交的首帧不被后续帧越序跳过", async () => {
+  const { DB, env, datasetByDate, calendar } = await prepareForwardCohort();
+  // 取窗口内的工作日：周末会被 pollTrading 直接判为 NON_TRADING_DAY，且真实
+  // 窗口日历是主账户结算序列（不含周末），据此构造 tradingDates。
+  const dayIndex = SEED + 3;
+  const date = dateAt(dayIndex);
+  const isTradingDay = (day) =>
+    ![0, 6].includes(new Date(`${day}T00:00:00Z`).getUTCDay());
+  const tradingDates = calendar.dates.filter(isTradingDay);
+  const tradeCalendar = { dates: tradingDates, benchmark: [] };
+  const papers = new RealtimeRepository(env);
+  // 主账户开盘需执行日前冻结的计划（openSession 校验 signalDate=上一交易日）；
+  // 冻结捕获日计划，使日历恢复后首帧可正常提交观察。
+  const account = await papers.account();
+  await papers.savePlan(
+    defensivePlan(
+      dateAt(SEED),
+      account.book,
+      BASE_STRATEGY,
+      "baseline-v1",
+      `${dateAt(SEED - 1)}T07:00:00.000Z`,
+    ),
+  );
+  // 移除捕获日：上一交易日解析为主账户更早的结算日，触发 BLOCKED。
+  const blockedCalendar = {
+    dates: tradingDates.filter((day) => day !== dateAt(SEED)),
+    benchmark: [],
+  };
+  const frames = forwardFrames();
+  const pollAt = (time, volume, providerCalendar) =>
+    runTournamentPoll(env, new Date(`${date}T${time}Z`), {
+      providers: {
+        calendar: providerCalendar,
+        quotes: makeQuotes(datasetByDate, dayIndex, time, volume),
+      },
+    });
+  // 步骤 1：连续两帧在 BLOCKED 下采集落盘，但主账户观察均未提交。
+  for (const [utc, , volume] of frames.slice(0, 2)) {
+    const result = await pollAt(utc, volume, blockedCalendar);
+    assert.equal(result.primary.status, "BLOCKED");
+  }
+  assert.equal(
+    (await papers.observations(date)).length,
+    0,
+    "BLOCKED 时观察不提交",
+  );
+  // 步骤 2：上一日结算恰好完成、日历在首帧之后恢复时，循环必须停在
+  // 未提交的首帧，不得带着未生效的前序帧继续处理后帧（否则越序跳过首帧）。
+  let calendarCalls = 0;
+  const transientCalendar = async () => {
+    calendarCalls += 1;
+    return calendarCalls === 1 ? blockedCalendar : tradeCalendar;
+  };
+  const guarded = await pollAt(frames[2][0], frames[2][2], transientCalendar);
+  assert.equal(guarded.primary.status, "BLOCKED", "首帧仍未提交，循环停在此帧");
+  assert.equal(calendarCalls, 1, "只处理未提交的首帧，不推进到后续帧");
+  assert.equal(
+    (await papers.observations(date)).length,
+    0,
+    "首帧未提交时后续帧不得越序提交",
+  );
+  // 步骤 3：上一日结算完成后，按序重放全部已落盘帧，数量与顺序一致。
+  await pollAt(frames[3][0], frames[3][2], tradeCalendar);
+  const observations = await papers.observations(date);
+  assert.equal(observations.length, frames.length, "按序补齐已落盘帧");
+  const observedTimes = observations.map((row) => row.payload.observedAt);
+  assert.deepEqual(
+    observedTimes,
+    [...observedTimes].sort(),
+    "观察按采集时刻严格升序，不越序",
+  );
+  assert.equal(
+    observations[0].payload.observedAt,
+    `${date}T${frames[0][0]}.000Z`,
+    "首个观察正是最先落盘的帧",
+  );
+  DB.close();
+});
