@@ -1,7 +1,6 @@
 // 告警服务（§6）：从已提交事实推进规则与告警实例；发送队列有界重试。
 // 交易循环只写事件（快）；规则评估与发送在独立 runner 或惰性入口推进。
 import { AlertRepository } from "../storage/alerts.js";
-import { marketClock } from "../domain/realtime.js";
 import { safeError } from "../http.js";
 import {
   DEFAULT_ALERT_POLICY,
@@ -84,13 +83,8 @@ export async function processAlerts(
   const events = await store.eventsSince(cursor, limit);
   const policy =
     (await store.latestRuleVersion())?.payload ?? DEFAULT_ALERT_POLICY;
-  const clock = marketClock(new Date(now));
-  const marketContext = {
-    date: clock.date,
-    time: clock.time,
-    weekday: clock.weekday,
-    calendarConfirmed: true,
-  };
+  // 时段判定在域层按每条事实自身的观测时间（occurredAt）推导（as-of），
+  // 不再按处理时间构造市场上下文：迟到事实必须按它被观测到的时段定级。
   const maintenance = await maintenanceUntil(env);
   const ruleVersion = (await store.latestRuleVersion())?.id ?? "default";
   // 通道在入队时固定：发送由 outbox 独立完成，规则推进不等待供应商。
@@ -158,6 +152,9 @@ export async function processAlerts(
             severity: notify?.severity ?? evaluation.severity,
             ruleType: evaluation.event.ruleType,
             ruleVersion,
+            // 首次观测/最后观测取状态机的观测时刻（as-of），不用处理时间。
+            firstSeen: transition.patch?.firstSeen ?? null,
+            lastSeen: transition.patch?.lastSeen ?? null,
             payload: {
               entityRef: evaluation.event.entityRef ?? "primary",
               affected: [...new Set((group ?? []).map((row) => row.accountId))],
@@ -198,28 +195,32 @@ export async function processAlerts(
     if (transition.action !== "KEEP") incidents += 1;
     return { applied: true };
   };
+  // 单条事实的评估必须基于当前最新实例状态：同指纹多条事实逐条提交后，
+  // 前序事实会推进 firstSeen/lastSeen/恢复宽限，批量预评估看不到这些变化。
+  const evaluateOne = ({ event, previous }) =>
+    evaluateAlertRules({
+      events: [event],
+      previousIncident: previous,
+      policy,
+      now,
+    }).find((row) => row.fingerprint === fingerprintOf(event));
   for (const [fingerprint, group] of grouped) {
     // 最近实例（含已恢复）：补读旧事件时幂等守卫要拿 resolvedAt 比较，
     // 只查活动实例会让"重放不得重开已恢复告警"的判断永远落空。
     let previous = await store.recentIncident(fingerprint);
-    const evaluations = evaluateAlertRules({
-      events: group,
-      previousIncident: previous,
-      policy,
-      marketContext,
-      now,
-    });
-    // 同一指纹的多条事件按观测顺序逐条应用（§5.3）：组内第一条可能是被幂等
-    // 守卫忽略的历史重放，但后面仍可能有真实的新故障。只取一条评估会让新故障
-    // 随游标一起被永久吞掉——必须处理组内全部事实，全部提交成功后才允许推进游标。
+    // 同一指纹的多条事实按摄取顺序逐条应用（§5.3）：组内第一条可能是被
+    // 幂等守卫忽略的历史重放，但后面仍可能有真实的新故障或恢复证据。
+    // 每条各自评估、提交、再基于提交后的最新状态评估下一条；全部事实
+    // 应用完毕才允许推进游标，恢复证据不得随问题事实一起被丢弃。
     let groupContended = false;
-    for (const evaluation of evaluations) {
+    for (const event of group) {
+      const evaluation = evaluateOne({ event, previous });
       if (!evaluation || evaluation.absent || evaluation.suppressed) continue;
-      // 并发冲突时重读实例并重新评估，然后必须重试提交："严重度相同"不代表
-      // 结果已被胜出者提交——胜出者可能只是无关的 ACK 或心跳 patch，它推进
-      // 了 revision 却没有处理本批事实。只有重评后动作本身变成无需写库
-      // （commit 返回 skipped）才算完成。最多重试 3 次，仍冲突则不推进游标，
-      // 下一轮按摄取顺序重放（状态机与入队对重放幂等）。
+      // 并发冲突时重读实例并重新评估同一条事实，然后必须重试提交："严重度
+      // 相同"不代表结果已被胜出者提交——胜出者可能只是无关的 ACK 或心跳
+      // patch，它推进了 revision 却没有处理本条事实。只有重评后动作本身
+      // 变成无需写库（commit 返回 skipped）才算完成。最多重试 3 次，仍冲突
+      // 则不推进游标，下一轮按摄取顺序重放（状态机与入队对重放幂等）。
       let contendedOut = false;
       for (let attempt = 0; attempt < 3; attempt++) {
         const result = await commit({ previous, evaluation, group });
@@ -228,16 +229,9 @@ export async function processAlerts(
           break;
         }
         contendedOut = true;
-        // 冲突：重读最新实例（含已恢复），基于新状态重新评估同一条事实。
+        // 冲突：重读最新实例（含已恢复），基于新状态重新评估本条事实。
         previous = await store.recentIncident(fingerprint);
-        const reEval = evaluateAlertRules({
-          events: [evaluation.event],
-          previousIncident: previous,
-          policy,
-          marketContext,
-          now,
-        });
-        const re = reEval.find((row) => row.fingerprint === fingerprint);
+        const re = evaluateOne({ event, previous });
         if (!re || re.absent) break;
         Object.assign(evaluation, re);
       }
@@ -246,7 +240,7 @@ export async function processAlerts(
         groupContended = true;
         break;
       }
-      // 逐条应用的评估必须基于上一条提交后的最新状态：否则第二条会用过期
+      // 逐条应用的评估必须基于上一条提交后的最新状态：否则下一条会用过期
       // revision 提交，白白制造一次冲突重试。
       previous = await store.recentIncident(fingerprint);
     }
