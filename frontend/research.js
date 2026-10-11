@@ -823,19 +823,29 @@ $("ai-grade-btn").onclick = async () => {
     renderReview();
   }
 };
-async function initialize() {
+async function applyDefaultTradeDate() {
   try {
-    const response = await fetch("/api/settings", {
-      signal: AbortSignal.timeout(5000),
+    const response = await fetch("/api/market/latest-date", {
+      signal: AbortSignal.timeout(6000),
     });
     const p = await response.json();
-    if (response.ok) {
-      state.storageAvailable = true;
-      if (validWeightsForUI(p.weights)) state.weights = p.weights;
-      state.aiConfig = p.ai;
-      renderWeights();
-    }
+    if (response.ok && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && p.date <= today)
+      $("trade-date").value = p.date;
   } catch {}
+}
+async function initialize() {
+  const settings = fetch("/api/settings", {
+    signal: AbortSignal.timeout(5000),
+  })
+    .then(async (response) => (response.ok ? response.json() : null))
+    .catch(() => null);
+  const [p] = await Promise.all([settings, applyDefaultTradeDate()]);
+  if (p) {
+    state.storageAvailable = true;
+    if (validWeightsForUI(p.weights)) state.weights = p.weights;
+    state.aiConfig = p.ai;
+    renderWeights();
+  }
   await loadData();
 }
 function validWeightsForUI(w) {

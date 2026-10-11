@@ -21,6 +21,9 @@ import {
 } from "../backend/domain/historical-input.js";
 import { runBacktest } from "../backend/services/backtest.js";
 import { PaperRepository } from "../backend/storage/paper.js";
+import { latestTradingDate } from "../backend/services/market.js";
+import { beijingDate } from "../backend/services/review.js";
+import { api } from "../backend/routes/api.js";
 
 function weekdays(start, end) {
   const result = [];
@@ -1480,5 +1483,44 @@ test("评分与分钟导入可组合为同一数据集并回测", async () => {
     try {
       unlinkSync(researchPath);
     } catch {}
+  }
+});
+const shiftDay = (date, delta) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + delta * 86400000)
+    .toISOString()
+    .slice(0, 10);
+test("最新交易日：周末回退到不晚于今天的最近交易日，无交易日返回 null", async () => {
+  const tradingDays = weekdays("2026-09-01", "2026-12-31");
+  const stub = installFetchStub({ tradingDays, poolDates: [] });
+  try {
+    assert.equal(await latestTradingDate("2026-10-11"), "2026-10-09");
+    assert.equal(await latestTradingDate("2026-10-13"), "2026-10-13");
+    assert.equal(await latestTradingDate("2026-01-05"), null);
+  } finally {
+    stub.restore();
+  }
+});
+test("首页默认日期接口：返回不晚于今天的最近交易日，拒绝非 GET", async () => {
+  const today = beijingDate();
+  const tradingDays = weekdays(shiftDay(today, -40), shiftDay(today, 5));
+  const expected = tradingDays.filter((date) => date <= today).at(-1);
+  const stub = installFetchStub({ tradingDays, poolDates: [] });
+  try {
+    const response = await api(
+      new Request("http://localhost/api/market/latest-date"),
+      {},
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { date: expected });
+    assert.ok(expected <= today);
+    const rejected = await api(
+      new Request("http://localhost/api/market/latest-date", {
+        method: "POST",
+      }),
+      {},
+    );
+    assert.equal(rejected.status, 405);
+  } finally {
+    stub.restore();
   }
 });

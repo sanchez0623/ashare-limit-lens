@@ -1,5 +1,5 @@
 import { publicFetch } from "./public-fetch.js";
-import { symbol } from "./review.js";
+import { symbol, beijingDate } from "./review.js";
 import { toCents } from "../domain/trading.js";
 const CACHE = new Map();
 const EM_BASE = "https://push2ex.eastmoney.com/";
@@ -103,6 +103,15 @@ export async function tradingCalendar(startDate, endDate) {
       openCents: toCents(day[1]),
     })),
   };
+}
+
+// 首页默认日期用：返回不晚于 today 的最后一个真实交易日，取不到返回 null。
+export async function latestTradingDate(today = beijingDate()) {
+  const start = new Date(Date.parse(`${today}T00:00:00Z`) - 30 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const { dates } = await tradingCalendar(start, today);
+  return dates.filter((date) => date <= today).at(-1) ?? null;
 }
 
 export async function tradingQuotes(codes, date) {
