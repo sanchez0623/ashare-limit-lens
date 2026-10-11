@@ -82,7 +82,11 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
     ];
     const quotes = await (providers.quotes || tradingQuotes)(codes, clock.date);
     const observation = {
-      observedAt: (providers.quotes ? now : new Date()).toISOString(),
+      // 帧驱动重放时观察时间取帧采集时刻：与帧内报价自洽，按序补齐停机
+      // 期间的持久帧，而不是用当前时间把历史报价全部判为陈旧。
+      observedAt:
+        providers.observedAt ??
+        (providers.quotes ? now.toISOString() : new Date().toISOString()),
       quotes,
       pollIntervalSeconds: Number(env.TRADING_POLL_SECONDS || 10),
     };

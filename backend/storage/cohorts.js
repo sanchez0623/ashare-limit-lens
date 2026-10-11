@@ -492,9 +492,11 @@ export class CohortRepository {
           `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, updated_at = ?${setSql} WHERE id = ? AND stage = ? AND revision = ?`,
         )
         .bind(to, now, ...setArgs, id, from, expectedRevision),
+      // 事件写入以状态迁移成功为前提（EXISTS 新 revision）：
+      // CAS 失败时事件零行写入，不会留下没有状态迁移的孤儿事件。
       this.db
         .prepare(
-          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM strategy_cohorts WHERE id = ? AND revision = ?)",
         )
         .bind(
           id,
@@ -504,6 +506,8 @@ export class CohortRepository {
           JSON.stringify(event.payload),
           event.previousDigest,
           await eventDigest(event),
+          id,
+          expectedRevision + 1,
         ),
     ];
     const results = await this.db.batch(statements);
@@ -686,9 +690,11 @@ export class CohortRepository {
           "UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? AND stage = ? AND revision = ?",
         )
         .bind(to, member.experimentId, from, expectedRevision),
+      // 两条事件都以实验状态迁移成功为前提（EXISTS 新 revision）：
+      // CAS 失败时事件零行写入，不会留下孤儿事件或断裂的事件链。
       this.db
         .prepare(
-          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)",
         )
         .bind(
           member.experimentId,
@@ -698,10 +704,12 @@ export class CohortRepository {
           JSON.stringify(experimentEvent.payload),
           experimentEvent.previousDigest,
           await eventDigest(experimentEvent),
+          member.experimentId,
+          nextRevision,
         ),
       this.db
         .prepare(
-          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)",
         )
         .bind(
           cohortId,
@@ -711,6 +719,8 @@ export class CohortRepository {
           JSON.stringify(cohortEvent.payload),
           cohortEvent.previousDigest,
           await eventDigest(cohortEvent),
+          member.experimentId,
+          nextRevision,
         ),
     ];
     if (versionId && versionStatus)

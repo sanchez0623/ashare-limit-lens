@@ -530,9 +530,14 @@ export async function scheduleCohortForward(
   const account = await papers.account();
   if (!account?.book?.lastDate)
     return { scheduled: false, reason: "主账户尚未结算，无法捕获匹配起点" };
-  const liveSession = await papers.session(account.book.lastDate);
-  if (liveSession?.status === "OPEN")
-    return { scheduled: false, reason: "存在进行中的盘中会话，等待闭市后捕获" };
+  // 今日会话仍开放（午休、收盘后未结算）时同样拒绝：
+  // 当日不是已结算的闭市时点，捕获会把盘中时点冒充为历史起点。
+  const todaySession = await papers.session(clock.date);
+  if (todaySession?.status === "OPEN")
+    return {
+      scheduled: false,
+      reason: "今日盘中会话尚未关闭，等待当日结算后捕获匹配起点",
+    };
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
   if (feeConfigDigest !== cohort.reservationManifest?.feeConfigDigest) {
@@ -747,6 +752,7 @@ export async function scheduleCohortForward(
 export async function runTournamentPoll(env, now, { providers = {} } = {}) {
   const cohorts = new CohortRepository(env);
   const shadows = new ShadowAccountRepository(env);
+  const papers = new RealtimeRepository(env);
   const cohort = await cohorts.activeCohort();
   const running = cohort?.stage === "RUNNING";
   // 连续固定基线跨批次持续运行（§6）：无活动批次时仍采集并喂给持续基线。
@@ -756,19 +762,50 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
   if (!frame) return null;
   const frames = new QuoteFrameRepository(env);
   let primary = null;
+  // 主账户与影子账户同源按序消费（§7.1/§7.2）：当日全部已落盘帧按
+  // observations 数推算未消费帧并逐帧喂给主账户，重启后不漏帧；
+  // 重放帧的观察时间取帧采集时刻，成交仍由订单状态机与 CAS 防重。
+  const dayFrames = await frames.framesForDate(frame.tradeDate);
+  let primaryObserved = 0;
   try {
-    primary = await pollTrading(env, now, {
-      ...providers,
-      quotes: async (codes, date) => {
-        if (date !== frame.tradeDate) return {};
-        const quotes = {};
-        for (const code of codes)
-          if (frame.quotes[code]) quotes[code] = frame.quotes[code];
-        return quotes;
-      },
-    });
-  } catch (error) {
-    primary = { status: "ERROR", reason: safeError(error) };
+    primaryObserved = (await papers.observations(frame.tradeDate)).length;
+  } catch {
+    primaryObserved = 0;
+  }
+  const pendingPrimary = dayFrames.slice(
+    Math.min(primaryObserved, dayFrames.length),
+  );
+  if (!pendingPrimary.length)
+    primary = { status: "SKIPPED", reason: "主账户已消费当日全部已落盘帧" };
+  // pollTrading 期望 calendar 是可调用函数；日历数据对象在此适配为
+  // 异步返回函数，避免"calendar is not a function"打断主账户观察。
+  const { calendar: providerCalendar, ...restProviders } = providers;
+  const calendarFn =
+    typeof providerCalendar === "function"
+      ? providerCalendar
+      : providerCalendar
+        ? async () => providerCalendar
+        : undefined;
+  for (const primaryFrame of pendingPrimary) {
+    try {
+      primary = await pollTrading(env, now, {
+        ...restProviders,
+        ...(calendarFn ? { calendar: calendarFn } : {}),
+        quotes: async (codes, date) => {
+          if (date !== primaryFrame.tradeDate) return {};
+          const frameQuotes =
+            primaryFrame.payload?.quotes ?? primaryFrame.quotes ?? {};
+          const quotes = {};
+          for (const code of codes)
+            if (frameQuotes[code]) quotes[code] = frameQuotes[code];
+          return quotes;
+        },
+        observedAt: primaryFrame.observedAt,
+      });
+    } catch (error) {
+      primary = { status: "ERROR", reason: safeError(error) };
+      break;
+    }
   }
   const accounts = await shadows.accounts();
   const activeAccounts = accounts.filter(
@@ -837,11 +874,13 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
 
 // ---------- 盘后：影子结算、共同市场日登记与窗口收口（§6/§10） ----------
 // 用当日已落盘帧为 dataset 缺失的候选独有代码补齐收盘盯市记录（§8.2）：
-// 有真实观测价的代码不因缺席日线而无法结算；时间戳固定为收盘时点，
-// 缺少任何观测价的代码保持缺失，由结算或覆盖闸门如实暴露。
+// 每只代码取**最新观测帧**的价格（从高序号帧向低序号查找），09:31 的首条
+// 报价不会被误当作收盘价；时间戳固定为收盘时点并标注来源，缺少任何
+// 观测价的代码保持缺失，由结算或覆盖闸门如实暴露。
 export function closingQuotesFromFrames(frameRows, datasetQuotes, date) {
   const enriched = { ...datasetQuotes };
-  for (const frame of [...frameRows].sort((a, b) => a.sequence - b.sequence)) {
+  const ordered = [...frameRows].sort((a, b) => b.sequence - a.sequence);
+  for (const frame of ordered) {
     const quotes = frame.payload?.quotes ?? frame.quotes ?? {};
     for (const [code, quote] of Object.entries(quotes)) {
       if (enriched[code]) continue;
@@ -852,6 +891,7 @@ export function closingQuotesFromFrames(frameRows, datasetQuotes, date) {
         date,
         timestamp: `${date}T15:00:00+08:00`,
         closeCents,
+        closingSource: "FRAME_LAST_OBSERVED",
       };
     }
   }
@@ -886,23 +926,23 @@ export async function settleTournamentDay(
   const shadows = new ShadowAccountRepository(env);
   const frames = new QuoteFrameRepository(env);
   const cohort = await cohorts.activeCohort();
-  if (!cohort || cohort.stage !== "RUNNING") return null;
+  if (!cohort) return null;
+  if (cohort.stage === "EVALUATING") {
+    // 评估中断恢复（§10）：盘后任务重入评估；已发布报告则幂等复用并收尾。
+    const evaluation = await evaluateCohort(env, cohort.id, { calendarDates });
+    return {
+      status: "EVALUATION_RECOVERED",
+      evaluation,
+      reason: "评估阶段中断后由盘后任务恢复，批次收尾",
+    };
+  }
+  if (cohort.stage !== "RUNNING") return null;
   const manifest = cohort.forwardManifest;
   if (!manifest?.captureDate || date <= manifest.captureDate)
     return {
       status: "CAPTURE_DAY",
       reason: "捕获日不是前瞻窗口市场日；窗口从下一交易日起计数",
     };
-  // 冻结窗口日历（§8.2）：合并 runDaily 提供的交易日历与当日共同市场日，
-  // 窗口取捕获日之后的前 requiredDays 个交易日；窗口结束日固定，
-  // 缺失日不由后续日补满。
-  const windowDates = [
-    ...new Set([...(manifest.windowDates ?? []), ...calendarDates, date]),
-  ]
-    .filter((day) => day > manifest.captureDate)
-    .sort()
-    .slice(0, manifest.requiredDays);
-  const windowFrozen = windowDates.length >= manifest.requiredDays;
   const accountIds = [
     ...manifest.accounts.candidates,
     manifest.accounts.parentMatch,
@@ -933,7 +973,27 @@ export async function settleTournamentDay(
       reason: "该共同市场日已登记，幂等跳过；不重复结算或延长窗口",
     };
   }
-  if (windowFrozen && !windowDates.includes(date)) {
+  // 冻结窗口日历（§8.2）：无条件合并 runDaily 提供的交易日历与当日共同
+  // 市场日——即使当日暂停登记，未来日历知识仍要吸收；窗口取捕获日之后
+  // 的前 requiredDays 个交易日，窗口结束日固定，缺失日不由后续日补满。
+  const windowDates = [
+    ...new Set([...(manifest.windowDates ?? []), ...calendarDates, date]),
+  ]
+    .filter((day) => day > manifest.captureDate)
+    .sort()
+    .slice(0, manifest.requiredDays);
+  const windowFrozen = windowDates.length >= manifest.requiredDays;
+  if (!calendarDates.length) {
+    // 无未来日历（主账户结算失败未返回日历）时无法判定窗口末日：
+    // 当日不登记、不评估，等日历恢复；窗口结束日由已吸收的日历固定，
+    // 漏日保留在冻结窗口内，不会被后续结算日顺延补满。
+    return {
+      status: "WAITING_CALENDAR",
+      reason:
+        "盘后任务未提供未来交易日历；当日不登记共同市场日，窗口结束日仍按已冻结日历执行",
+    };
+  }
+  if (!windowDates.includes(date)) {
     // 窗口已冻结完整且该日在窗口之外：不登记、不延长。
     let evaluation = null;
     if (manifest.tradingDates.length < manifest.requiredDays) {
@@ -1196,6 +1256,33 @@ export async function evaluateCohort(
   if (!cohort) throw new Error("赛马批次不存在");
   if (cohort.stage !== "EVALUATING")
     throw new Error(`批次处于 ${cohort.stage} 阶段，不能评估`);
+  // 评估幂等（§10）：已发布报告直接复用并确保批次收尾——评估在收尾前
+  // 中断时，盘后任务重入不重新计算、不产生新的选优机会。
+  const published = await cohorts.report(cohortId, "EVALUATION");
+  if (published?.payload) {
+    const wasPromoted = Boolean(published.payload.promotion?.promoted);
+    await cohorts
+      .transitionCohort(cohortId, {
+        from: "EVALUATING",
+        to: "CLOSED",
+        eventType: wasPromoted ? "CHAMPION_PROMOTED" : "COHORT_EVALUATED",
+        payload: {
+          champion: published.payload.champion ?? null,
+          promoted: wasPromoted,
+          note: "评估报告已发布，重入仅补齐批次收尾",
+        },
+        set: wasPromoted
+          ? {
+              evaluation_manifest: JSON.stringify(published.payload),
+              effective_trade_date:
+                published.payload.promotion?.effectiveTradeDate ?? null,
+            }
+          : { evaluation_manifest: JSON.stringify(published.payload) },
+      })
+      .catch(() => {});
+    await cohorts.releaseWindowOwner("COHORT", cohortId).catch(() => {});
+    return published.payload;
+  }
   const manifest = cohort.forwardManifest;
   // 固定窗口（§8.2）：评估用冻结窗口日历（含缺失日），缺失由覆盖与共同数据
   // 检查暴露；窗口内的 tradingDates 只包含实际结算并登记的共同市场日。
@@ -1460,9 +1547,10 @@ export async function evaluateCohort(
     scoringVersion: SCORING_VERSION,
     note: "仅从通过全部闸门的合格集合按冻结排序启用至多一个候选；全部不通过时保持当前策略",
   };
-  // 报告摘要在晋级之前冻结：晋级服务重算摘要核验报告输入未被篡改。
+  // 报告摘要在晋级之前先按"未含晋级结果"的版本冻结：晋级服务重算该摘要
+  // 核验报告输入未被篡改；晋级结束后重新定稿（含 promotion 结果），
+  // 保证存储报告的摘要与内容一致——CAS 冲突后的合法重试不会被拒。
   report.digest = await digestOf(report);
-  await cohorts.completeTask(statisticsTaskId, { outputDigest: report.digest });
   // 批次结束时的唯一自动晋级：验证报告摘要、成员资格与配置指纹后 CAS 切换。
   // 已冻结计划（信号日=窗口末日）不替换：新策略从之后第一个尚未冻结的计划起生效，
   // 其执行日为窗口末日的下一交易日的下一交易日。
@@ -1477,6 +1565,8 @@ export async function evaluateCohort(
       report.promotion = { promoted: false, reason: safeError(error) };
     }
   }
+  report.digest = await digestOf(report);
+  await cohorts.completeTask(statisticsTaskId, { outputDigest: report.digest });
   const saved = await cohorts.saveReport(cohortId, "EVALUATION", report);
   if (report.promotion?.promoted) {
     await cohorts

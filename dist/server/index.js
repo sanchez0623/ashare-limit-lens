@@ -6865,7 +6865,9 @@ async function pollTrading(env, now = /* @__PURE__ */ new Date(), providers = {}
     ];
     const quotes = await (providers.quotes || tradingQuotes)(codes, clock.date);
     const observation = {
-      observedAt: (providers.quotes ? now : /* @__PURE__ */ new Date()).toISOString(),
+      // 帧驱动重放时观察时间取帧采集时刻：与帧内报价自洽，按序补齐停机
+      // 期间的持久帧，而不是用当前时间把历史报价全部判为陈旧。
+      observedAt: providers.observedAt ?? (providers.quotes ? now.toISOString() : (/* @__PURE__ */ new Date()).toISOString()),
       quotes,
       pollIntervalSeconds: Number(env.TRADING_POLL_SECONDS || 10)
     };
@@ -9087,8 +9089,10 @@ var CohortRepository = class {
       this.db.prepare(
         `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, updated_at = ?${setSql} WHERE id = ? AND stage = ? AND revision = ?`
       ).bind(to, now, ...setArgs, id, from, expectedRevision),
+      // 事件写入以状态迁移成功为前提（EXISTS 新 revision）：
+      // CAS 失败时事件零行写入，不会留下没有状态迁移的孤儿事件。
       this.db.prepare(
-        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM strategy_cohorts WHERE id = ? AND revision = ?)"
       ).bind(
         id,
         event.sequence,
@@ -9096,7 +9100,9 @@ var CohortRepository = class {
         event.createdAt,
         JSON.stringify(event.payload),
         event.previousDigest,
-        await eventDigest(event)
+        await eventDigest(event),
+        id,
+        expectedRevision + 1
       )
     ];
     const results = await this.db.batch(statements);
@@ -9233,8 +9239,10 @@ var CohortRepository = class {
       this.db.prepare(
         "UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? AND stage = ? AND revision = ?"
       ).bind(to, member.experimentId, from, expectedRevision),
+      // 两条事件都以实验状态迁移成功为前提（EXISTS 新 revision）：
+      // CAS 失败时事件零行写入，不会留下孤儿事件或断裂的事件链。
       this.db.prepare(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)"
       ).bind(
         member.experimentId,
         experimentEvent.sequence,
@@ -9242,10 +9250,12 @@ var CohortRepository = class {
         experimentEvent.createdAt,
         JSON.stringify(experimentEvent.payload),
         experimentEvent.previousDigest,
-        await eventDigest(experimentEvent)
+        await eventDigest(experimentEvent),
+        member.experimentId,
+        nextRevision
       ),
       this.db.prepare(
-        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)"
       ).bind(
         cohortId,
         cohortEvent.sequence,
@@ -9253,7 +9263,9 @@ var CohortRepository = class {
         cohortEvent.createdAt,
         JSON.stringify(cohortEvent.payload),
         cohortEvent.previousDigest,
-        await eventDigest(cohortEvent)
+        await eventDigest(cohortEvent),
+        member.experimentId,
+        nextRevision
       )
     ];
     if (versionId && versionStatus)
@@ -10160,6 +10172,15 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
   const championShadow = await shadows.account(championAccountId);
   if (!championShadow) throw new Error(`\u51A0\u519B\u5F71\u5B50\u8D26\u6237\u7F3A\u5931\uFF1B${REPORT_UNTRUSTED}`);
   const championEquities = await shadows.equities(championAccountId);
+  for (const row of championEquities) {
+    if (!windowDates.includes(row.tradeDate)) continue;
+    const { tradeDate, digest: storedDigest, ...payload } = row;
+    void tradeDate;
+    if (storedDigest && await digest(payload) !== storedDigest)
+      throw new Error(
+        `\u7A97\u53E3\u51C0\u503C\u884C ${row.tradeDate} \u6458\u8981\u4E0E\u5185\u5BB9\u4E0D\u4E00\u81F4\uFF1B${REPORT_UNTRUSTED}`
+      );
+  }
   const windowEndEquity = championEquities.filter((row) => windowDates.includes(row.tradeDate ?? row.trade_date)).at(-1);
   if (!windowEndEquity || windowEndEquity.equityCents !== report.champion.finalEquityCents)
     throw new Error(`\u51A0\u519B\u671F\u672B\u51C0\u503C\u4E0E\u5F71\u5B50\u8D26\u672C\u4E0D\u4E00\u81F4\uFF1B${REPORT_UNTRUSTED}`);
@@ -10671,9 +10692,12 @@ async function scheduleCohortForward(env, cohortId, { now = (/* @__PURE__ */ new
   const account = await papers.account();
   if (!account?.book?.lastDate)
     return { scheduled: false, reason: "\u4E3B\u8D26\u6237\u5C1A\u672A\u7ED3\u7B97\uFF0C\u65E0\u6CD5\u6355\u83B7\u5339\u914D\u8D77\u70B9" };
-  const liveSession = await papers.session(account.book.lastDate);
-  if (liveSession?.status === "OPEN")
-    return { scheduled: false, reason: "\u5B58\u5728\u8FDB\u884C\u4E2D\u7684\u76D8\u4E2D\u4F1A\u8BDD\uFF0C\u7B49\u5F85\u95ED\u5E02\u540E\u6355\u83B7" };
+  const todaySession = await papers.session(clock.date);
+  if (todaySession?.status === "OPEN")
+    return {
+      scheduled: false,
+      reason: "\u4ECA\u65E5\u76D8\u4E2D\u4F1A\u8BDD\u5C1A\u672A\u5173\u95ED\uFF0C\u7B49\u5F85\u5F53\u65E5\u7ED3\u7B97\u540E\u6355\u83B7\u5339\u914D\u8D77\u70B9"
+    };
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
   if (feeConfigDigest !== cohort.reservationManifest?.feeConfigDigest) {
@@ -10875,6 +10899,7 @@ async function scheduleCohortForward(env, cohortId, { now = (/* @__PURE__ */ new
 async function runTournamentPoll(env, now, { providers = {} } = {}) {
   const cohorts = new CohortRepository(env);
   const shadows = new ShadowAccountRepository(env);
+  const papers = new RealtimeRepository(env);
   const cohort = await cohorts.activeCohort();
   const running2 = cohort?.stage === "RUNNING";
   const continuous = await shadows.account(continuousBaselineId);
@@ -10883,19 +10908,39 @@ async function runTournamentPoll(env, now, { providers = {} } = {}) {
   if (!frame) return null;
   const frames = new QuoteFrameRepository(env);
   let primary = null;
+  const dayFrames = await frames.framesForDate(frame.tradeDate);
+  let primaryObserved = 0;
   try {
-    primary = await pollTrading(env, now, {
-      ...providers,
-      quotes: async (codes, date) => {
-        if (date !== frame.tradeDate) return {};
-        const quotes = {};
-        for (const code of codes)
-          if (frame.quotes[code]) quotes[code] = frame.quotes[code];
-        return quotes;
-      }
-    });
-  } catch (error) {
-    primary = { status: "ERROR", reason: safeError(error) };
+    primaryObserved = (await papers.observations(frame.tradeDate)).length;
+  } catch {
+    primaryObserved = 0;
+  }
+  const pendingPrimary = dayFrames.slice(
+    Math.min(primaryObserved, dayFrames.length)
+  );
+  if (!pendingPrimary.length)
+    primary = { status: "SKIPPED", reason: "\u4E3B\u8D26\u6237\u5DF2\u6D88\u8D39\u5F53\u65E5\u5168\u90E8\u5DF2\u843D\u76D8\u5E27" };
+  const { calendar: providerCalendar, ...restProviders } = providers;
+  const calendarFn = typeof providerCalendar === "function" ? providerCalendar : providerCalendar ? async () => providerCalendar : void 0;
+  for (const primaryFrame of pendingPrimary) {
+    try {
+      primary = await pollTrading(env, now, {
+        ...restProviders,
+        ...calendarFn ? { calendar: calendarFn } : {},
+        quotes: async (codes, date) => {
+          if (date !== primaryFrame.tradeDate) return {};
+          const frameQuotes = primaryFrame.payload?.quotes ?? primaryFrame.quotes ?? {};
+          const quotes = {};
+          for (const code of codes)
+            if (frameQuotes[code]) quotes[code] = frameQuotes[code];
+          return quotes;
+        },
+        observedAt: primaryFrame.observedAt
+      });
+    } catch (error) {
+      primary = { status: "ERROR", reason: safeError(error) };
+      break;
+    }
   }
   const accounts = await shadows.accounts();
   const activeAccounts = accounts.filter(
@@ -10952,7 +10997,8 @@ async function runTournamentPoll(env, now, { providers = {} } = {}) {
 }
 function closingQuotesFromFrames(frameRows, datasetQuotes, date) {
   const enriched = { ...datasetQuotes };
-  for (const frame of [...frameRows].sort((a, b) => a.sequence - b.sequence)) {
+  const ordered = [...frameRows].sort((a, b) => b.sequence - a.sequence);
+  for (const frame of ordered) {
     const quotes = frame.payload?.quotes ?? frame.quotes ?? {};
     for (const [code, quote] of Object.entries(quotes)) {
       if (enriched[code]) continue;
@@ -10962,7 +11008,8 @@ function closingQuotesFromFrames(frameRows, datasetQuotes, date) {
         ...quote,
         date,
         timestamp: `${date}T15:00:00+08:00`,
-        closeCents
+        closeCents,
+        closingSource: "FRAME_LAST_OBSERVED"
       };
     }
   }
@@ -10991,17 +11038,22 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
   const shadows = new ShadowAccountRepository(env);
   const frames = new QuoteFrameRepository(env);
   const cohort = await cohorts.activeCohort();
-  if (!cohort || cohort.stage !== "RUNNING") return null;
+  if (!cohort) return null;
+  if (cohort.stage === "EVALUATING") {
+    const evaluation2 = await evaluateCohort(env, cohort.id, { calendarDates });
+    return {
+      status: "EVALUATION_RECOVERED",
+      evaluation: evaluation2,
+      reason: "\u8BC4\u4F30\u9636\u6BB5\u4E2D\u65AD\u540E\u7531\u76D8\u540E\u4EFB\u52A1\u6062\u590D\uFF0C\u6279\u6B21\u6536\u5C3E"
+    };
+  }
+  if (cohort.stage !== "RUNNING") return null;
   const manifest = cohort.forwardManifest;
   if (!manifest?.captureDate || date <= manifest.captureDate)
     return {
       status: "CAPTURE_DAY",
       reason: "\u6355\u83B7\u65E5\u4E0D\u662F\u524D\u77BB\u7A97\u53E3\u5E02\u573A\u65E5\uFF1B\u7A97\u53E3\u4ECE\u4E0B\u4E00\u4EA4\u6613\u65E5\u8D77\u8BA1\u6570"
     };
-  const windowDates = [
-    .../* @__PURE__ */ new Set([...manifest.windowDates ?? [], ...calendarDates, date])
-  ].filter((day) => day > manifest.captureDate).sort().slice(0, manifest.requiredDays);
-  const windowFrozen = windowDates.length >= manifest.requiredDays;
   const accountIds = [
     ...manifest.accounts.candidates,
     manifest.accounts.parentMatch,
@@ -11025,7 +11077,17 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
       reason: "\u8BE5\u5171\u540C\u5E02\u573A\u65E5\u5DF2\u767B\u8BB0\uFF0C\u5E42\u7B49\u8DF3\u8FC7\uFF1B\u4E0D\u91CD\u590D\u7ED3\u7B97\u6216\u5EF6\u957F\u7A97\u53E3"
     };
   }
-  if (windowFrozen && !windowDates.includes(date)) {
+  const windowDates = [
+    .../* @__PURE__ */ new Set([...manifest.windowDates ?? [], ...calendarDates, date])
+  ].filter((day) => day > manifest.captureDate).sort().slice(0, manifest.requiredDays);
+  const windowFrozen = windowDates.length >= manifest.requiredDays;
+  if (!calendarDates.length) {
+    return {
+      status: "WAITING_CALENDAR",
+      reason: "\u76D8\u540E\u4EFB\u52A1\u672A\u63D0\u4F9B\u672A\u6765\u4EA4\u6613\u65E5\u5386\uFF1B\u5F53\u65E5\u4E0D\u767B\u8BB0\u5171\u540C\u5E02\u573A\u65E5\uFF0C\u7A97\u53E3\u7ED3\u675F\u65E5\u4ECD\u6309\u5DF2\u51BB\u7ED3\u65E5\u5386\u6267\u884C"
+    };
+  }
+  if (!windowDates.includes(date)) {
     let evaluation2 = null;
     if (manifest.tradingDates.length < manifest.requiredDays) {
       await cohorts.transitionCohort(cohort.id, {
@@ -11254,6 +11316,28 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
   if (!cohort) throw new Error("\u8D5B\u9A6C\u6279\u6B21\u4E0D\u5B58\u5728");
   if (cohort.stage !== "EVALUATING")
     throw new Error(`\u6279\u6B21\u5904\u4E8E ${cohort.stage} \u9636\u6BB5\uFF0C\u4E0D\u80FD\u8BC4\u4F30`);
+  const published = await cohorts.report(cohortId, "EVALUATION");
+  if (published?.payload) {
+    const wasPromoted = Boolean(published.payload.promotion?.promoted);
+    await cohorts.transitionCohort(cohortId, {
+      from: "EVALUATING",
+      to: "CLOSED",
+      eventType: wasPromoted ? "CHAMPION_PROMOTED" : "COHORT_EVALUATED",
+      payload: {
+        champion: published.payload.champion ?? null,
+        promoted: wasPromoted,
+        note: "\u8BC4\u4F30\u62A5\u544A\u5DF2\u53D1\u5E03\uFF0C\u91CD\u5165\u4EC5\u8865\u9F50\u6279\u6B21\u6536\u5C3E"
+      },
+      set: wasPromoted ? {
+        evaluation_manifest: JSON.stringify(published.payload),
+        effective_trade_date: published.payload.promotion?.effectiveTradeDate ?? null
+      } : { evaluation_manifest: JSON.stringify(published.payload) }
+    }).catch(() => {
+    });
+    await cohorts.releaseWindowOwner("COHORT", cohortId).catch(() => {
+    });
+    return published.payload;
+  }
   const manifest = cohort.forwardManifest;
   const windowDates = manifest.windowDates?.length ? manifest.windowDates : manifest.tradingDates;
   const frozenPolicy = cohort.reservationManifest?.cohortPolicy;
@@ -11475,7 +11559,6 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     note: "\u4EC5\u4ECE\u901A\u8FC7\u5168\u90E8\u95F8\u95E8\u7684\u5408\u683C\u96C6\u5408\u6309\u51BB\u7ED3\u6392\u5E8F\u542F\u7528\u81F3\u591A\u4E00\u4E2A\u5019\u9009\uFF1B\u5168\u90E8\u4E0D\u901A\u8FC7\u65F6\u4FDD\u6301\u5F53\u524D\u7B56\u7565"
   };
   report.digest = await digestOf(report);
-  await cohorts.completeTask(statisticsTaskId, { outputDigest: report.digest });
   if (champion) {
     const effectiveTradeDate = calendarDates[1] ?? calendarDates[0] ?? null;
     try {
@@ -11487,6 +11570,8 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
       report.promotion = { promoted: false, reason: safeError(error) };
     }
   }
+  report.digest = await digestOf(report);
+  await cohorts.completeTask(statisticsTaskId, { outputDigest: report.digest });
   const saved = await cohorts.saveReport(cohortId, "EVALUATION", report);
   if (report.promotion?.promoted) {
     await cohorts.transitionCohort(cohortId, {

@@ -1,6 +1,7 @@
 import { RealtimeRepository } from "../storage/realtime.js";
 import { CohortRepository } from "../storage/cohorts.js";
 import { ShadowAccountRepository } from "../storage/shadow.js";
+import { digest } from "../storage/paper.js";
 import {
   digestOf,
   EXECUTION_VERSION,
@@ -75,6 +76,17 @@ export async function promoteCohortChampion(
   const championShadow = await shadows.account(championAccountId);
   if (!championShadow) throw new Error(`冠军影子账户缺失；${REPORT_UNTRUSTED}`);
   const championEquities = await shadows.equities(championAccountId);
+  // 日净值摘要（§8.2）：窗口每个净值行的内容必须与存储摘要一致，
+  // 被篡改的日净值（payload 改动而 digest 未同步）在此暴露。
+  for (const row of championEquities) {
+    if (!windowDates.includes(row.tradeDate)) continue;
+    const { tradeDate, digest: storedDigest, ...payload } = row;
+    void tradeDate;
+    if (storedDigest && (await digest(payload)) !== storedDigest)
+      throw new Error(
+        `窗口净值行 ${row.tradeDate} 摘要与内容不一致；${REPORT_UNTRUSTED}`,
+      );
+  }
   const windowEndEquity = championEquities
     .filter((row) => windowDates.includes(row.tradeDate ?? row.trade_date))
     .at(-1);
