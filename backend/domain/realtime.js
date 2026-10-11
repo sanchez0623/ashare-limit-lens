@@ -202,10 +202,14 @@ export function advanceSession(inputBook, inputSession, observation) {
       Math.abs(quote.previousCloseCents - expected) >
         Math.max(1, expected * 0.001)
     ) {
+      // 结构化标记：告警器只认枚举，不解析中文原因（§3.1 除权不匹配
+      // 属于"需要处理的运行阻塞，立即告警"）。
       for (const order of session.orders.filter(
         (o) => o.code === code && !TERMINAL.has(o.status),
-      ))
+      )) {
         order.reason = "昨收与冻结参考价不一致，需核对除权，暂停该股交易";
+        order.holdCode = "CORPORATE_ACTION_UNVERIFIED";
+      }
       continue;
     }
     // A warm-up quote establishes the cumulative-volume baseline. Gaps never supply invented liquidity.
@@ -221,6 +225,9 @@ export function advanceSession(inputBook, inputSession, observation) {
         ? quote.volumeShares - last.volumeShares
         : 0;
     session.quotes[code] = structuredClone(quote);
+    // 报价已被接受：该股此前的除权暂停标记必须清除，否则会自动永远挂着。
+    for (const order of session.orders)
+      if (order.code === code && order.holdCode) order.holdCode = null;
     const position = book.positions.find((p) => p.code === code);
     if (position) {
       position.markCents = quote.closeCents;

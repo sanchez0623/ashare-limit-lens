@@ -258,6 +258,133 @@ test("常驻循环保留独立轮询的失败结果：BLOCKED 必须写入运维
     db.close();
   }
 });
+test("除权不匹配：引擎拒收报价并留下结构化标记，报价恢复后清除", async () => {
+  const db = localDatabase(),
+    repo = new RealtimeRepository({ DB: db });
+  try {
+    await baseline(repo);
+    let account = await repo.account();
+    const intent = createPlan(
+      snapshot(dateAt(0)),
+      account.book,
+      BASE_STRATEGY,
+      "baseline-v1",
+      `${dateAt(0)}T07:10:00.000Z`,
+    );
+    await repo.savePlan(intent);
+    let session = openSession(account.book, intent, dateAt(1));
+    for (const [time, volume] of [
+      ["09:30:00", 100000],
+      ["09:30:05", 3000000],
+    ]) {
+      const obs = observation(dateAt(1), time, 1000, volume);
+      obs.quotes["600002"] = { ...obs.quotes["600001"] };
+      account = await repo.account();
+      const step = advanceSession(account.book, session, obs);
+      await repo.commitObservation(account.revision, step, obs);
+      session = step.session;
+    }
+    account = await repo.account();
+    const day = closing(dateAt(1));
+    day.quotes["600002"] = { ...day.quotes["600001"] };
+    const settled = closeSession(account.book, session, day);
+    await repo.close(account.revision, settled, day);
+    // 第二日已有持仓：昨收与冻结参考价严重不一致 → 疑似除权，报价被拒收。
+    account = await repo.account();
+    const hold = frozen([["HOLD", 0]], dateAt(1));
+    await repo.savePlan(hold);
+    session = openSession(account.book, hold, dateAt(2));
+    const previous = account.book.positions[0].markCents;
+    const mismatched = observation(
+      dateAt(2),
+      "10:00:00",
+      previous,
+      100000,
+      previous,
+      { previousCloseCents: Math.round(previous * 1.5) },
+    );
+    const rejected = advanceSession(account.book, session, mismatched);
+    const flagged = rejected.session.orders.filter(
+      (order) => order.holdCode === "CORPORATE_ACTION_UNVERIFIED",
+    );
+    assert.ok(
+      flagged.length >= 1,
+      "拒收报价必须留下结构化标记，否则系统仍报 RUNNING 且没有告警",
+    );
+    assert.ok(flagged.every((order) => order.reason.includes("除权")));
+    // 报价恢复一致：标记清除，不会永久挂着误报。
+    const restored = observation(
+      dateAt(2),
+      "10:00:10",
+      previous,
+      200000,
+      previous,
+    );
+    const accepted = advanceSession(rejected.book, rejected.session, restored);
+    assert.deepEqual(
+      accepted.session.orders.filter((order) => order.holdCode),
+      [],
+      "报价恢复后不再持有除权标记",
+    );
+  } finally {
+    db.close();
+  }
+});
+test("账户提交后事件写入失败不丢风险事实：缓冲到下一轮补写", async () => {
+  const db = localDatabase(),
+    env = { DB: db, TRADING_POLL_SECONDS: "3" };
+  const realPrepare = db.prepare.bind(db);
+  let failEventWrite = true;
+  // 只让第一次事件写入失败，模拟"账户提交已成功、随后写事件异常"。
+  db.prepare = (sql) => {
+    if (
+      failEventWrite &&
+      sql.includes("INSERT OR IGNORE INTO operation_events")
+    ) {
+      failEventWrite = false;
+      return {
+        bind: () => ({
+          run: async () => {
+            throw new Error("disk unavailable");
+          },
+        }),
+      };
+    }
+    return realPrepare(sql);
+  };
+  let runner,
+    calls = 0;
+  try {
+    runner = startTradingRunner(env, async () => null, {
+      // 每次取时刻都前进 20 秒：让循环按最短间隔调度，测试不必等轮询周期。
+      now: () =>
+        new Date(Date.parse("2026-01-02T01:35:00.000Z") + ++calls * 20000),
+      providers: {
+        calendar: async () => ({ dates: ["2026-01-02"], benchmark: [] }),
+        quotes: async () => ({}),
+      },
+    });
+    await runner.ready;
+    const first = await db
+      .prepare("SELECT COUNT(*) AS n FROM operation_events")
+      .first();
+    assert.equal(Number(first.n), 0, "第一次写入失败，事件不得凭空消失");
+    // 下一轮：缓冲补写成功，第一轮的风险事实仍然入账。
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    const second = await db
+      .prepare(
+        "SELECT type, rule_type FROM operation_events ORDER BY ingest_seq",
+      )
+      .all();
+    assert.ok(
+      second.results.length >= 2,
+      `写入恢复后必须补上失败那一轮的事实，实际 ${JSON.stringify(second.results)}`,
+    );
+  } finally {
+    runner?.stop();
+    db.close();
+  }
+});
 test("实时 AI 重放不以日线补造收益，缺少实时覆盖时禁止验证通过", () => {
   const pair = { snapshot: snapshot(dateAt(0)), dataset: closing(dateAt(1)) };
   const result = replayStrategy([pair], BASE_STRATEGY);

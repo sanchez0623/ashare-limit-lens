@@ -16,6 +16,23 @@ export function startTradingRunner(env, runDaily, options = {}) {
     loopSequence = 0;
   const now = options.now || (() => new Date());
   const providers = options.providers ?? {};
+  // 事件缓冲：账户提交已经成功，随后的事件写入失败不能把这一帧的风险事实
+  // 直接丢掉（回撤、保护退出阻塞这类一次性风险错过就永久漏报）。缓冲有界，
+  // 超限丢弃最旧的并让进度健康停止上报，由外部监测暴露主库异常。
+  const MAX_BUFFERED_EVENTS = 200;
+  const buffered = [];
+  const flushOperationEvents = async () => {
+    if (!buffered.length) return true;
+    try {
+      await recordOperationEvents(env, buffered);
+      buffered.length = 0;
+      return true;
+    } catch {
+      if (buffered.length > MAX_BUFFERED_EVENTS)
+        buffered.splice(0, buffered.length - MAX_BUFFERED_EVENTS);
+      return false;
+    }
+  };
   const loop = async () => {
     if (stopped) return;
     const current = now(),
@@ -46,20 +63,14 @@ export function startTradingRunner(env, runDaily, options = {}) {
       // 只写结构化事件（本地快速提交），规则与发送在独立子进程推进，
       // 交易循环不等待通知供应商响应。正常 NON_TRADING_DAY 不是失败。
       loopSequence += 1;
-      try {
-        await recordOperationEvents(env, [
-          {
-            source: "loop",
-            result: primary ?? { status: "SKIPPED" },
-            now: current.toISOString(),
-            tradeDate: clock.date,
-            sourceSequence: loopSequence,
-          },
-        ]);
-      } catch {
-        // 事件没写进库：不能继续上报"进度健康"，否则外部监测学不到主库异常。
-        storageOk = false;
-      }
+      buffered.push({
+        source: "loop",
+        result: primary ?? { status: "SKIPPED" },
+        now: current.toISOString(),
+        tradeDate: clock.date,
+        sourceSequence: loopSequence,
+      });
+      if (!(await flushOperationEvents())) storageOk = false;
       await reportProcessProgress(env, {
         sequence: loopSequence,
         completedAt: now().toISOString(),
@@ -72,15 +83,14 @@ export function startTradingRunner(env, runDaily, options = {}) {
       ) {
         lastDailyAttempt = current.getTime();
         const result = await runDaily();
-        await recordOperationEvents(env, [
-          {
-            source: "daily",
-            result,
-            now: now().toISOString(),
-            tradeDate: clock.date,
-            sourceSequence: loopSequence,
-          },
-        ]).catch(() => {});
+        buffered.push({
+          source: "daily",
+          result,
+          now: now().toISOString(),
+          tradeDate: clock.date,
+          sourceSequence: loopSequence,
+        });
+        await flushOperationEvents();
         if (
           (result.paper?.status === "SETTLED" &&
             result.paper.nextPlan &&
@@ -101,15 +111,20 @@ export function startTradingRunner(env, runDaily, options = {}) {
           pollIntervalSeconds: interval,
         });
       } catch {}
-      await recordOperationEvents(env, [
-        {
-          source: "loop",
-          result: { status: "ERROR" },
-          now: current.toISOString(),
-          tradeDate: clock.date,
-          sourceSequence: loopSequence,
-        },
-      ]).catch(() => {});
+      buffered.push({
+        source: "loop",
+        result: { status: "ERROR" },
+        now: current.toISOString(),
+        tradeDate: clock.date,
+        sourceSequence: loopSequence,
+      });
+      // 失败路径同样不能丢：主库恢复后下一轮补写，外部监测在此期间不报平安。
+      if (!(await flushOperationEvents())) storageOk = false;
+      await reportProcessProgress(env, {
+        sequence: loopSequence,
+        completedAt: now().toISOString(),
+        storageOk,
+      }).catch(() => {});
     }
     if (!stopped)
       timer = setTimeout(

@@ -144,6 +144,15 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
           .map((order) => order.code),
       ),
     ];
+    // 除权不匹配导致暂停交易的股票：报价被引擎拒收，必须如实上报，
+    // 否则其他股票正常就会把整轮报成 RUNNING 掩盖掉该股停摆。
+    const corporateActionHolds = [
+      ...new Set(
+        orders
+          .filter((order) => order.holdCode && !TERMINAL.has(order.status))
+          .map((order) => order.code),
+      ),
+    ];
     const drawdown = 1 - result.book.equityCents / result.book.peakEquityCents;
     // 没有需要盯的股票时不存在"报价缺失"，与旧语义一致判为正常运行。
     const quoted = codes.length === 0 || missingQuoteCodes.length === 0;
@@ -159,6 +168,7 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
       drawdownBreached: drawdown >= RISK_LIMITS.maxDrawdown,
       blockedProtectiveExits,
       incompleteRecoveries,
+      corporateActionHolds,
       affectsProtectiveExit: missingQuoteCodes.some((code) =>
         protectiveCodes.has(code),
       ),

@@ -28,8 +28,12 @@ import {
 
 const nowIso = () => new Date().toISOString();
 
+// 源事件 ID 必须区分同一轮里的不同规则：一轮循环可以同时暴露回撤、保护退出、
+// 报价缺失等多条事实，它们的 instanceId/accountId/tradeDate/sourceSequence/
+// type/entityRef/occurredAt 完全相同——少了 ruleType 就会被 INSERT OR IGNORE
+// 当成重复事件静默丢弃。
 function eventId(event) {
-  return `${event.instanceId}:${event.accountId}:${event.tradeDate ?? "na"}:${event.sourceSequence ?? 0}:${event.type}:${event.entityRef ?? "primary"}:${event.occurredAt}`;
+  return `${event.instanceId}:${event.accountId}:${event.tradeDate ?? "na"}:${event.sourceSequence ?? 0}:${event.type}:${event.ruleType ?? "-"}:${event.entityRef ?? "primary"}:${event.occurredAt}`;
 }
 
 // ---------- 事实入站（交易循环调用，只写事件表） ----------
@@ -44,7 +48,12 @@ export async function recordOperationEvents(env, inputs) {
         instanceId,
         accountId: input.accountId ?? "primary",
         sourceSequence: input.sourceSequence ?? null,
-        payload: event.safeFacts ?? {},
+        // cleared 必须随事实落库：规则推进只从库里重建事实，丢了它就会把
+        // "本轮已验证正常"误当成问题，制造假实例与假通知。
+        payload: {
+          ...(event.safeFacts ?? {}),
+          ...(event.cleared ? { cleared: true } : {}),
+        },
       };
       await store.recordOperationEvent({ ...full, id: eventId(full) });
       written.push(full);
@@ -85,13 +94,15 @@ export async function processAlerts(
     if (!row.ruleType) continue; // 维护/测试等非规则事件不推进规则
     // 直接消费已落库事实（rule_type/reason_code/entity_ref 随事件落库），
     // 不在规则器里重新分类——分类只发生在事实入站时。
+    const { cleared, ...safeFacts } = row.payload ?? {};
     const classified = {
       ruleType: row.ruleType,
       reasonCode: row.reasonCode,
       entityRef: row.entityRef ?? "primary",
       occurredAt: row.occurredAt,
       tradeDate: row.tradeDate,
-      safeFacts: row.payload ?? {},
+      safeFacts,
+      cleared: cleared === true,
       type: row.type,
     };
     const fingerprint = fingerprintOf(classified);
@@ -101,6 +112,7 @@ export async function processAlerts(
       .push({ ...classified, instanceId: row.instanceId, rowId: row.id });
   }
   let incidents = 0;
+  let contended = 0;
   const commit = async ({ previous, evaluation, group }) => {
     const transition = transitionIncident({
       incident: previous,
@@ -119,15 +131,12 @@ export async function processAlerts(
     const notifying = Boolean(notify) && channels.length > 0;
     const hasPatch = Object.keys(transition.patch ?? {}).length > 0;
     if (transition.action === "KEEP" && !notifying && !hasPatch) return false;
+    // 入队只代表"已安排通知"，不代表送达：送达标记由 outbox 在成功后写入。
     const notificationFacts = notifying
-      ? {
-          notifiedOnce: true,
-          lastNotifiedAt: now,
-          lastNotifiedType: notify.type,
-        }
+      ? { notifyScheduledAt: now, lastScheduledType: notify.type }
       : {};
     const create = !previous;
-    await store.commitIncidentTransition({
+    const result = await store.commitIncidentTransition({
       create: create
         ? {
             fingerprint: evaluation.fingerprint,
@@ -146,9 +155,8 @@ export async function processAlerts(
         ? null
         : {
             ...transition.patch,
-            ...(notifying ? { notifiedOnce: true, lastNotifiedAt: now } : {}),
+            ...notificationFacts,
             payload: {
-              ...(previous?.payload ?? {}),
               ...(transition.action === "RESOLVE"
                 ? { resolvedBy: "rules" }
                 : {}),
@@ -165,7 +173,13 @@ export async function processAlerts(
       },
       channels: notifying ? channels : [],
       now,
+      // 评估所依据的 revision：基于旧快照的评估不得覆盖更新的状态。
+      expectedRevision: previous?.revision ?? null,
     });
+    if (!result.applied) {
+      contended += 1;
+      return false;
+    }
     if (transition.action !== "KEEP") incidents += 1;
     return true;
   };
@@ -183,33 +197,22 @@ export async function processAlerts(
     if (!evaluation || evaluation.suppressed) continue;
     await commit({ previous, evaluation, group });
   }
-  // 本批完全没有事件的未恢复实例：条件已消失，交给宽限期与恢复判定。
-  // 只在整批事件都消费完时判定，否则积压尾部的实例会被误判为"已消失"。
-  if (events.length < limit)
-    for (const incident of await store.activeIncidents()) {
-      if (grouped.has(incident.fingerprint)) continue;
-      await commit({
-        previous: incident,
-        evaluation: {
-          event: null,
-          fingerprint: incident.fingerprint,
-          severity: incident.severity,
-          absent: true,
-          suppressed: false,
-        },
-        group: [],
-      });
-    }
   // 游标只按摄取顺序前进；无事件时不回退（null 表示从头读，绝不能写回）。
   const nextCursor = events.length
     ? { ingestSeq: events.at(-1).ingestSeq }
     : cursor;
   // 空转也要更新进度心跳：停滞检测依赖 lastProgressAt，"空闲"不等于"停滞"。
-  await store.advanceProcessorState({ lastEventCursor: nextCursor, now });
+  const advanced = await store.advanceProcessorState({
+    lastEventCursor: nextCursor,
+    now,
+    // 本次评估依据的分发器 revision：并发执行器已推进时不得把游标写回旧位置。
+    expectedRevision: state?.revision ?? null,
+  });
   return {
     processed: events.length,
     incidents,
-    cursor: nextCursor,
+    contended,
+    cursor: advanced.applied ? nextCursor : cursor,
     maintenanceUntil: maintenance,
   };
 }
@@ -315,6 +318,14 @@ export async function processAlertOutbox(
           providerRef: outcome.providerRef,
           now,
         });
+        // 送达成功才落"已通知"：入队不等于送达，否则重试耗尽的实例会永远
+        // 显示成"通知过"，恢复摘要与提醒节奏都会失真。
+        if (applied)
+          await store.commitIncidentTransition({
+            id: incident.id,
+            patch: { notifiedOnce: true, lastNotifiedAt: now },
+            now,
+          });
         // 租约已被接管时旧执行器不得覆盖新执行器的结果，只如实记录丢弃。
         results.push(
           applied
@@ -422,6 +433,8 @@ export async function ackIncident(env, incidentId, { hours = 1 } = {}) {
     eventPayload: { ackUntil },
     now,
   });
+  // 确认同时表示"已知悉该实例的通知丢失"，清掉失败信号，让管道健康可恢复。
+  await store.dismissExpiredDeliveries({ incidentId, now });
   return { ackUntil };
 }
 

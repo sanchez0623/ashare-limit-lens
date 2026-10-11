@@ -51,6 +51,15 @@ test("进度门控：只有真实循环进度且存储检查通过才报平安",
   });
   assert.equal(stuckQueue.queueOk, false);
   assert.equal(stuckQueue.alertPipeline, false);
+  // 关键通知重试耗尽即丢失：阈值必须为 0，一条都不能算健康。
+  const lostNotification = evaluateWatchdogHealth({
+    runnerProgress: null,
+    storageHealth: { ok: true },
+    queueHealth: { pending: 0, overdue: 0, expired: 1 },
+    now,
+  });
+  assert.equal(lostNotification.queueOk, false);
+  assert.equal(lostNotification.alertPipeline, false);
   // 告警子进程退出（无进度、无队列推进）→ 两个检查都不健康。
   const dead = evaluateWatchdogHealth({
     runnerProgress: null,

@@ -153,8 +153,9 @@ export function classifyOperationalFacts(input) {
   const base = { occurredAt: now, tradeDate, source };
   if (source === "loop") {
     const status = result?.status;
+    const problems = [];
     if (status === "ERROR" || result?.error)
-      events.push({
+      problems.push({
         ...base,
         type: EVENT_TYPES.LOOP_ERROR,
         ruleType: RULE_TYPES.LOOP_FAILED,
@@ -165,7 +166,7 @@ export function classifyOperationalFacts(input) {
     else if (status === "BLOCKED")
       // 缺前日结算/缺事前计划是不可执行条件（SESSION_BLOCKED）；
       // 其余 BLOCKED 子原因在 safeFacts 中保留展示文本，但不虚告警。
-      events.push({
+      problems.push({
         ...base,
         type: EVENT_TYPES.LOOP_RESULT,
         ruleType: RULE_TYPES.SESSION_BLOCKED,
@@ -181,7 +182,7 @@ export function classifyOperationalFacts(input) {
       ? result.missingQuoteCodes
       : [];
     if (status === "STALE_QUOTES" || missingQuoteCodes.length)
-      events.push({
+      problems.push({
         ...base,
         type: EVENT_TYPES.LOOP_RESULT,
         ruleType: RULE_TYPES.REQUIRED_QUOTE_STALE,
@@ -195,7 +196,7 @@ export function classifyOperationalFacts(input) {
         },
       });
     if (result?.drawdownBreached)
-      events.push({
+      problems.push({
         ...base,
         type: EVENT_TYPES.LOOP_RESULT,
         ruleType: RULE_TYPES.DRAWDOWN_TRIPPED,
@@ -209,7 +210,7 @@ export function classifyOperationalFacts(input) {
       ? result.blockedProtectiveExits
       : [];
     if (blockedProtectiveExits.length)
-      events.push({
+      problems.push({
         ...base,
         type: EVENT_TYPES.LOOP_RESULT,
         ruleType: RULE_TYPES.PROTECTIVE_EXIT_BLOCKED,
@@ -222,7 +223,7 @@ export function classifyOperationalFacts(input) {
       ? result.incompleteRecoveries
       : [];
     if (incompleteRecoveries.length)
-      events.push({
+      problems.push({
         ...base,
         type: EVENT_TYPES.LOOP_RESULT,
         ruleType: RULE_TYPES.T_RECOVERY_INCOMPLETE,
@@ -230,13 +231,66 @@ export function classifyOperationalFacts(input) {
         entityRef: "primary",
         safeFacts: { codes: incompleteRecoveries },
       });
+    // 除权不匹配（昨收与冻结参考价不一致）导致该股暂停交易：§3.1 列为
+    // "需要处理的运行阻塞，立即告警"，不能因为其他股票正常就报 RUNNING 掩盖。
+    const corporateActionHolds = Array.isArray(result?.corporateActionHolds)
+      ? result.corporateActionHolds
+      : [];
+    if (corporateActionHolds.length)
+      problems.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.SESSION_BLOCKED,
+        reasonCode: REASON_CODES.CORPORATE_ACTION_UNVERIFIED,
+        entityRef: "primary",
+        safeFacts: { codes: corporateActionHolds },
+      });
+    events.push(...problems);
+    // 恢复必须由正向证据驱动（§3 恢复条件）：只有真正执行过一轮、且本轮
+    // 已验证相关条件不成立的规则才发"已清除"。休市/结算/跳过/失败轮次
+    // 什么都没有验证，绝不能被当成"问题已消失"。
+    const verified = status === "RUNNING" || status === "STALE_QUOTES";
+    if (verified) {
+      const reported = new Set(problems.map((event) => event.ruleType));
+      const clearable = [
+        RULE_TYPES.LOOP_FAILED,
+        RULE_TYPES.SESSION_BLOCKED,
+        RULE_TYPES.PROTECTIVE_EXIT_BLOCKED,
+        RULE_TYPES.T_RECOVERY_INCOMPLETE,
+        RULE_TYPES.REQUIRED_QUOTE_STALE,
+      ];
+      for (const ruleType of clearable) {
+        if (reported.has(ruleType)) continue;
+        // 报价缺失的恢复要求"该股票重新获得合格报价"；只要本轮还有缺失，
+        // 就不能通过 STALE_QUOTES 轮次宣告恢复。
+        if (
+          ruleType === RULE_TYPES.REQUIRED_QUOTE_STALE &&
+          missingQuoteCodes.length
+        )
+          continue;
+        // 会话恢复要求交易真正恢复，而不是仅"本轮没报错"。
+        if (ruleType === RULE_TYPES.SESSION_BLOCKED && status !== "RUNNING")
+          continue;
+        events.push({
+          ...base,
+          type: EVENT_TYPES.LOOP_RESULT,
+          ruleType,
+          reasonCode: null,
+          entityRef: "primary",
+          cleared: true,
+          safeFacts: {},
+        });
+      }
+    }
   } else if (source === "daily") {
     const paper = result?.paper ?? {};
     const settled =
       paper.status === "SETTLED" || paper.status === "NON_TRADING_DAY";
     const snapshotSaved = result?.snapshot?.saved !== false;
     const nextPlan = Boolean(paper.nextPlan);
-    if (!settled || !snapshotSaved || (!nextPlan && paper.status === "SETTLED"))
+    const late =
+      !settled || !snapshotSaved || (!nextPlan && paper.status === "SETTLED");
+    if (late)
       events.push({
         ...base,
         type: EVENT_TYPES.DAILY_RESULT,
@@ -244,6 +298,17 @@ export function classifyOperationalFacts(input) {
         reasonCode: REASON_CODES.SETTLEMENT_FAILED,
         entityRef: "primary",
         safeFacts: { settled, snapshotSaved, nextPlan },
+      });
+    else
+      // 三项均完成（结算、归档、冻结下一日计划）是结算迟延唯一的恢复证据。
+      events.push({
+        ...base,
+        type: EVENT_TYPES.DAILY_RESULT,
+        ruleType: RULE_TYPES.SETTLEMENT_LATE,
+        reasonCode: null,
+        entityRef: "primary",
+        cleared: true,
+        safeFacts: {},
       });
     const tournament = result?.tournament;
     if (tournament && tournament.error)
@@ -253,6 +318,18 @@ export function classifyOperationalFacts(input) {
         ruleType: RULE_TYPES.AI_OR_RESEARCH_FAILED,
         reasonCode: REASON_CODES.RESEARCH_FAILED,
         entityRef: "tournament",
+        safeFacts: {},
+      });
+    else if (tournament)
+      // 研究任务本轮真的跑过且没报错，才是"研究恢复"的正向证据；
+      // 本轮压根没有研究任务（tournament 缺省）什么都没验证。
+      events.push({
+        ...base,
+        type: EVENT_TYPES.RESEARCH_RESULT,
+        ruleType: RULE_TYPES.AI_OR_RESEARCH_FAILED,
+        reasonCode: null,
+        entityRef: "tournament",
+        cleared: true,
         safeFacts: {},
       });
   } else if (source === "ledger") {
@@ -319,6 +396,23 @@ export function evaluateAlertRules({
     const enriched = durationFacts
       ? { ...event, safeFacts: { ...event.safeFacts, ...durationFacts } }
       : event;
+    // 同批内"问题事实"优先于"已清除事实"：一轮既能报问题也能报清除时，
+    // 只有问题才是当前状态。
+    if (event.cleared) {
+      const hasProblem = events.some(
+        (row) => !row.cleared && fingerprintOf(row) === fingerprint,
+      );
+      if (hasProblem) continue;
+      evaluations.push({
+        event: enriched,
+        fingerprint,
+        severity: related?.severity ?? SEVERITIES.WARNING,
+        activeSeconds,
+        cleared: true,
+        suppressed: false,
+      });
+      continue;
+    }
     const severity = severityOf(enriched, policy, phase);
     evaluations.push({
       event: enriched,
@@ -334,8 +428,8 @@ export function evaluateAlertRules({
         !["MORNING", "AFTERNOON"].includes(phase.phase),
     });
   }
-  // 已不再上报的既有实例：条件可能已消失，由调用方结合 resumeGraceSeconds
-  // 判定恢复；此处只标注"本批未见"。
+  // 本批完全没有事实的既有实例：只是"本轮没有新证据"，既不是恢复也不是问题，
+  // 状态机必须原样保持（§3 的恢复条件都需要正向证据）。
   for (const incident of previousIncident ? [previousIncident] : []) {
     if (!byFingerprint.has(incident.fingerprint))
       evaluations.push({
@@ -399,15 +493,16 @@ export function suppressedByMaintenance(ruleType, until, now) {
 }
 
 // 状态机转换（§5.3）：OPEN → 升级/提醒 → RESOLVED；ACK 只静默提醒不阻止升级。
+// 恢复只能由正向证据（cleared）驱动：没有新证据既不恢复也不升级。
 export function transitionIncident({
   incident,
   evaluation,
   now,
   policy = DEFAULT_ALERT_POLICY,
 }) {
-  // 新实例。
+  // 新实例：只有问题事实能开实例。
   if (!incident)
-    return evaluation.absent || evaluation.suppressed
+    return evaluation.absent || evaluation.suppressed || evaluation.cleared
       ? null
       : {
           action: "OPEN",
@@ -421,13 +516,16 @@ export function transitionIncident({
           },
           notify: { type: "OPEN", severity: evaluation.severity },
         };
-  // 本批未见：宽限后恢复（恢复不能只因价格短暂反弹——由事件源停止上报驱动）。
-  if (evaluation.absent) {
+  // 本批没有任何事实：保持现状，不写库、不通知。
+  if (evaluation.absent) return { action: "KEEP", patch: {}, notify: null };
+  if (evaluation.suppressed) return { action: "KEEP", patch: {}, notify: null };
+  // 正向证据表明条件消失：宽限期后恢复（§3 各规则的恢复条件）。
+  if (evaluation.cleared) {
     if (incident.status === "RESOLVED") return null;
-    const silent = incident.ackUntil && incident.ackUntil > now ? true : false;
-    const absentSeconds =
+    const silent = Boolean(incident.ackUntil && incident.ackUntil > now);
+    const clearedSeconds =
       (new Date(now).getTime() - new Date(incident.lastSeen).getTime()) / 1000;
-    if (absentSeconds < policy.resumeGraceSeconds)
+    if (clearedSeconds < policy.resumeGraceSeconds)
       return { action: "KEEP", patch: {}, notify: null, silent };
     return {
       action: "RESOLVE",
@@ -438,22 +536,24 @@ export function transitionIncident({
       silent,
     };
   }
-  if (evaluation.suppressed) return { action: "KEEP", patch: {}, notify: null };
   const escalated =
     evaluation.severity === SEVERITIES.CRITICAL &&
     incident.severity !== SEVERITIES.CRITICAL;
-  // 提醒节奏以"上次成功通知时刻"为基准：拿 lastSeen 当基准时，每轮事件都会
-  // 刷新 lastSeen，相隔永远小于 remindEverySeconds，提醒永不发出。
-  const lastNotifiedAt =
-    incident.lastNotifiedAt ?? incident.firstSeen ?? incident.lastSeen;
-  const sinceNotified =
-    (new Date(now).getTime() - new Date(lastNotifiedAt).getTime()) / 1000;
+  // 去重基准是"上次安排通知的时刻"，提醒节奏基准是"上次成功送达的时刻"：
+  // 入队不等于送达，两者不能混为一个标志。
+  const scheduledAt =
+    incident.notifyScheduledAt ??
+    incident.lastNotifiedAt ??
+    incident.firstSeen ??
+    incident.lastSeen;
+  const sinceScheduled =
+    (new Date(now).getTime() - new Date(scheduledAt).getTime()) / 1000;
   const ackActive = Boolean(incident.ackUntil && incident.ackUntil > now);
   let notify = null;
   if (escalated) notify = { type: "ESCALATED", severity: SEVERITIES.CRITICAL };
-  else if (!incident.notifiedOnce)
+  else if (!incident.notifyScheduledAt)
     notify = { type: "OPEN", severity: evaluation.severity };
-  else if (!ackActive && sinceNotified >= policy.remindEverySeconds)
+  else if (!ackActive && sinceScheduled >= policy.remindEverySeconds)
     notify = { type: "REMIND", severity: evaluation.severity };
   return {
     action: escalated ? "ESCALATE" : "KEEP",

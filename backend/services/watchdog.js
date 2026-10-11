@@ -8,7 +8,9 @@ const PROGRESS_INTERVAL_MS = 60_000;
 // 严重积压或分发器停滞会被当成健康上报。
 const MAX_PENDING = 20;
 const MAX_OVERDUE = 0;
-const MAX_EXPIRED = 20;
+// 关键通知重试耗尽即为丢失，绝不能当成健康：阈值必须为 0，直到所有者
+// 通过确认（ACK）清掉这次失败信号。
+const MAX_EXPIRED = 0;
 
 export function evaluateWatchdogHealth({
   runnerProgress,
@@ -35,7 +37,7 @@ export function evaluateWatchdogHealth({
     queueHealth == null ||
     ((queueHealth.pending ?? 0) <= MAX_PENDING &&
       (queueHealth.overdue ?? 0) <= MAX_OVERDUE &&
-      (queueHealth.expired ?? 0) < MAX_EXPIRED);
+      (queueHealth.expired ?? 0) <= MAX_EXPIRED);
   return {
     processProgress: progressFresh && storageOk,
     alertPipeline: storageOk && queueOk,

@@ -2,15 +2,22 @@
 // 事件与交易提交共用现有 CAS 守卫；通知供应商网络失败不回滚交易。
 import { digestOf } from "../domain/research-lineage.js";
 
-// 实例 payload 合并：notifiedOnce 只能由显式字段推进，绝不能被"当前值"
-// 回写覆盖——否则成功发送后的标记会立刻被打回 false，告警反复重发。
+// 实例 payload 合并。通知状态字段（notifiedOnce / lastNotifiedAt /
+// notifyScheduledAt）由通知层独占：合并时一律取"当前行"的值，只有显式
+// patch 才能推进。否则调用方基于旧快照拼的 payload 会把已送达标记回写成
+// false，导致告警反复重发。
+const NOTIFICATION_FIELDS = [
+  "notifiedOnce",
+  "lastNotifiedAt",
+  "notifyScheduledAt",
+];
+
 function mergedIncidentPayload(current, patch) {
   const next = { ...current.payload, ...(patch?.payload ?? {}) };
-  if (patch?.notifiedOnce !== undefined)
-    next.notifiedOnce = Boolean(patch.notifiedOnce);
-  else next.notifiedOnce = Boolean(next.notifiedOnce);
-  if (patch?.lastNotifiedAt !== undefined)
-    next.lastNotifiedAt = patch.lastNotifiedAt;
+  for (const field of NOTIFICATION_FIELDS) {
+    next[field] = patch?.[field] ?? current.payload?.[field];
+    if (next[field] === undefined) delete next[field];
+  }
   return next;
 }
 
@@ -144,6 +151,7 @@ export class AlertRepository {
       revision: row.revision,
       notifiedOnce: Boolean(payload.notifiedOnce),
       lastNotifiedAt: payload.lastNotifiedAt ?? null,
+      notifyScheduledAt: payload.notifyScheduledAt ?? null,
       payload,
     };
   }
@@ -154,20 +162,6 @@ export class AlertRepository {
       .bind(id)
       .first();
     return row ? this.rowToIncident(row) : null;
-  }
-
-  // 所有未恢复实例：规则推进用来发现"本批没有新事件"的实例，
-  // 否则恢复判定只在有事件的指纹上运行，实例永远不会 RESOLVED。
-  async activeIncidents(limit = 200) {
-    const rows = (
-      await this.db
-        .prepare(
-          "SELECT * FROM alert_incidents WHERE resolved_at IS NULL ORDER BY last_seen LIMIT ?",
-        )
-        .bind(limit)
-        .all()
-    ).results;
-    return rows.map((row) => this.rowToIncident(row));
   }
 
   async listIncidents({ limit = 20, offset = 0, activeOnly = false } = {}) {
@@ -216,6 +210,7 @@ export class AlertRepository {
     eventPayload = {},
     channels = [],
     now,
+    expectedRevision = null,
   }) {
     return this.db.transaction(async () => {
       const runId = crypto.randomUUID();
@@ -244,6 +239,16 @@ export class AlertRepository {
       } else {
         const current = await this.getIncident(id);
         if (!current) throw new Error("告警实例不存在");
+        // 调用方读到的 revision 才是它的评估依据。只比对"事务内新读的
+        // revision"挡不住写—写竞争：一个基于旧快照的评估会把已经升级的
+        // 严重程度、或已恢复的状态覆盖回旧值。
+        if (expectedRevision !== null && expectedRevision !== current.revision)
+          return {
+            id,
+            applied: false,
+            reason: "CONTENTION",
+            revision: current.revision,
+          };
         revision = current.revision + 1;
         const result = await this.db
           .prepare(
@@ -262,10 +267,21 @@ export class AlertRepository {
           )
           .run();
         if (result.meta.changes !== 1)
-          throw new Error("告警实例正在被其他流程更新");
+          return {
+            id,
+            applied: false,
+            reason: "CONTENTION",
+            revision: current.revision,
+          };
       }
       if (!eventType)
-        return { id: incidentId, revision, runId, sequence: null };
+        return {
+          id: incidentId,
+          applied: true,
+          revision,
+          runId,
+          sequence: null,
+        };
       const sequence =
         Number(
           (
@@ -300,7 +316,14 @@ export class AlertRepository {
           .run();
         deliveryIds.push(deliveryId);
       }
-      return { id: incidentId, revision, runId, sequence, deliveryIds };
+      return {
+        id: incidentId,
+        applied: true,
+        revision,
+        runId,
+        sequence,
+        deliveryIds,
+      };
     });
   }
 
@@ -413,6 +436,19 @@ export class AlertRepository {
     return result.meta.changes === 1;
   }
 
+  // 重试耗尽（EXPIRED）意味着关键通知已丢失：健康信号必须持续上报不健康，
+  // 直到所有者确认过该实例（ACK 表示"已知悉这次丢失"），否则一次瞬时故障
+  // 会让管道永远红着、或者（放宽阈值后）把丢失悄悄当成健康。
+  async dismissExpiredDeliveries({ incidentId, now }) {
+    const result = await this.db
+      .prepare(
+        "UPDATE alert_outbox SET status = 'DISMISSED', updated_at = ? WHERE incident_id = ? AND status = 'EXPIRED'",
+      )
+      .bind(now, incidentId)
+      .run();
+    return result.meta.changes;
+  }
+
   // 队列健康：overdue 是"现在就该发却没人领"的项，是分发器停滞的直接证据；
   // 只看 pending 总量会把空闲队列当成健康（分发器已死时队列恰好是空的）。
   async outboxHealth({ now = new Date().toISOString() } = {}) {
@@ -448,8 +484,13 @@ export class AlertRepository {
       : null;
   }
 
-  // 旧格式游标（按发生时间 {occurredAt, id}）折算为摄取序号：升级后既不重放
-  // 历史事件（会误报已恢复的问题），也不把游标丢掉导致漏读。
+  // 旧格式游标（按发生时间 {occurredAt, id}）折算为摄取序号。
+  // 旧方案按 (occurred_at, id) 分页消费，游标是"已消费的最大键"，因此
+  // "未消费"集合 = 键大于游标的事件 ∪ 键不大于游标但在游标写入之后才入库的事件。
+  // 后者里可能存在 ingest_seq 比游标行更小的事件（例如键更大的事件先入库），
+  // 直接把游标折算成那一行的 ingest_seq 会永久跳过它们；因此取
+  // min(键大于游标的最小 ingest_seq - 1, 游标行的 ingest_seq)：宁可重放少量
+  // 已消费事件（状态机与入队对重放幂等），也绝不跳过未消费事件。
   async resolveCursor(raw) {
     if (!raw) return null;
     let cursor = null;
@@ -461,26 +502,51 @@ export class AlertRepository {
     if (!cursor) return null;
     if (Number.isInteger(cursor.ingestSeq))
       return { ingestSeq: cursor.ingestSeq };
-    if (!cursor.id) return null;
+    if (!cursor.occurredAt || !cursor.id) return null;
     const row = await this.db
       .prepare("SELECT ingest_seq FROM operation_events WHERE id = ?")
       .bind(cursor.id)
       .first();
-    return { ingestSeq: Number(row?.ingest_seq ?? 0) };
+    if (!row) return { ingestSeq: 0 };
+    const cursorSeq = Number(row.ingest_seq);
+    const after = await this.db
+      .prepare(
+        "SELECT MIN(ingest_seq) AS n FROM operation_events WHERE (occurred_at > ?) OR (occurred_at = ? AND id > ?)",
+      )
+      .bind(cursor.occurredAt, cursor.occurredAt, cursor.id)
+      .first();
+    if (after?.n == null) return { ingestSeq: cursorSeq };
+    return { ingestSeq: Math.min(Number(after.n) - 1, cursorSeq) };
   }
 
-  async advanceProcessorState({ id = "dispatcher", lastEventCursor, now }) {
+  // 游标只能前进，且写入必须携带调用方读到的 revision：只对比事务内的新
+  // revision 挡不住"基于旧快照的评估"——它会把已经推进的游标写回旧位置，
+  // 造成事件重复消费（甚至漏读）。
+  async advanceProcessorState({
+    id = "dispatcher",
+    lastEventCursor,
+    now,
+    expectedRevision = null,
+  }) {
     const current = await this.processorState(id);
     const runId = crypto.randomUUID();
     if (!current) {
-      await this.db
+      const created = await this.db
         .prepare(
-          "INSERT INTO alert_processor_state (id, revision, last_event_cursor, last_progress_at, last_run_id) VALUES (?, 1, ?, ?, ?)",
+          "INSERT OR IGNORE INTO alert_processor_state (id, revision, last_event_cursor, last_progress_at, last_run_id) VALUES (?, 1, ?, ?, ?)",
         )
         .bind(id, JSON.stringify(lastEventCursor ?? null), now, runId)
         .run();
-      return { revision: 1, runId };
+      if (created.meta.changes !== 1)
+        return { applied: false, reason: "CONTENTION", revision: null };
+      return { applied: true, revision: 1, runId };
     }
+    if (expectedRevision !== null && expectedRevision !== current.revision)
+      return {
+        applied: false,
+        reason: "CONTENTION",
+        revision: current.revision,
+      };
     const result = await this.db
       .prepare(
         "UPDATE alert_processor_state SET revision = revision + 1, last_event_cursor = ?, last_progress_at = ?, last_run_id = ? WHERE id = ? AND revision = ?",
@@ -493,7 +559,12 @@ export class AlertRepository {
         current.revision,
       )
       .run();
-    if (result.meta.changes !== 1) throw new Error("分发器状态正在被并发更新");
-    return { revision: current.revision + 1, runId };
+    if (result.meta.changes !== 1)
+      return {
+        applied: false,
+        reason: "CONTENTION",
+        revision: current.revision,
+      };
+    return { applied: true, revision: current.revision + 1, runId };
   }
 }
