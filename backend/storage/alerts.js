@@ -21,6 +21,18 @@ function mergedIncidentPayload(current, patch) {
   return next;
 }
 
+// 活动指纹唯一索引（alert_incidents_active_fp，resolved_at IS NULL）冲突判定。
+// 两个执行器同时判定"实例不存在"、并发 INSERT 同一指纹时，后到者会撞索引。
+// 这是竞争而不是错误，必须识别出来走冲突重试，不能把 UNIQUE 异常抛出中断
+// 整轮评估（否则同一批里其余指纹会被连带漏处理）。
+function isActiveFingerprintConflict(error) {
+  const message = String(error?.message ?? "");
+  return (
+    /unique constraint failed/i.test(message) &&
+    message.includes("alert_incidents.fingerprint")
+  );
+}
+
 export class AlertRepository {
   constructor(env) {
     this.db = env.DB;
@@ -233,23 +245,37 @@ export class AlertRepository {
       if (create) {
         incidentId = `inc-${now}-${crypto.randomUUID().slice(0, 8)}`;
         revision = 1;
-        await this.db
-          .prepare(
-            "INSERT INTO alert_incidents (id, fingerprint, generation, status, severity, rule_type, first_seen, last_seen, ack_until, resolved_at, rule_version, revision, last_run_id, payload) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, NULL, NULL, ?, 1, ?, ?)",
-          )
-          .bind(
-            incidentId,
-            create.fingerprint,
-            create.generation ?? 1,
-            create.severity,
-            create.ruleType,
-            create.firstSeen ?? now,
-            now,
-            create.ruleVersion,
-            runId,
-            JSON.stringify(create.payload ?? {}),
-          )
-          .run();
+        try {
+          await this.db
+            .prepare(
+              "INSERT INTO alert_incidents (id, fingerprint, generation, status, severity, rule_type, first_seen, last_seen, ack_until, resolved_at, rule_version, revision, last_run_id, payload) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, NULL, NULL, ?, 1, ?, ?)",
+            )
+            .bind(
+              incidentId,
+              create.fingerprint,
+              create.generation ?? 1,
+              create.severity,
+              create.ruleType,
+              create.firstSeen ?? now,
+              now,
+              create.ruleVersion,
+              runId,
+              JSON.stringify(create.payload ?? {}),
+            )
+            .run();
+        } catch (error) {
+          // 并发 create 撞活动指纹唯一索引：让调用方按既有冲突路径重读实例
+          // 重新评估（此时胜出者已提交，重评会走 UPDATE 分支）。其余错误照抛，
+          // 避免把 NOT NULL 等真正的数据缺陷伪装成竞争而陷入重复重试。
+          if (isActiveFingerprintConflict(error))
+            return {
+              id: null,
+              applied: false,
+              reason: "CONTENTION",
+              revision: null,
+            };
+          throw error;
+        }
       } else {
         const current = await this.getIncident(id);
         if (!current) throw new Error("告警实例不存在");

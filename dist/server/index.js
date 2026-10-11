@@ -6909,6 +6909,10 @@ function mergedIncidentPayload(current, patch) {
   }
   return next;
 }
+function isActiveFingerprintConflict(error) {
+  const message = String(error?.message ?? "");
+  return /unique constraint failed/i.test(message) && message.includes("alert_incidents.fingerprint");
+}
 var AlertRepository = class {
   constructor(env) {
     this.db = env.DB;
@@ -7056,20 +7060,31 @@ var AlertRepository = class {
       if (create) {
         incidentId = `inc-${now}-${crypto.randomUUID().slice(0, 8)}`;
         revision = 1;
-        await this.db.prepare(
-          "INSERT INTO alert_incidents (id, fingerprint, generation, status, severity, rule_type, first_seen, last_seen, ack_until, resolved_at, rule_version, revision, last_run_id, payload) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, NULL, NULL, ?, 1, ?, ?)"
-        ).bind(
-          incidentId,
-          create.fingerprint,
-          create.generation ?? 1,
-          create.severity,
-          create.ruleType,
-          create.firstSeen ?? now,
-          now,
-          create.ruleVersion,
-          runId,
-          JSON.stringify(create.payload ?? {})
-        ).run();
+        try {
+          await this.db.prepare(
+            "INSERT INTO alert_incidents (id, fingerprint, generation, status, severity, rule_type, first_seen, last_seen, ack_until, resolved_at, rule_version, revision, last_run_id, payload) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, NULL, NULL, ?, 1, ?, ?)"
+          ).bind(
+            incidentId,
+            create.fingerprint,
+            create.generation ?? 1,
+            create.severity,
+            create.ruleType,
+            create.firstSeen ?? now,
+            now,
+            create.ruleVersion,
+            runId,
+            JSON.stringify(create.payload ?? {})
+          ).run();
+        } catch (error) {
+          if (isActiveFingerprintConflict(error))
+            return {
+              id: null,
+              applied: false,
+              reason: "CONTENTION",
+              revision: null
+            };
+          throw error;
+        }
       } else {
         const current = await this.getIncident(id);
         if (!current) throw new Error("\u544A\u8B66\u5B9E\u4F8B\u4E0D\u5B58\u5728");

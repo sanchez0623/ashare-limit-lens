@@ -1398,6 +1398,41 @@ test("并发保护：过期快照不得覆盖更新的严重程度，也不得�
   env.DB.close();
 });
 
+test("并发保护：并发 create 撞活动指纹唯一索引按冲突处理，不抛 UNIQUE", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  const create = (severity) => ({
+    fingerprint: "LOOP_FAILED:primary",
+    severity,
+    ruleType: "LOOP_FAILED",
+    ruleVersion: "rules-1",
+    payload: {},
+  });
+  // 第一个执行器已建立活动实例。
+  const first = await store.commitIncidentTransition({
+    create: create("WARNING"),
+    now: NOW,
+  });
+  assert.equal(first.applied, true);
+  // 第二个执行器仍以为实例不存在，重复 create：必须返回冲突（让调用方重读
+  // 实例重新评估），绝不能抛出 UNIQUE 中断整轮 processAlerts。
+  const second = await store.commitIncidentTransition({
+    create: create("CRITICAL"),
+    now: "2026-10-09T01:35:10.000Z",
+  });
+  assert.equal(second.applied, false, "重复 create 必须判为冲突");
+  assert.equal(second.reason, "CONTENTION");
+  assert.equal(second.id, null);
+  // 活动指纹唯一：冲突方既不得新增实例，也不得改写胜出者的实例。
+  assert.equal(await store.countIncidents(true), 1, "同一指纹活动实例唯一");
+  assert.equal(
+    (await store.activeIncident("LOOP_FAILED:primary")).severity,
+    "WARNING",
+    "冲突方不得改写胜出者的实例",
+  );
+  env.DB.close();
+});
+
 test("通知丢失：重试耗尽后健康不通过，确认后恢复", async () => {
   const env = buildEnv();
   const enabled = {
