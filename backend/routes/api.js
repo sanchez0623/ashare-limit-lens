@@ -34,6 +34,17 @@ import {
 import { HistoryJobRepository, openHistoryStore } from "../storage/history.js";
 import { backtestDetail, runBacktest } from "../services/backtest.js";
 import { pollTrading, realtimeStatus } from "../services/realtime.js";
+import {
+  reserveCohort,
+  runDailyTournament,
+  runTournamentPoll,
+  tournamentStatus,
+  cohortDetail,
+  cohortLineage,
+  cohortExport,
+} from "../services/strategy-tournament.js";
+import { promoteCohortChampion } from "../services/promotion.js";
+import { CohortRepository } from "../storage/cohorts.js";
 
 async function runDaily(env) {
   const date = beijingDate();
@@ -56,6 +67,14 @@ async function runDaily(env) {
     ? await saveSnapshot(env, market, await readWeights(env))
     : { saved: false, reason: marketError };
   const paper = await runPaperDay(env, date);
+  let tournament = null;
+  try {
+    tournament = await runDailyTournament(env, date, {
+      calendarDates: paper?.calendarDates ?? [],
+    });
+  } catch (error) {
+    tournament = { error: safeError(error) };
+  }
   let result = { review: null, reason: marketError },
     aiError = null;
   if (market) {
@@ -78,6 +97,7 @@ async function runDaily(env) {
     ai,
     snapshot,
     paper,
+    tournament,
     aiError,
     aiStatus: aiConfig(env),
     history: await historyList(env),
@@ -103,6 +123,8 @@ export async function api(request, env) {
     "/api/paper/live": ["GET"],
     "/api/paper/poll": ["POST"],
     "/api/research/status": ["GET"],
+    "/api/strategies/cohorts": ["GET", "POST"],
+    "/api/strategies/policy": ["POST"],
     "/api/history/capabilities": ["GET"],
     "/api/history/imports": ["GET", "POST"],
     "/api/backtests": ["GET", "POST"],
@@ -111,7 +133,10 @@ export async function api(request, env) {
     /^\/api\/history\/imports\/([a-z0-9-]+)(\/run)?$/,
   );
   const backtestMatch = path.match(/^\/api\/backtests\/([a-z0-9-]+)$/);
-  if (!methods[path] && !historyImportMatch && !backtestMatch)
+  const cohortMatch = path.match(
+    /^\/api\/strategies\/cohorts\/([a-z0-9-]+)(\/lineage|\/export)?$/,
+  );
+  if (!methods[path] && !historyImportMatch && !backtestMatch && !cohortMatch)
     return json({ error: "接口不存在" }, 404);
   const allowedMethods = methods[path] ?? ["GET", "POST"];
   if (!allowedMethods.includes(request.method))
@@ -247,7 +272,51 @@ export async function api(request, env) {
     }
     if (path === "/api/paper") return json(await paperOverview(env));
     if (path === "/api/paper/live") return json(await realtimeStatus(env));
-    if (path === "/api/paper/poll") return json(await pollTrading(env));
+    if (path === "/api/paper/poll") {
+      const result = await pollTrading(env);
+      let tournament = null;
+      try {
+        tournament = await runTournamentPoll(env, new Date());
+      } catch {}
+      return json({ ...result, tournament });
+    }
+    if (path === "/api/strategies/cohorts") {
+      if (request.method === "GET") {
+        const limit = Number(url.searchParams.get("limit") ?? 10);
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        return json(
+          await tournamentStatus(env, {
+            limit: Number.isFinite(limit) ? limit : 10,
+            offset: Number.isFinite(offset) ? offset : 0,
+          }),
+        );
+      }
+      const repository = new PaperRepository(env);
+      await repository.initialize(await readWeights(env));
+      return json(await reserveCohort(repository, env));
+    }
+    if (path === "/api/strategies/policy") {
+      const body = await readJson(request);
+      const cohorts = new CohortRepository(env);
+      const owner = await cohorts.windowOwner();
+      if (owner)
+        return json({ error: "存在活动研究窗口，不能保存新的赛马政策" }, 409);
+      const saved = await cohorts.saveTournamentPolicy(body);
+      return json({ policyId: saved.id, digest: saved.digest });
+    }
+    if (cohortMatch) {
+      const [, cohortId, action] = cohortMatch;
+      if (action === "/lineage") {
+        const lineage = await cohortLineage(env, cohortId);
+        return lineage ? json(lineage) : json({ error: "赛马批次不存在" }, 404);
+      }
+      if (action === "/export") {
+        const bundle = await cohortExport(env, cohortId);
+        return bundle ? json(bundle) : json({ error: "赛马批次不存在" }, 404);
+      }
+      const detail = await cohortDetail(env, cohortId);
+      return detail ? json(detail) : json({ error: "赛马批次不存在" }, 404);
+    }
     if (path === "/api/paper/settings") {
       const body = await readJson(request);
       if (
@@ -344,6 +413,25 @@ export async function api(request, env) {
       )
     )
       return json({ error: "策略版本无效" }, 400);
+    // 统一晋级入口：赛马成员版本走批次晋级服务，不接受排名或状态绕过。
+    if (body.id.startsWith("exp-")) {
+      const cohorts = new CohortRepository(env);
+      const member = await cohorts.memberByExperiment(body.id);
+      if (member) {
+        const evaluation = await cohorts.report(member.cohortId, "EVALUATION");
+        const championMemberId = evaluation?.payload?.champion?.memberId;
+        if (championMemberId !== member.memberId)
+          return json(
+            {
+              error:
+                "只有批次评估报告中的冠军支持启用；纸面领先或未通过成员没有启用资格",
+            },
+            403,
+          );
+        const promoted = await promoteCohortChampion(env, member.cohortId, {});
+        return json({ activated: promoted.promoted, ...promoted });
+      }
+    }
     return json({
       activated: await promoteCandidate(repository, env, body.id),
     });

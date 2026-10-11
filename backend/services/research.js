@@ -23,7 +23,7 @@ import { safeError } from "../http.js";
 const EXECUTOR_ID = crypto.randomUUID();
 const REQUEST_LEASE_MS = 120000;
 
-async function collectPairs(repository) {
+export async function collectPairs(repository) {
   const dataRows = await repository.history("paper_market_days", 400);
   const snapshotRows = await repository.history("snapshots", 400);
   const snapshots = new Map(
@@ -88,7 +88,7 @@ async function buildSample(pair, role) {
     digest: await digestOf(payload),
   };
 }
-async function buildSamples(windows) {
+export async function buildSamples(windows) {
   const samples = [];
   for (const pair of windows.training)
     samples.push(await buildSample(pair, "TRAIN"));
@@ -360,6 +360,11 @@ export async function proposeImprovement(
       reason: windows.reason,
     };
   const active = await research.activeExperiment();
+  if (active?.ownerType === "COHORT")
+    return {
+      status: "BUSY",
+      reason: "多策略赛马批次占用研究窗口，单候选提案等待批次结束",
+    };
   if (active) {
     let recovery;
     try {
@@ -868,6 +873,7 @@ export async function researchStatus(env) {
     },
     activeExperiment: active
       ? {
+          ownerType: active.ownerType ?? "EXPERIMENT",
           experimentId: active.experimentId,
           stage: active.experiment?.stage ?? null,
           window: active.windowPayload,

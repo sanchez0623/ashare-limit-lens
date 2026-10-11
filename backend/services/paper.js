@@ -37,6 +37,7 @@ async function settlePaperDay(env, date) {
   let account = await repository.initialize(await readWeights(env));
   const existing = account.book.lastDate === date;
   let settlement = null;
+  let calendarDates = [];
   if (!existing) {
     const from = new Date(
       new Date(`${account.book.lastDate || date}T00:00:00Z`).getTime() -
@@ -45,6 +46,7 @@ async function settlePaperDay(env, date) {
       .toISOString()
       .slice(0, 10);
     const calendar = await tradingCalendar(from, date);
+    calendarDates = calendar.dates.filter((day) => day > date).slice(0, 10);
     if (!calendar.dates.includes(date))
       return {
         status: "NON_TRADING_DAY",
@@ -158,6 +160,7 @@ async function settlePaperDay(env, date) {
     status: nextPlan ? "SETTLED" : "WAITING_SNAPSHOT",
     date,
     duplicate: existing || !settlement,
+    calendarDates,
     fills: settlement?.ledger.length || 0,
     equity: settlement?.equity || null,
     outcomes: settlement?.outcomes || [],

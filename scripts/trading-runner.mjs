@@ -1,4 +1,5 @@
 import { pollTrading } from "../backend/services/realtime.js";
+import { runTournamentPoll } from "../backend/services/strategy-tournament.js";
 import { marketClock, inSession } from "../backend/domain/realtime.js";
 import { RealtimeRepository } from "../backend/storage/realtime.js";
 
@@ -17,6 +18,11 @@ export function startTradingRunner(env, runDaily, options = {}) {
       clock = marketClock(current);
     try {
       await pollTrading(
+        { ...env, TRADING_RUNNER: "server", TRADING_POLL_SECONDS: interval },
+        current,
+      );
+      // 赛马批次运行时：一次联合采集行情帧，主账户优先消费，影子账本随后独立推进。
+      await runTournamentPoll(
         { ...env, TRADING_RUNNER: "server", TRADING_POLL_SECONDS: interval },
         current,
       );

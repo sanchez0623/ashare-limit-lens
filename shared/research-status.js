@@ -35,3 +35,34 @@ export const RESEARCH_TERMINAL_STAGES = new Set([
   "INCONCLUSIVE",
   "INVALIDATED",
 ]);
+export const COHORT_STAGES = {
+  RESERVED: "已预留",
+  PROPOSING: "候选生成中",
+  FROZEN: "候选已冻结",
+  HISTORICAL_CHECK: "历史筛查中",
+  SCHEDULED: "前瞻窗口已排期",
+  RUNNING: "前瞻窗口运行中",
+  EVALUATING: "批次评估中",
+  CLOSED: "批次已结束",
+};
+export const COHORT_ACTIVE_STAGES = new Set([
+  "RESERVED",
+  "PROPOSING",
+  "FROZEN",
+  "HISTORICAL_CHECK",
+  "SCHEDULED",
+  "RUNNING",
+  "EVALUATING",
+]);
+export const COHORT_MEMBER_STAGES = {
+  PROPOSING: "候选生成中",
+  HISTORICAL_CHECK: "历史筛查中",
+  SCHEDULED: "已进入前瞻窗口",
+  RUNNING: "前瞻运行中",
+  ELIGIBLE: "符合晋级条件",
+  PROMOTED: "已启用",
+  REJECTED: "历史筛查未通过",
+  ERROR: "候选生成或验证出错",
+  INCONCLUSIVE: "证据不足",
+  INVALIDATED: "环境变化已失效",
+};

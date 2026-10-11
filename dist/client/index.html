@@ -40,6 +40,9 @@
           <button data-view="paper" class="nav-item">
             <span data-icon="chart"></span>模拟交易
           </button>
+          <button data-view="strategies" class="nav-item">
+            <span data-icon="sliders"></span>策略赛马
+          </button>
           <button data-view="model" class="nav-item">
             <span data-icon="sliders"></span>评分模型
           </button>
@@ -624,6 +627,53 @@
                 </button>
               </form>
             </section>
+          </section>
+          <section id="strategies-view" hidden>
+            <div class="paper-toolbar">
+              <div>
+                <span id="strategies-status-note" class="outline-tag"
+                  >同一冻结批次内固定候选并行前瞻；批次结束至多启用一个候选</span
+                >
+              </div>
+              <div>
+                <button id="strategies-reserve" class="primary">
+                  发起新批次
+                </button>
+              </div>
+            </div>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>批次与政策</h2>
+                  <p>统一研究窗口锁、生成预算与统计预算；失败批次同样可查</p>
+                </div>
+                <span class="outline-tag">受控晋级</span>
+              </div>
+              <div id="strategies-status"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>批次列表</h2>
+                  <p>点击批次查看固定成员、匹配账户净值与资格</p>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>批次</th>
+                      <th>阶段</th>
+                      <th>父策略</th>
+                      <th>候选数</th>
+                      <th>创建时间</th>
+                    </tr>
+                  </thead>
+                  <tbody id="strategies-cohort-rows"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel" id="strategies-detail"></section>
           </section>
           <footer class="page-footer">
             <span>LIMIT LENS <i>·</i> 每日涨停研究</span

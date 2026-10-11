@@ -1,6 +1,6 @@
 # P2：多策略并行模拟、赛马评估与受控晋级
 
-> 状态：待实施（调研与设计）。
+> 状态：实施中（§12.1 批次 1～3 已实施：统一窗口与生成预算、联合行情帧、影子账本、批次预留与赛马编排、六闸门评估与受控晋级；批次 4 策略家族与选择器待实施）。
 > 调研日期：2026-10-10，时区 Asia/Shanghai。
 > 主分支依据：[d18cf08](https://github.com/sanchez0623/ashare-limit-lens/commit/d18cf086b07a4c2d036cab1964478a60d8b3e843)。
 > 研究分支参考：[642820d](https://github.com/sanchez0623/ashare-limit-lens/commit/642820d039687496babff7ba0e4eb9c4897e72f7)，已新增针对上次审查的修复，尚未合并到主分支；相关修复需重新验收。

@@ -230,19 +230,31 @@ export class ResearchRepository {
     };
   }
   async activeExperiment() {
+    // 统一活动窗口所有者：单候选实验与赛马批次共用同一把窗口锁（0008 迁移统一）。
     const slot = await this.db
-      .prepare("SELECT * FROM research_active_slots WHERE namespace = ?")
+      .prepare("SELECT * FROM research_window_owners WHERE namespace = ?")
       .bind(this.namespace)
       .first();
     if (!slot) return null;
+    if (slot.owner_type === "COHORT")
+      return {
+        ownerType: "COHORT",
+        ownerId: slot.owner_id,
+        experimentId: null,
+        windowPayload: JSON.parse(slot.window_payload),
+        createdAt: slot.created_at,
+        experiment: null,
+      };
     const experiment = mapRow(
       await this.db
         .prepare("SELECT * FROM research_experiments WHERE id = ?")
-        .bind(slot.experiment_id)
+        .bind(slot.owner_id)
         .first(),
     );
     return {
-      experimentId: slot.experiment_id,
+      ownerType: "EXPERIMENT",
+      ownerId: slot.owner_id,
+      experimentId: slot.owner_id,
       windowPayload: JSON.parse(slot.window_payload),
       createdAt: slot.created_at,
       experiment,
@@ -251,7 +263,7 @@ export class ResearchRepository {
   async monthUsage(month) {
     const row = await this.db
       .prepare(
-        "SELECT COUNT(*) AS n FROM research_budget_slots WHERE namespace = ? AND month = ?",
+        "SELECT COUNT(*) AS n FROM research_generation_slots WHERE namespace = ? AND month = ?",
       )
       .bind(this.namespace, month)
       .first();
@@ -366,7 +378,7 @@ export class ResearchRepository {
           )
           .bind(nonce, this.namespace, registry.revision),
         guarded(
-          "INSERT INTO research_active_slots (namespace, experiment_id, window_payload, created_at) SELECT ?, ?, ?, ?",
+          "INSERT INTO research_window_owners (namespace, owner_type, owner_id, window_payload, created_at) SELECT ?, 'EXPERIMENT', ?, ?, ?",
           [
             this.namespace,
             experimentId,
@@ -375,7 +387,7 @@ export class ResearchRepository {
           ],
         ),
         guarded(
-          "INSERT INTO research_budget_slots (namespace, month, slot, experiment_id, created_at) SELECT ?, ?, 1, ?, ?",
+          "INSERT INTO research_generation_slots (namespace, month, slot, owner_type, owner_id, reserved_at) SELECT ?, ?, 1, 'EXPERIMENT', ?, ?",
           [this.namespace, month, experimentId, now],
         ),
         ...testDates.map((date) =>
@@ -524,7 +536,7 @@ export class ResearchRepository {
           )
           .bind(nonce, this.namespace, registryRow.revision),
         guarded(
-          "INSERT INTO research_active_slots (namespace, experiment_id, window_payload, created_at) SELECT ?, ?, ?, ?",
+          "INSERT INTO research_window_owners (namespace, owner_type, owner_id, window_payload, created_at) SELECT ?, 'EXPERIMENT', ?, ?, ?",
           [
             this.namespace,
             experimentId,
@@ -533,7 +545,7 @@ export class ResearchRepository {
           ],
         ),
         guarded(
-          "INSERT INTO research_budget_slots (namespace, month, slot, experiment_id, created_at) SELECT ?, ?, 1, ?, ?",
+          "INSERT INTO research_generation_slots (namespace, month, slot, owner_type, owner_id, reserved_at) SELECT ?, ?, 1, 'EXPERIMENT', ?, ?",
           [this.namespace, month, experimentId, now],
         ),
         ...samples.map((sample) =>
@@ -669,7 +681,7 @@ export class ResearchRepository {
         ),
       this.db
         .prepare(
-          "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)",
+          "DELETE FROM research_window_owners WHERE namespace = ? AND owner_type = 'EXPERIMENT' AND owner_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)",
         )
         .bind(this.namespace, experimentId, experimentId, stage),
     ];
@@ -906,7 +918,7 @@ export class ResearchRepository {
       statements.push(
         this.db
           .prepare(
-            "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ?",
+            "DELETE FROM research_window_owners WHERE namespace = ? AND owner_type = 'EXPERIMENT' AND owner_id = ?",
           )
           .bind(this.namespace, experimentId),
       );
@@ -1014,7 +1026,7 @@ export class ResearchRepository {
         ),
       this.db
         .prepare(
-          "DELETE FROM research_active_slots WHERE namespace = ? AND experiment_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)",
+          "DELETE FROM research_window_owners WHERE namespace = ? AND owner_type = 'EXPERIMENT' AND owner_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)",
         )
         .bind(this.namespace, experimentId, ...adoptedEventArgs),
     ];

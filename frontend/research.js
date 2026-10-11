@@ -6,6 +6,7 @@ import {
   timeLabel,
 } from "../shared/scoring.js";
 import { initializePaper } from "./paper.js";
+import { initializeStrategies } from "./strategies.js";
 const $ = (id) => document.getElementById(id);
 const escape = (value) =>
   String(value ?? "").replace(
@@ -106,6 +107,11 @@ const titles = {
     "可解释的评分模型",
     "每一分都有依据，每一项权重都可以调整。",
   ],
+  strategies: [
+    "策略赛马",
+    "多策略并行赛马与受控晋级",
+    "同一份行情、同一冻结起点，固定窗口内比较，只有合格报告支持启用。",
+  ],
 };
 function setView(view) {
   if (!titles[view]) return;
@@ -124,11 +130,17 @@ function setView(view) {
   $("sectors-view").hidden = view !== "sectors";
   $("model-view").hidden = view !== "model";
   $("review-view").hidden = view !== "review";
-  $("summary").hidden = ["model", "review", "paper"].includes(view);
+  $("summary").hidden = ["model", "review", "paper", "strategies"].includes(
+    view,
+  );
   $("paper-view").hidden = view !== "paper";
-  document.querySelector(".heading-actions").hidden = view === "paper";
-  document.querySelector(".data-strip").hidden = view === "paper";
+  $("strategies-view").hidden = view !== "strategies";
+  document.querySelector(".heading-actions").hidden =
+    view === "paper" || view === "strategies";
+  document.querySelector(".data-strip").hidden =
+    view === "paper" || view === "strategies";
   if (view === "paper") void paper.refresh();
+  if (view === "strategies") initializeStrategies();
   document.querySelector(".right-column").hidden = view === "stocks";
   $("overview-content").style.gridTemplateColumns =
     view === "stocks" ? "minmax(0,1fr)" : "";
