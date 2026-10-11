@@ -10209,10 +10209,17 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
     for (const row of await shadows.equities(accountId)) {
       if (!windowDates.includes(row.tradeDate)) continue;
       const { tradeDate, digest: storedDigest, ...payload } = row;
-      void tradeDate;
-      if (storedDigest && await digest(payload) !== storedDigest)
+      if (!storedDigest)
         throw new Error(
-          `\u7A97\u53E3\u51C0\u503C\u884C ${accountId}/${row.tradeDate} \u6458\u8981\u4E0E\u5185\u5BB9\u4E0D\u4E00\u81F4\uFF1B${REPORT_UNTRUSTED}`
+          `\u7A97\u53E3\u51C0\u503C\u884C ${accountId}/${tradeDate} \u7F3A\u5C11\u6458\u8981\uFF1B${REPORT_UNTRUSTED}`
+        );
+      if (await digest(payload) !== storedDigest)
+        throw new Error(
+          `\u7A97\u53E3\u51C0\u503C\u884C ${accountId}/${tradeDate} \u6458\u8981\u4E0E\u5185\u5BB9\u4E0D\u4E00\u81F4\uFF1B${REPORT_UNTRUSTED}`
+        );
+      if (payload.complete === false)
+        throw new Error(
+          `\u7A97\u53E3\u51C0\u503C\u884C ${accountId}/${tradeDate} \u6309\u76D8\u4E2D\u89C2\u6D4B\u4EF7\u76EF\u5E02\uFF0C\u6536\u76D8\u6570\u636E\u7F3A\u5931\uFF1B${REPORT_UNTRUSTED}`
         );
     }
   }
@@ -10971,6 +10978,7 @@ async function runTournamentPoll(env, now, { providers = {} } = {}) {
         },
         observedAt: primaryFrame.observedAt
       });
+      if (primary?.status === "CONFLICT" || primary?.status === "ERROR") break;
     } catch (error) {
       primary = { status: "ERROR", reason: safeError(error) };
       break;
@@ -11111,11 +11119,20 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
       reason: "\u8BE5\u5171\u540C\u5E02\u573A\u65E5\u5DF2\u767B\u8BB0\uFF0C\u5E42\u7B49\u8DF3\u8FC7\uFF1B\u4E0D\u91CD\u590D\u7ED3\u7B97\u6216\u5EF6\u957F\u7A97\u53E3"
     };
   }
-  const windowDates = [
-    .../* @__PURE__ */ new Set([...manifest.windowDates ?? [], ...calendarDates, date])
-  ].filter((day) => day > manifest.captureDate).sort().slice(0, manifest.requiredDays);
-  const windowFrozen = windowDates.length >= manifest.requiredDays;
-  if (!windowDates.includes(date)) {
+  const ordinalRow = await papers.db.prepare(
+    "SELECT COUNT(*) AS n FROM paper_market_days WHERE trade_date > ? AND trade_date <= ?"
+  ).bind(manifest.captureDate, date).first();
+  const primaryOrdinal = Number(ordinalRow?.n ?? 0);
+  const windowDates = (await papers.db.prepare(
+    "SELECT trade_date FROM paper_market_days WHERE trade_date > ? ORDER BY trade_date LIMIT ?"
+  ).bind(manifest.captureDate, manifest.requiredDays).all()).results.map((row) => row.trade_date);
+  const datasetRow = await papers.db.prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?").bind(date).first();
+  if (!datasetRow)
+    return {
+      status: "WAITING_PRIMARY",
+      reason: "\u4E3B\u8D26\u6237\u5F53\u65E5\u5C1A\u672A\u7ED3\u7B97\uFF1B\u5F71\u5B50\u8D26\u672C\u4E0E\u4E3B\u8D26\u6237\u7ED3\u7B97\u4FDD\u6301\u8FFD\u5E73\uFF0C\u4E0D\u63D0\u524D\u7ED3\u7B97"
+    };
+  if (primaryOrdinal > manifest.requiredDays) {
     let evaluation2 = null;
     if (manifest.tradingDates.length < manifest.requiredDays) {
       await cohorts.transitionCohort(cohort.id, {
@@ -11125,7 +11142,10 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
         payload: {
           days: manifest.tradingDates.length,
           missing: manifest.requiredDays - manifest.tradingDates.length,
-          note: "\u56FA\u5B9A\u7A97\u53E3\u7ED3\u675F\u4ECD\u6709\u7F3A\u5931\u4EA4\u6613\u65E5\uFF0C\u6309\u539F\u7A97\u53E3\u6536\u53E3\u8BC4\u4F30"
+          note: "\u56FA\u5B9A\u7A97\u53E3\u7ED3\u675F\u4ECD\u6709\u7F3A\u5931\u4EA4\u6613\u65E5\uFF0C\u6309\u4E3B\u8D26\u6237\u7ED3\u7B97\u5E8F\u5217\u6536\u53E3\u8BC4\u4F30"
+        },
+        set: {
+          forward_manifest: JSON.stringify({ ...manifest, windowDates })
         }
       });
       evaluation2 = await evaluateCohort(env, cohort.id, { calendarDates });
@@ -11136,12 +11156,6 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
       reason: "\u56FA\u5B9A\u7A97\u53E3\u5DF2\u7ED3\u675F\uFF1B\u7A97\u53E3\u5916\u4EA4\u6613\u65E5\u4E0D\u767B\u8BB0\u3001\u4E0D\u5EF6\u957F\u7A97\u53E3"
     };
   }
-  const datasetRow = await papers.db.prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?").bind(date).first();
-  if (!datasetRow)
-    return {
-      status: "WAITING_PRIMARY",
-      reason: "\u4E3B\u8D26\u6237\u5F53\u65E5\u5C1A\u672A\u7ED3\u7B97\uFF1B\u5F71\u5B50\u8D26\u672C\u4E0E\u4E3B\u8D26\u6237\u7ED3\u7B97\u4FDD\u6301\u8FFD\u5E73\uFF0C\u4E0D\u63D0\u524D\u7ED3\u7B97"
-    };
   const frameRows = await frames.framesForDate(date);
   const dataset = JSON.parse(datasetRow.payload);
   const enrichedDataset = {
@@ -11201,14 +11215,6 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
       planNotes.push({ accountId, reason: safeError(error) });
     }
   }
-  if (!calendarDates.length) {
-    return {
-      status: "WAITING_CALENDAR",
-      settlements,
-      planNotes,
-      reason: "\u76D8\u540E\u4EFB\u52A1\u672A\u63D0\u4F9B\u672A\u6765\u4EA4\u6613\u65E5\u5386\uFF1B\u5F71\u5B50\u8D26\u672C\u5DF2\u6309\u65E5\u7ED3\u7B97\uFF0C\u4F46\u8BE5\u65E5\u4E0D\u767B\u8BB0\u5171\u540C\u5E02\u573A\u65E5\u3001\u7A97\u53E3\u4E0D\u63A8\u8FDB"
-    };
-  }
   const members = await cohorts.members(cohort.id);
   await cohorts.claimCohortForwardDate(date, cohort.id);
   const previousDate = manifest.tradingDates.at(-1) ?? manifest.captureDate;
@@ -11260,12 +11266,16 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
     }
   });
   let evaluation = null;
-  if (windowFrozen && date === windowDates.at(-1)) {
+  if (primaryOrdinal >= manifest.requiredDays) {
     await cohorts.transitionCohort(cohort.id, {
       from: "RUNNING",
       to: "EVALUATING",
       eventType: "FORWARD_WINDOW_COMPLETE",
-      payload: { days: tradingDates.length, windowEnd: windowDates.at(-1) }
+      payload: {
+        days: tradingDates.length,
+        windowEnd: windowDates.at(-1) ?? null,
+        primaryOrdinal
+      }
     });
     evaluation = await evaluateCohort(env, cohort.id, { calendarDates });
   }

@@ -36,6 +36,7 @@ import {
 } from "../backend/services/portfolio-runner.js";
 import { promoteCohortChampion } from "../backend/services/promotion.js";
 import { closeSession } from "../backend/domain/realtime.js";
+import { digest } from "../backend/storage/paper.js";
 import { proposeImprovement } from "../backend/services/research.js";
 import { beijingMonth } from "../backend/domain/research-windows.js";
 import {
@@ -1647,6 +1648,7 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
     /摘要与内容不一致/,
     "日净值摘要与内容不一致时拒绝晋级",
   );
+  // 恢复冠军净值行自洽，再验证对照证据
   await DB.prepare(
     "DELETE FROM shadow_equity WHERE account_id = 'shadow-exp-x' AND trade_date = ?",
   )
@@ -1656,6 +1658,71 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
     accountId: "shadow-exp-x",
     expectedRevision: 1,
     runId: "run-1",
+    tradeDate: dateAt(5),
+    book: { ...structuredClone(account.book), lastDate: dateAt(5) },
+    equity: { date: dateAt(5), equityCents: 1_000_000_000 },
+    session: { date: dateAt(5), status: "CLOSED" },
+  });
+  // P1-3：共同对照净值按盘中观测价盯市且摘要同步有效——收盘数据缺失，
+  // 对照证据不完整使批次无资格。
+  const parentRows = await shadows.equities("shadow-parent-x");
+  const parentRow = parentRows.find((row) => row.tradeDate === dateAt(5));
+  const {
+    digest: parentStoredDigest,
+    tradeDate: parentTradeDate,
+    ...parentPayload
+  } = parentRow;
+  void parentStoredDigest;
+  void parentTradeDate;
+  const tamperedParentPayload = { ...parentPayload, complete: false };
+  await DB.prepare(
+    "UPDATE shadow_equity SET payload = ?, digest = ? WHERE account_id = 'shadow-parent-x' AND trade_date = ?",
+  )
+    .bind(
+      JSON.stringify(tamperedParentPayload),
+      await digest(tamperedParentPayload),
+      dateAt(5),
+    )
+    .run();
+  await assert.rejects(
+    () => promoteCohortChampion(env, "c-promo", { evaluation: badDigest }),
+    /盘中观测价盯市/,
+    "对照净值盯市不完整时拒绝晋级",
+  );
+  // 恢复对照净值后，冠军净值行摘要为空同样不放行（P1-4）
+  await DB.prepare(
+    "DELETE FROM shadow_equity WHERE account_id = 'shadow-parent-x' AND trade_date = ?",
+  )
+    .bind(dateAt(5))
+    .run();
+  await shadows.commitSettlement({
+    accountId: "shadow-parent-x",
+    expectedRevision: 1,
+    runId: "run-p1",
+    tradeDate: dateAt(5),
+    book: { ...structuredClone(account.book), lastDate: dateAt(5) },
+    equity: { date: dateAt(5), equityCents: 1_000_000_000 },
+    session: { date: dateAt(5), status: "CLOSED" },
+  });
+  await DB.prepare(
+    "UPDATE shadow_equity SET digest = '' WHERE account_id = 'shadow-exp-x' AND trade_date = ?",
+  )
+    .bind(dateAt(5))
+    .run();
+  await assert.rejects(
+    () => promoteCohortChampion(env, "c-promo", { evaluation: badDigest }),
+    /缺少摘要/,
+    "净值行摘要为空时拒绝晋级",
+  );
+  await DB.prepare(
+    "DELETE FROM shadow_equity WHERE account_id = 'shadow-exp-x' AND trade_date = ?",
+  )
+    .bind(dateAt(5))
+    .run();
+  await shadows.commitSettlement({
+    accountId: "shadow-exp-x",
+    expectedRevision: 2,
+    runId: "run-2",
     tradeDate: dateAt(5),
     book: { ...structuredClone(account.book), lastDate: dateAt(5) },
     equity: { date: dateAt(5), equityCents: 1_000_000_000 },
@@ -1829,7 +1896,7 @@ test("月度额度按批次数计；连续基线跨批次持续运行", async ()
   DB.close();
 });
 
-test("空日历暂停登记：漏日不被后续结算日顺延补满", async () => {
+test("窗口以主账户结算序列为准：不依赖未来日历，序数不足不评估", async () => {
   const { DB, env } = await buildEnv({ count: 5 });
   const cohorts = new CohortRepository(env);
   const now = new Date().toISOString();
@@ -1850,32 +1917,47 @@ test("空日历暂停登记：漏日不被后续结算日顺延补满", async ()
   )
     .bind(JSON.stringify(forwardManifest), now, now)
     .run();
-  // 空日历（主账户结算失败未返回日历）：影子账本照常结算，但该日
-  // 不登记共同市场日、窗口不推进、不评估。
+  // 指数日线只含已收盘历史日期，未来日历不存在：窗口推进完全不
+  // 依赖 calendarDates——主账户结算序列就是交易日历。
   await DB.prepare(
     "INSERT INTO paper_market_days (trade_date, payload, digest) VALUES (?, ?, 'fixture')",
   )
     .bind(dateAt(5), JSON.stringify({ date: dateAt(5), quotes: {} }))
     .run();
-  const waiting = await settleTournamentDay(env, dateAt(5), {
+  const settled = await settleTournamentDay(env, dateAt(5), {
     calendarDates: [],
   });
-  assert.equal(waiting.status, "WAITING_CALENDAR");
-  assert.ok(waiting.settlements, "空日历日影子结算照常执行");
   assert.equal(
-    (await cohorts.getCohort("c-cal")).forwardManifest.tradingDates.length,
-    0,
-    "空日历日不登记共同市场日",
+    settled.status,
+    "SETTLED",
+    "空日历不阻塞窗口登记：主账户序列驱动推进",
   );
-  assert.equal((await cohorts.events("c-cal")).length, 0, "无结算事件");
-  // 日历恢复后正常登记；窗口末日仍由已吸收的日历固定
-  const settled = await settleTournamentDay(env, dateAt(5), {
-    calendarDates: [dateAt(6), dateAt(7)],
-  });
-  assert.equal(settled.status, "SETTLED");
   const manifest = (await cohorts.getCohort("c-cal")).forwardManifest;
   assert.deepEqual(manifest.tradingDates, [dateAt(5)]);
-  assert.deepEqual(manifest.windowDates, [dateAt(5), dateAt(6), dateAt(7)]);
+  assert.deepEqual(manifest.windowDates, [dateAt(5)]);
+  assert.equal(settled.evaluation, null, "主账户序数未达窗口天数不评估");
+  // 主账户序数达到窗口天数即收口评估，窗口列表 = 主账户前 N 个结算日
+  for (let offset = 6; offset <= 35; offset++)
+    await DB.prepare(
+      "INSERT INTO paper_market_days (trade_date, payload, digest) VALUES (?, ?, 'fixture')",
+    )
+      .bind(
+        dateAt(offset),
+        JSON.stringify({ date: dateAt(offset), quotes: {} }),
+      )
+      .run();
+  const completed = await settleTournamentDay(env, dateAt(35), {
+    calendarDates: [],
+  });
+  assert.equal(completed.status, "WINDOW_ENDED", "第 31 个结算日在窗口外");
+  const finished = await cohorts.getCohort("c-cal");
+  assert.equal(finished.forwardManifest.windowDates.length, 30);
+  assert.equal(
+    finished.forwardManifest.tradingDates.length,
+    1,
+    "窗口外日期不登记：tradingDates 只含窗口内已登记日",
+  );
+  assert.equal(finished.stage, "CLOSED", "窗口缺口按主账户序列收口评估");
   DB.close();
 });
 

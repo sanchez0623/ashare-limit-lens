@@ -803,6 +803,9 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
         },
         observedAt: primaryFrame.observedAt,
       });
+      // CAS 冲突或错误意味着该帧观察没有生效：停在当前帧等待下一轮
+      // 重放，绝不带着未生效的前序帧继续处理后续帧（§7.2 按序消费）。
+      if (primary?.status === "CONFLICT" || primary?.status === "ERROR") break;
     } catch (error) {
       primary = { status: "ERROR", reason: safeError(error) };
       break;
@@ -974,22 +977,42 @@ export async function settleTournamentDay(
       reason: "该共同市场日已登记，幂等跳过；不重复结算或延长窗口",
     };
   }
-  // 冻结窗口日历（§8.2）：无条件合并 runDaily 提供的交易日历与当日共同
-  // 市场日——即使当日暂停登记，未来日历知识仍要吸收；窗口取捕获日之后
-  // 的前 requiredDays 个交易日，窗口结束日固定，缺失日不由后续日补满。
-  const windowDates = [
-    ...new Set([...(manifest.windowDates ?? []), ...calendarDates, date]),
-  ]
-    .filter((day) => day > manifest.captureDate)
-    .sort()
-    .slice(0, manifest.requiredDays);
-  const windowFrozen = windowDates.length >= manifest.requiredDays;
-  if (!windowDates.includes(date)) {
-    // 窗口已冻结完整且该日在窗口之外：不登记、不延长。
+  // 窗口日历（§8.2）：以**主账户结算日序列**为准。主账户的盘后流程
+  // 保证不跳日（上一交易日未结算即 BLOCKED 停摆），其已结算交易日就是
+  // 可验证的真实交易日历；腾讯指数日线只含已收盘历史日期，未来日历
+  // 不存在也不需要。窗口 = 捕获日之后主账户的前 requiredDays 个结算日，
+  // 赛马侧某日登记失败时该日仍留在窗口内，由共同覆盖闸门暴露，
+  // 不会被后续结算日顺延补满。
+  const ordinalRow = await papers.db
+    .prepare(
+      "SELECT COUNT(*) AS n FROM paper_market_days WHERE trade_date > ? AND trade_date <= ?",
+    )
+    .bind(manifest.captureDate, date)
+    .first();
+  const primaryOrdinal = Number(ordinalRow?.n ?? 0);
+  const windowDates = (
+    await papers.db
+      .prepare(
+        "SELECT trade_date FROM paper_market_days WHERE trade_date > ? ORDER BY trade_date LIMIT ?",
+      )
+      .bind(manifest.captureDate, manifest.requiredDays)
+      .all()
+  ).results.map((row) => row.trade_date);
+  const datasetRow = await papers.db
+    .prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?")
+    .bind(date)
+    .first();
+  if (!datasetRow)
+    return {
+      status: "WAITING_PRIMARY",
+      reason: "主账户当日尚未结算；影子账本与主账户结算保持追平，不提前结算",
+    };
+  if (primaryOrdinal > manifest.requiredDays) {
+    // 主账户已进入窗口外的结算日：不登记、不延长。
     let evaluation = null;
     if (manifest.tradingDates.length < manifest.requiredDays) {
-      // 窗口结束仍有缺口：按原固定日历收口评估，缺失日使覆盖与共同数据
-      // 检查失败，整批无资格；不用窗口外的日期补满晋级。
+      // 窗口结束仍有缺口：按主账户结算序列冻结的窗口收口评估，
+      // 赛马侧漏登记的日子在共同覆盖检查中暴露，整批无资格。
       await cohorts.transitionCohort(cohort.id, {
         from: "RUNNING",
         to: "EVALUATING",
@@ -997,7 +1020,10 @@ export async function settleTournamentDay(
         payload: {
           days: manifest.tradingDates.length,
           missing: manifest.requiredDays - manifest.tradingDates.length,
-          note: "固定窗口结束仍有缺失交易日，按原窗口收口评估",
+          note: "固定窗口结束仍有缺失交易日，按主账户结算序列收口评估",
+        },
+        set: {
+          forward_manifest: JSON.stringify({ ...manifest, windowDates }),
         },
       });
       evaluation = await evaluateCohort(env, cohort.id, { calendarDates });
@@ -1008,15 +1034,6 @@ export async function settleTournamentDay(
       reason: "固定窗口已结束；窗口外交易日不登记、不延长窗口",
     };
   }
-  const datasetRow = await papers.db
-    .prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?")
-    .bind(date)
-    .first();
-  if (!datasetRow)
-    return {
-      status: "WAITING_PRIMARY",
-      reason: "主账户当日尚未结算；影子账本与主账户结算保持追平，不提前结算",
-    };
   const frameRows = await frames.framesForDate(date);
   const dataset = JSON.parse(datasetRow.payload);
   const enrichedDataset = {
@@ -1082,18 +1099,6 @@ export async function settleTournamentDay(
       planNotes.push({ accountId, reason: safeError(error) });
     }
   }
-  if (!calendarDates.length) {
-    // 无未来日历（主账户结算失败或当日已结算重入未返回日历）时无法判定
-    // 窗口末日：影子账本已结算，但该日不登记共同市场日、窗口不推进、
-    // 不评估——漏日不会被后续结算日顺延补满，等待日历恢复。
-    return {
-      status: "WAITING_CALENDAR",
-      settlements,
-      planNotes,
-      reason:
-        "盘后任务未提供未来交易日历；影子账本已按日结算，但该日不登记共同市场日、窗口不推进",
-    };
-  }
   const members = await cohorts.members(cohort.id);
   // 共同市场日先登记（claim 先于样本用途写入，满足一次性触发器约束）。
   await cohorts.claimCohortForwardDate(date, cohort.id);
@@ -1146,15 +1151,20 @@ export async function settleTournamentDay(
       }),
     },
   });
-  // 评估只由固定窗口的最后一个交易日触发（§8.2）：
-  // 缺失日不补满，窗口末日结算后即按原窗口收口，缺失由覆盖闸门暴露。
+  // 评估由主账户结算序列触发（§8.2）：捕获日之后第 requiredDays 个
+  // 主账户结算日结算完成即收口；缺失日不补满，赛马侧漏登记的日子
+  // 保留在窗口列表内由共同覆盖闸门暴露。
   let evaluation = null;
-  if (windowFrozen && date === windowDates.at(-1)) {
+  if (primaryOrdinal >= manifest.requiredDays) {
     await cohorts.transitionCohort(cohort.id, {
       from: "RUNNING",
       to: "EVALUATING",
       eventType: "FORWARD_WINDOW_COMPLETE",
-      payload: { days: tradingDates.length, windowEnd: windowDates.at(-1) },
+      payload: {
+        days: tradingDates.length,
+        windowEnd: windowDates.at(-1) ?? null,
+        primaryOrdinal,
+      },
     });
     evaluation = await evaluateCohort(env, cohort.id, { calendarDates });
   }

@@ -89,10 +89,19 @@ export async function promoteCohortChampion(
     for (const row of await shadows.equities(accountId)) {
       if (!windowDates.includes(row.tradeDate)) continue;
       const { tradeDate, digest: storedDigest, ...payload } = row;
-      void tradeDate;
-      if (storedDigest && (await digest(payload)) !== storedDigest)
+      // 摘要缺失同样不放行：无法核验完整性的净值行不构成晋级证据。
+      if (!storedDigest)
         throw new Error(
-          `窗口净值行 ${accountId}/${row.tradeDate} 摘要与内容不一致；${REPORT_UNTRUSTED}`,
+          `窗口净值行 ${accountId}/${tradeDate} 缺少摘要；${REPORT_UNTRUSTED}`,
+        );
+      if ((await digest(payload)) !== storedDigest)
+        throw new Error(
+          `窗口净值行 ${accountId}/${tradeDate} 摘要与内容不一致；${REPORT_UNTRUSTED}`,
+        );
+      // 盘中观测价盯市不是收盘数据：对照证据不完整使批次无资格。
+      if (payload.complete === false)
+        throw new Error(
+          `窗口净值行 ${accountId}/${tradeDate} 按盘中观测价盯市，收盘数据缺失；${REPORT_UNTRUSTED}`,
         );
     }
   }
