@@ -11,18 +11,21 @@ export function unrealizedPnlCents(book) {
   }, 0);
 }
 
-export function windowMetrics({ initial, finalBook, equities, windowDates }) {
-  // initial: {equityCents, feesCents, realizedPnlCents, unrealizedPnlCents}（捕获时点快照）
-  const finalEquityCents = finalBook.equityCents;
+export function windowMetrics({ initial, final, equities, windowDates }) {
+  // initial/final：{equityCents, feesCents, realizedPnlCents, unrealizedPnlCents}
+  // 期初为捕获时点快照；期末取窗口内最后一个已结算净值行，而不是账本当前
+  // 状态——末日登记后中断、次日盘中轮询会继续推进影子账本，当前权益已含
+  // 窗口外盈亏，直接引用会把窗口外收益混进报告。
+  const finalEquityCents = final.equityCents;
   const initialEquityCents = initial.equityCents;
   if (!initialEquityCents || initialEquityCents <= 0)
     throw new Error("期初权益无效，无法计算窗口指标");
   const netReturn = finalEquityCents / initialEquityCents - 1;
-  const feesDeltaCents = finalBook.feesCents - initial.feesCents;
+  const feesDeltaCents = final.feesCents - initial.feesCents;
   const profitCents =
-    finalBook.realizedPnlCents -
+    final.realizedPnlCents -
     initial.realizedPnlCents +
-    unrealizedPnlCents(finalBook) -
+    final.unrealizedPnlCents -
     initial.unrealizedPnlCents;
   // 守恒校验（§8.1）：账本不变式保证 权益变化 = 已实现增量 + 未实现增量。
   // 期初快照（净值摘要）与账本真实状态不符时在此暴露，而不是输出矛盾指标。

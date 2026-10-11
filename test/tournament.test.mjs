@@ -300,16 +300,11 @@ test("统计预算、政策校验与固定排序由代码强制校验", async ()
       realizedPnlCents: 0,
       unrealizedPnlCents: 0,
     },
-    finalBook: {
+    final: {
       equityCents: 101000000,
       feesCents: 300,
       realizedPnlCents: 0,
-      positions: [
-        {
-          markCents: 1001,
-          lots: [{ quantity: 1000, costCents: 1000 }],
-        },
-      ],
+      unrealizedPnlCents: 1_000_000,
     },
     equities: [
       { tradeDate: "2026-01-01", equityCents: 99000000 },
@@ -1118,11 +1113,11 @@ test("继承持仓期间做 T 不计完整轮次；期间盈利与权益变化�
   };
   const metrics = windowMetrics({
     initial,
-    finalBook: {
+    final: {
       equityCents: 100000000,
       feesCents: 0,
       realizedPnlCents: 900000,
-      positions: [],
+      unrealizedPnlCents: 0,
     },
     equities: [{ tradeDate: "2026-01-06", equityCents: 100000000 }],
     windowDates: ["2026-01-06"],
@@ -1133,11 +1128,11 @@ test("继承持仓期间做 T 不计完整轮次；期间盈利与权益变化�
     () =>
       windowMetrics({
         initial: { ...initial, unrealizedPnlCents: 0 },
-        finalBook: {
+        final: {
           equityCents: 100000000,
           feesCents: 0,
           realizedPnlCents: 900000,
-          positions: [],
+          unrealizedPnlCents: 0,
         },
         equities: [],
         windowDates: ["2026-01-06"],
@@ -1498,7 +1493,7 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
   };
   const forwardManifest = {
     captureDate: dateAt(4),
-    requiredDays: 30,
+    requiredDays: 1,
     feeConfig,
     feeConfigDigest,
     initialAccounts,
@@ -1513,7 +1508,7 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
   };
   const now = new Date().toISOString();
   await DB.prepare(
-    "INSERT INTO strategy_cohorts (id, namespace, revision, parent_version, policy_id, policy_digest, research_policy_id, research_policy_digest, stage, max_candidates, forward_days, reservation_manifest, forward_manifest, created_at, updated_at) VALUES ('c-promo', 'main', 0, 'baseline-v1', 'p', 'd', 'rp', 'rd', 'EVALUATING', 4, 30, '{}', ?, ?, ?)",
+    "INSERT INTO strategy_cohorts (id, namespace, revision, parent_version, policy_id, policy_digest, research_policy_id, research_policy_digest, stage, max_candidates, forward_days, reservation_manifest, forward_manifest, created_at, updated_at) VALUES ('c-promo', 'main', 0, 'baseline-v1', 'p', 'd', 'rp', 'rd', 'EVALUATING', 4, 1, '{}', ?, ?, ?)",
   )
     .bind(JSON.stringify(forwardManifest), now, now)
     .run();
@@ -1526,7 +1521,7 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
     cohortId: "c-promo",
     evaluatedAt: now,
     windowDates: [dateAt(5)],
-    requiredDays: 30,
+    requiredDays: 1,
     commonCoverage: [],
     commonDataMissing: false,
     fingerprint: { environmentValid: true },
@@ -1582,6 +1577,12 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
     "UPDATE strategy_cohorts SET forward_manifest = ? WHERE id = 'c-promo'",
   )
     .bind(JSON.stringify(forwardManifest))
+    .run();
+  // 完整登记校验的第一项：窗口日必须有主账户结算数据。
+  await DB.prepare(
+    "INSERT INTO paper_market_days (trade_date, payload, digest) VALUES (?, ?, 'fixture')",
+  )
+    .bind(dateAt(5), JSON.stringify({ date: dateAt(5), quotes: {} }))
     .run();
   // 共同市场日缺少批次占用登记 → 拒绝
   await assert.rejects(
@@ -2096,7 +2097,16 @@ async function driveToInterruptedFinalDay() {
     "末日登记已落库",
   );
   assert.ok(await cohorts.windowOwner(), "未收口期间窗口锁仍被占用");
-  return { DB, env, cohortId, cohorts, lastDate, lastIndex };
+  return {
+    DB,
+    env,
+    cohortId,
+    cohorts,
+    lastDate,
+    lastIndex,
+    datasetByDate,
+    calendar,
+  };
 }
 
 test("末日登记后中断：同日重试由 DUPLICATE 恢复收口", async () => {
@@ -2306,5 +2316,146 @@ test("BLOCKED 后中断：未提交的首帧不被后续帧越序跳过", async 
     `${date}T${frames[0][0]}.000Z`,
     "首个观察正是最先落盘的帧",
   );
+  DB.close();
+});
+
+// 驱动全部窗口日并完成收口评估：完整登记批次产生冠军（供晋级重试场景复用）。
+async function driveForwardWindowToCompletion() {
+  const { DB, env, cohortId, datasetByDate, calendar } =
+    await prepareForwardCohort();
+  let evaluation = null;
+  for (let offset = 1; offset <= FORWARD_DAYS; offset++) {
+    const settled = await driveForwardDay(env, {
+      dayIndex: SEED + offset,
+      datasetByDate,
+      calendar,
+    });
+    assert.equal(
+      settled.status,
+      "SETTLED",
+      JSON.stringify(settled).slice(0, 160),
+    );
+    if (offset === FORWARD_DAYS) evaluation = settled.evaluation;
+  }
+  assert.ok(evaluation?.champion, "完整登记批次收口评估产生冠军");
+  return { DB, env, cohortId, datasetByDate, calendar, evaluation };
+}
+
+test("隔日恢复不混入窗口外盈亏：报告期末只计冻结窗口内已结算净值", async () => {
+  const { DB, env, cohortId, lastIndex, datasetByDate, calendar } =
+    await driveToInterruptedFinalDay();
+  const shadows = new ShadowAccountRepository(env);
+  // 次日盘中轮询：批次尚未收口（RUNNING），影子账户继续消费窗口外帧，
+  // 账本当前权益被次日盯市/成交推进——这就是窗口外盈亏的来源。
+  const nextIndex = lastIndex + 1;
+  const nextDate = dateAt(nextIndex);
+  for (const [utc, beijing, volume] of forwardFrames())
+    await runTournamentPoll(env, new Date(`${nextDate}T${utc}Z`), {
+      providers: {
+        calendar,
+        quotes: makeQuotes(datasetByDate, nextIndex, beijing, volume),
+      },
+    });
+  const windowEnd = dateAt(lastIndex);
+  let polluted = 0;
+  for (const account of await shadows.accounts({ cohortId })) {
+    const endRow = (await shadows.equities(account.accountId))
+      .filter((row) => row.tradeDate <= windowEnd)
+      .at(-1);
+    if (endRow && account.book.equityCents !== endRow.equityCents)
+      polluted += 1;
+  }
+  assert.ok(polluted > 0, "次日盘中轮询确实推进了窗口外账本权益");
+  // 次日盘后：WINDOW_ENDED 兜底收口评估。报告必须仍是冻结的 30 日窗口，
+  // 期末指标取窗口内最后一个已结算净值行，而非被污染的账本当前状态。
+  const ended = await settleTournamentDay(env, nextDate, {
+    calendarDates: [dateAt(nextIndex + 1)],
+    now: `${nextDate}T07:30:00.000Z`,
+  });
+  assert.equal(
+    ended.status,
+    "WINDOW_ENDED",
+    JSON.stringify(ended).slice(0, 160),
+  );
+  assert.ok(ended.evaluation, "窗口外交易日兜底收口评估");
+  const evaluation = ended.evaluation;
+  assert.equal(
+    evaluation.windowDates.length,
+    FORWARD_DAYS,
+    "报告仍是冻结的 30 日窗口",
+  );
+  for (const verdict of evaluation.verdicts) {
+    if (!verdict.metrics) continue;
+    const endRow = (await shadows.equities(verdict.accountId))
+      .filter((row) => evaluation.windowDates.includes(row.tradeDate))
+      .at(-1);
+    assert.ok(endRow, `${verdict.accountId} 有窗口内已结算净值行`);
+    assert.equal(
+      verdict.metrics.finalEquityCents,
+      endRow.equityCents,
+      `${verdict.accountId} 期末权益只计窗口内已结算净值，不含次日盘中盈亏`,
+    );
+  }
+  assert.ok(evaluation.champion, "冻结窗口内证据完整时冠军仍可裁定");
+  assert.equal(
+    evaluation.promotion?.promoted,
+    true,
+    "报告与账本一致后合法晋级不被期末净值校验误拦",
+  );
+  DB.close();
+});
+
+test("旧报告晋级重试要求完整登记：窗口日缺席 tradingDates 时拒绝", async () => {
+  const { DB, env, cohortId, evaluation } =
+    await driveForwardWindowToCompletion();
+  const cohorts = new CohortRepository(env);
+  const papers = new RealtimeRepository(env);
+  const before = await papers.account();
+  // 复现旧版缺陷状态：第 5 日 claim 与结算数据完整，但完整日登记失败且
+  // 未恢复，manifest.tradingDates 只有 29 日；报告是旧版实际生成的有效
+  // 报告（摘要自洽、冠军合格），成员回退 ELIGIBLE 模拟晋级中断待重试。
+  const manifest = (await cohorts.getCohort(cohortId)).forwardManifest;
+  const dropped = manifest.tradingDates[4];
+  await DB.prepare(
+    "UPDATE strategy_cohorts SET forward_manifest = ? WHERE id = ?",
+  )
+    .bind(
+      JSON.stringify({
+        ...manifest,
+        tradingDates: manifest.tradingDates.filter((date) => date !== dropped),
+      }),
+      cohortId,
+    )
+    .run();
+  await DB.prepare(
+    "UPDATE strategy_cohort_members SET stage = 'ELIGIBLE' WHERE cohort_id = ? AND member_id = ?",
+  )
+    .bind(cohortId, evaluation.champion.memberId)
+    .run();
+  await assert.rejects(
+    () => promoteCohortChampion(env, cohortId, {}),
+    /未完整登记/,
+    "claim 齐全但完整登记缺席的窗口日不构成晋级证据",
+  );
+  assert.equal(
+    (await papers.account()).book.activeStrategy,
+    before.book.activeStrategy,
+    "拒绝时不产生任何晋级副作用",
+  );
+  // 判别性对照：同一份报告在登记完整的清单上不再被登记校验拦截——
+  // 恢复完整登记与父策略引用后，重试应完成晋级。
+  await DB.prepare(
+    "UPDATE strategy_cohorts SET forward_manifest = ? WHERE id = ?",
+  )
+    .bind(JSON.stringify(manifest), cohortId)
+    .run();
+  const cohort = await cohorts.getCohort(cohortId);
+  await DB.prepare(
+    "UPDATE paper_accounts SET state = json_set(state, '$.activeStrategy', ?) WHERE id = 'primary'",
+  )
+    .bind(cohort.parentVersion)
+    .run();
+  const retried = await promoteCohortChampion(env, cohortId, {});
+  assert.equal(retried.promoted, true, "登记完整后同一份报告可正常重试晋级");
   DB.close();
 });

@@ -54,9 +54,30 @@ export async function promoteCohortChampion(
   );
   if (initialAccountsDigest !== forwardManifest.initialAccountsDigest)
     throw new Error(`期初净值摘要与捕获清单不一致；${REPORT_UNTRUSTED}`);
-  // 共同日期占用（§8.2）：窗口每个交易日都必须登记在批次名下。
+  // 共同日期占用与完整登记（§8.2）：报告窗口必须覆盖要求的共同市场日数，
+  // 且每个窗口日都由主账户结算（dataset 落库）、登记在批次名下（claim）、
+  // 并计入批次 tradingDates（claim、样本用途与窗口推进全部落库的完整日
+  // 登记）。重试入口对三项独立重验，不信任报告自带的覆盖结论——旧版
+  // 报告只按 claim 校验，claim 成功但完整登记失败的日子不构成晋级证据。
   const windowDates = report.windowDates ?? [];
+  const tradingDates = Array.isArray(forwardManifest.tradingDates)
+    ? forwardManifest.tradingDates
+    : [];
+  const requiredDays =
+    forwardManifest.requiredDays ?? report.requiredDays ?? windowDates.length;
+  if (windowDates.length < requiredDays)
+    throw new Error(
+      `报告窗口仅覆盖 ${windowDates.length}/${requiredDays} 个共同市场日；${REPORT_UNTRUSTED}`,
+    );
   for (const date of windowDates) {
+    const datasetRow = await papers.db
+      .prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?")
+      .bind(date)
+      .first();
+    if (!datasetRow)
+      throw new Error(
+        `共同市场日 ${date} 缺少主账户结算数据；${REPORT_UNTRUSTED}`,
+      );
     const claim = await papers.db
       .prepare(
         "SELECT owner_type, owner_id FROM research_test_claims WHERE namespace = 'main' AND outcome_date = ?",
@@ -66,6 +87,10 @@ export async function promoteCohortChampion(
     if (!claim || claim.owner_type !== "COHORT" || claim.owner_id !== cohortId)
       throw new Error(
         `共同市场日 ${date} 缺少批次占用登记；${REPORT_UNTRUSTED}`,
+      );
+    if (!tradingDates.includes(date))
+      throw new Error(
+        `共同市场日 ${date} 未完整登记（缺少样本用途或窗口推进）；${REPORT_UNTRUSTED}`,
       );
   }
   // 冠军期末净值（§8.2）：报告中的期末权益必须与影子账本窗口末日一致。

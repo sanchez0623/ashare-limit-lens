@@ -1404,9 +1404,23 @@ export async function evaluateCohort(
     const equities = allEquities.filter((row) =>
       windowDates.includes(row.tradeDate ?? row.trade_date),
     );
+    // 期末状态（§8.2）：取窗口内最后一个已结算净值行，而非账本当前状态。
+    // 末日登记已落库、尚未收口时进程退出后，次日的盘中轮询仍会推进影子
+    // 账本（盯市与成交），恢复评估时账本当前权益已含窗口外盈亏；用当前
+    // 账本会把窗口外收益混进标为原窗口的报告。窗口内无已结算净值时退回
+    // 期初快照（零盈亏），缺失日由覆盖闸门判无资格。
+    const finalRow = equities.at(-1);
+    const final = finalRow
+      ? {
+          equityCents: finalRow.equityCents,
+          feesCents: finalRow.feesCents,
+          realizedPnlCents: finalRow.realizedPnlCents,
+          unrealizedPnlCents: finalRow.unrealizedPnlCents,
+        }
+      : manifest.initialAccounts[accountId];
     const metrics = windowMetrics({
       initial: manifest.initialAccounts[accountId],
-      finalBook: account.book,
+      final,
       equities,
       windowDates,
     });

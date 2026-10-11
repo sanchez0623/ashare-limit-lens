@@ -9878,14 +9878,14 @@ function unrealizedPnlCents(book) {
     return sum + quantity * position.markCents - cost;
   }, 0);
 }
-function windowMetrics({ initial, finalBook, equities, windowDates }) {
-  const finalEquityCents = finalBook.equityCents;
+function windowMetrics({ initial, final, equities, windowDates }) {
+  const finalEquityCents = final.equityCents;
   const initialEquityCents = initial.equityCents;
   if (!initialEquityCents || initialEquityCents <= 0)
     throw new Error("\u671F\u521D\u6743\u76CA\u65E0\u6548\uFF0C\u65E0\u6CD5\u8BA1\u7B97\u7A97\u53E3\u6307\u6807");
   const netReturn = finalEquityCents / initialEquityCents - 1;
-  const feesDeltaCents = finalBook.feesCents - initial.feesCents;
-  const profitCents = finalBook.realizedPnlCents - initial.realizedPnlCents + unrealizedPnlCents(finalBook) - initial.unrealizedPnlCents;
+  const feesDeltaCents = final.feesCents - initial.feesCents;
+  const profitCents = final.realizedPnlCents - initial.realizedPnlCents + final.unrealizedPnlCents - initial.unrealizedPnlCents;
   const equityDeltaCents = finalEquityCents - initialEquityCents;
   if (profitCents !== equityDeltaCents)
     throw new Error(
@@ -10184,13 +10184,28 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
   if (initialAccountsDigest !== forwardManifest.initialAccountsDigest)
     throw new Error(`\u671F\u521D\u51C0\u503C\u6458\u8981\u4E0E\u6355\u83B7\u6E05\u5355\u4E0D\u4E00\u81F4\uFF1B${REPORT_UNTRUSTED}`);
   const windowDates = report.windowDates ?? [];
+  const tradingDates = Array.isArray(forwardManifest.tradingDates) ? forwardManifest.tradingDates : [];
+  const requiredDays = forwardManifest.requiredDays ?? report.requiredDays ?? windowDates.length;
+  if (windowDates.length < requiredDays)
+    throw new Error(
+      `\u62A5\u544A\u7A97\u53E3\u4EC5\u8986\u76D6 ${windowDates.length}/${requiredDays} \u4E2A\u5171\u540C\u5E02\u573A\u65E5\uFF1B${REPORT_UNTRUSTED}`
+    );
   for (const date of windowDates) {
+    const datasetRow = await papers.db.prepare("SELECT payload FROM paper_market_days WHERE trade_date = ?").bind(date).first();
+    if (!datasetRow)
+      throw new Error(
+        `\u5171\u540C\u5E02\u573A\u65E5 ${date} \u7F3A\u5C11\u4E3B\u8D26\u6237\u7ED3\u7B97\u6570\u636E\uFF1B${REPORT_UNTRUSTED}`
+      );
     const claim = await papers.db.prepare(
       "SELECT owner_type, owner_id FROM research_test_claims WHERE namespace = 'main' AND outcome_date = ?"
     ).bind(date).first();
     if (!claim || claim.owner_type !== "COHORT" || claim.owner_id !== cohortId)
       throw new Error(
         `\u5171\u540C\u5E02\u573A\u65E5 ${date} \u7F3A\u5C11\u6279\u6B21\u5360\u7528\u767B\u8BB0\uFF1B${REPORT_UNTRUSTED}`
+      );
+    if (!tradingDates.includes(date))
+      throw new Error(
+        `\u5171\u540C\u5E02\u573A\u65E5 ${date} \u672A\u5B8C\u6574\u767B\u8BB0\uFF08\u7F3A\u5C11\u6837\u672C\u7528\u9014\u6216\u7A97\u53E3\u63A8\u8FDB\uFF09\uFF1B${REPORT_UNTRUSTED}`
       );
   }
   const championAccountId = forwardManifest.accounts?.candidates?.find(
@@ -11446,9 +11461,16 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     const equities = allEquities.filter(
       (row) => windowDates.includes(row.tradeDate ?? row.trade_date)
     );
+    const finalRow = equities.at(-1);
+    const final = finalRow ? {
+      equityCents: finalRow.equityCents,
+      feesCents: finalRow.feesCents,
+      realizedPnlCents: finalRow.realizedPnlCents,
+      unrealizedPnlCents: finalRow.unrealizedPnlCents
+    } : manifest.initialAccounts[accountId];
     const metrics = windowMetrics({
       initial: manifest.initialAccounts[accountId],
-      finalBook: account.book,
+      final,
       equities,
       windowDates
     });
