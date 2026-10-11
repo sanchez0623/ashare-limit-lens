@@ -38,6 +38,7 @@ async function settlePaperDay(env, date) {
   const existing = account.book.lastDate === date;
   let settlement = null;
   let calendarDates = [];
+  let calendar = null;
   if (!existing) {
     const from = new Date(
       new Date(`${account.book.lastDate || date}T00:00:00Z`).getTime() -
@@ -45,12 +46,13 @@ async function settlePaperDay(env, date) {
     )
       .toISOString()
       .slice(0, 10);
-    const calendar = await tradingCalendar(from, date);
+    calendar = await tradingCalendar(from, date);
     calendarDates = calendar.dates.filter((day) => day > date).slice(0, 10);
     if (!calendar.dates.includes(date))
       return {
         status: "NON_TRADING_DAY",
         reason: "指数行情未确认当天为交易日",
+        calendarDates,
       };
     const previousDate =
       calendar.dates.filter((day) => day < date).at(-1) || null;
@@ -58,7 +60,9 @@ async function settlePaperDay(env, date) {
       const reason =
         "存在尚未结算的交易日，请补齐已冻结计划和对应行情后重放；账户暂不跨日结算";
       await repository.logRun(date, "BLOCKED", { reason });
-      return { status: "BLOCKED", reason };
+      // 结算失败（漏日）也必须交出未来日历：赛马窗口据此冻结结束日，
+      // 漏日保留在冻结窗口内，不会被后续结算日顺延补满。
+      return { status: "BLOCKED", reason, calendarDates };
     }
     // A new account never retroactively executes an older plan.
     const plan = account.book.lastDate
@@ -67,7 +71,7 @@ async function settlePaperDay(env, date) {
     if (account.book.lastDate && !plan) {
       const reason = "缺少上一交易日事前计划，结算暂停，避免事后构造交易";
       await repository.logRun(date, "BLOCKED", { reason });
-      return { status: "BLOCKED", reason };
+      return { status: "BLOCKED", reason, calendarDates };
     }
     const historical = await repository.history("snapshots", 30);
     const codes = new Set(
@@ -106,7 +110,7 @@ async function settlePaperDay(env, date) {
       } else settlement = executePlan(account.book, plan, dataset);
     } catch (error) {
       await repository.logRun(date, "BLOCKED", { reason: error.message });
-      return { status: "BLOCKED", reason: error.message };
+      return { status: "BLOCKED", reason: error.message, calendarDates };
     }
     settlement.book.benchmarkBaseCents =
       account.book.benchmarkBaseCents || benchmark?.closeCents || null;
@@ -123,6 +127,16 @@ async function settlePaperDay(env, date) {
     account = await repository.account();
     if (account.book.lastDate !== date)
       return { status: "RETRY", reason: "账户设置同时更新，请重试盘后结算" };
+  } else {
+    // 当日已结算的重入同样交出未来日历：否则赛马窗口在重入场景下
+    // 拿不到日历，会一直 WAITING_CALENDAR 而无法冻结与评估。
+    const from = new Date(
+      new Date(`${date}T00:00:00Z`).getTime() - 20 * 86400000,
+    )
+      .toISOString()
+      .slice(0, 10);
+    calendar = await tradingCalendar(from, date);
+    calendarDates = calendar.dates.filter((day) => day > date).slice(0, 10);
   }
   let improvement;
   try {

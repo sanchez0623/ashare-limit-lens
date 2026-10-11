@@ -75,18 +75,28 @@ export async function promoteCohortChampion(
     ) ?? `shadow-${member.experimentId}`;
   const championShadow = await shadows.account(championAccountId);
   if (!championShadow) throw new Error(`冠军影子账户缺失；${REPORT_UNTRUSTED}`);
-  const championEquities = await shadows.equities(championAccountId);
-  // 日净值摘要（§8.2）：窗口每个净值行的内容必须与存储摘要一致，
-  // 被篡改的日净值（payload 改动而 digest 未同步）在此暴露。
-  for (const row of championEquities) {
-    if (!windowDates.includes(row.tradeDate)) continue;
-    const { tradeDate, digest: storedDigest, ...payload } = row;
-    void tradeDate;
-    if (storedDigest && (await digest(payload)) !== storedDigest)
-      throw new Error(
-        `窗口净值行 ${row.tradeDate} 摘要与内容不一致；${REPORT_UNTRUSTED}`,
-      );
+  // 日净值摘要（§8.2）：冠军与两个共同对照的窗口净值行都必须与存储摘要
+  // 一致——共同对照是统计与收益闸门的比较基准，其净值被篡改同样会
+  // 伪造晋级证据（payload 改动而 digest 未同步在此暴露）。
+  const evidenceAccountIds = [
+    championAccountId,
+    forwardManifest.accounts?.parentMatch,
+    forwardManifest.accounts?.baselineMatch,
+  ].filter(Boolean);
+  for (const accountId of evidenceAccountIds) {
+    if (!(await shadows.account(accountId)))
+      throw new Error(`评估影子账户 ${accountId} 缺失；${REPORT_UNTRUSTED}`);
+    for (const row of await shadows.equities(accountId)) {
+      if (!windowDates.includes(row.tradeDate)) continue;
+      const { tradeDate, digest: storedDigest, ...payload } = row;
+      void tradeDate;
+      if (storedDigest && (await digest(payload)) !== storedDigest)
+        throw new Error(
+          `窗口净值行 ${accountId}/${row.tradeDate} 摘要与内容不一致；${REPORT_UNTRUSTED}`,
+        );
+    }
   }
+  const championEquities = await shadows.equities(championAccountId);
   const windowEndEquity = championEquities
     .filter((row) => windowDates.includes(row.tradeDate ?? row.trade_date))
     .at(-1);

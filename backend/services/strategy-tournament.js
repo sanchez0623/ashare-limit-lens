@@ -763,17 +763,18 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
   const frames = new QuoteFrameRepository(env);
   let primary = null;
   // 主账户与影子账户同源按序消费（§7.1/§7.2）：当日全部已落盘帧按
-  // observations 数推算未消费帧并逐帧喂给主账户，重启后不漏帧；
-  // 重放帧的观察时间取帧采集时刻，成交仍由订单状态机与 CAS 防重。
+  // 观察时间（observedAt）匹配已消费观察，未匹配的帧逐帧喂给主账户，
+  // 重启后不漏帧；观察数与帧数可能错位（无帧轮询、CAS 冲突重试），
+  // 不能拿观察条数当帧游标。
   const dayFrames = await frames.framesForDate(frame.tradeDate);
-  let primaryObserved = 0;
-  try {
-    primaryObserved = (await papers.observations(frame.tradeDate)).length;
-  } catch {
-    primaryObserved = 0;
-  }
-  const pendingPrimary = dayFrames.slice(
-    Math.min(primaryObserved, dayFrames.length),
+  const primaryObservations = await papers
+    .observations(frame.tradeDate)
+    .catch(() => []);
+  const consumedObservedAt = new Set(
+    primaryObservations.map((row) => row.payload?.observedAt).filter(Boolean),
+  );
+  const pendingPrimary = dayFrames.filter(
+    (candidate) => !consumedObservedAt.has(candidate.observedAt),
   );
   if (!pendingPrimary.length)
     primary = { status: "SKIPPED", reason: "主账户已消费当日全部已落盘帧" };
@@ -983,16 +984,6 @@ export async function settleTournamentDay(
     .sort()
     .slice(0, manifest.requiredDays);
   const windowFrozen = windowDates.length >= manifest.requiredDays;
-  if (!calendarDates.length) {
-    // 无未来日历（主账户结算失败未返回日历）时无法判定窗口末日：
-    // 当日不登记、不评估，等日历恢复；窗口结束日由已吸收的日历固定，
-    // 漏日保留在冻结窗口内，不会被后续结算日顺延补满。
-    return {
-      status: "WAITING_CALENDAR",
-      reason:
-        "盘后任务未提供未来交易日历；当日不登记共同市场日，窗口结束日仍按已冻结日历执行",
-    };
-  }
   if (!windowDates.includes(date)) {
     // 窗口已冻结完整且该日在窗口之外：不登记、不延长。
     let evaluation = null;
@@ -1033,18 +1024,8 @@ export async function settleTournamentDay(
     quotes: closingQuotesFromFrames(frameRows, dataset.quotes ?? {}, date),
   };
   const snapshot = await papers.snapshot(date);
-  // 共同市场日先登记（claim 先于样本用途写入，满足一次性触发器约束）。
-  await cohorts.claimCohortForwardDate(date, cohort.id);
-  const previousDate = manifest.tradingDates.at(-1) ?? manifest.captureDate;
-  const quoteManifestDigest = await digestOf({
-    date,
-    count: frameRows.length,
-    frames: frameRows.map((row) => ({
-      sequence: row.sequence,
-      observedAt: row.observedAt,
-      digest: row.digest,
-    })),
-  });
+  // 影子结算与次日计划照常（§6）：影子账本连续性不依赖日历可用性；
+  // 空日历只影响共同市场日登记与窗口推进（见下方登记块）。
   const settlements = await settleAccounts(
     env,
     accountIds,
@@ -1052,31 +1033,6 @@ export async function settleTournamentDay(
     enrichedDataset,
     { shadows },
   );
-  const members = await cohorts.members(cohort.id);
-  for (const member of members) {
-    if (member.stage !== "RUNNING") continue;
-    const payload = {
-      decisionDate: previousDate,
-      tradeDate: date,
-      labelEndDate: date,
-      availableAt: date,
-      role: "FORWARD_TEST",
-      cohortId: cohort.id,
-      memberId: member.memberId,
-      snapshotDigest: snapshot ? await digestOf(snapshot) : null,
-      marketDigest: await digestOf(enrichedDataset),
-      quoteManifestDigest,
-    };
-    await cohorts.recordMemberSampleUse({
-      experimentId: member.experimentId,
-      sample: {
-        date,
-        role: "FORWARD_TEST",
-        payload,
-        digest: await digestOf(payload),
-      },
-    });
-  }
   // 冻结各账户下一交易日计划；账户按自身策略独立生成，不改写旧计划。
   const parentRow = await papers.db
     .prepare("SELECT params FROM strategy_versions WHERE id = ?")
@@ -1084,13 +1040,13 @@ export async function settleTournamentDay(
     .first();
   const parentParams = parentRow ? JSON.parse(parentRow.params) : null;
   const strategyByAccount = new Map();
-  for (const member of members) {
-    const accountId = `shadow-${member.experimentId}`;
-    if (accountIds.includes(accountId))
-      strategyByAccount.set(accountId, {
-        strategy: member.params,
-        strategyVersion: member.strategyVersion,
-      });
+  for (const member of (await cohorts.members(cohort.id)).filter((candidate) =>
+    accountIds.includes(`shadow-${candidate.experimentId}`),
+  )) {
+    strategyByAccount.set(`shadow-${member.experimentId}`, {
+      strategy: member.params,
+      strategyVersion: member.strategyVersion,
+    });
   }
   strategyByAccount.set(manifest.accounts.parentMatch, {
     strategy: parentParams,
@@ -1125,6 +1081,55 @@ export async function settleTournamentDay(
     } catch (error) {
       planNotes.push({ accountId, reason: safeError(error) });
     }
+  }
+  if (!calendarDates.length) {
+    // 无未来日历（主账户结算失败或当日已结算重入未返回日历）时无法判定
+    // 窗口末日：影子账本已结算，但该日不登记共同市场日、窗口不推进、
+    // 不评估——漏日不会被后续结算日顺延补满，等待日历恢复。
+    return {
+      status: "WAITING_CALENDAR",
+      settlements,
+      planNotes,
+      reason:
+        "盘后任务未提供未来交易日历；影子账本已按日结算，但该日不登记共同市场日、窗口不推进",
+    };
+  }
+  const members = await cohorts.members(cohort.id);
+  // 共同市场日先登记（claim 先于样本用途写入，满足一次性触发器约束）。
+  await cohorts.claimCohortForwardDate(date, cohort.id);
+  const previousDate = manifest.tradingDates.at(-1) ?? manifest.captureDate;
+  const quoteManifestDigest = await digestOf({
+    date,
+    count: frameRows.length,
+    frames: frameRows.map((row) => ({
+      sequence: row.sequence,
+      observedAt: row.observedAt,
+      digest: row.digest,
+    })),
+  });
+  for (const member of members) {
+    if (member.stage !== "RUNNING") continue;
+    const payload = {
+      decisionDate: previousDate,
+      tradeDate: date,
+      labelEndDate: date,
+      availableAt: date,
+      role: "FORWARD_TEST",
+      cohortId: cohort.id,
+      memberId: member.memberId,
+      snapshotDigest: snapshot ? await digestOf(snapshot) : null,
+      marketDigest: await digestOf(enrichedDataset),
+      quoteManifestDigest,
+    };
+    await cohorts.recordMemberSampleUse({
+      experimentId: member.experimentId,
+      sample: {
+        date,
+        role: "FORWARD_TEST",
+        payload,
+        digest: await digestOf(payload),
+      },
+    });
   }
   // 追加共同市场日；窗口固定，不因缺失顺延到盈利。
   const tradingDates = [...manifest.tradingDates, date];
@@ -1425,20 +1430,28 @@ export async function evaluateCohort(
     }
   }
   const verdicts = [];
+  // 已裁定终态（评估中断后重入）：保留既有结论、补齐报告指标，
+  // 使唯一自动晋级在恢复时仍然成立，而不是把冠军当作"未进入窗口"。
+  const decidedStages = [
+    "ELIGIBLE",
+    "PROMOTED",
+    "REJECTED",
+    "INCONCLUSIVE",
+    "INVALIDATED",
+    "ERROR",
+  ];
   for (const member of members) {
-    if (!["RUNNING", "SCHEDULED"].includes(member.stage)) {
-      verdicts.push({
-        memberId: member.memberId,
-        stage: member.stage,
-        note: "成员未进入前瞻窗口，保留失败路径",
-      });
-      continue;
-    }
+    const decided = decidedStages.includes(member.stage);
     const accountId = `shadow-${member.experimentId}`;
     const metrics = await metricsOf(accountId);
     const checks = {
       fingerprint: fingerprint.environmentValid,
-      coverage: Boolean(metrics) && metrics.metrics.missingDates.length === 0,
+      // 数据覆盖：窗口日缺失或净值行按盘中观测价盯市（complete:false）
+      // 都算覆盖失败——盘中价不冒充收盘价参与晋级资格。
+      coverage:
+        Boolean(metrics) &&
+        metrics.metrics.missingDates.length === 0 &&
+        metrics.metrics.incompleteDates.length === 0,
       rounds:
         Boolean(metrics) &&
         metrics.rounds.rounds >= minimumRounds &&
@@ -1502,22 +1515,30 @@ export async function evaluateCohort(
     else if (!checks.statistics) verdict = "INCONCLUSIVE";
     else if (!checks.returns || !checks.drawdown) verdict = "REJECTED";
     else verdict = "ELIGIBLE";
+    // 重入幂等：已裁定成员保留既有结论（重算结果应与之一致），
+    // 不再重复迁移；RUNNING 成员正常迁移。
+    const finalVerdict = decided ? member.stage : verdict;
     if (member.stage === "RUNNING")
       await cohorts.transitionMember(cohortId, member.memberId, {
         from: "RUNNING",
-        to: verdict,
+        to: finalVerdict,
       });
     verdicts.push({
       memberId: member.memberId,
-      stage: verdict,
+      stage: finalVerdict,
       accountId,
       checks,
       statistics: statisticsDetail,
       metrics: metrics?.metrics ?? null,
       rounds: metrics?.rounds ?? null,
+      note: decided ? "评估重入：成员已裁定，补齐报告指标" : undefined,
     });
   }
-  const eligible = verdicts.filter((row) => row.stage === "ELIGIBLE");
+  // 冠军排行含 PROMOTED：评估中断恢复时已晋级成员仍可回到排序首位，
+  // 重入的晋级服务识别 duplicate，不产生第二次切换。
+  const eligible = verdicts.filter((row) =>
+    ["ELIGIBLE", "PROMOTED"].includes(row.stage),
+  );
   const ranked = rankEligibleMembers(
     eligible.map((row) => ({
       memberId: row.memberId,
@@ -1565,7 +1586,11 @@ export async function evaluateCohort(
       report.promotion = { promoted: false, reason: safeError(error) };
     }
   }
-  report.digest = await digestOf(report);
+  // 晋级后重新定稿：先剥离旧 digest 再重算，保证存储报告的摘要
+  // 与"剥离 digest 后的内容"一致，CAS 冲突后的合法重试不会被拒。
+  const { digest: prePromotionDigest, ...postPromotionSource } = report;
+  void prePromotionDigest;
+  report.digest = await digestOf(postPromotionSource);
   await cohorts.completeTask(statisticsTaskId, { outputDigest: report.digest });
   const saved = await cohorts.saveReport(cohortId, "EVALUATION", report);
   if (report.promotion?.promoted) {

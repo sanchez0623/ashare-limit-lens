@@ -23,6 +23,7 @@ import {
   runTournamentPoll,
   settleTournamentDay,
   runDailyTournament,
+  evaluateCohort,
   tournamentStatus,
   cohortDetail,
   cohortLineage,
@@ -34,6 +35,7 @@ import {
   freezePortfolioPlan,
 } from "../backend/services/portfolio-runner.js";
 import { promoteCohortChampion } from "../backend/services/promotion.js";
+import { closeSession } from "../backend/domain/realtime.js";
 import { proposeImprovement } from "../backend/services/research.js";
 import { beijingMonth } from "../backend/domain/research-windows.js";
 import {
@@ -986,6 +988,33 @@ test("完整前瞻窗口：固定窗口、闸门、固定排序与统一自动�
     /不符合启用条件|没有通过全部闸门/,
     "排行绕过被拒绝",
   );
+  // P1-7 评估中断恢复：批次回到 EVALUATING 且报告丢失时重入评估，
+  // 已裁定成员（含 PROMOTED）补齐指标、冠军回到排序首位、重入晋级
+  // 识别 duplicate；报告摘要与内容自洽（P1-6），合法重试不被拒绝。
+  await DB.prepare(
+    "UPDATE strategy_cohorts SET stage = 'EVALUATING' WHERE id = ?",
+  )
+    .bind(cohortId)
+    .run();
+  await DB.prepare("DELETE FROM cohort_reports WHERE cohort_id = ?")
+    .bind(cohortId)
+    .run();
+  const reentered = await evaluateCohort(env, cohortId, {});
+  assert.ok(reentered.champion, "恢复后冠军仍可回到排序首位");
+  assert.equal(reentered.champion.memberId, championMember.memberId);
+  assert.equal(
+    reentered.promotion?.promoted,
+    true,
+    "重入晋级识别 duplicate，不产生第二次切换",
+  );
+  const { digest: storedReportDigest, ...reportSource } = reentered;
+  assert.equal(
+    await digestOf(reportSource),
+    storedReportDigest,
+    "存储报告摘要与内容一致",
+  );
+  const cohortRecovered = await cohorts.getCohort(cohortId);
+  assert.equal(cohortRecovered.stage, "CLOSED");
   // 报告与血缘可重放
   const detail = await cohortDetail(env, cohortId);
   assert.ok(detail.evaluationDigest);
@@ -1218,6 +1247,55 @@ test("重启恢复按序重放未消费帧；帧价补齐候选独有持仓收�
   assert.match(enriched["600999"].timestamp, /T15:00:00/, "补齐按收盘时点盯市");
   assert.equal(enriched["600999"].closingSource, "FRAME_LAST_OBSERVED");
   assert.equal(enriched["600001"].closeCents, 900, "日线收盘优先，不被帧覆盖");
+  // P1-1：帧末观测价盯市的净值行 complete=false 且记 notice，
+  // 由覆盖闸门当作数据缺失暴露，不用盘中价冒充收盘价参与晋级。
+  const csBook = newBook();
+  csBook.positions = [
+    {
+      code: "600999",
+      name: "x",
+      sector: "s",
+      heldDays: 0,
+      markCents: 1000,
+      lots: [
+        {
+          acquiredDate: dateAt(1),
+          quantity: 1000,
+          costCents: 1_000_000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  csBook.cashCents = csBook.initialCashCents - 1_000_000;
+  csBook.equityCents = csBook.initialCashCents;
+  csBook.peakEquityCents = csBook.equityCents;
+  csBook.lastDate = dateAt(1);
+  const csSession = {
+    date: day,
+    status: "OPEN",
+    sequence: 1,
+    orders: [],
+    quotes: {},
+    initialBook: structuredClone(csBook),
+  };
+  const csResult = closeSession(csBook, csSession, {
+    date: day,
+    quotes: {
+      600999: {
+        date: day,
+        closeCents: 1080,
+        previousCloseCents: 1000,
+        timestamp: `${day}T15:00:00+08:00`,
+        closingSource: "FRAME_LAST_OBSERVED",
+      },
+    },
+  });
+  assert.equal(csResult.equity.complete, false, "帧价盯市的净值行不完整");
+  assert.ok(
+    csResult.notices.some((notice) => notice.includes("600999")),
+    "盯市来源如实记入 notice",
+  );
   DB.close();
 });
 
@@ -1424,7 +1502,11 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
     feeConfigDigest,
     initialAccounts,
     initialAccountsDigest: await digestOf(initialAccounts),
-    accounts: { candidates: ["shadow-exp-x"] },
+    accounts: {
+      candidates: ["shadow-exp-x"],
+      parentMatch: "shadow-parent-x",
+      baselineMatch: "shadow-baseline-x",
+    },
     tradingDates: [dateAt(5)],
     windowDates: [dateAt(5)],
   };
@@ -1527,14 +1609,36 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
     equity: { date: dateAt(5), equityCents: 1_999_999_999 },
     session: { date: dateAt(5), status: "CLOSED" },
   });
+  // 共同对照影子账户是晋级证据：缺失即拒绝
+  await shadows.ensureAccount("shadow-parent-x", {
+    kind: "PARENT_MATCH",
+    cohortId: "c-promo",
+    memberId: "parent",
+    book: structuredClone(account.book),
+  });
+  await shadows.commitSettlement({
+    accountId: "shadow-parent-x",
+    expectedRevision: 0,
+    runId: "run-p0",
+    tradeDate: dateAt(5),
+    book: { ...structuredClone(account.book), lastDate: dateAt(5) },
+    equity: { date: dateAt(5), equityCents: 1_000_000_000 },
+    session: { date: dateAt(5), status: "CLOSED" },
+  });
+  await shadows.ensureAccount("shadow-baseline-x", {
+    kind: "BASELINE_MATCH",
+    cohortId: "c-promo",
+    memberId: "baseline",
+    book: structuredClone(account.book),
+  });
   await assert.rejects(
     () => promoteCohortChampion(env, "c-promo", { evaluation: badDigest }),
     /期末净值/,
     "冠军期末净值与影子账本不一致时拒绝晋级",
   );
-  // 日净值行内容被篡改而存储摘要未同步 → 拒绝（P1-2）
+  // 日净值行内容被篡改而存储摘要未同步 → 拒绝（P1-2：对照证据同样校验）
   await DB.prepare(
-    "UPDATE shadow_equity SET payload = json_set(payload, '$.equityCents', 1000000000) WHERE account_id = 'shadow-exp-x' AND trade_date = ?",
+    "UPDATE shadow_equity SET payload = json_set(payload, '$.equityCents', 42) WHERE account_id = 'shadow-exp-x' AND trade_date = ?",
   )
     .bind(dateAt(5))
     .run();
@@ -1746,11 +1850,18 @@ test("空日历暂停登记：漏日不被后续结算日顺延补满", async ()
   )
     .bind(JSON.stringify(forwardManifest), now, now)
     .run();
-  // 空日历（主账户结算失败未返回日历）：当日不登记、不推进
+  // 空日历（主账户结算失败未返回日历）：影子账本照常结算，但该日
+  // 不登记共同市场日、窗口不推进、不评估。
+  await DB.prepare(
+    "INSERT INTO paper_market_days (trade_date, payload, digest) VALUES (?, ?, 'fixture')",
+  )
+    .bind(dateAt(5), JSON.stringify({ date: dateAt(5), quotes: {} }))
+    .run();
   const waiting = await settleTournamentDay(env, dateAt(5), {
     calendarDates: [],
   });
   assert.equal(waiting.status, "WAITING_CALENDAR");
+  assert.ok(waiting.settlements, "空日历日影子结算照常执行");
   assert.equal(
     (await cohorts.getCohort("c-cal")).forwardManifest.tradingDates.length,
     0,
@@ -1758,11 +1869,6 @@ test("空日历暂停登记：漏日不被后续结算日顺延补满", async ()
   );
   assert.equal((await cohorts.events("c-cal")).length, 0, "无结算事件");
   // 日历恢复后正常登记；窗口末日仍由已吸收的日历固定
-  await DB.prepare(
-    "INSERT INTO paper_market_days (trade_date, payload, digest) VALUES (?, ?, 'fixture')",
-  )
-    .bind(dateAt(5), JSON.stringify({ date: dateAt(5), quotes: {} }))
-    .run();
   const settled = await settleTournamentDay(env, dateAt(5), {
     calendarDates: [dateAt(6), dateAt(7)],
   });

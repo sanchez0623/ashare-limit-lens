@@ -448,7 +448,8 @@ export function advanceSession(inputBook, inputSession, observation) {
 
 export function closeSession(inputBook, inputSession, dataset) {
   const book = structuredClone(inputBook),
-    session = structuredClone(inputSession);
+    session = structuredClone(inputSession),
+    notices = [];
   if (session.status !== "OPEN" || dataset.date !== session.date)
     throw new Error("实时交易日状态无效");
   for (const p of book.positions) {
@@ -472,6 +473,12 @@ export function closeSession(inputBook, inputSession, dataset) {
     p.markCents = q.closeCents;
     p.markDate = session.date;
     p.heldDays++;
+    // 帧末观测价盯市不是真实收盘：如实记 notice 并把当日净值标记为
+    // 不完整，资格由覆盖闸门暴露，不用盘中价冒充收盘价。
+    if (q.closingSource === "FRAME_LAST_OBSERVED")
+      notices.push(
+        `${p.code} 缺少最终收盘报价，按帧末观测价盯市；当日净值不完整`,
+      );
   }
   book.pendingRecovery = [];
   book.pendingExits = [];
@@ -550,7 +557,7 @@ export function closeSession(inputBook, inputSession, dataset) {
     unrealizedPnlCents,
     feesCents: book.feesCents,
     drawdown: 1 - book.equityCents / book.peakEquityCents,
-    complete: true,
+    complete: notices.length === 0,
     positionCount: book.positions.length,
     missingMinuteOrders: 0,
     source: "腾讯实时模拟成交与收盘盯市",
@@ -568,6 +575,6 @@ export function closeSession(inputBook, inputSession, dataset) {
     equity,
     ledger: [],
     outcomes: session.orders.filter((o) => !o.protective || o.triggered),
-    notices: [],
+    notices,
   };
 }

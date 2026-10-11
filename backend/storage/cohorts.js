@@ -486,17 +486,19 @@ export class CohortRepository {
         : JSON.stringify(set[key]),
     );
     const expectedRevision = cohort.revision;
+    // runId 锚（§7.2）：事件 INSERT 只在**本次** UPDATE 生效时写入。
+    // 仅靠 revision+1 守卫不够——并发者把 revision 推进到 expected+1 时
+    // 误通过，会留下"状态未迁移、事件已提交"的孤儿事件。
+    const runId = crypto.randomUUID();
     const statements = [
       this.db
         .prepare(
-          `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, updated_at = ?${setSql} WHERE id = ? AND stage = ? AND revision = ?`,
+          `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, last_run_id = ?, updated_at = ?${setSql} WHERE id = ? AND stage = ? AND revision = ?`,
         )
-        .bind(to, now, ...setArgs, id, from, expectedRevision),
-      // 事件写入以状态迁移成功为前提（EXISTS 新 revision）：
-      // CAS 失败时事件零行写入，不会留下没有状态迁移的孤儿事件。
+        .bind(to, runId, now, ...setArgs, id, from, expectedRevision),
       this.db
         .prepare(
-          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM strategy_cohorts WHERE id = ? AND revision = ?)",
+          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM strategy_cohorts WHERE id = ? AND revision = ? AND last_run_id = ?)",
         )
         .bind(
           id,
@@ -508,6 +510,7 @@ export class CohortRepository {
           await eventDigest(event),
           id,
           expectedRevision + 1,
+          runId,
         ),
     ];
     const results = await this.db.batch(statements);
@@ -669,10 +672,19 @@ export class CohortRepository {
       previousDigest: previous?.digest ?? null,
     };
     const expectedRevision = Number(experiment?.revision ?? 0);
+    // runId 锚（§7.2）：实验 UPDATE 与两条事件在同一事务内通过
+    // last_run_id 绑定，读后变交错（并发者已推进到相同 revision）时
+    // 事件零行写入，不会留下孤儿事件或断裂的事件链。
+    const runId = crypto.randomUUID();
     const statements = [
       this.db
         .prepare(
-          `UPDATE strategy_cohort_members SET stage = ?, failure_reason = ?, updated_at = ?${setSql} WHERE cohort_id = ? AND member_id = ? AND stage = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)`,
+          "UPDATE research_experiments SET stage = ?, revision = revision + 1, last_run_id = ? WHERE id = ? AND stage = ? AND revision = ?",
+        )
+        .bind(to, runId, member.experimentId, from, expectedRevision),
+      this.db
+        .prepare(
+          `UPDATE strategy_cohort_members SET stage = ?, failure_reason = ?, updated_at = ?${setSql} WHERE cohort_id = ? AND member_id = ? AND stage = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)`,
         )
         .bind(
           to,
@@ -683,18 +695,12 @@ export class CohortRepository {
           memberId,
           from,
           member.experimentId,
-          expectedRevision,
+          nextRevision,
+          runId,
         ),
       this.db
         .prepare(
-          "UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? AND stage = ? AND revision = ?",
-        )
-        .bind(to, member.experimentId, from, expectedRevision),
-      // 两条事件都以实验状态迁移成功为前提（EXISTS 新 revision）：
-      // CAS 失败时事件零行写入，不会留下孤儿事件或断裂的事件链。
-      this.db
-        .prepare(
-          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)",
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)",
         )
         .bind(
           member.experimentId,
@@ -706,10 +712,11 @@ export class CohortRepository {
           await eventDigest(experimentEvent),
           member.experimentId,
           nextRevision,
+          runId,
         ),
       this.db
         .prepare(
-          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)",
+          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)",
         )
         .bind(
           cohortId,
@@ -721,13 +728,14 @@ export class CohortRepository {
           await eventDigest(cohortEvent),
           member.experimentId,
           nextRevision,
+          runId,
         ),
     ];
     if (versionId && versionStatus)
       statements.push(
         this.db
           .prepare(
-            "UPDATE strategy_versions SET status = ? WHERE id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)",
+            "UPDATE strategy_versions SET status = ? WHERE id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ? AND last_run_id = ?)",
           )
           .bind(
             versionStatus,
@@ -735,6 +743,7 @@ export class CohortRepository {
             member.experimentId,
             to,
             nextRevision,
+            runId,
           ),
       );
     const results = await this.db.batch(statements);
@@ -772,20 +781,28 @@ export class CohortRepository {
       payload: { manifestDigest, memberId: manifest.memberId },
       previousDigest: lastEventRow?.digest ?? null,
     };
+    // runId 锚（§7.2）：成员、版本与事件写入都绑定本次实验 UPDATE 生效。
+    const runId = crypto.randomUUID();
     const statements = [
       this.db
         .prepare(
-          "UPDATE research_experiments SET stage = 'HISTORICAL_CHECK', revision = revision + 1, frozen_at = ?, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'",
+          "UPDATE research_experiments SET stage = 'HISTORICAL_CHECK', revision = revision + 1, last_run_id = ?, frozen_at = ?, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'",
         )
-        .bind(now, JSON.stringify(manifest), manifestDigest, experimentId),
+        .bind(
+          runId,
+          now,
+          JSON.stringify(manifest),
+          manifestDigest,
+          experimentId,
+        ),
       this.db
         .prepare(
-          "UPDATE strategy_cohort_members SET stage = 'HISTORICAL_CHECK', updated_at = ? WHERE experiment_id = ? AND stage = 'PROPOSING'",
+          "UPDATE strategy_cohort_members SET stage = 'HISTORICAL_CHECK', updated_at = ? WHERE experiment_id = ? AND stage = 'PROPOSING' AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)",
         )
-        .bind(now, experimentId),
+        .bind(now, experimentId, experimentId, runId),
       this.db
         .prepare(
-          "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK')",
+          "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)",
         )
         .bind(
           manifest.versionId,
@@ -802,10 +819,11 @@ export class CohortRepository {
             validationEnd: manifest.testDates?.at(-1) ?? null,
           }),
           experimentId,
+          runId,
         ),
       this.db
         .prepare(
-          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)",
         )
         .bind(
           experimentId,
@@ -815,6 +833,8 @@ export class CohortRepository {
           JSON.stringify(frozenEvent.payload),
           frozenEvent.previousDigest,
           await eventDigest(frozenEvent),
+          experimentId,
+          runId,
         ),
     ];
     const results = await this.db.batch(statements);

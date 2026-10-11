@@ -3181,7 +3181,7 @@ function advanceSession(inputBook, inputSession, observation) {
   return { book, session, ledger };
 }
 function closeSession(inputBook, inputSession, dataset) {
-  const book = structuredClone(inputBook), session = structuredClone(inputSession);
+  const book = structuredClone(inputBook), session = structuredClone(inputSession), notices = [];
   if (session.status !== "OPEN" || dataset.date !== session.date)
     throw new Error("\u5B9E\u65F6\u4EA4\u6613\u65E5\u72B6\u6001\u65E0\u6548");
   for (const p of book.positions) {
@@ -3196,6 +3196,10 @@ function closeSession(inputBook, inputSession, dataset) {
     p.markCents = q.closeCents;
     p.markDate = session.date;
     p.heldDays++;
+    if (q.closingSource === "FRAME_LAST_OBSERVED")
+      notices.push(
+        `${p.code} \u7F3A\u5C11\u6700\u7EC8\u6536\u76D8\u62A5\u4EF7\uFF0C\u6309\u5E27\u672B\u89C2\u6D4B\u4EF7\u76EF\u5E02\uFF1B\u5F53\u65E5\u51C0\u503C\u4E0D\u5B8C\u6574`
+      );
   }
   book.pendingRecovery = [];
   book.pendingExits = [];
@@ -3264,7 +3268,7 @@ function closeSession(inputBook, inputSession, dataset) {
     unrealizedPnlCents: unrealizedPnlCents2,
     feesCents: book.feesCents,
     drawdown: 1 - book.equityCents / book.peakEquityCents,
-    complete: true,
+    complete: notices.length === 0,
     positionCount: book.positions.length,
     missingMinuteOrders: 0,
     source: "\u817E\u8BAF\u5B9E\u65F6\u6A21\u62DF\u6210\u4EA4\u4E0E\u6536\u76D8\u76EF\u5E02"
@@ -3278,7 +3282,7 @@ function closeSession(inputBook, inputSession, dataset) {
     equity,
     ledger: [],
     outcomes: session.orders.filter((o) => !o.protective || o.triggered),
-    notices: []
+    notices
   };
 }
 
@@ -6941,28 +6945,30 @@ async function settlePaperDay(env, date) {
   const existing = account.book.lastDate === date;
   let settlement = null;
   let calendarDates = [];
+  let calendar = null;
   if (!existing) {
     const from = new Date(
       (/* @__PURE__ */ new Date(`${account.book.lastDate || date}T00:00:00Z`)).getTime() - 20 * 864e5
     ).toISOString().slice(0, 10);
-    const calendar = await tradingCalendar(from, date);
+    calendar = await tradingCalendar(from, date);
     calendarDates = calendar.dates.filter((day) => day > date).slice(0, 10);
     if (!calendar.dates.includes(date))
       return {
         status: "NON_TRADING_DAY",
-        reason: "\u6307\u6570\u884C\u60C5\u672A\u786E\u8BA4\u5F53\u5929\u4E3A\u4EA4\u6613\u65E5"
+        reason: "\u6307\u6570\u884C\u60C5\u672A\u786E\u8BA4\u5F53\u5929\u4E3A\u4EA4\u6613\u65E5",
+        calendarDates
       };
     const previousDate = calendar.dates.filter((day) => day < date).at(-1) || null;
     if (account.book.lastDate && account.book.lastDate !== previousDate) {
       const reason = "\u5B58\u5728\u5C1A\u672A\u7ED3\u7B97\u7684\u4EA4\u6613\u65E5\uFF0C\u8BF7\u8865\u9F50\u5DF2\u51BB\u7ED3\u8BA1\u5212\u548C\u5BF9\u5E94\u884C\u60C5\u540E\u91CD\u653E\uFF1B\u8D26\u6237\u6682\u4E0D\u8DE8\u65E5\u7ED3\u7B97";
       await repository.logRun(date, "BLOCKED", { reason });
-      return { status: "BLOCKED", reason };
+      return { status: "BLOCKED", reason, calendarDates };
     }
     const plan = account.book.lastDate ? await repository.plan(previousDate) : null;
     if (account.book.lastDate && !plan) {
       const reason = "\u7F3A\u5C11\u4E0A\u4E00\u4EA4\u6613\u65E5\u4E8B\u524D\u8BA1\u5212\uFF0C\u7ED3\u7B97\u6682\u505C\uFF0C\u907F\u514D\u4E8B\u540E\u6784\u9020\u4EA4\u6613";
       await repository.logRun(date, "BLOCKED", { reason });
-      return { status: "BLOCKED", reason };
+      return { status: "BLOCKED", reason, calendarDates };
     }
     const historical = await repository.history("snapshots", 30);
     const codes = new Set(
@@ -6999,7 +7005,7 @@ async function settlePaperDay(env, date) {
       } else settlement = executePlan(account.book, plan, dataset);
     } catch (error) {
       await repository.logRun(date, "BLOCKED", { reason: error.message });
-      return { status: "BLOCKED", reason: error.message };
+      return { status: "BLOCKED", reason: error.message, calendarDates };
     }
     settlement.book.benchmarkBaseCents = account.book.benchmarkBaseCents || benchmark?.closeCents || null;
     settlement.equity.benchmarkReturn = benchmark?.closeCents && settlement.book.benchmarkBaseCents ? benchmark.closeCents / settlement.book.benchmarkBaseCents - 1 : null;
@@ -7012,6 +7018,12 @@ async function settlePaperDay(env, date) {
     account = await repository.account();
     if (account.book.lastDate !== date)
       return { status: "RETRY", reason: "\u8D26\u6237\u8BBE\u7F6E\u540C\u65F6\u66F4\u65B0\uFF0C\u8BF7\u91CD\u8BD5\u76D8\u540E\u7ED3\u7B97" };
+  } else {
+    const from = new Date(
+      (/* @__PURE__ */ new Date(`${date}T00:00:00Z`)).getTime() - 20 * 864e5
+    ).toISOString().slice(0, 10);
+    calendar = await tradingCalendar(from, date);
+    calendarDates = calendar.dates.filter((day) => day > date).slice(0, 10);
   }
   let improvement;
   try {
@@ -9085,14 +9097,13 @@ var CohortRepository = class {
       (key) => typeof set[key] === "string" || set[key] === null ? set[key] : JSON.stringify(set[key])
     );
     const expectedRevision = cohort.revision;
+    const runId = crypto.randomUUID();
     const statements = [
       this.db.prepare(
-        `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, updated_at = ?${setSql} WHERE id = ? AND stage = ? AND revision = ?`
-      ).bind(to, now, ...setArgs, id, from, expectedRevision),
-      // 事件写入以状态迁移成功为前提（EXISTS 新 revision）：
-      // CAS 失败时事件零行写入，不会留下没有状态迁移的孤儿事件。
+        `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, last_run_id = ?, updated_at = ?${setSql} WHERE id = ? AND stage = ? AND revision = ?`
+      ).bind(to, runId, now, ...setArgs, id, from, expectedRevision),
       this.db.prepare(
-        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM strategy_cohorts WHERE id = ? AND revision = ?)"
+        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM strategy_cohorts WHERE id = ? AND revision = ? AND last_run_id = ?)"
       ).bind(
         id,
         event.sequence,
@@ -9102,7 +9113,8 @@ var CohortRepository = class {
         event.previousDigest,
         await eventDigest(event),
         id,
-        expectedRevision + 1
+        expectedRevision + 1,
+        runId
       )
     ];
     const results = await this.db.batch(statements);
@@ -9222,9 +9234,13 @@ var CohortRepository = class {
       previousDigest: previous?.digest ?? null
     };
     const expectedRevision = Number(experiment?.revision ?? 0);
+    const runId = crypto.randomUUID();
     const statements = [
       this.db.prepare(
-        `UPDATE strategy_cohort_members SET stage = ?, failure_reason = ?, updated_at = ?${setSql} WHERE cohort_id = ? AND member_id = ? AND stage = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)`
+        "UPDATE research_experiments SET stage = ?, revision = revision + 1, last_run_id = ? WHERE id = ? AND stage = ? AND revision = ?"
+      ).bind(to, runId, member.experimentId, from, expectedRevision),
+      this.db.prepare(
+        `UPDATE strategy_cohort_members SET stage = ?, failure_reason = ?, updated_at = ?${setSql} WHERE cohort_id = ? AND member_id = ? AND stage = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)`
       ).bind(
         to,
         failureReason,
@@ -9234,15 +9250,11 @@ var CohortRepository = class {
         memberId,
         from,
         member.experimentId,
-        expectedRevision
+        nextRevision,
+        runId
       ),
       this.db.prepare(
-        "UPDATE research_experiments SET stage = ?, revision = revision + 1 WHERE id = ? AND stage = ? AND revision = ?"
-      ).bind(to, member.experimentId, from, expectedRevision),
-      // 两条事件都以实验状态迁移成功为前提（EXISTS 新 revision）：
-      // CAS 失败时事件零行写入，不会留下孤儿事件或断裂的事件链。
-      this.db.prepare(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)"
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)"
       ).bind(
         member.experimentId,
         experimentEvent.sequence,
@@ -9252,10 +9264,11 @@ var CohortRepository = class {
         experimentEvent.previousDigest,
         await eventDigest(experimentEvent),
         member.experimentId,
-        nextRevision
+        nextRevision,
+        runId
       ),
       this.db.prepare(
-        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ?)"
+        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)"
       ).bind(
         cohortId,
         cohortEvent.sequence,
@@ -9265,19 +9278,21 @@ var CohortRepository = class {
         cohortEvent.previousDigest,
         await eventDigest(cohortEvent),
         member.experimentId,
-        nextRevision
+        nextRevision,
+        runId
       )
     ];
     if (versionId && versionStatus)
       statements.push(
         this.db.prepare(
-          "UPDATE strategy_versions SET status = ? WHERE id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ?)"
+          "UPDATE strategy_versions SET status = ? WHERE id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ? AND last_run_id = ?)"
         ).bind(
           versionStatus,
           versionId,
           member.experimentId,
           to,
-          nextRevision
+          nextRevision,
+          runId
         )
       );
     const results = await this.db.batch(statements);
@@ -9304,15 +9319,22 @@ var CohortRepository = class {
       payload: { manifestDigest, memberId: manifest.memberId },
       previousDigest: lastEventRow?.digest ?? null
     };
+    const runId = crypto.randomUUID();
     const statements = [
       this.db.prepare(
-        "UPDATE research_experiments SET stage = 'HISTORICAL_CHECK', revision = revision + 1, frozen_at = ?, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'"
-      ).bind(now, JSON.stringify(manifest), manifestDigest, experimentId),
+        "UPDATE research_experiments SET stage = 'HISTORICAL_CHECK', revision = revision + 1, last_run_id = ?, frozen_at = ?, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'"
+      ).bind(
+        runId,
+        now,
+        JSON.stringify(manifest),
+        manifestDigest,
+        experimentId
+      ),
       this.db.prepare(
-        "UPDATE strategy_cohort_members SET stage = 'HISTORICAL_CHECK', updated_at = ? WHERE experiment_id = ? AND stage = 'PROPOSING'"
-      ).bind(now, experimentId),
+        "UPDATE strategy_cohort_members SET stage = 'HISTORICAL_CHECK', updated_at = ? WHERE experiment_id = ? AND stage = 'PROPOSING' AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)"
+      ).bind(now, experimentId, experimentId, runId),
       this.db.prepare(
-        "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK')"
+        "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)"
       ).bind(
         manifest.versionId,
         now,
@@ -9327,10 +9349,11 @@ var CohortRepository = class {
           validationStart: manifest.testDates?.[0] ?? null,
           validationEnd: manifest.testDates?.at(-1) ?? null
         }),
-        experimentId
+        experimentId,
+        runId
       ),
       this.db.prepare(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)"
       ).bind(
         experimentId,
         frozenEvent.sequence,
@@ -9338,7 +9361,9 @@ var CohortRepository = class {
         frozenEvent.createdAt,
         JSON.stringify(frozenEvent.payload),
         frozenEvent.previousDigest,
-        await eventDigest(frozenEvent)
+        await eventDigest(frozenEvent),
+        experimentId,
+        runId
       )
     ];
     const results = await this.db.batch(statements);
@@ -9879,6 +9904,7 @@ function windowMetrics({ initial, finalBook, equities, windowDates }) {
     if (drawdown > windowDrawdown) windowDrawdown = drawdown;
   }
   const settledDates = equities.map((row) => row.tradeDate ?? row.trade_date);
+  const incompleteDates = equities.filter((row) => row.complete === false).map((row) => row.tradeDate ?? row.trade_date);
   const missingDates = (windowDates ?? []).filter(
     (date) => !settledDates.includes(date)
   );
@@ -9892,6 +9918,7 @@ function windowMetrics({ initial, finalBook, equities, windowDates }) {
     windowDrawdownPpm: Math.round(windowDrawdown * 1e6),
     settledDays: settledDates.length,
     missingDates,
+    incompleteDates,
     dataCoverage: windowDates && windowDates.length ? settledDates.filter((date) => windowDates.includes(date)).length / windowDates.length : 1
   };
 }
@@ -10171,16 +10198,25 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
   ) ?? `shadow-${member.experimentId}`;
   const championShadow = await shadows.account(championAccountId);
   if (!championShadow) throw new Error(`\u51A0\u519B\u5F71\u5B50\u8D26\u6237\u7F3A\u5931\uFF1B${REPORT_UNTRUSTED}`);
-  const championEquities = await shadows.equities(championAccountId);
-  for (const row of championEquities) {
-    if (!windowDates.includes(row.tradeDate)) continue;
-    const { tradeDate, digest: storedDigest, ...payload } = row;
-    void tradeDate;
-    if (storedDigest && await digest(payload) !== storedDigest)
-      throw new Error(
-        `\u7A97\u53E3\u51C0\u503C\u884C ${row.tradeDate} \u6458\u8981\u4E0E\u5185\u5BB9\u4E0D\u4E00\u81F4\uFF1B${REPORT_UNTRUSTED}`
-      );
+  const evidenceAccountIds = [
+    championAccountId,
+    forwardManifest.accounts?.parentMatch,
+    forwardManifest.accounts?.baselineMatch
+  ].filter(Boolean);
+  for (const accountId of evidenceAccountIds) {
+    if (!await shadows.account(accountId))
+      throw new Error(`\u8BC4\u4F30\u5F71\u5B50\u8D26\u6237 ${accountId} \u7F3A\u5931\uFF1B${REPORT_UNTRUSTED}`);
+    for (const row of await shadows.equities(accountId)) {
+      if (!windowDates.includes(row.tradeDate)) continue;
+      const { tradeDate, digest: storedDigest, ...payload } = row;
+      void tradeDate;
+      if (storedDigest && await digest(payload) !== storedDigest)
+        throw new Error(
+          `\u7A97\u53E3\u51C0\u503C\u884C ${accountId}/${row.tradeDate} \u6458\u8981\u4E0E\u5185\u5BB9\u4E0D\u4E00\u81F4\uFF1B${REPORT_UNTRUSTED}`
+        );
+    }
   }
+  const championEquities = await shadows.equities(championAccountId);
   const windowEndEquity = championEquities.filter((row) => windowDates.includes(row.tradeDate ?? row.trade_date)).at(-1);
   if (!windowEndEquity || windowEndEquity.equityCents !== report.champion.finalEquityCents)
     throw new Error(`\u51A0\u519B\u671F\u672B\u51C0\u503C\u4E0E\u5F71\u5B50\u8D26\u672C\u4E0D\u4E00\u81F4\uFF1B${REPORT_UNTRUSTED}`);
@@ -10909,14 +10945,12 @@ async function runTournamentPoll(env, now, { providers = {} } = {}) {
   const frames = new QuoteFrameRepository(env);
   let primary = null;
   const dayFrames = await frames.framesForDate(frame.tradeDate);
-  let primaryObserved = 0;
-  try {
-    primaryObserved = (await papers.observations(frame.tradeDate)).length;
-  } catch {
-    primaryObserved = 0;
-  }
-  const pendingPrimary = dayFrames.slice(
-    Math.min(primaryObserved, dayFrames.length)
+  const primaryObservations = await papers.observations(frame.tradeDate).catch(() => []);
+  const consumedObservedAt = new Set(
+    primaryObservations.map((row) => row.payload?.observedAt).filter(Boolean)
+  );
+  const pendingPrimary = dayFrames.filter(
+    (candidate) => !consumedObservedAt.has(candidate.observedAt)
   );
   if (!pendingPrimary.length)
     primary = { status: "SKIPPED", reason: "\u4E3B\u8D26\u6237\u5DF2\u6D88\u8D39\u5F53\u65E5\u5168\u90E8\u5DF2\u843D\u76D8\u5E27" };
@@ -11081,12 +11115,6 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
     .../* @__PURE__ */ new Set([...manifest.windowDates ?? [], ...calendarDates, date])
   ].filter((day) => day > manifest.captureDate).sort().slice(0, manifest.requiredDays);
   const windowFrozen = windowDates.length >= manifest.requiredDays;
-  if (!calendarDates.length) {
-    return {
-      status: "WAITING_CALENDAR",
-      reason: "\u76D8\u540E\u4EFB\u52A1\u672A\u63D0\u4F9B\u672A\u6765\u4EA4\u6613\u65E5\u5386\uFF1B\u5F53\u65E5\u4E0D\u767B\u8BB0\u5171\u540C\u5E02\u573A\u65E5\uFF0C\u7A97\u53E3\u7ED3\u675F\u65E5\u4ECD\u6309\u5DF2\u51BB\u7ED3\u65E5\u5386\u6267\u884C"
-    };
-  }
   if (!windowDates.includes(date)) {
     let evaluation2 = null;
     if (manifest.tradingDates.length < manifest.requiredDays) {
@@ -11121,17 +11149,6 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
     quotes: closingQuotesFromFrames(frameRows, dataset.quotes ?? {}, date)
   };
   const snapshot = await papers.snapshot(date);
-  await cohorts.claimCohortForwardDate(date, cohort.id);
-  const previousDate = manifest.tradingDates.at(-1) ?? manifest.captureDate;
-  const quoteManifestDigest = await digestOf({
-    date,
-    count: frameRows.length,
-    frames: frameRows.map((row) => ({
-      sequence: row.sequence,
-      observedAt: row.observedAt,
-      digest: row.digest
-    }))
-  });
   const settlements = await settleAccounts(
     env,
     accountIds,
@@ -11139,41 +11156,16 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
     enrichedDataset,
     { shadows }
   );
-  const members = await cohorts.members(cohort.id);
-  for (const member of members) {
-    if (member.stage !== "RUNNING") continue;
-    const payload = {
-      decisionDate: previousDate,
-      tradeDate: date,
-      labelEndDate: date,
-      availableAt: date,
-      role: "FORWARD_TEST",
-      cohortId: cohort.id,
-      memberId: member.memberId,
-      snapshotDigest: snapshot ? await digestOf(snapshot) : null,
-      marketDigest: await digestOf(enrichedDataset),
-      quoteManifestDigest
-    };
-    await cohorts.recordMemberSampleUse({
-      experimentId: member.experimentId,
-      sample: {
-        date,
-        role: "FORWARD_TEST",
-        payload,
-        digest: await digestOf(payload)
-      }
-    });
-  }
   const parentRow = await papers.db.prepare("SELECT params FROM strategy_versions WHERE id = ?").bind(cohort.parentVersion).first();
   const parentParams = parentRow ? JSON.parse(parentRow.params) : null;
   const strategyByAccount = /* @__PURE__ */ new Map();
-  for (const member of members) {
-    const accountId = `shadow-${member.experimentId}`;
-    if (accountIds.includes(accountId))
-      strategyByAccount.set(accountId, {
-        strategy: member.params,
-        strategyVersion: member.strategyVersion
-      });
+  for (const member of (await cohorts.members(cohort.id)).filter(
+    (candidate) => accountIds.includes(`shadow-${candidate.experimentId}`)
+  )) {
+    strategyByAccount.set(`shadow-${member.experimentId}`, {
+      strategy: member.params,
+      strategyVersion: member.strategyVersion
+    });
   }
   strategyByAccount.set(manifest.accounts.parentMatch, {
     strategy: parentParams,
@@ -11208,6 +11200,50 @@ async function settleTournamentDay(env, date, { calendarDates = [], now = null }
     } catch (error) {
       planNotes.push({ accountId, reason: safeError(error) });
     }
+  }
+  if (!calendarDates.length) {
+    return {
+      status: "WAITING_CALENDAR",
+      settlements,
+      planNotes,
+      reason: "\u76D8\u540E\u4EFB\u52A1\u672A\u63D0\u4F9B\u672A\u6765\u4EA4\u6613\u65E5\u5386\uFF1B\u5F71\u5B50\u8D26\u672C\u5DF2\u6309\u65E5\u7ED3\u7B97\uFF0C\u4F46\u8BE5\u65E5\u4E0D\u767B\u8BB0\u5171\u540C\u5E02\u573A\u65E5\u3001\u7A97\u53E3\u4E0D\u63A8\u8FDB"
+    };
+  }
+  const members = await cohorts.members(cohort.id);
+  await cohorts.claimCohortForwardDate(date, cohort.id);
+  const previousDate = manifest.tradingDates.at(-1) ?? manifest.captureDate;
+  const quoteManifestDigest = await digestOf({
+    date,
+    count: frameRows.length,
+    frames: frameRows.map((row) => ({
+      sequence: row.sequence,
+      observedAt: row.observedAt,
+      digest: row.digest
+    }))
+  });
+  for (const member of members) {
+    if (member.stage !== "RUNNING") continue;
+    const payload = {
+      decisionDate: previousDate,
+      tradeDate: date,
+      labelEndDate: date,
+      availableAt: date,
+      role: "FORWARD_TEST",
+      cohortId: cohort.id,
+      memberId: member.memberId,
+      snapshotDigest: snapshot ? await digestOf(snapshot) : null,
+      marketDigest: await digestOf(enrichedDataset),
+      quoteManifestDigest
+    };
+    await cohorts.recordMemberSampleUse({
+      experimentId: member.experimentId,
+      sample: {
+        date,
+        role: "FORWARD_TEST",
+        payload,
+        digest: await digestOf(payload)
+      }
+    });
   }
   const tradingDates = [...manifest.tradingDates, date];
   await cohorts.transitionCohort(cohort.id, {
@@ -11452,20 +11488,23 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     }
   }
   const verdicts = [];
+  const decidedStages = [
+    "ELIGIBLE",
+    "PROMOTED",
+    "REJECTED",
+    "INCONCLUSIVE",
+    "INVALIDATED",
+    "ERROR"
+  ];
   for (const member of members) {
-    if (!["RUNNING", "SCHEDULED"].includes(member.stage)) {
-      verdicts.push({
-        memberId: member.memberId,
-        stage: member.stage,
-        note: "\u6210\u5458\u672A\u8FDB\u5165\u524D\u77BB\u7A97\u53E3\uFF0C\u4FDD\u7559\u5931\u8D25\u8DEF\u5F84"
-      });
-      continue;
-    }
+    const decided = decidedStages.includes(member.stage);
     const accountId = `shadow-${member.experimentId}`;
     const metrics = await metricsOf(accountId);
     const checks = {
       fingerprint: fingerprint.environmentValid,
-      coverage: Boolean(metrics) && metrics.metrics.missingDates.length === 0,
+      // 数据覆盖：窗口日缺失或净值行按盘中观测价盯市（complete:false）
+      // 都算覆盖失败——盘中价不冒充收盘价参与晋级资格。
+      coverage: Boolean(metrics) && metrics.metrics.missingDates.length === 0 && metrics.metrics.incompleteDates.length === 0,
       rounds: Boolean(metrics) && metrics.rounds.rounds >= minimumRounds && parentMetrics && parentMetrics.rounds.rounds >= minimumRounds,
       returns: false,
       drawdown: false,
@@ -11514,22 +11553,26 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     else if (!checks.statistics) verdict = "INCONCLUSIVE";
     else if (!checks.returns || !checks.drawdown) verdict = "REJECTED";
     else verdict = "ELIGIBLE";
+    const finalVerdict = decided ? member.stage : verdict;
     if (member.stage === "RUNNING")
       await cohorts.transitionMember(cohortId, member.memberId, {
         from: "RUNNING",
-        to: verdict
+        to: finalVerdict
       });
     verdicts.push({
       memberId: member.memberId,
-      stage: verdict,
+      stage: finalVerdict,
       accountId,
       checks,
       statistics: statisticsDetail,
       metrics: metrics?.metrics ?? null,
-      rounds: metrics?.rounds ?? null
+      rounds: metrics?.rounds ?? null,
+      note: decided ? "\u8BC4\u4F30\u91CD\u5165\uFF1A\u6210\u5458\u5DF2\u88C1\u5B9A\uFF0C\u8865\u9F50\u62A5\u544A\u6307\u6807" : void 0
     });
   }
-  const eligible = verdicts.filter((row) => row.stage === "ELIGIBLE");
+  const eligible = verdicts.filter(
+    (row) => ["ELIGIBLE", "PROMOTED"].includes(row.stage)
+  );
   const ranked = rankEligibleMembers(
     eligible.map((row) => ({
       memberId: row.memberId,
@@ -11570,7 +11613,9 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
       report.promotion = { promoted: false, reason: safeError(error) };
     }
   }
-  report.digest = await digestOf(report);
+  const { digest: prePromotionDigest, ...postPromotionSource } = report;
+  void prePromotionDigest;
+  report.digest = await digestOf(postPromotionSource);
   await cohorts.completeTask(statisticsTaskId, { outputDigest: report.digest });
   const saved = await cohorts.saveReport(cohortId, "EVALUATION", report);
   if (report.promotion?.promoted) {

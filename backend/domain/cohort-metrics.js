@@ -45,6 +45,11 @@ export function windowMetrics({ initial, finalBook, equities, windowDates }) {
     if (drawdown > windowDrawdown) windowDrawdown = drawdown;
   }
   const settledDates = equities.map((row) => row.tradeDate ?? row.trade_date);
+  // 盯市完整性（§8.1）：按帧末观测价盯市的净值行不视为收盘数据，
+  // 由覆盖闸门当作数据缺失暴露，不用盘中价冒充收盘价参与晋级。
+  const incompleteDates = equities
+    .filter((row) => row.complete === false)
+    .map((row) => row.tradeDate ?? row.trade_date);
   const missingDates = (windowDates ?? []).filter(
     (date) => !settledDates.includes(date),
   );
@@ -58,6 +63,7 @@ export function windowMetrics({ initial, finalBook, equities, windowDates }) {
     windowDrawdownPpm: Math.round(windowDrawdown * 1_000_000),
     settledDays: settledDates.length,
     missingDates,
+    incompleteDates,
     dataCoverage:
       windowDates && windowDates.length
         ? settledDates.filter((date) => windowDates.includes(date)).length /
