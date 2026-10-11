@@ -42,6 +42,15 @@ test("进度门控：只有真实循环进度且存储检查通过才报平安",
     now,
   });
   assert.equal(backlog.alertPipeline, false);
+  // "本该发出却无人领取"的项同样使队列不健康（分发器停滞的直接证据）。
+  const stuckQueue = evaluateWatchdogHealth({
+    runnerProgress: null,
+    storageHealth: { ok: true },
+    queueHealth: { pending: 1, overdue: 1, expired: 0 },
+    now,
+  });
+  assert.equal(stuckQueue.queueOk, false);
+  assert.equal(stuckQueue.alertPipeline, false);
   // 告警子进程退出（无进度、无队列推进）→ 两个检查都不健康。
   const dead = evaluateWatchdogHealth({
     runnerProgress: null,
@@ -80,12 +89,32 @@ test("上报节流：60 秒内只发一次；URL 未配置时静默跳过", asyn
     });
     assert.equal(second, false);
     assert.equal(requests.length, 1);
-    // 管道信号独立节流，正常上报。
+    // 管道信号独立节流，正常上报（必须带分发器推进证据）。
     const pipeline = await reportPipelineHealth(env, {
-      cursor: { occurredAt: "2026-10-09T01:35:00.000Z", id: "e1" },
-      outbox: { pending: 0, expired: 0 },
+      cursor: { ingestSeq: 12 },
+      outbox: { pending: 0, overdue: 0, expired: 0 },
+      state: { lastProgressAt: new Date(Date.now() - 5000).toISOString() },
     });
     assert.equal(pipeline, true);
+    assert.equal(requests.length, 2);
+    // 分发器停滞（进度不新鲜）时即使队列为空也不得报平安：
+    // 空队列可能只是"没人入队"，不能当作管道健康。
+    resetWatchdogTimers();
+    const stalledPipeline = await reportPipelineHealth(env, {
+      cursor: { ingestSeq: 12 },
+      outbox: { pending: 0, overdue: 0, expired: 0 },
+      state: { lastProgressAt: "2026-10-09T01:00:00.000Z" },
+    });
+    assert.equal(stalledPipeline, false);
+    assert.equal(requests.length, 2);
+    // 有"本该发出却无人领取"的积压时不得报平安。
+    resetWatchdogTimers();
+    const overduePipeline = await reportPipelineHealth(env, {
+      cursor: { ingestSeq: 12 },
+      outbox: { pending: 3, overdue: 3, expired: 0 },
+      state: { lastProgressAt: new Date().toISOString() },
+    });
+    assert.equal(overduePipeline, false);
     assert.equal(requests.length, 2);
     // 信号体只含别名、角色与序号（§4.1）：不含持仓、现金、URL 或堆栈。
     const sent = requests.map((url) => url);

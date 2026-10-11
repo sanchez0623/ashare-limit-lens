@@ -4,11 +4,17 @@
 // 本机无法上报时由外部服务按缺失信号告警。
 const TIMEOUT_MS = 5000;
 const PROGRESS_INTERVAL_MS = 60_000;
+// 队列上限：待发总量与"本该发出却无人领取"的积压都必须有界，否则
+// 严重积压或分发器停滞会被当成健康上报。
+const MAX_PENDING = 20;
+const MAX_OVERDUE = 0;
+const MAX_EXPIRED = 20;
 
 export function evaluateWatchdogHealth({
   runnerProgress,
   storageHealth,
   queueHealth,
+  pipelineState,
   now = Date.now(),
 }) {
   // 主进程返回了错误但仍在运行时，PROCESS_PROGRESS 可能正常；
@@ -19,22 +25,31 @@ export function evaluateWatchdogHealth({
     now - new Date(runnerProgress.completedAt).getTime() <
       PROGRESS_INTERVAL_MS * 3;
   const storageOk = storageHealth?.ok === true;
+  // 只有分发器真的在推进（lastProgressAt 新鲜）才算管道健康：队列恰好为空
+  // 可能是"分发器已死、无人入队"，空闲不等于健康。
+  const pipelineFresh =
+    pipelineState?.lastProgressAt != null &&
+    now - new Date(pipelineState.lastProgressAt).getTime() <
+      PROGRESS_INTERVAL_MS * 3;
   const queueOk =
     queueHealth == null ||
-    ((queueHealth.pending ?? 0) <= 20 && (queueHealth.expired ?? 0) < 100);
+    ((queueHealth.pending ?? 0) <= MAX_PENDING &&
+      (queueHealth.overdue ?? 0) <= MAX_OVERDUE &&
+      (queueHealth.expired ?? 0) < MAX_EXPIRED);
   return {
     processProgress: progressFresh && storageOk,
     alertPipeline: storageOk && queueOk,
     storageOk,
     queueOk,
     progressFresh,
+    pipelineFresh,
   };
 }
 
-let lastReport = { progress: 0, pipeline: 0 };
+let lastReport = { progress: 0, pipeline: 0, sequence: 0 };
 
 export function resetWatchdogTimers() {
-  lastReport = { progress: 0, pipeline: 0 };
+  lastReport = { progress: 0, pipeline: 0, sequence: 0 };
 }
 
 async function ping(url, body) {
@@ -57,18 +72,25 @@ async function ping(url, body) {
   }
 }
 
-// 主进程循环进度信号：仅在读取到新的实际循环进度且存储检查通过时发送（§4.1）。
-export async function reportProcessProgress(env, { sequence, completedAt }) {
+// 主进程循环进度信号：只有在序号真的前进、存储写入成功、且读取到新的实际
+// 循环进度时才发送（§4.1）。存储失败时报"健康"会让外部监测永远学不到
+// 主库不可写这种停滞，因此 storageOk 必须由调用方如实传入。
+export async function reportProcessProgress(
+  env,
+  { sequence, completedAt, storageOk = true },
+) {
   const health = evaluateWatchdogHealth({
     runnerProgress: { sequence, completedAt },
-    storageHealth: { ok: true },
+    storageHealth: { ok: storageOk },
     queueHealth: null,
     now: Date.now(),
   });
   if (!health.processProgress) return false;
+  if (!(sequence > lastReport.sequence)) return false;
   const now = Date.now();
   if (now - lastReport.progress < PROGRESS_INTERVAL_MS) return false;
   lastReport.progress = now;
+  lastReport.sequence = sequence;
   return ping(env?.WATCHDOG_PROGRESS_URL, {
     alias: instanceAliasOf(env),
     role: "process-progress",
@@ -76,22 +98,26 @@ export async function reportProcessProgress(env, { sequence, completedAt }) {
   });
 }
 
-// 告警管道信号：只有分发器实际推进且关键队列不积压时发送（§4.1）。
-export async function reportPipelineHealth(env, { cursor, outbox }) {
+// 告警管道信号：只有分发器实际推进（进度新鲜）、关键队列不积压、
+// 且没有"本该发出却无人领取"的项时才发送（§4.1）。
+export async function reportPipelineHealth(env, { cursor, outbox, state }) {
   const health = evaluateWatchdogHealth({
     runnerProgress: null,
     storageHealth: { ok: true },
     queueHealth: outbox,
+    pipelineState: state ?? null,
     now: Date.now(),
   });
-  if (!health.alertPipeline) return false;
+  // 队列恰好为空可能是"分发器已死、无人入队"，因此必须另有推进证据。
+  if (!health.alertPipeline || !health.pipelineFresh) return false;
   const now = Date.now();
   if (now - lastReport.pipeline < PROGRESS_INTERVAL_MS) return false;
   lastReport.pipeline = now;
   return ping(env?.WATCHDOG_PIPELINE_URL, {
     alias: instanceAliasOf(env),
     role: "alert-pipeline",
-    cursor: cursor ? `${cursor.occurredAt}:${cursor.id.slice(0, 8)}` : null,
+    cursor: cursor?.ingestSeq != null ? `ingest:${cursor.ingestSeq}` : null,
+    progressedAt: state?.lastProgressAt ?? null,
   });
 }
 

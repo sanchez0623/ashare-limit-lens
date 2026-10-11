@@ -139,14 +139,14 @@ heartbeat 负责最新状态；事件表负责历史事实。一般循环失败�
 
 | 表                      | 关键字段与约束                                                                                                                                 | 作用                                          |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `operation_events`      | `id PK, instance_id, account_id, trade_date, source_sequence, type, reason_code, occurred_at, payload`                                         | 追加事实；源事件 ID 幂等                      |
+| `operation_events`      | `id PK, instance_id, account_id, trade_date, source_sequence, type, reason_code, occurred_at, entity_ref, payload, ingest_seq`                  | 追加事实；源事件 ID 幂等                      |
 | `alert_rule_versions`   | `id PK, created_at, payload, digest`                                                                                                           | 所有者告警阈值与路由规则的不可变版本          |
 | `alert_incidents`       | `id PK, fingerprint, generation, status, severity, first_seen, last_seen, ack_until, resolved_at, rule_version, revision`                      | 同一问题的一次持续事件；活动 fingerprint 唯一 |
 | `alert_events`          | `(incident_id, sequence) PK, type, created_at, payload`                                                                                        | 首次、升级、提醒、确认、恢复的追加审计        |
 | `alert_outbox`          | `id PK, incident_id, event_sequence, channel_ref, status, attempt, next_attempt_at, lease_until, lease_owner, provider_ref`；事件/通道组合唯一 | 有界重试与重启恢复，不保存密钥                |
 | `alert_processor_state` | `id PK, revision, last_event_cursor, last_progress_at, last_run_id`                                                                            | 消费游标、分发器与规则执行器健康              |
 
-SQLite 继续使用事务，D1 使用项目现有 revision/CAS + nonce batch。原因去重以结构化枚举和实体为准，不使用可能带敏感信息的原始异常文本做 fingerprint。
+分发游标按 `operation_events.ingest_seq`（插入时取当前最大值 +1）推进，而不是按 `occurred_at`：各执行器时钟不一致时，迟到入库的事件发生时间可能早于已消费游标，用发生时间做游标会把它永久漏读。升级前已写入的按发生时间游标在读取时折算为对应行的 `ingest_seq`，既不重放历史事件也不漏读。SQLite 继续使用事务，D1 使用项目现有 revision/CAS + nonce batch。原因去重以结构化枚举和实体为准，不使用可能带敏感信息的原始异常文本做 fingerprint。
 
 ### 5.3 生命周期与去重
 

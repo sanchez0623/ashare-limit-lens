@@ -69,7 +69,7 @@ function renderStatus() {
     }；${
       watchdog.pipelineConfigured ? "管道信号已配置" : "管道信号未配置"
     }</span></div>
-    <div><span class="outline-tag">发送队列</span><span>待发送 ${status.outbox?.pending ?? 0}，已发送 ${status.outbox?.sent ?? 0}，过期 ${status.outbox?.expired ?? 0}</span></div>`;
+    <div><span class="outline-tag">发送队列</span><span>待发送 ${status.outbox?.pending ?? 0}，逾期未领 ${status.outbox?.overdue ?? 0}，已发送 ${status.outbox?.sent ?? 0}，过期 ${status.outbox?.expired ?? 0}</span></div>`;
 }
 
 function renderIncidents(reset) {

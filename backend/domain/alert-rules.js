@@ -13,6 +13,7 @@ export const REASON_CODES = {
   // 交易约束但构成风险暴露：需要通知（不虚构成交）。
   PROTECTIVE_EXIT_BLOCKED: "PROTECTIVE_EXIT_BLOCKED",
   T_RECOVERY_INCOMPLETE: "T_RECOVERY_INCOMPLETE",
+  DRAWDOWN_LIMIT: "DRAWDOWN_LIMIT", // 账户回撤触及硬约束，买入被暂停
   // 运行阻塞：立即告警。
   MISSING_PLAN: "MISSING_PLAN",
   MISSING_SETTLEMENT: "MISSING_SETTLEMENT",
@@ -143,6 +144,9 @@ export function marketPhase(marketContext) {
 // 事实分类（§3.1）：把 pollTrading / runDaily / 账本异常等已提交事实映射为
 // 结构化运维事件。正常执行结果（未触发、涨停买不进、T+1 当日不可卖、
 // 普通买单窗口结束）不产生告警事件。
+// 运行阻塞与故障之外，执行层还会给出独立于 status 的风险事实：回撤触及
+// 硬约束、保护退出被阻塞、做 T 第二腿未恢复、持仓关键报价缺失。这些事实
+// 与"本轮是 RUNNING 还是 STALE_QUOTES"无关，必须各自入账，否则会漏报。
 export function classifyOperationalFacts(input) {
   const events = [];
   const { source = "loop", result = null, now, tradeDate = null } = input ?? {};
@@ -158,18 +162,6 @@ export function classifyOperationalFacts(input) {
         entityRef: "primary",
         safeFacts: { status: status ?? "ERROR" },
       });
-    else if (status === "STALE_QUOTES")
-      events.push({
-        ...base,
-        type: EVENT_TYPES.LOOP_RESULT,
-        ruleType: RULE_TYPES.REQUIRED_QUOTE_STALE,
-        reasonCode: REASON_CODES.STALE_QUOTE,
-        entityRef: "primary",
-        safeFacts: {
-          freshQuotes: result.freshQuotes ?? 0,
-          watchedCodes: result.watchedCodes ?? 0,
-        },
-      });
     else if (status === "BLOCKED")
       // 缺前日结算/缺事前计划是不可执行条件（SESSION_BLOCKED）；
       // 其余 BLOCKED 子原因在 safeFacts 中保留展示文本，但不虚告警。
@@ -182,6 +174,61 @@ export function classifyOperationalFacts(input) {
           : REASON_CODES.MISSING_SETTLEMENT,
         entityRef: "primary",
         safeFacts: {},
+      });
+    // 关键报价缺失（持仓或挂单所需的股票没有本帧有效报价）：只要还有股票
+    // 新鲜，旧实现会报 RUNNING 掩盖整只股票的停摆。这里按缺失只数如实入账。
+    const missingQuoteCodes = Array.isArray(result?.missingQuoteCodes)
+      ? result.missingQuoteCodes
+      : [];
+    if (status === "STALE_QUOTES" || missingQuoteCodes.length)
+      events.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.REQUIRED_QUOTE_STALE,
+        reasonCode: REASON_CODES.STALE_QUOTE,
+        entityRef: "primary",
+        safeFacts: {
+          freshQuotes: result.freshQuotes ?? 0,
+          watchedCodes: result.watchedCodes ?? 0,
+          missingQuotes: missingQuoteCodes.length || null,
+          affectsProtectiveExit: Boolean(result.affectsProtectiveExit),
+        },
+      });
+    if (result?.drawdownBreached)
+      events.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.DRAWDOWN_TRIPPED,
+        reasonCode: REASON_CODES.DRAWDOWN_LIMIT,
+        entityRef: "primary",
+        safeFacts: { drawdown: result.drawdown ?? null },
+      });
+    // 保护退出被阻塞：止损/保护订单已触发却无法成交（跌停、无流动性、T+1），
+    // 持仓暴露在无保护状态，属风险暴露而非正常约束。
+    const blockedProtectiveExits = Array.isArray(result?.blockedProtectiveExits)
+      ? result.blockedProtectiveExits
+      : [];
+    if (blockedProtectiveExits.length)
+      events.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.PROTECTIVE_EXIT_BLOCKED,
+        reasonCode: REASON_CODES.PROTECTIVE_EXIT_BLOCKED,
+        entityRef: "primary",
+        safeFacts: { codes: blockedProtectiveExits },
+      });
+    // 做 T 第二腿在检查时点之后仍未完成：第一腿已成交，敞口留在账上。
+    const incompleteRecoveries = Array.isArray(result?.incompleteRecoveries)
+      ? result.incompleteRecoveries
+      : [];
+    if (incompleteRecoveries.length)
+      events.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.T_RECOVERY_INCOMPLETE,
+        reasonCode: REASON_CODES.T_RECOVERY_INCOMPLETE,
+        entityRef: "primary",
+        safeFacts: { codes: incompleteRecoveries },
       });
   } else if (source === "daily") {
     const paper = result?.paper ?? {};
@@ -242,6 +289,7 @@ export function evaluateAlertRules({
   previousIncident,
   policy = DEFAULT_ALERT_POLICY,
   marketContext,
+  now = new Date().toISOString(),
 }) {
   const evaluations = [];
   const byFingerprint = new Map();
@@ -249,11 +297,34 @@ export function evaluateAlertRules({
     const fingerprint = fingerprintOf(event);
     byFingerprint.set(fingerprint, event);
     const phase = marketPhase(marketContext);
-    const severity = severityOf(event, policy, phase);
+    // 持续时间取自实例首次发生时刻，而不是本批事件的到达时间：升级要看
+    // "已经持续多久"，只看本轮事件永远得不到持续时间，升级规则永不触发。
+    const related =
+      previousIncident && previousIncident.fingerprint === fingerprint
+        ? previousIncident
+        : null;
+    const activeSeconds = related
+      ? Math.max(
+          0,
+          (new Date(now).getTime() - new Date(related.firstSeen).getTime()) /
+            1000,
+        )
+      : 0;
+    const durationFacts =
+      event.ruleType === RULE_TYPES.LOOP_FAILED
+        ? { failedSeconds: Math.round(activeSeconds) }
+        : event.ruleType === RULE_TYPES.REQUIRED_QUOTE_STALE
+          ? { staleSeconds: Math.round(activeSeconds) }
+          : null;
+    const enriched = durationFacts
+      ? { ...event, safeFacts: { ...event.safeFacts, ...durationFacts } }
+      : event;
+    const severity = severityOf(enriched, policy, phase);
     evaluations.push({
-      event,
+      event: enriched,
       fingerprint,
       severity,
+      activeSeconds,
       // 午休与非交易时段不把不成交视为故障（§3.2）：LOOP_FAILED 与
       // REQUIRED_QUOTE_STALE 只在连续竞价期间推进；其余规则全天有效。
       suppressed:
@@ -311,9 +382,29 @@ function severityOf(event, policy, phase) {
   }
 }
 
+// 维护窗口抑制的运行类规则（§4.2）：维护期内只静默"运行健康"类告警；
+// 账本不变式、回撤触及硬约束、保护退出阻塞属于风险暴露，不受维护静默。
+export const MAINTENANCE_SUPPRESSED_RULES = new Set([
+  RULE_TYPES.LOOP_FAILED,
+  RULE_TYPES.RUNNER_STALLED,
+  RULE_TYPES.REQUIRED_QUOTE_STALE,
+  RULE_TYPES.SETTLEMENT_LATE,
+  RULE_TYPES.AI_OR_RESEARCH_FAILED,
+]);
+
+export function suppressedByMaintenance(ruleType, until, now) {
+  return (
+    Boolean(until) && until > now && MAINTENANCE_SUPPRESSED_RULES.has(ruleType)
+  );
+}
+
 // 状态机转换（§5.3）：OPEN → 升级/提醒 → RESOLVED；ACK 只静默提醒不阻止升级。
-export function transitionIncident({ incident, evaluation, now }) {
-  const policy = DEFAULT_ALERT_POLICY;
+export function transitionIncident({
+  incident,
+  evaluation,
+  now,
+  policy = DEFAULT_ALERT_POLICY,
+}) {
   // 新实例。
   if (!incident)
     return evaluation.absent || evaluation.suppressed
@@ -351,14 +442,18 @@ export function transitionIncident({ incident, evaluation, now }) {
   const escalated =
     evaluation.severity === SEVERITIES.CRITICAL &&
     incident.severity !== SEVERITIES.CRITICAL;
-  const lastSeenAge =
-    (new Date(now).getTime() - new Date(incident.lastSeen).getTime()) / 1000;
+  // 提醒节奏以"上次成功通知时刻"为基准：拿 lastSeen 当基准时，每轮事件都会
+  // 刷新 lastSeen，相隔永远小于 remindEverySeconds，提醒永不发出。
+  const lastNotifiedAt =
+    incident.lastNotifiedAt ?? incident.firstSeen ?? incident.lastSeen;
+  const sinceNotified =
+    (new Date(now).getTime() - new Date(lastNotifiedAt).getTime()) / 1000;
   const ackActive = Boolean(incident.ackUntil && incident.ackUntil > now);
   let notify = null;
   if (escalated) notify = { type: "ESCALATED", severity: SEVERITIES.CRITICAL };
   else if (!incident.notifiedOnce)
     notify = { type: "OPEN", severity: evaluation.severity };
-  else if (!ackActive && lastSeenAge >= policy.remindEverySeconds)
+  else if (!ackActive && sinceNotified >= policy.remindEverySeconds)
     notify = { type: "REMIND", severity: evaluation.severity };
   return {
     action: escalated ? "ESCALATE" : "KEEP",

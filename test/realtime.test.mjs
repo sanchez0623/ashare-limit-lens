@@ -230,6 +230,34 @@ test("常驻循环无需网页触发就执行盘后任务，并写入心跳", as
     db.close();
   }
 });
+test("常驻循环保留独立轮询的失败结果：BLOCKED 必须写入运维事件", async () => {
+  const db = localDatabase(),
+    env = { DB: db };
+  let runner;
+  try {
+    runner = startTradingRunner(env, async () => null, {
+      // 周五 09:35 北京时间，处于连续竞价时段，走独立轮询分支。
+      now: () => new Date("2026-01-02T01:35:00.000Z"),
+      providers: {
+        calendar: async () => ({ dates: ["2026-01-02"], benchmark: [] }),
+        quotes: async () => ({}),
+      },
+    });
+    await runner.ready;
+    // 上一交易日未结算 → BLOCKED；旧实现把它丢成 SKIPPED，规则器收不到事实。
+    const rows = await db
+      .prepare(
+        "SELECT type, rule_type, reason_code FROM operation_events ORDER BY ingest_seq",
+      )
+      .all();
+    assert.equal(rows.results.length, 1);
+    assert.equal(rows.results[0].rule_type, "SESSION_BLOCKED");
+    assert.equal(rows.results[0].reason_code, "MISSING_SETTLEMENT");
+  } finally {
+    runner?.stop();
+    db.close();
+  }
+});
 test("实时 AI 重放不以日线补造收益，缺少实时覆盖时禁止验证通过", () => {
   const pair = { snapshot: snapshot(dateAt(0)), dataset: closing(dateAt(1)) };
   const result = replayStrategy([pair], BASE_STRATEGY);

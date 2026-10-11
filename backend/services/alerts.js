@@ -2,6 +2,7 @@
 // 交易循环只写事件（快）；规则评估与发送在独立 runner 或惰性入口推进。
 import { AlertRepository } from "../storage/alerts.js";
 import { marketClock } from "../domain/realtime.js";
+import { safeError } from "../http.js";
 import {
   DEFAULT_ALERT_POLICY,
   EVENT_TYPES,
@@ -10,6 +11,7 @@ import {
   transitionIncident,
   validateAlertPolicy,
   fingerprintOf,
+  suppressedByMaintenance,
   RULE_TYPES,
 } from "../domain/alert-rules.js";
 import {
@@ -58,8 +60,8 @@ export async function processAlerts(
   const store = new AlertRepository(env);
   const state = await store.processorState();
   const cursor = state?.lastEventCursor ?? null;
-  const events = await store.eventsSince(cursor, 200);
-  if (!events.length) return { processed: 0, cursor };
+  const limit = 200;
+  const events = await store.eventsSince(cursor, limit);
   const policy =
     (await store.latestRuleVersion())?.payload ?? DEFAULT_ALERT_POLICY;
   const clock = marketClock(new Date(now));
@@ -69,6 +71,14 @@ export async function processAlerts(
     weekday: clock.weekday,
     calendarConfirmed: true,
   };
+  const maintenance = await maintenanceUntil(env);
+  const ruleVersion = (await store.latestRuleVersion())?.id ?? "default";
+  // 通道在入队时固定：发送由 outbox 独立完成，规则推进不等待供应商。
+  const channels = alertsEnabled(env)
+    ? notificationChannels(env)
+        .filter((channel) => channel.configured)
+        .map((channel) => channel.ref)
+    : [];
   const grouped = new Map();
   for (const row of events) {
     if (!row.ruleType) continue; // 维护/测试等非规则事件不推进规则
@@ -90,6 +100,72 @@ export async function processAlerts(
       .push({ ...classified, instanceId: row.instanceId, rowId: row.id });
   }
   let incidents = 0;
+  const commit = async ({ previous, evaluation, group }) => {
+    const transition = transitionIncident({
+      incident: previous,
+      evaluation,
+      now,
+      policy,
+    });
+    if (!transition) return false;
+    // 维护窗口只静默通知，不冻结状态：观测心跳与严重度仍继续更新。
+    const maintenanceSuppressed = suppressedByMaintenance(
+      evaluation.event?.ruleType,
+      maintenance,
+      now,
+    );
+    const notify = maintenanceSuppressed ? null : transition.notify;
+    const notifying = Boolean(notify) && channels.length > 0;
+    const hasPatch = Object.keys(transition.patch ?? {}).length > 0;
+    if (transition.action === "KEEP" && !notifying && !hasPatch) return false;
+    const notificationFacts = notifying
+      ? {
+          notifiedOnce: true,
+          lastNotifiedAt: now,
+          lastNotifiedType: notify.type,
+        }
+      : {};
+    const create = !previous;
+    await store.commitIncidentTransition({
+      create: create
+        ? {
+            fingerprint: evaluation.fingerprint,
+            severity: notify?.severity ?? evaluation.severity,
+            ruleType: evaluation.event.ruleType,
+            ruleVersion,
+            payload: {
+              entityRef: evaluation.event.entityRef ?? "primary",
+              affected: [...new Set((group ?? []).map((row) => row.accountId))],
+              ...notificationFacts,
+            },
+          }
+        : null,
+      id: create ? null : previous.id,
+      patch: create
+        ? null
+        : {
+            ...transition.patch,
+            ...(notifying ? { notifiedOnce: true, lastNotifiedAt: now } : {}),
+            payload: {
+              ...(previous?.payload ?? {}),
+              ...(transition.action === "RESOLVE"
+                ? { resolvedBy: "rules" }
+                : {}),
+              ...notificationFacts,
+            },
+          },
+      // 只有需要通知时才追加审计事件与入队；纯观测心跳不写事件表。
+      eventType: notifying ? notify.type : null,
+      eventPayload: {
+        severity: notify?.severity ?? evaluation.severity,
+        ...(transition.action === "RESOLVE" ? { resolvedBy: "rules" } : {}),
+      },
+      channels: notifying ? channels : [],
+      now,
+    });
+    if (transition.action !== "KEEP") incidents += 1;
+    return true;
+  };
   for (const [fingerprint, group] of grouped) {
     const previous = await store.activeIncident(fingerprint);
     const evaluations = evaluateAlertRules({
@@ -97,89 +173,42 @@ export async function processAlerts(
       previousIncident: previous,
       policy,
       marketContext,
+      now,
     });
     // 同一指纹的多条事件按根因聚合：一次评估，摘要列出受影响角色（§5.3）。
     const evaluation = evaluations.find((row) => !row.absent) ?? evaluations[0];
     if (!evaluation || evaluation.suppressed) continue;
-    const transition = transitionIncident({
-      incident: previous,
-      evaluation,
-      now,
-    });
-    if (!transition || transition.action === "KEEP") continue;
-    const ruleVersion = (await store.latestRuleVersion())?.id ?? "default";
-    let incidentId = previous?.id ?? null;
-    if (transition.action === "OPEN") {
-      const created = await store.transitionIncident({
-        create: {
-          fingerprint,
-          severity: transition.notify.severity,
-          ruleType: evaluation.event.ruleType,
-          ruleVersion,
-          payload: {
-            entityRef: evaluation.event.entityRef ?? "primary",
-            affected: [...new Set(group.map((row) => row.accountId))],
-          },
-        },
-        now,
-      });
-      incidentId = created.id;
-      incidents += 1;
-    } else if (
-      transition.action === "ESCALATE" ||
-      transition.action === "RESOLVE"
-    ) {
-      await store.transitionIncident({
-        id: incidentId,
-        patch: {
-          ...transition.patch,
-          notifiedOnce: previous?.notifiedOnce || Boolean(transition.notify),
-          payload: {
-            ...(previous?.payload ?? {}),
-            ...(transition.action === "RESOLVE" ? { resolvedBy: "rules" } : {}),
-          },
-        },
-        now,
-      });
-      incidents += 1;
-    }
-    if (transition.notify && alertsEnabled(env)) {
-      const sequence = await store.appendAlertEvent(
-        incidentId,
-        transition.notify.type,
-        { severity: transition.notify.severity ?? null },
-        now,
-      );
-      const incident = await store.getIncident(incidentId);
-      const message =
-        transition.action === "RESOLVE"
-          ? formatResolvedNotification({
-              incident,
-              instanceAlias: instanceAlias(env),
-              now,
-            })
-          : formatSafeNotification({
-              event: evaluation.event,
-              incident,
-              instanceAlias: instanceAlias(env),
-              now,
-            });
-      for (const channel of notificationChannels(env).filter(
-        (c) => c.configured,
-      ))
-        await store.enqueueDelivery({
-          incidentId,
-          eventSequence: sequence,
-          channelRef: channel.ref,
-          now,
-        });
-      void message;
-    }
+    await commit({ previous, evaluation, group });
   }
-  const latest = events.at(-1);
-  const nextCursor = { occurredAt: latest.occurredAt, id: latest.id };
+  // 本批完全没有事件的未恢复实例：条件已消失，交给宽限期与恢复判定。
+  // 只在整批事件都消费完时判定，否则积压尾部的实例会被误判为"已消失"。
+  if (events.length < limit)
+    for (const incident of await store.activeIncidents()) {
+      if (grouped.has(incident.fingerprint)) continue;
+      await commit({
+        previous: incident,
+        evaluation: {
+          event: null,
+          fingerprint: incident.fingerprint,
+          severity: incident.severity,
+          absent: true,
+          suppressed: false,
+        },
+        group: [],
+      });
+    }
+  // 游标只按摄取顺序前进；无事件时不回退（null 表示从头读，绝不能写回）。
+  const nextCursor = events.length
+    ? { ingestSeq: events.at(-1).ingestSeq }
+    : cursor;
+  // 空转也要更新进度心跳：停滞检测依赖 lastProgressAt，"空闲"不等于"停滞"。
   await store.advanceProcessorState({ lastEventCursor: nextCursor, now });
-  return { processed: events.length, incidents, cursor: nextCursor };
+  return {
+    processed: events.length,
+    incidents,
+    cursor: nextCursor,
+    maintenanceUntil: maintenance,
+  };
 }
 
 // ---------- 发送：租约 → 适配器 → 有界退避重试 ----------
@@ -192,73 +221,134 @@ export async function processAlertOutbox(
   const results = [];
   const policy =
     (await store.latestRuleVersion())?.payload ?? DEFAULT_ALERT_POLICY;
-  for (const delivery of deliveries) {
-    const incident = await store.getIncident(delivery.incidentId);
-    if (!incident) {
-      await store.expireDelivery(delivery.id, now);
-      results.push({ id: delivery.id, expired: true });
-      continue;
-    }
-    const alertEvent = (await store.incidentEvents(incident.id)).find(
-      (row) => row.sequence === delivery.eventSequence,
-    );
-    if (!alertEvent) {
-      await store.expireDelivery(delivery.id, now);
-      results.push({ id: delivery.id, expired: true });
-      continue;
-    }
-    const resolved = incident.status === "RESOLVED";
-    const message = resolved
-      ? formatResolvedNotification({
-          incident,
-          instanceAlias: instanceAlias(env),
-          now,
-        })
-      : formatSafeNotification({
-          event: null,
-          incident,
-          instanceAlias: instanceAlias(env),
-          now,
-          privacyMode: true,
-        });
-    const outcome = await sendNotification({
-      channelRef: delivery.channelRef,
-      env,
-      safeMessage: message,
-      eventId: `${incident.id}#${delivery.eventSequence}`,
-    });
-    if (outcome.ok) {
-      await store.completeDelivery(delivery.id, outcome.providerRef, now);
-      if (!incident.notifiedOnce)
-        await store
-          .transitionIncident({
-            id: incident.id,
-            patch: {
-              payload: { ...(incident.payload ?? {}), notifiedOnce: true },
-            },
-            now,
-          })
-          .catch(() => {});
-      results.push({ id: delivery.id, sent: true });
-      continue;
-    }
-    const attempt = delivery.attempt + 1;
-    if (!outcome.retryable || attempt >= policy.maxAttempts) {
-      await store.expireDelivery(delivery.id, now);
-      results.push({ id: delivery.id, expired: true, reason: outcome.reason });
-      continue;
-    }
-    const backoff =
-      policy.backoffSeconds[
-        Math.min(attempt - 1, policy.backoffSeconds.length - 1)
-      ];
-    const nextAttemptAt = new Date(
+  const backoffFor = (attempt) =>
+    new Date(
       new Date(now).getTime() +
-        backoff * 1000 +
+        policy.backoffSeconds[
+          Math.min(attempt - 1, policy.backoffSeconds.length - 1)
+        ] *
+          1000 +
         Math.floor(Math.random() * 1000),
     ).toISOString();
-    await store.retryDelivery({ id: delivery.id, nextAttemptAt, now });
-    results.push({ id: delivery.id, retried: true, nextAttemptAt });
+  // 每一次失败——包括适配器抛异常——都必须消耗一次重试预算，否则网络异常
+  // 会绕过 maxAttempts 无限重试。
+  const retryOrExpire = async (delivery, reason) => {
+    const attempt = delivery.attempt + 1;
+    const lease = {
+      id: delivery.id,
+      leaseOwner: delivery.leaseOwner,
+      leaseUntil: delivery.leaseUntil,
+      now,
+    };
+    if (attempt >= policy.maxAttempts) {
+      const applied = await store.expireDelivery(lease);
+      return applied
+        ? { id: delivery.id, expired: true, reason }
+        : { id: delivery.id, stale: true };
+    }
+    const nextAttemptAt = backoffFor(attempt);
+    const applied = await store.retryDelivery({ ...lease, nextAttemptAt });
+    return applied
+      ? { id: delivery.id, retried: true, nextAttemptAt, reason }
+      : { id: delivery.id, stale: true };
+  };
+  for (const delivery of deliveries) {
+    try {
+      const incident = await store.getIncident(delivery.incidentId);
+      if (!incident) {
+        await store.expireDelivery({
+          id: delivery.id,
+          leaseOwner: delivery.leaseOwner,
+          leaseUntil: delivery.leaseUntil,
+          now,
+        });
+        results.push({
+          id: delivery.id,
+          expired: true,
+          reason: "INCIDENT_GONE",
+        });
+        continue;
+      }
+      const alertEvent = (await store.incidentEvents(incident.id)).find(
+        (row) => row.sequence === delivery.eventSequence,
+      );
+      if (!alertEvent) {
+        await store.expireDelivery({
+          id: delivery.id,
+          leaseOwner: delivery.leaseOwner,
+          leaseUntil: delivery.leaseUntil,
+          now,
+        });
+        results.push({ id: delivery.id, expired: true, reason: "EVENT_GONE" });
+        continue;
+      }
+      const resolved = incident.status === "RESOLVED";
+      const message = resolved
+        ? formatResolvedNotification({
+            incident,
+            instanceAlias: instanceAlias(env),
+            now,
+          })
+        : formatSafeNotification({
+            event: null,
+            incident,
+            instanceAlias: instanceAlias(env),
+            now,
+            privacyMode: true,
+          });
+      const outcome = await sendNotification({
+        channelRef: delivery.channelRef,
+        env,
+        safeMessage: message,
+        eventId: `${incident.id}#${delivery.eventSequence}`,
+      });
+      if (outcome.ok) {
+        const applied = await store.completeDelivery({
+          id: delivery.id,
+          leaseOwner: delivery.leaseOwner,
+          leaseUntil: delivery.leaseUntil,
+          providerRef: outcome.providerRef,
+          now,
+        });
+        // 租约已被接管时旧执行器不得覆盖新执行器的结果，只如实记录丢弃。
+        results.push(
+          applied
+            ? { id: delivery.id, sent: true }
+            : { id: delivery.id, stale: true },
+        );
+        continue;
+      }
+      const attempt = delivery.attempt + 1;
+      if (!outcome.retryable || attempt >= policy.maxAttempts) {
+        const applied = await store.expireDelivery({
+          id: delivery.id,
+          leaseOwner: delivery.leaseOwner,
+          leaseUntil: delivery.leaseUntil,
+          now,
+        });
+        results.push(
+          applied
+            ? { id: delivery.id, expired: true, reason: outcome.reason }
+            : { id: delivery.id, stale: true },
+        );
+        continue;
+      }
+      const nextAttemptAt = backoffFor(attempt);
+      const applied = await store.retryDelivery({
+        id: delivery.id,
+        leaseOwner: delivery.leaseOwner,
+        leaseUntil: delivery.leaseUntil,
+        nextAttemptAt,
+        now,
+      });
+      results.push(
+        applied
+          ? { id: delivery.id, retried: true, nextAttemptAt }
+          : { id: delivery.id, stale: true },
+      );
+    } catch (error) {
+      results.push(await retryOrExpire(delivery, safeError(error)));
+    }
   }
   return results;
 }
@@ -319,12 +409,14 @@ export async function ackIncident(env, incidentId, { hours = 1 } = {}) {
   const ackUntil = new Date(
     new Date(now).getTime() + hours * 3600 * 1000,
   ).toISOString();
-  await store.transitionIncident({
+  // 确认与审计事件同一事务提交，避免确认已生效却没有审计记录。
+  await store.commitIncidentTransition({
     id: incidentId,
-    patch: { ackUntil, payload: { ...(incident.payload ?? {}) } },
+    patch: { ackUntil },
+    eventType: "ACKED",
+    eventPayload: { ackUntil },
     now,
   });
-  await store.appendAlertEvent(incidentId, "ACKED", { ackUntil }, now);
   return { ackUntil };
 }
 
@@ -390,7 +482,8 @@ export async function setMaintenanceWindow(
     entityRef: "maintenance",
     payload: { until, reason: String(reason).slice(0, 120) },
   });
-  await store.advanceProcessorState({ now });
+  // 不在此处推进分发器状态：维护窗口只是一条事实，由分发器按摄取顺序消费；
+  // 从 API 进程改写游标会与分发器抢 CAS，导致维护入口 503 或游标回退。
   return { until };
 }
 

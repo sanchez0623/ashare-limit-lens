@@ -150,8 +150,10 @@ export async function api(request, env) {
   const cohortMatch = path.match(
     /^\/api\/strategies\/cohorts\/([a-z0-9-]+)(\/lineage|\/export)?$/,
   );
+  // 告警实例 ID 形如 inc-<ISO 时间戳>-<随机段>，含 ":" 与 "."；
+  // 只允许 [a-z0-9-] 会让确认按钮永远 404。
   const incidentMatch = path.match(
-    /^\/api\/alerts\/incidents\/([a-z0-9-]+)\/ack$/,
+    /^\/api\/alerts\/incidents\/([A-Za-z0-9._:-]+)\/ack$/,
   );
   if (
     !methods[path] &&

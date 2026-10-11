@@ -22,22 +22,33 @@ export function alertsEnabled(env) {
   );
 }
 
-async function fetchWithTimeout(url, init) {
+// 超时覆盖到响应体读取完成：只给 fetch 设超时的话，响应头已到而 body 一直
+// 不结束时读取会无限挂住分发器。
+async function fetchJson(url, init) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       redirect: "error",
       signal: controller.signal,
     });
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    return { response, body };
   } finally {
     clearTimeout(timer);
   }
 }
 
-// 飞书自定义机器人：text 消息；可选加签密钥（timestamp + "\n" + secret 作
-// HMAC-SHA256 key，Base64 签名）。业务成功以响应体 code === 0 / StatusCode === 0 判定。
+// 飞书自定义机器人：text 消息；可选加签密钥。签名 = Base64(HMAC-SHA256(
+// key = "{timestamp}\n{secret}", msg = ""))，timestamp 与 sign 必须以查询
+// 参数追加——webhook 自身没有查询串，直接拼 "&timestamp=" 会得到错误 URL，
+// 配置签名密钥后必然发送失败。
 async function sendFeishu({ config, text, eventId }) {
   let url = config.webhookUrl;
   if (config.secret) {
@@ -55,26 +66,31 @@ async function sendFeishu({ config, text, eventId }) {
       new TextEncoder().encode(""),
     );
     const sign = btoa(String.fromCharCode(...new Uint8Array(signature)));
-    url = `${url}&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`;
+    const signed = new URL(url);
+    signed.searchParams.set("timestamp", String(timestamp));
+    signed.searchParams.set("sign", sign);
+    url = signed.toString();
   }
-  const response = await fetchWithTimeout(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      msg_type: "text",
-      content: { text: eventId ? `${text}\n事件: ${eventId}` : text },
-    }),
-  });
+  let response, body;
+  try {
+    ({ response, body } = await fetchJson(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        msg_type: "text",
+        content: { text: eventId ? `${text}\n事件: ${eventId}` : text },
+      }),
+    }));
+  } catch {
+    // 网络异常与超时同样要消耗重试预算，不能抛出去绕过 maxAttempts。
+    return { ok: false, retryable: true, reason: "NETWORK_ERROR" };
+  }
   if (response.status === 429)
     return { ok: false, retryable: true, reason: "RATE_LIMITED" };
   if (!response.ok)
     return { ok: false, retryable: true, reason: `HTTP_${response.status}` };
-  let body = null;
-  try {
-    body = await response.json();
-  } catch {
+  if (body === null)
     return { ok: false, retryable: true, reason: "INVALID_RESPONSE" };
-  }
   const code = body?.code ?? body?.StatusCode;
   if (code === 0) return { ok: true, providerRef: String(body.msgId ?? "") };
   // 配置错误（如密钥错误）不重复撞接口。

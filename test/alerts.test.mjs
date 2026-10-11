@@ -387,11 +387,49 @@ test("端到端：事件入站 → 规则推进 → outbox → 发送（含重�
   await processAlerts(enabledEnv, { now: "2026-10-09T07:22:30.000Z" });
   const settlement = await store.activeIncident("SETTLEMENT_LATE:primary");
   assert.ok(settlement, "结算迟延实例已创建");
-  // 发送：成功一次后 notifiedOnce 落库。
+  // 本批完全没有事件的实例同样要评估：LOOP_FAILED 已停止上报且超过宽限期，
+  // 必须自动恢复（旧实现只在"本批有事件的指纹"上评估，永不 RESOLVED）。
+  const loopIncident = await store.getIncident(incident.id);
+  assert.equal(loopIncident.status, "RESOLVED", "无事件实例按宽限期恢复");
+  assert.ok(loopIncident.resolvedAt);
+  // 发送：结算迟延 OPEN 与循环失败恢复摘要各一条任务。
   const sent = await processAlertOutbox(enabledEnv, {
     now: "2026-10-09T07:22:31.000Z",
   });
-  assert.equal(sent.length, 1, "一条通道一条任务");
+  assert.equal(sent.length, 2, "两条通知各一条任务");
+  assert.ok(
+    sent.every((row) => row.sent),
+    "两条都发送成功",
+  );
+  assert.equal(
+    mock.calls.filter((url) => url.startsWith("https://open.feishu.cn/"))
+      .length,
+    2,
+  );
+  // 成功通知标志与最后通知时刻已落库。
+  const notified = await store.getIncident(settlement.id);
+  assert.equal(notified.notifiedOnce, true, "通知标志已保存");
+  assert.ok(notified.lastNotifiedAt);
+  // 同一问题持续：观测心跳提交后标志仍然保持，且不重复入队。
+  // （旧实现把 payload 里的 notifiedOnce 回写成当前值 false，于是每轮重发。）
+  await recordOperationEvents(enabledEnv, [
+    {
+      source: "daily",
+      result: { paper: { status: "BEFORE_CLOSE" }, snapshot: { saved: false } },
+      now: "2026-10-09T07:23:30.000Z",
+      tradeDate: "2026-10-09",
+      sourceSequence: 4,
+    },
+  ]);
+  await processAlerts(enabledEnv, { now: "2026-10-09T07:23:31.000Z" });
+  const heartbeat = await store.getIncident(settlement.id);
+  assert.equal(heartbeat.status, "OPEN");
+  assert.equal(heartbeat.notifiedOnce, true, "持续中的实例保持已通知标志");
+  assert.ok(heartbeat.lastSeen > settlement.lastSeen, "观测心跳推进 lastSeen");
+  const repeated = await processAlertOutbox(enabledEnv, {
+    now: "2026-10-09T07:23:32.000Z",
+  });
+  assert.equal(repeated.length, 0, "持续中的告警不重复发送");
   // 失败路径：429 → 可重试；CONFIG_ERROR → 不再撞接口。
   const rateLimited = await sendNotification({
     channelRef: "feishu",
@@ -497,7 +535,7 @@ test("测试通知：未配置通道拒绝；配置错误不重复撞接口", as
   env.DB.close();
 });
 
-test("outbox 租约：接管过期租约，重试按退避推进，超限过期", async () => {
+test("outbox 租约：租约期内独占，被接管后旧执行器不得覆盖新结果", async () => {
   const env = buildEnv();
   const mock = installFetchMock({
     "https://open.feishu.cn/": { code: 0, msgId: "om_9" },
@@ -523,25 +561,432 @@ test("outbox 租约：接管过期租约，重试按退避推进，超限过期"
     leaseOwner: "runner-a",
   });
   assert.ok(deliveries.length >= 1);
+  const target = deliveries[0];
   // 第二个执行器在租约内不能领取同一任务。
   const again = await store.claimDeliveries({
     now: NOW,
     leaseOwner: "runner-b",
   });
   for (const delivery of again)
-    assert.notEqual(delivery.id, deliveries[0].id, "租约期内不被接管");
-  // 模拟租约过期后可被接管。
-  await store.retryDelivery({
-    id: deliveries[0].id,
-    nextAttemptAt: NOW,
-    now: NOW,
-  });
+    assert.notEqual(delivery.id, target.id, "租约期内不被接管");
+  // 租约有效期内旧执行器按退避重试：消耗一次预算并放回可领状态。
+  assert.equal(
+    await store.retryDelivery({
+      id: target.id,
+      leaseOwner: target.leaseOwner,
+      leaseUntil: target.leaseUntil,
+      nextAttemptAt: NOW,
+      now: NOW,
+    }),
+    true,
+    "租约持有者可以重试",
+  );
   const takeover = await store.claimDeliveries({
     now: "2026-10-09T01:36:00.000Z",
     leaseOwner: "runner-c",
     leaseSeconds: 1,
   });
-  assert.ok(takeover.length >= 1, "到期任务重新可领");
+  const taken = takeover.find((delivery) => delivery.id === target.id);
+  assert.ok(taken, "到期任务重新可领");
+  // 租约被接管后，旧执行器的迟到写入必须被拒绝：不能改写新执行器的结果。
+  const late = {
+    id: target.id,
+    leaseOwner: target.leaseOwner,
+    leaseUntil: target.leaseUntil,
+    now: "2026-10-09T01:36:01.000Z",
+  };
+  assert.equal(
+    await store.completeDelivery({ ...late, providerRef: "om_old" }),
+    false,
+    "旧执行器不能写 SENT",
+  );
+  assert.equal(
+    await store.expireDelivery(late),
+    false,
+    "旧执行器不能写 EXPIRED",
+  );
+  assert.equal(
+    await store.retryDelivery({ ...late, nextAttemptAt: NOW }),
+    false,
+    "旧执行器不能写 PENDING",
+  );
+  // 新执行器持有租约，写入被接受。
+  assert.equal(
+    await store.completeDelivery({
+      id: taken.id,
+      leaseOwner: taken.leaseOwner,
+      leaseUntil: taken.leaseUntil,
+      providerRef: "om_new",
+      now: "2026-10-09T01:36:01.000Z",
+    }),
+    true,
+    "接管者可以写终态",
+  );
   mock.restore();
+  env.DB.close();
+});
+
+test("网络异常消耗重试预算：达到上限后过期，不再无限重试", async () => {
+  const env = buildEnv();
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("network unreachable");
+  };
+  try {
+    const enabled = {
+      ...env,
+      FEISHU_WEBHOOK_URL: "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+    };
+    await recordOperationEvents(enabled, [loopInput({ status: "ERROR" })]);
+    await processAlerts(enabled, { now: NOW });
+    const store = new AlertRepository(enabled);
+    const started = Date.parse(NOW);
+    let retried = 0;
+    let expired = 0;
+    for (let round = 0; round < DEFAULT_ALERT_POLICY.maxAttempts + 2; round++) {
+      const at = new Date(started + (round + 1) * 3600_000).toISOString();
+      const results = await processAlertOutbox(enabled, { now: at });
+      retried += results.filter((row) => row.retried).length;
+      expired += results.filter((row) => row.expired).length;
+      if (expired) break;
+    }
+    assert.equal(expired, 1, "达到重试上限后过期，不再投递");
+    assert.ok(
+      retried <= DEFAULT_ALERT_POLICY.maxAttempts,
+      `重试次数不超过预算，实际 ${retried}`,
+    );
+    const health = await store.outboxHealth();
+    assert.equal(health.pending, 0, "队列不残留进行中的任务");
+  } finally {
+    globalThis.fetch = original;
+  }
+  env.DB.close();
+});
+
+test("飞书加签：timestamp/sign 作为查询参数追加，URL 不会被拼接破坏", async () => {
+  const secret = "s3cret-key";
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, msgId: "om_sign" }),
+    };
+  };
+  try {
+    const outcome = await sendNotification({
+      channelRef: "feishu",
+      env: {
+        FEISHU_WEBHOOK_URL: "https://open.feishu.cn/open-apis/bot/v2/hook/abc",
+        FEISHU_SECRET: secret,
+      },
+      safeMessage: { text: "x" },
+    });
+    assert.equal(outcome.ok, true);
+    assert.equal(calls.length, 1);
+    const sent = new URL(calls[0]);
+    // 直接拼 "&timestamp=" 会把参数并进路径，签名请求因此失效。
+    assert.equal(sent.pathname, "/open-apis/bot/v2/hook/abc");
+    const timestamp = sent.searchParams.get("timestamp");
+    const sign = sent.searchParams.get("sign");
+    assert.ok(timestamp && Number.isInteger(Number(timestamp)));
+    assert.ok(sign);
+    // 签名算法：Base64(HMAC-SHA256(key = "{timestamp}\n{secret}", msg = ""))。
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(`${timestamp}\n${secret}`),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const expected = btoa(
+      String.fromCharCode(
+        ...new Uint8Array(
+          await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("")),
+        ),
+      ),
+    );
+    assert.equal(sign, expected, "签名与飞书自定义机器人规范一致");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("执行层风险事实独立入账：不因 status 为 RUNNING 而被掩盖", () => {
+  // 只有部分股票新鲜不再算健康：缺失清单必须入账。
+  const partial = classifyOperationalFacts(
+    loopInput({
+      status: "STALE_QUOTES",
+      freshQuotes: 2,
+      watchedCodes: 3,
+      missingQuoteCodes: ["600001"],
+      affectsProtectiveExit: true,
+    }),
+  );
+  assert.equal(partial[0].ruleType, RULE_TYPES.REQUIRED_QUOTE_STALE);
+  assert.equal(partial[0].safeFacts.missingQuotes, 1);
+  assert.equal(
+    partial[0].safeFacts.affectsProtectiveExit,
+    true,
+    "缺失报价影响保护退出时如实标注",
+  );
+  // 回撤触及硬约束：与"本轮 status 是什么"无关。
+  const drawdown = classifyOperationalFacts(
+    loopInput({ status: "RUNNING", drawdownBreached: true, drawdown: 0.13 }),
+  );
+  assert.equal(drawdown.length, 1);
+  assert.equal(drawdown[0].ruleType, RULE_TYPES.DRAWDOWN_TRIPPED);
+  assert.equal(drawdown[0].reasonCode, REASON_CODES.DRAWDOWN_LIMIT);
+  // 保护退出阻塞与做 T 第二腿未完成。
+  const blocked = classifyOperationalFacts(
+    loopInput({ status: "RUNNING", blockedProtectiveExits: ["600002"] }),
+  );
+  assert.equal(blocked[0].ruleType, RULE_TYPES.PROTECTIVE_EXIT_BLOCKED);
+  assert.deepEqual(blocked[0].safeFacts.codes, ["600002"]);
+  const recovery = classifyOperationalFacts(
+    loopInput({ status: "RUNNING", incompleteRecoveries: ["600003"] }),
+  );
+  assert.equal(recovery[0].ruleType, RULE_TYPES.T_RECOVERY_INCOMPLETE);
+  assert.deepEqual(recovery[0].safeFacts.codes, ["600003"]);
+  // 一次轮询同时暴露多项风险时逐项入账，而不是只留第一条。
+  const combined = classifyOperationalFacts(
+    loopInput({
+      status: "STALE_QUOTES",
+      missingQuoteCodes: ["600001"],
+      drawdownBreached: true,
+      drawdown: 0.2,
+      blockedProtectiveExits: ["600002"],
+      incompleteRecoveries: ["600003"],
+    }),
+  );
+  assert.deepEqual(
+    combined.map((event) => event.ruleType).sort(),
+    [
+      "DRAWDOWN_TRIPPED",
+      "PROTECTIVE_EXIT_BLOCKED",
+      "REQUIRED_QUOTE_STALE",
+      "T_RECOVERY_INCOMPLETE",
+    ],
+    "四项风险各自入账",
+  );
+});
+
+test("升级与提醒按持续时间推进：只看本轮事件永远得不到升级", () => {
+  const event = classifyOperationalFacts(loopInput({ status: "ERROR" }))[0];
+  const previous = {
+    status: "OPEN",
+    severity: "WARNING",
+    fingerprint: "LOOP_FAILED:primary",
+    firstSeen: "2026-10-09T01:35:00.000Z",
+    lastSeen: "2026-10-09T01:35:00.000Z",
+    ackUntil: null,
+    resolvedAt: null,
+    notifiedOnce: true,
+    lastNotifiedAt: "2026-10-09T01:35:00.000Z",
+    payload: {},
+  };
+  // 持续 100 秒（超过 loopFailedEscalateSeconds=90）→ 升级为 CRITICAL。
+  const at = "2026-10-09T01:36:40.000Z";
+  const evaluation = evaluateAlertRules({
+    events: [event],
+    previousIncident: previous,
+    policy: DEFAULT_ALERT_POLICY,
+    marketContext: marketContext(at),
+    now: at,
+  })[0];
+  assert.equal(evaluation.severity, "CRITICAL", "持续时间驱动升级");
+  const escalated = transitionIncident({
+    incident: previous,
+    evaluation,
+    now: at,
+  });
+  assert.equal(escalated.action, "ESCALATE");
+  assert.equal(escalated.notify.type, "ESCALATED");
+  // 提醒按"上次成功通知时刻"推进，而不是被每轮事件刷新的 lastSeen。
+  const reminded = transitionIncident({
+    incident: { ...previous, lastSeen: "2026-10-09T01:36:35.000Z" },
+    evaluation: { ...evaluation, severity: "WARNING" },
+    now: "2026-10-09T01:50:50.000Z",
+  });
+  assert.equal(reminded.action, "KEEP");
+  assert.equal(reminded.notify?.type, "REMIND", "持续问题按节奏提醒");
+});
+
+test("状态迁移与入队同一事务：CAS 失败不留下半成品", async () => {
+  const env = buildEnv();
+  const enabled = {
+    ...env,
+    FEISHU_WEBHOOK_URL: "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+  };
+  const store = new AlertRepository(enabled);
+  await recordOperationEvents(enabled, [loopInput({ status: "ERROR" })]);
+  await processAlerts(enabled, { now: NOW });
+  const incident = await store.activeIncident("LOOP_FAILED:primary");
+  assert.ok(incident);
+  assert.equal((await store.incidentEvents(incident.id)).length, 1);
+  assert.equal((await store.outboxHealth()).pending, 1);
+  // 模拟并发执行器：读到过期 revision，UPDATE 的 CAS 必然失败。
+  const original = store.getIncident.bind(store);
+  store.getIncident = async (id) => {
+    const row = await original(id);
+    return row ? { ...row, revision: row.revision - 1 } : row;
+  };
+  try {
+    await assert.rejects(
+      () =>
+        store.commitIncidentTransition({
+          id: incident.id,
+          patch: { status: "ESCALATED_FOR_TEST" },
+          eventType: "ESCALATED",
+          channels: ["feishu"],
+          now: NOW,
+        }),
+      /正在被其他流程更新/,
+    );
+  } finally {
+    store.getIncident = original;
+  }
+  // 状态、审计事件与入队必须一起回滚：不能只留下一张发不出去的通知。
+  assert.equal(
+    (await store.incidentEvents(incident.id)).length,
+    1,
+    "审计事件未追加",
+  );
+  assert.equal((await store.outboxHealth()).pending, 1, "没有残留入队任务");
+  assert.equal(
+    (await store.getIncident(incident.id)).status,
+    "OPEN",
+    "实例状态未被改写",
+  );
+  env.DB.close();
+});
+
+test("维护窗口抑制运行类告警：窗口内静默通知，风险规则不受静默", async () => {
+  const env = buildEnv();
+  const enabled = {
+    ...env,
+    FEISHU_WEBHOOK_URL: "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+  };
+  const store = new AlertRepository(enabled);
+  const maintenance = (occurredAt, until) => ({
+    id: `maint-${occurredAt}`,
+    instanceId: "paper-instance",
+    accountId: "maintenance",
+    tradeDate: null,
+    sourceSequence: null,
+    type: EVENT_TYPES.MAINTENANCE,
+    reasonCode: null,
+    occurredAt,
+    entityRef: "maintenance",
+    payload: { until, reason: "演练" },
+  });
+  // 覆盖测试时刻的维护窗口（until 必须晚于本机当前时间才会被判为生效）。
+  await store.recordOperationEvent(
+    maintenance(NOW, new Date(Date.now() + 3600_000).toISOString()),
+  );
+  assert.ok(await maintenanceUntil(enabled), "维护窗口已生效");
+  await recordOperationEvents(enabled, [loopInput({ status: "ERROR" })]);
+  await processAlerts(enabled, { now: NOW });
+  // 实例照常建立（状态不被冻结），但通知被静默。
+  const loopIncident = await store.activeIncident("LOOP_FAILED:primary");
+  assert.ok(loopIncident, "维护期仍记录实例");
+  assert.equal(
+    (await store.outboxHealth()).pending,
+    0,
+    "维护期运行类告警不入队",
+  );
+  // 风险规则不受维护静默：回撤触及硬约束照常通知。
+  await recordOperationEvents(enabled, [
+    loopInput(
+      { status: "RUNNING", drawdownBreached: true, drawdown: 0.14 },
+      { sequence: 2 },
+    ),
+  ]);
+  await processAlerts(enabled, { now: NOW });
+  assert.equal((await store.outboxHealth()).pending, 1, "风险告警穿透维护窗口");
+  // 窗口结束后（后写入的维护事件把 until 置为过去）：同样的失败恢复通知。
+  await store.recordOperationEvent(
+    maintenance("2026-10-09T01:37:00.000Z", "2026-10-09T01:00:00.000Z"),
+  );
+  assert.equal(await maintenanceUntil(enabled), null, "维护窗口已结束");
+  await recordOperationEvents(enabled, [
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:38:00.000Z", sequence: 3 },
+    ),
+  ]);
+  await processAlerts(enabled, { now: "2026-10-09T01:38:10.000Z" });
+  const resumed = await store.getIncident(loopIncident.id);
+  assert.equal(resumed.notifiedOnce, true, "窗口结束后恢复通知");
+  const deliveries = await store.claimDeliveries({
+    now: "2026-10-09T01:38:11.000Z",
+    leaseOwner: "test",
+  });
+  assert.ok(
+    deliveries.some((delivery) => delivery.incidentId === loopIncident.id),
+    "循环失败告警重新入队",
+  );
+  env.DB.close();
+});
+
+test("游标按摄取顺序推进：迟到入库的早发生事件不被永久漏读", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  // 先消费一条"晚发生"的事件，游标推进到它。
+  await recordOperationEvents(env, [
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:36:00.000Z", sequence: 2 },
+    ),
+  ]);
+  await processAlerts(env, { now: "2026-10-09T01:36:01.000Z" });
+  assert.equal((await store.processorState()).lastEventCursor.ingestSeq, 1);
+  // 迟到事件：发生时间早于已消费游标，但入库更晚。
+  await recordOperationEvents(env, [
+    {
+      source: "ledger",
+      now: "2026-10-09T01:30:00.000Z",
+      tradeDate: "2026-10-09",
+      sourceSequence: 1,
+    },
+  ]);
+  const advanced = await processAlerts(env, {
+    now: "2026-10-09T01:36:02.000Z",
+  });
+  assert.equal(advanced.processed, 1, "迟到事件仍被消费");
+  assert.ok(
+    await store.activeIncident("LEDGER_INVARIANT_FAILED:primary"),
+    "迟到事件推进了规则",
+  );
+  env.DB.close();
+});
+
+test("旧格式游标折算为摄取序号：升级后既不重放也不漏读", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  await recordOperationEvents(env, [loopInput({ status: "ERROR" })]);
+  await recordOperationEvents(env, [
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:36:00.000Z", sequence: 2 },
+    ),
+  ]);
+  await processAlerts(env, { now: "2026-10-09T01:36:01.000Z" });
+  const rows = await store.eventsSince(null);
+  // 模拟升级前写入的按发生时间游标。
+  await env.DB.prepare(
+    "UPDATE alert_processor_state SET last_event_cursor = ? WHERE id = 'dispatcher'",
+  )
+    .bind(JSON.stringify({ occurredAt: rows[0].occurredAt, id: rows[0].id }))
+    .run();
+  assert.deepEqual((await store.processorState()).lastEventCursor, {
+    ingestSeq: 1,
+  });
+  const advanced = await processAlerts(env, {
+    now: "2026-10-09T01:36:02.000Z",
+  });
+  assert.equal(advanced.processed, 1, "只消费升级后新增的那一条");
   env.DB.close();
 });

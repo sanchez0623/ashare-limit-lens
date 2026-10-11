@@ -47,11 +47,14 @@ const loop = async () => {
     const delivered = await processAlertOutbox(env, {
       leaseOwner: "alert-runner",
     });
-    const state = await new AlertRepository(env).processorState();
-    const outbox = await new AlertRepository(env).outboxHealth();
+    const store = new AlertRepository(env);
+    const state = await store.processorState();
+    const outbox = await store.outboxHealth();
     await reportPipelineHealth(env, {
       cursor: state?.lastEventCursor ?? null,
       outbox,
+      // 分发器自己的推进时刻：队列为空但分发器已死时必须判为不健康。
+      state,
     });
     log(
       `alerts tick: events=${advanced.processed} incidents=${advanced.incidents ?? 0} outbox=${delivered.length}`,
