@@ -2,6 +2,8 @@ import { pollTrading } from "../backend/services/realtime.js";
 import { runTournamentPoll } from "../backend/services/strategy-tournament.js";
 import { marketClock, inSession } from "../backend/domain/realtime.js";
 import { RealtimeRepository } from "../backend/storage/realtime.js";
+import { recordOperationEvents } from "../backend/services/alerts.js";
+import { reportProcessProgress } from "../backend/services/watchdog.js";
 
 export function startTradingRunner(env, runDaily, options = {}) {
   const interval = Number(env.TRADING_POLL_SECONDS || 10);
@@ -10,7 +12,8 @@ export function startTradingRunner(env, runDaily, options = {}) {
   let timer,
     stopped = false,
     dailyDate = null,
-    lastDailyAttempt = 0;
+    lastDailyAttempt = 0,
+    loopSequence = 0;
   const now = options.now || (() => new Date());
   const loop = async () => {
     if (stopped) return;
@@ -28,6 +31,23 @@ export function startTradingRunner(env, runDaily, options = {}) {
           { ...env, TRADING_RUNNER: "server", TRADING_POLL_SECONDS: interval },
           current,
         );
+      // 运维事件（§5.1）：保存 pollTrading 的返回结果并交给规则器；
+      // 只写结构化事件（本地快速提交），规则与发送在独立子进程推进，
+      // 交易循环不等待通知供应商响应。正常 NON_TRADING_DAY 不是失败。
+      loopSequence += 1;
+      await recordOperationEvents(env, [
+        {
+          source: "loop",
+          result: tournament?.primary ?? { status: "SKIPPED" },
+          now: current.toISOString(),
+          tradeDate: clock.date,
+          sourceSequence: loopSequence,
+        },
+      ]).catch(() => {});
+      await reportProcessProgress(env, {
+        sequence: loopSequence,
+        completedAt: now().toISOString(),
+      }).catch(() => {});
       if (
         clock.time >= "15:05:00" &&
         dailyDate !== clock.date &&
@@ -35,6 +55,15 @@ export function startTradingRunner(env, runDaily, options = {}) {
       ) {
         lastDailyAttempt = current.getTime();
         const result = await runDaily();
+        await recordOperationEvents(env, [
+          {
+            source: "daily",
+            result,
+            now: now().toISOString(),
+            tradeDate: clock.date,
+            sourceSequence: loopSequence,
+          },
+        ]).catch(() => {});
         if (
           (result.paper?.status === "SETTLED" &&
             result.paper.nextPlan &&
@@ -55,6 +84,15 @@ export function startTradingRunner(env, runDaily, options = {}) {
           pollIntervalSeconds: interval,
         });
       } catch {}
+      await recordOperationEvents(env, [
+        {
+          source: "loop",
+          result: { status: "ERROR" },
+          now: current.toISOString(),
+          tradeDate: clock.date,
+          sourceSequence: loopSequence,
+        },
+      ]).catch(() => {});
     }
     if (!stopped)
       timer = setTimeout(
