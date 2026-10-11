@@ -154,17 +154,19 @@ export function classifyOperationalFacts(input) {
   if (source === "loop") {
     const status = result?.status;
     const problems = [];
-    const isException = Boolean(result?.error && result.error instanceof Error);
     if (status === "ERROR" || result?.error)
+      // ERROR 轮次只可能来自未捕获异常（pollTrading 的 catch 或 runner 循环的
+      // catch），二者都是程序故障而非业务结果。不能依赖 error instanceof Error
+      // 判断——异常跨过序列化边界后类型信息丢失（runner 实际只传
+      // status: "ERROR"），靠它区分会把盘后异常错误归为普通执行错误并遭到
+      // 时段抑制（P1-5 复现路径）。
       problems.push({
         ...base,
         type: EVENT_TYPES.LOOP_ERROR,
         ruleType: RULE_TYPES.LOOP_FAILED,
-        reasonCode: isException
-          ? REASON_CODES.RUNNER_FAILED
-          : REASON_CODES.EXECUTION_ERROR,
+        reasonCode: REASON_CODES.RUNNER_FAILED,
         entityRef: "primary",
-        safeFacts: { status: status ?? "ERROR", isException },
+        safeFacts: { status: status ?? "ERROR", isException: true },
       });
     else if (status === "BLOCKED")
       // 缺前日结算/缺事前计划是不可执行条件（SESSION_BLOCKED）；
@@ -379,8 +381,12 @@ export function evaluateAlertRules({
     const phase = marketPhase(marketContext);
     // 持续时间取自实例首次发生时刻，而不是本批事件的到达时间：升级要看
     // "已经持续多久"，只看本轮事件永远得不到持续时间，升级规则永不触发。
+    // 已恢复实例不作为持续时间基准：补读旧事件触发"重新打开"时是新一段
+    // 故障，拿旧 firstSeen 算时长会凭空报出荒谬的持续时间并直接跳到 CRITICAL。
     const related =
-      previousIncident && previousIncident.fingerprint === fingerprint
+      previousIncident &&
+      previousIncident.fingerprint === fingerprint &&
+      previousIncident.status !== "RESOLVED"
         ? previousIncident
         : null;
     const activeSeconds = related
@@ -560,6 +566,7 @@ export function transitionIncident({
       silent,
     };
   }
+  const reopened = incident.status === "RESOLVED";
   const escalated =
     evaluation.severity === SEVERITIES.CRITICAL &&
     incident.severity !== SEVERITIES.CRITICAL;
@@ -572,22 +579,31 @@ export function transitionIncident({
     incident.lastSeen;
   const sinceScheduled =
     (new Date(now).getTime() - new Date(scheduledAt).getTime()) / 1000;
-  const ackActive = Boolean(incident.ackUntil && incident.ackUntil > now);
+  const ackActive =
+    Boolean(incident.ackUntil && incident.ackUntil > now) && !reopened;
   let notify = null;
   if (escalated) notify = { type: "ESCALATED", severity: SEVERITIES.CRITICAL };
-  else if (!incident.notifyScheduledAt)
+  else if (reopened || !incident.notifyScheduledAt)
+    // 重新打开是新一段故障的开始：重发 OPEN 通知，旧实例的通知状态不继承。
     notify = { type: "OPEN", severity: evaluation.severity };
   else if (!ackActive && sinceScheduled >= policy.remindEverySeconds)
     notify = { type: "REMIND", severity: evaluation.severity };
   return {
-    action: escalated ? "ESCALATE" : "KEEP",
+    action: escalated || reopened ? "ESCALATE" : "KEEP",
     patch: {
       status: "OPEN",
       severity: evaluation.severity,
       lastSeen: now,
-      ...(escalated ? { ackUntil: null } : {}),
+      ...(escalated || reopened
+        ? {
+            ackUntil: null,
+            // 重开必须清除恢复标记并重置起始时刻：resolved_at 残留会让
+            // 活动实例查询永远漏掉它，旧 firstSeen 会伪造超长持续时间。
+            ...(reopened ? { resolvedAt: null, firstSeen: now } : {}),
+          }
+        : {}),
     },
     notify,
-    silent: ackActive && !escalated,
+    silent: ackActive && !escalated && !reopened,
   };
 }

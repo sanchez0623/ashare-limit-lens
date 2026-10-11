@@ -123,10 +123,13 @@ test("事实分类：正常执行结果不产生告警事件，运行阻塞与�
     "恢复证据不带原因",
   );
   // 连续 ERROR 返回（未抛异常）也产生事件——覆盖最容易漏掉的路径。
+  // ERROR 轮次只可能来自未捕获异常：不能依赖 error instanceof Error 识别，
+  // 异常跨过序列化边界后类型信息丢失（runner 只传 status: "ERROR"）。
   const errors = classifyOperationalFacts(loopInput({ status: "ERROR" }));
   assert.equal(errors.length, 1);
   assert.equal(errors[0].ruleType, RULE_TYPES.LOOP_FAILED);
-  assert.equal(errors[0].reasonCode, REASON_CODES.EXECUTION_ERROR);
+  assert.equal(errors[0].reasonCode, REASON_CODES.RUNNER_FAILED);
+  assert.equal(errors[0].safeFacts.isException, true);
   // 失败轮次什么都没验证：不能给出任何恢复证据。
   assert.ok(errors.every((event) => !event.cleared));
   // BLOCKED 按结构化原因区分：缺计划 vs 缺前日结算。
@@ -200,7 +203,7 @@ test("事实分类：正常执行结果不产生告警事件，运行阻塞与�
   assert.equal(ledger[0].ruleType, RULE_TYPES.LEDGER_INVARIANT_FAILED);
 });
 
-test("时段语义：午休与非交易时段不把不成交视为故障；结算迟延按时间升级", () => {
+test("时段语义：异常类故障全天有效，结算迟延按时间升级", () => {
   const policy = DEFAULT_ALERT_POLICY;
   const lunch = marketPhase({
     date: "2026-10-09",
@@ -209,13 +212,38 @@ test("时段语义：午休与非交易时段不把不成交视为故障；结�
     calendarConfirmed: true,
   });
   assert.equal(lunch.phase, "LUNCH");
+  // ERROR 轮次来自未捕获异常，是程序故障而非"不成交"：午休与盘后都不抑制。
+  // 旧实现按 reasonCode 把缺 error 字段的 ERROR 归为普通执行错误并抑制，
+  // 盘后抛出的异常因此漏报（P1-5）。
   const evaluation = evaluateAlertRules({
     events: classifyOperationalFacts(loopInput({ status: "ERROR" })),
     previousIncident: null,
     policy,
     marketContext: lunch,
   });
-  assert.equal(evaluation[0].suppressed, true, "午休期间循环失败被抑制");
+  assert.equal(evaluation[0].suppressed, false, "异常类循环失败不受午休抑制");
+  const offHours = marketPhase({
+    date: "2026-10-09",
+    time: "20:00:00",
+    weekday: 5,
+    calendarConfirmed: true,
+  });
+  const afterClose = evaluateAlertRules({
+    events: classifyOperationalFacts(
+      loopInput(
+        { status: "ERROR" },
+        { now: "2026-10-09T12:00:00.000Z", sequence: 9 },
+      ),
+    ),
+    previousIncident: null,
+    policy,
+    marketContext: offHours,
+  });
+  assert.equal(
+    afterClose[0].suppressed,
+    false,
+    "盘后抛出的异常同样不得被时段抑制",
+  );
   // 结算迟延：15:20 警告，15:30 升级。
   const warningPhase = marketPhase({
     date: "2026-10-09",
@@ -637,7 +665,7 @@ test("告警消息带结构化原因：操作者能分辨是哪一类失败", as
     await processAlertOutbox(enabled, { now: "2026-10-09T01:35:01.000Z" });
     const sent = JSON.parse(mock.bodies[0]);
     assert.ok(
-      sent.content.text.includes(`原因: ${REASON_CODES.EXECUTION_ERROR}`),
+      sent.content.text.includes(`原因: ${REASON_CODES.RUNNER_FAILED}`),
       `消息应含结构化原因：${sent.content.text}`,
     );
     // 原始异常文本永不进消息。
@@ -1416,5 +1444,208 @@ test("通知丢失：重试耗尽后健康不通过，确认后恢复", async ()
   } finally {
     globalThis.fetch = original;
   }
+  env.DB.close();
+});
+
+test("积压计时基于入队时刻：重试刷新 updated_at 不重置等待", async () => {
+  const env = buildEnv();
+  const enabled = {
+    ...env,
+    FEISHU_WEBHOOK_URL: "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+  };
+  await recordOperationEvents(enabled, [loopInput({ status: "ERROR" })]);
+  await processAlerts(enabled, { now: NOW });
+  const store = new AlertRepository(enabled);
+  // 模拟连续失败重试：updated_at 被刷新到检查时刻前 10 秒。按 updated_at
+  // 计时的旧实现会把它当成"刚入队"而报健康，实际上这通知已等待 150 秒。
+  await env.DB.prepare(
+    "UPDATE alert_outbox SET status = 'PENDING', updated_at = ?, next_attempt_at = ?",
+  )
+    .bind("2026-10-09T01:37:20.000Z", "2026-10-09T01:37:20.000Z")
+    .run();
+  const health = await store.outboxHealth({ now: "2026-10-09T01:37:30.000Z" });
+  assert.equal(
+    health.longPending,
+    1,
+    "入队超过 2 分钟仍未送达：失败重试不得重置计时",
+  );
+  assert.equal(
+    evaluateWatchdogHealth({
+      runnerProgress: null,
+      storageHealth: { ok: true },
+      queueHealth: health,
+      pipelineState: { lastProgressAt: "2026-10-09T01:37:30.000Z" },
+      now: Date.parse("2026-10-09T01:37:30.000Z"),
+    }).alertPipeline,
+    false,
+    "重试积压下外部监测不得报平安",
+  );
+  env.DB.close();
+});
+
+test("迁移防重：补读旧事件不重开已恢复实例，恢复后的新故障才重新打开", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  // 失败事实创建实例，正向证据恢复它。
+  await recordOperationEvents(env, [loopInput({ status: "ERROR" })]);
+  await processAlerts(env, { now: NOW });
+  await recordOperationEvents(env, [
+    loopInput(
+      { status: "RUNNING" },
+      { now: "2026-10-09T01:45:00.000Z", sequence: 2 },
+    ),
+  ]);
+  await processAlerts(env, { now: "2026-10-09T01:45:10.000Z" });
+  const resolved = await store.recentIncident("LOOP_FAILED:primary");
+  assert.equal(resolved.status, "RESOLVED");
+  // 补读旧事件（发生时刻早于恢复时刻）：幂等守卫必须命中。服务层只查
+  // 活动实例时，transitionIncident 永远拿不到 RESOLVED 实例，旧事件会把
+  // 已恢复的告警重新打开并再次入队。
+  await recordOperationEvents(env, [
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:40:00.000Z", sequence: 3 },
+    ),
+  ]);
+  await processAlerts(env, { now: "2026-10-09T01:46:00.000Z" });
+  const kept = await store.recentIncident("LOOP_FAILED:primary");
+  assert.equal(kept.status, "RESOLVED", "旧事件重放不得重新打开已恢复实例");
+  assert.equal(kept.resolvedAt, resolved.resolvedAt, "恢复标记未被清除");
+  // 恢复之后发生的新故障：重新打开同指纹实例，视为新一段故障。
+  await recordOperationEvents(env, [
+    loopInput(
+      { status: "ERROR" },
+      { now: "2026-10-09T01:50:00.000Z", sequence: 4 },
+    ),
+  ]);
+  await processAlerts(env, { now: "2026-10-09T01:50:10.000Z" });
+  const reopened = await store.recentIncident("LOOP_FAILED:primary");
+  assert.equal(reopened.status, "OPEN", "恢复后的新故障重新打开实例");
+  assert.equal(reopened.id, resolved.id, "同指纹实例被重新打开");
+  assert.equal(reopened.resolvedAt, null, "重开时清除恢复标记");
+  assert.equal(
+    reopened.firstSeen,
+    "2026-10-09T01:50:10.000Z",
+    "重开重置起始时刻，不继承旧故障的持续时间",
+  );
+  assert.ok(
+    await store.activeIncident("LOOP_FAILED:primary"),
+    "重开后活动实例查询可见",
+  );
+  env.DB.close();
+});
+
+test("并发冲突后重评仍提交：严重度相同的升级不得随游标丢失", async () => {
+  const env = buildEnv();
+  const enabled = {
+    ...env,
+    FEISHU_WEBHOOK_URL: "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+  };
+  const store = new AlertRepository(env);
+  await recordOperationEvents(enabled, [loopInput({ status: "ERROR" })]);
+  await processAlerts(enabled, { now: NOW });
+  // 模拟并发执行器在评估读取与提交之间推进 revision（ACK、心跳等）：
+  // 第一次实例 UPDATE 的 CAS 必然失败，触发重读重评路径。
+  const realPrepare = env.DB.prepare.bind(env.DB);
+  let failFirstUpdate = true;
+  env.DB.prepare = (sql) => {
+    if (failFirstUpdate && sql.includes("UPDATE alert_incidents")) {
+      failFirstUpdate = false;
+      return { bind: () => ({ run: async () => ({ meta: { changes: 0 } }) }) };
+    }
+    return realPrepare(sql);
+  };
+  let result;
+  try {
+    await recordOperationEvents(enabled, [
+      loopInput(
+        { status: "ERROR" },
+        { now: "2026-10-09T01:55:00.000Z", sequence: 2 },
+      ),
+    ]);
+    result = await processAlerts(enabled, { now: "2026-10-09T01:55:10.000Z" });
+  } finally {
+    env.DB.prepare = realPrepare;
+  }
+  assert.ok(result.contended >= 1, "CAS 冲突确实发生过");
+  const escalated = await store.activeIncident("LOOP_FAILED:primary");
+  // 持续 20 分钟的 ERROR 事实评估为 CRITICAL；重评后严重度与评估值相同
+  // （实例已被并发推进到同一严重度的场景也覆盖），修复前在"严重度未变"
+  // 处提前退出，升级与通知未提交而游标照常推进，这次升级被永久跳过。
+  assert.equal(escalated.severity, "CRITICAL", "冲突后升级仍必须提交");
+  assert.ok((await store.outboxHealth()).pending >= 1, "升级通知已入队");
+  assert.equal(
+    (await store.processorState()).lastEventCursor.ingestSeq,
+    2,
+    "事实提交完成后游标推进",
+  );
+  env.DB.close();
+});
+
+test("持续冲突时游标不得越过未提交事实：停在原位等待下轮重放", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  await recordOperationEvents(env, [loopInput({ status: "ERROR" })]);
+  await processAlerts(env, { now: NOW });
+  const before = (await store.processorState()).lastEventCursor;
+  // 实例 UPDATE 永远失败：三次重试耗尽后本批事实仍未提交。
+  const realPrepare = env.DB.prepare.bind(env.DB);
+  env.DB.prepare = (sql) => {
+    if (sql.includes("UPDATE alert_incidents"))
+      return { bind: () => ({ run: async () => ({ meta: { changes: 0 } }) }) };
+    return realPrepare(sql);
+  };
+  let result;
+  try {
+    await recordOperationEvents(env, [
+      loopInput(
+        { status: "ERROR" },
+        { now: "2026-10-09T01:55:00.000Z", sequence: 2 },
+      ),
+    ]);
+    result = await processAlerts(env, { now: "2026-10-09T01:55:10.000Z" });
+  } finally {
+    env.DB.prepare = realPrepare;
+  }
+  assert.ok(result.contended >= 3, "重试耗尽仍冲突");
+  assert.deepEqual(
+    (await store.processorState()).lastEventCursor,
+    before,
+    "未提交的事实不得被游标越过",
+  );
+  // 冲突解除后重放同一批事件：状态机幂等处理，事实最终提交，游标推进。
+  await processAlerts(env, { now: "2026-10-09T01:55:20.000Z" });
+  assert.equal(
+    (await store.activeIncident("LOOP_FAILED:primary")).severity,
+    "CRITICAL",
+    "重放后事实提交",
+  );
+  assert.equal(
+    (await store.processorState()).lastEventCursor.ingestSeq,
+    2,
+    "重放成功后游标推进",
+  );
+  env.DB.close();
+});
+
+test("游标写入单调：首次启动路径也不得把游标写回旧位置", async () => {
+  const env = buildEnv();
+  const store = new AlertRepository(env);
+  await recordOperationEvents(env, [loopInput({ status: "ERROR" })]);
+  await processAlerts(env, { now: NOW });
+  assert.equal((await store.processorState()).lastEventCursor.ingestSeq, 1);
+  // expectedRevision=null 是首次启动/游标自愈路径：不做 CAS 校验，但仍
+  // 不得把已推进的游标写回更旧的位置——写回旧位置就是永久漏读。
+  const stale = await store.advanceProcessorState({
+    lastEventCursor: { ingestSeq: 0 },
+    now: "2026-10-09T01:36:00.000Z",
+    expectedRevision: null,
+  });
+  assert.equal(stale.applied, true);
+  assert.deepEqual(
+    (await store.processorState()).lastEventCursor,
+    { ingestSeq: 1 },
+    "首次启动路径同样受单调保护",
+  );
   env.DB.close();
 });

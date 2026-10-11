@@ -88,14 +88,18 @@ export function startTradingRunner(env, runDaily, options = {}) {
       // 运维事件（§5.1）：保存 pollTrading 的返回结果并交给规则器；
       // 只写结构化事件（本地快速提交），规则与发送在独立子进程推进，
       // 交易循环不等待通知供应商响应。正常 NON_TRADING_DAY 不是失败。
+      // 提交成功路径的风险事实已随账户提交同一事务落库（eventsRecorded），
+      // 不再入缓冲；其余结果照常缓冲兜底（同源事件 ID 重复写会被
+      // INSERT OR IGNORE 忽略，崩溃/突然终止时由下一轮补写）。
       loopSequence += 1;
-      buffered.push({
-        source: "loop",
-        result: primary ?? { status: "SKIPPED" },
-        now: current.toISOString(),
-        tradeDate: clock.date,
-        sourceSequence: loopSequence,
-      });
+      if (!primary?.eventsRecorded)
+        buffered.push({
+          source: "loop",
+          result: primary ?? { status: "SKIPPED" },
+          now: current.toISOString(),
+          tradeDate: clock.date,
+          sourceSequence: loopSequence,
+        });
       if (!(await flushOperationEvents())) storageOk = false;
       await reportProcessProgress(env, {
         sequence: loopSequence,

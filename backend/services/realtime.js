@@ -9,6 +9,8 @@ import {
 import { RISK_LIMITS } from "../domain/trading.js";
 import { tradingQuotes, tradingCalendar } from "./market.js";
 import { readWeights } from "./review.js";
+import { buildOperationEvents } from "./alerts.js";
+import { instanceAlias } from "../domain/alert-messages.js";
 import { safeError } from "../http.js";
 const calendars = new Map();
 async function calendarFor(start, date, now) {
@@ -93,11 +95,6 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
       pollIntervalSeconds: Number(env.TRADING_POLL_SECONDS || 10),
     };
     const result = advanceSession(account.book, session, observation);
-    if (!(await repo.commitObservation(account.revision, result, observation)))
-      return heartbeat({
-        status: "CONFLICT",
-        reason: "另一个执行器先提交，本次结果丢弃，下轮重新读取",
-      });
     const observedMs = new Date(observation.observedAt).getTime();
     const fresh = (quote) => {
       const time = new Date(quote?.timestamp).getTime();
@@ -156,7 +153,7 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
     const drawdown = 1 - result.book.equityCents / result.book.peakEquityCents;
     // 没有需要盯的股票时不存在"报价缺失"，与旧语义一致判为正常运行。
     const quoted = codes.length === 0 || missingQuoteCodes.length === 0;
-    return heartbeat({
+    const summary = {
       status: quoted ? "RUNNING" : "STALE_QUOTES",
       date: clock.date,
       sequence: result.session.sequence,
@@ -180,7 +177,36 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
       reason: quoted
         ? "实时模拟交易循环已处理"
         : "报价陈旧或缺失，本轮不执行成交",
-    });
+    };
+    // 风险事实（回撤、保护退出阻塞、做 T 未恢复、报价缺失）必须在账户
+    // 提交的同一事务里入账：退出钩子覆盖不了 SIGKILL/断电，先提交账户
+    // 再写事件的窗口内进程终止，这些一次性风险就永久漏报。事件写入失败
+    // 时整个提交回滚，下一轮按帧重新观察并再次产出事实。
+    const operationEvents = buildOperationEvents(
+      {
+        source: "loop",
+        result: summary,
+        now: observation.observedAt,
+        tradeDate: clock.date,
+        sourceSequence: result.session.sequence,
+      },
+      instanceAlias(env),
+    );
+    if (
+      !(await repo.commitObservation(
+        account.revision,
+        result,
+        observation,
+        operationEvents,
+      ))
+    )
+      return heartbeat({
+        status: "CONFLICT",
+        reason: "另一个执行器先提交，本次结果丢弃，下轮重新读取",
+      });
+    // 风险事实已随账户提交落库；runner 据此跳过重复缓冲（同 ID 重复写
+    // 也会被 INSERT OR IGNORE 忽略，这里只是省掉一次无谓写入）。
+    return heartbeat({ ...summary, eventsRecorded: true });
   } catch (error) {
     return heartbeat({ status: "ERROR", reason: safeError(error) });
   }

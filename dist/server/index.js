@@ -6827,7 +6827,12 @@ var RealtimeRepository = class extends PaperRepository {
       "INSERT INTO paper_executor_health (id,payload) VALUES ('primary',?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload"
     ).bind(JSON.stringify(payload)).run();
   }
-  async commitObservation(expectedRevision, result, observation) {
+  // 运维事件（operationEvents）与账户状态在同一 batch（原子事务）里提交：
+  // 账户提交成功而事件写入失败、或进程在两步之间突然终止（SIGKILL/断电），
+  // 都会把回撤、保护退出阻塞这类一次性风险事实永久丢掉。同事务写入保证
+  // "已提交的账户风险"必然有对应事件，事件写入失败时账户提交一并回滚，
+  // 下一轮按帧重新观察并再次产出事实。
+  async commitObservation(expectedRevision, result, observation, operationEvents = []) {
     const runId = crypto.randomUUID(), stamp = observation.observedAt;
     const guard = "WHERE EXISTS (SELECT 1 FROM paper_accounts WHERE id='primary' AND revision=? AND last_run_id=?)";
     const guarded = (sql, args) => this.db.prepare(`${sql} ${guard}`).bind(...args, expectedRevision + 1, runId);
@@ -6863,6 +6868,24 @@ var RealtimeRepository = class extends PaperRepository {
           [row.id, row.date, JSON.stringify(row)]
         )
       );
+    for (const event of operationEvents)
+      statements.push(
+        this.db.prepare(
+          "INSERT OR IGNORE INTO operation_events (id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, occurred_at, entity_ref, payload, ingest_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(ingest_seq), 0) + 1 FROM operation_events))"
+        ).bind(
+          event.id,
+          event.instanceId,
+          event.accountId,
+          event.tradeDate ?? null,
+          event.sourceSequence ?? null,
+          event.type,
+          event.ruleType ?? null,
+          event.reasonCode ?? null,
+          event.occurredAt,
+          event.entityRef ?? null,
+          JSON.stringify(event.payload ?? {})
+        )
+      );
     const results = await this.db.batch(statements);
     return results[0].meta.changes === 1;
   }
@@ -6870,6 +6893,990 @@ var RealtimeRepository = class extends PaperRepository {
     return this.settle(expectedRevision, result, dataset);
   }
 };
+
+// backend/storage/alerts.js
+var NOTIFICATION_FIELDS = [
+  "notifiedOnce",
+  "lastNotifiedAt",
+  "notifyScheduledAt"
+];
+function mergedIncidentPayload(current, patch) {
+  const next = { ...current.payload, ...patch?.payload ?? {} };
+  for (const field of NOTIFICATION_FIELDS) {
+    next[field] = patch?.[field] ?? current.payload?.[field];
+    if (next[field] === void 0) delete next[field];
+  }
+  return next;
+}
+var AlertRepository = class {
+  constructor(env) {
+    this.db = env.DB;
+  }
+  // ---------- 追加事实（源事件 ID 幂等；rule_type 随事实落库） ----------
+  // ingest_seq 在插入时取当前最大值 +1，是唯一的分发游标：只反映入库顺序，
+  // 迟到事件（occurred_at 更早但入库更晚）因此不会被永久跳过。
+  async recordOperationEvent(event) {
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO operation_events (id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, occurred_at, entity_ref, payload, ingest_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(ingest_seq), 0) + 1 FROM operation_events))"
+    ).bind(
+      event.id,
+      event.instanceId,
+      event.accountId,
+      event.tradeDate ?? null,
+      event.sourceSequence ?? null,
+      event.type,
+      event.ruleType ?? null,
+      event.reasonCode ?? null,
+      event.occurredAt,
+      event.entityRef ?? null,
+      JSON.stringify(event.payload ?? event.safeFacts ?? {})
+    ).run();
+  }
+  async eventsSince(cursor, limit = 200) {
+    const columns = "ingest_seq, occurred_at, id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, entity_ref, payload";
+    const rows = cursor?.ingestSeq == null ? (await this.db.prepare(
+      `SELECT ${columns} FROM operation_events ORDER BY ingest_seq LIMIT ?`
+    ).bind(limit).all()).results : (await this.db.prepare(
+      `SELECT ${columns} FROM operation_events WHERE ingest_seq > ? ORDER BY ingest_seq LIMIT ?`
+    ).bind(cursor.ingestSeq, limit).all()).results;
+    return rows.map((row) => ({
+      ingestSeq: Number(row.ingest_seq),
+      occurredAt: row.occurred_at,
+      id: row.id,
+      instanceId: row.instance_id,
+      accountId: row.account_id,
+      tradeDate: row.trade_date,
+      sourceSequence: row.source_sequence,
+      type: row.type,
+      ruleType: row.rule_type,
+      reasonCode: row.reason_code,
+      entityRef: row.entity_ref,
+      payload: JSON.parse(row.payload)
+    }));
+  }
+  async latestEventCursor() {
+    const row = await this.db.prepare("SELECT MAX(ingest_seq) AS n FROM operation_events").first();
+    return row?.n == null ? null : { ingestSeq: Number(row.n) };
+  }
+  // ---------- 规则版本（不可变；阈值范围校验在服务层） ----------
+  async latestRuleVersion() {
+    const row = await this.db.prepare(
+      "SELECT id, created_at, payload, digest FROM alert_rule_versions ORDER BY created_at DESC LIMIT 1"
+    ).first();
+    return row ? {
+      id: row.id,
+      createdAt: row.created_at,
+      payload: JSON.parse(row.payload),
+      digest: row.digest
+    } : null;
+  }
+  async saveRuleVersion(payload, now) {
+    const id = `rules-${now}`;
+    await this.db.prepare(
+      "INSERT INTO alert_rule_versions (id, created_at, payload, digest) VALUES (?, ?, ?, ?)"
+    ).bind(id, now, JSON.stringify(payload), await digestOf(payload)).run();
+    return { id, createdAt: now, payload, digest: await digestOf(payload) };
+  }
+  // ---------- 告警实例（活动指纹唯一 + revision CAS） ----------
+  async activeIncident(fingerprint) {
+    const row = await this.db.prepare(
+      "SELECT * FROM alert_incidents WHERE fingerprint = ? AND resolved_at IS NULL"
+    ).bind(fingerprint).first();
+    return row ? this.rowToIncident(row) : null;
+  }
+  // 最近实例：优先活动实例，没有活动实例时返回最近恢复的实例。
+  // 迁移防重（P1-4）依赖已恢复实例做幂等判定——"补读旧事件不得重新打开
+  // 已恢复告警"的守卫在 transitionIncident 里比较 resolvedAt，只查活动
+  // 实例时该守卫永远无法命中。
+  async recentIncident(fingerprint) {
+    const row = await this.db.prepare(
+      "SELECT * FROM alert_incidents WHERE fingerprint = ? ORDER BY (resolved_at IS NULL) DESC, last_seen DESC LIMIT 1"
+    ).bind(fingerprint).first();
+    return row ? this.rowToIncident(row) : null;
+  }
+  rowToIncident(row) {
+    const payload = JSON.parse(row.payload);
+    return {
+      id: row.id,
+      fingerprint: row.fingerprint,
+      generation: row.generation,
+      status: row.status,
+      severity: row.severity,
+      ruleType: row.rule_type,
+      entityRef: payload.entityRef ?? null,
+      firstSeen: row.first_seen,
+      lastSeen: row.last_seen,
+      ackUntil: row.ack_until,
+      resolvedAt: row.resolved_at,
+      ruleVersion: row.rule_version,
+      revision: row.revision,
+      notifiedOnce: Boolean(payload.notifiedOnce),
+      lastNotifiedAt: payload.lastNotifiedAt ?? null,
+      notifyScheduledAt: payload.notifyScheduledAt ?? null,
+      payload
+    };
+  }
+  async getIncident(id) {
+    const row = await this.db.prepare("SELECT * FROM alert_incidents WHERE id = ?").bind(id).first();
+    return row ? this.rowToIncident(row) : null;
+  }
+  async listIncidents({ limit = 20, offset = 0, activeOnly = false } = {}) {
+    const rows = activeOnly ? (await this.db.prepare(
+      "SELECT * FROM alert_incidents WHERE resolved_at IS NULL ORDER BY last_seen DESC LIMIT ? OFFSET ?"
+    ).bind(limit, offset).all()).results : (await this.db.prepare(
+      "SELECT * FROM alert_incidents ORDER BY last_seen DESC LIMIT ? OFFSET ?"
+    ).bind(limit, offset).all()).results;
+    return rows.map((row) => this.rowToIncident(row));
+  }
+  async countIncidents(activeOnly = false) {
+    const row = activeOnly ? await this.db.prepare(
+      "SELECT COUNT(*) AS n FROM alert_incidents WHERE resolved_at IS NULL"
+    ).first() : await this.db.prepare("SELECT COUNT(*) AS n FROM alert_incidents").first();
+    return Number(row?.n ?? 0);
+  }
+  // 单事务提交（§5.2/§7.2）：实例状态迁移、事件审计与发送入队必须一起生效。
+  // 分开提交会留下"状态已迁移但关键通知永久丢失"的窗口；这里在同一个
+  // IMMEDIATE 事务内完成 CAS 迁移、追加 alert_events 与 alert_outbox。
+  // eventType 为 null 时只推进状态（观测心跳），不追加审计事件也不入队。
+  async commitIncidentTransition({
+    create = null,
+    id = null,
+    patch = null,
+    eventType = null,
+    eventPayload = {},
+    channels = [],
+    now,
+    expectedRevision = null
+  }) {
+    return this.db.transaction(async () => {
+      const runId = crypto.randomUUID();
+      let incidentId = id;
+      let revision;
+      if (create) {
+        incidentId = `inc-${now}-${crypto.randomUUID().slice(0, 8)}`;
+        revision = 1;
+        await this.db.prepare(
+          "INSERT INTO alert_incidents (id, fingerprint, generation, status, severity, rule_type, first_seen, last_seen, ack_until, resolved_at, rule_version, revision, last_run_id, payload) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, NULL, NULL, ?, 1, ?, ?)"
+        ).bind(
+          incidentId,
+          create.fingerprint,
+          create.generation ?? 1,
+          create.severity,
+          create.ruleType,
+          create.firstSeen ?? now,
+          now,
+          create.ruleVersion,
+          runId,
+          JSON.stringify(create.payload ?? {})
+        ).run();
+      } else {
+        const current = await this.getIncident(id);
+        if (!current) throw new Error("\u544A\u8B66\u5B9E\u4F8B\u4E0D\u5B58\u5728");
+        if (expectedRevision !== null && expectedRevision !== current.revision)
+          return {
+            id,
+            applied: false,
+            reason: "CONTENTION",
+            revision: current.revision
+          };
+        revision = current.revision + 1;
+        const pick = (key) => patch && Object.prototype.hasOwnProperty.call(patch, key) ? patch[key] : current[key];
+        const result = await this.db.prepare(
+          "UPDATE alert_incidents SET status = ?, severity = ?, last_seen = ?, ack_until = ?, resolved_at = ?, first_seen = ?, revision = revision + 1, last_run_id = ?, payload = ? WHERE id = ? AND revision = ?"
+        ).bind(
+          pick("status"),
+          pick("severity"),
+          pick("lastSeen"),
+          pick("ackUntil"),
+          pick("resolvedAt"),
+          pick("firstSeen"),
+          runId,
+          JSON.stringify(mergedIncidentPayload(current, patch)),
+          id,
+          current.revision
+        ).run();
+        if (result.meta.changes !== 1)
+          return {
+            id,
+            applied: false,
+            reason: "CONTENTION",
+            revision: current.revision
+          };
+      }
+      if (!eventType)
+        return {
+          id: incidentId,
+          applied: true,
+          revision,
+          runId,
+          sequence: null
+        };
+      const sequence = Number(
+        (await this.db.prepare(
+          "SELECT COALESCE(MAX(sequence), 0) AS n FROM alert_events WHERE incident_id = ?"
+        ).bind(incidentId).first())?.n ?? 0
+      ) + 1;
+      await this.db.prepare(
+        "INSERT INTO alert_events (incident_id, sequence, type, created_at, payload) VALUES (?, ?, ?, ?, ?)"
+      ).bind(
+        incidentId,
+        sequence,
+        eventType,
+        now,
+        JSON.stringify(eventPayload ?? {})
+      ).run();
+      const deliveryIds = [];
+      for (const channelRef of channels) {
+        const deliveryId = `out-${now}-${crypto.randomUUID().slice(0, 8)}`;
+        await this.db.prepare(
+          "INSERT OR IGNORE INTO alert_outbox (id, incident_id, event_sequence, channel_ref, status, attempt, next_attempt_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'PENDING', 0, ?, ?, ?)"
+        ).bind(deliveryId, incidentId, sequence, channelRef, now, now, now).run();
+        deliveryIds.push(deliveryId);
+      }
+      return {
+        id: incidentId,
+        applied: true,
+        revision,
+        runId,
+        sequence,
+        deliveryIds
+      };
+    });
+  }
+  async incidentEvents(incidentId) {
+    const rows = (await this.db.prepare(
+      "SELECT sequence, type, created_at, payload FROM alert_events WHERE incident_id = ? ORDER BY sequence"
+    ).bind(incidentId).all()).results;
+    return rows.map((row) => ({
+      sequence: row.sequence,
+      type: row.type,
+      createdAt: row.created_at,
+      payload: JSON.parse(row.payload)
+    }));
+  }
+  // ---------- 发送队列（§5.4）：租约领取、有界重试、退避在服务层计算 ----------
+  // 领取有期限租约：PENDING 到期项，或租约过期的 SENDING 项（接管）。
+  async claimDeliveries({ now, leaseOwner, leaseSeconds = 60, limit = 10 }) {
+    const leaseUntil = new Date(
+      new Date(now).getTime() + leaseSeconds * 1e3
+    ).toISOString();
+    const rows = (await this.db.prepare(
+      "SELECT id FROM alert_outbox WHERE status = 'PENDING' AND next_attempt_at <= ? ORDER BY next_attempt_at LIMIT ?"
+    ).bind(now, limit).all()).results;
+    const takenOver = (await this.db.prepare(
+      "SELECT id FROM alert_outbox WHERE status = 'SENDING' AND lease_until IS NOT NULL AND lease_until < ? ORDER BY next_attempt_at LIMIT ?"
+    ).bind(now, limit).all()).results;
+    const claimed = [];
+    for (const row of [...rows, ...takenOver].slice(0, limit)) {
+      const result = await this.db.prepare(
+        "UPDATE alert_outbox SET status = 'SENDING', lease_until = ?, lease_owner = ?, updated_at = ? WHERE id = ? AND (status = 'PENDING' OR (status = 'SENDING' AND lease_until < ?))"
+      ).bind(leaseUntil, leaseOwner, now, row.id, now).run();
+      if (result.meta.changes === 1) claimed.push(row.id);
+    }
+    const deliveries = [];
+    for (const id of claimed) {
+      const outbox = await this.db.prepare("SELECT * FROM alert_outbox WHERE id = ?").bind(id).first();
+      if (outbox) deliveries.push(this.rowToDelivery(outbox));
+    }
+    return deliveries;
+  }
+  rowToDelivery(row) {
+    return {
+      id: row.id,
+      incidentId: row.incident_id,
+      eventSequence: row.event_sequence,
+      channelRef: row.channel_ref,
+      status: row.status,
+      attempt: row.attempt,
+      nextAttemptAt: row.next_attempt_at,
+      leaseUntil: row.lease_until,
+      leaseOwner: row.lease_owner,
+      providerRef: row.provider_ref,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+  // 结果写入一律带租约 CAS：租约被接管后，迟到执行器写不进任何终态，
+  // 避免旧执行器覆盖新执行器的 SENT / PENDING / EXPIRED 结果。
+  async completeDelivery({ id, leaseOwner, leaseUntil, providerRef, now }) {
+    const result = await this.db.prepare(
+      "UPDATE alert_outbox SET status = 'SENT', provider_ref = ?, lease_until = NULL, updated_at = ? WHERE id = ? AND status = 'SENDING' AND lease_owner = ? AND lease_until = ?"
+    ).bind(providerRef ?? null, now, id, leaseOwner, leaseUntil).run();
+    return result.meta.changes === 1;
+  }
+  async retryDelivery({ id, leaseOwner, leaseUntil, nextAttemptAt, now }) {
+    const result = await this.db.prepare(
+      "UPDATE alert_outbox SET status = 'PENDING', attempt = attempt + 1, next_attempt_at = ?, lease_until = NULL, updated_at = ? WHERE id = ? AND status = 'SENDING' AND lease_owner = ? AND lease_until = ?"
+    ).bind(nextAttemptAt, now, id, leaseOwner, leaseUntil).run();
+    return result.meta.changes === 1;
+  }
+  async expireDelivery({ id, leaseOwner, leaseUntil, now }) {
+    const result = await this.db.prepare(
+      "UPDATE alert_outbox SET status = 'EXPIRED', lease_until = NULL, updated_at = ? WHERE id = ? AND status = 'SENDING' AND lease_owner = ? AND lease_until = ?"
+    ).bind(now, id, leaseOwner, leaseUntil).run();
+    return result.meta.changes === 1;
+  }
+  // 重试耗尽（EXPIRED）意味着关键通知已丢失：健康信号必须持续上报不健康，
+  // 直到所有者确认过该实例（ACK 表示"已知悉这次丢失"），否则一次瞬时故障
+  // 会让管道永远红着、或者（放宽阈值后）把丢失悄悄当成健康。
+  async dismissExpiredDeliveries({ incidentId, now }) {
+    const result = await this.db.prepare(
+      "UPDATE alert_outbox SET status = 'DISMISSED', updated_at = ? WHERE incident_id = ? AND status = 'EXPIRED'"
+    ).bind(now, incidentId).run();
+    return result.meta.changes;
+  }
+  // 队列健康：overdue 是"现在就该发却没人领"的项，是分发器停滞的直接证据；
+  // 只看 pending 总量会把空闲队列当成健康（分发器已死时队列恰好是空的）。
+  // longPending: 入队（created_at）后超过 2 分钟仍未送达的项——计时基准必须
+  // 是入队时刻而不是 updated_at：每次失败重试都会刷新 updated_at，靠它计时
+  // 时"等了 150 秒还没发出去"的通知会被刚发生的重试重置成健康（P1-3）。
+  async outboxHealth({ now = (/* @__PURE__ */ new Date()).toISOString() } = {}) {
+    const twoMinutesAgo = new Date(
+      new Date(now).getTime() - 2 * 60 * 1e3
+    ).toISOString();
+    const row = await this.db.prepare(
+      "SELECT SUM(CASE WHEN status IN ('PENDING','SENDING') THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status = 'PENDING' AND next_attempt_at > ? THEN 1 ELSE 0 END) AS scheduled, SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) AS sent, SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END) AS expired, SUM(CASE WHEN (status = 'PENDING' AND next_attempt_at <= ?) OR (status = 'SENDING' AND lease_until < ?) THEN 1 ELSE 0 END) AS overdue, SUM(CASE WHEN status IN ('PENDING','SENDING') AND created_at <= ? THEN 1 ELSE 0 END) AS long_pending FROM alert_outbox"
+    ).bind(now, now, now, twoMinutesAgo).first();
+    return {
+      pending: Number(row?.pending ?? 0),
+      scheduled: Number(row?.scheduled ?? 0),
+      sent: Number(row?.sent ?? 0),
+      expired: Number(row?.expired ?? 0),
+      overdue: Number(row?.overdue ?? 0),
+      longPending: Number(row?.long_pending ?? 0)
+    };
+  }
+  // ---------- 分发器游标与进度（外部监测依据，§4） ----------
+  async processorState(id = "dispatcher") {
+    const row = await this.db.prepare("SELECT * FROM alert_processor_state WHERE id = ?").bind(id).first();
+    return row ? {
+      id: row.id,
+      revision: row.revision,
+      lastEventCursor: await this.resolveCursor(row.last_event_cursor),
+      lastProgressAt: row.last_progress_at,
+      lastRunId: row.last_run_id
+    } : null;
+  }
+  // 旧格式游标（按发生时间 {occurredAt, id}）折算为摄取序号。
+  // 旧方案按 (occurred_at, id) 分页消费，游标是"已消费的最大键"，因此
+  // "未消费"集合 = 键大于游标的事件 ∪ 键不大于游标但在游标写入之后才入库的事件。
+  // 后者里可能存在 ingest_seq 比游标行更小的事件（例如键更大的事件先入库），
+  // 直接把游标折算成那一行的 ingest_seq 会永久跳过它们；因此取
+  // min(键大于游标的最小 ingest_seq - 1, 游标行的 ingest_seq)：宁可重放少量
+  // 已消费事件（状态机与入队对重放幂等），也绝不跳过未消费事件。
+  async resolveCursor(raw) {
+    if (!raw) return null;
+    let cursor = null;
+    try {
+      cursor = typeof raw === "string" ? JSON.parse(raw) : raw;
+    } catch {
+      return null;
+    }
+    if (!cursor) return null;
+    if (Number.isInteger(cursor.ingestSeq))
+      return { ingestSeq: cursor.ingestSeq };
+    if (!cursor.occurredAt || !cursor.id) return null;
+    const row = await this.db.prepare("SELECT ingest_seq FROM operation_events WHERE id = ?").bind(cursor.id).first();
+    if (!row) return { ingestSeq: 0 };
+    const cursorSeq = Number(row.ingest_seq);
+    const after = await this.db.prepare(
+      "SELECT MIN(ingest_seq) AS n FROM operation_events WHERE (occurred_at > ?) OR (occurred_at = ? AND id > ?)"
+    ).bind(cursor.occurredAt, cursor.occurredAt, cursor.id).first();
+    if (after?.n == null) return { ingestSeq: cursorSeq };
+    return { ingestSeq: Math.min(Number(after.n) - 1, cursorSeq) };
+  }
+  // 游标只能前进，且写入必须携带调用方读到的 revision：只对比事务内的新
+  // revision 挡不住"基于旧快照的评估"——它会把已经推进的游标写回旧位置，
+  // 造成事件重复消费（甚至漏读）。
+  async advanceProcessorState({
+    id = "dispatcher",
+    lastEventCursor,
+    now,
+    expectedRevision = null
+  }) {
+    const current = await this.processorState(id);
+    const runId = crypto.randomUUID();
+    if (!current) {
+      const created = await this.db.prepare(
+        "INSERT OR IGNORE INTO alert_processor_state (id, revision, last_event_cursor, last_progress_at, last_run_id) VALUES (?, 1, ?, ?, ?)"
+      ).bind(id, JSON.stringify(lastEventCursor ?? null), now, runId).run();
+      if (created.meta.changes === 1)
+        return { applied: true, revision: 1, runId };
+      const winner = await this.processorState(id);
+      return {
+        applied: false,
+        reason: "CONTENTION",
+        revision: winner?.revision ?? null,
+        // 不回退游标：返回胜出者的游标供调用方保留。
+        winnerCursor: winner?.lastEventCursor ?? lastEventCursor
+      };
+    }
+    if (expectedRevision !== null && expectedRevision !== current.revision)
+      return {
+        applied: false,
+        reason: "CONTENTION",
+        revision: current.revision,
+        winnerCursor: current.lastEventCursor
+      };
+    const proposed = lastEventCursor ?? current.lastEventCursor;
+    const proposedSeq = Number.isInteger(proposed?.ingestSeq) ? proposed.ingestSeq : null;
+    const currentSeq = Number.isInteger(current.lastEventCursor?.ingestSeq) ? current.lastEventCursor.ingestSeq : null;
+    const finalCursor = proposedSeq != null && currentSeq != null && proposedSeq < currentSeq ? current.lastEventCursor : proposed;
+    const result = await this.db.prepare(
+      "UPDATE alert_processor_state SET revision = revision + 1, last_event_cursor = ?, last_progress_at = ?, last_run_id = ? WHERE id = ? AND revision = ?"
+    ).bind(JSON.stringify(finalCursor), now, runId, id, current.revision).run();
+    if (result.meta.changes !== 1)
+      return {
+        applied: false,
+        reason: "CONTENTION",
+        revision: current.revision,
+        winnerCursor: current.lastEventCursor
+      };
+    return { applied: true, revision: current.revision + 1, runId };
+  }
+};
+
+// backend/domain/alert-rules.js
+var REASON_CODES = {
+  // 正常执行结果：保存记录，不告警。
+  T1_UNAVAILABLE: "T1_UNAVAILABLE",
+  // 当日新买不可卖（T+1 约束）
+  LIMIT_UP: "LIMIT_UP",
+  // 涨停无法买入（预期约束）
+  LIMIT_DOWN: "LIMIT_DOWN",
+  // 跌停无法卖出
+  NO_LIQUIDITY: "NO_LIQUIDITY",
+  // 成交量不足等待
+  NOT_TRIGGERED: "NOT_TRIGGERED",
+  // 保护条件未触发
+  // 交易约束但构成风险暴露：需要通知（不虚构成交）。
+  PROTECTIVE_EXIT_BLOCKED: "PROTECTIVE_EXIT_BLOCKED",
+  T_RECOVERY_INCOMPLETE: "T_RECOVERY_INCOMPLETE",
+  DRAWDOWN_LIMIT: "DRAWDOWN_LIMIT",
+  // 账户回撤触及硬约束，买入被暂停
+  // 运行阻塞：立即告警。
+  MISSING_PLAN: "MISSING_PLAN",
+  MISSING_SETTLEMENT: "MISSING_SETTLEMENT",
+  CORPORATE_ACTION_UNVERIFIED: "CORPORATE_ACTION_UNVERIFIED",
+  LEDGER_INVARIANT_FAILED: "LEDGER_INVARIANT_FAILED",
+  // 程序故障。
+  EXECUTION_ERROR: "EXECUTION_ERROR",
+  STALE_QUOTE: "STALE_QUOTE",
+  RUNNER_FAILED: "RUNNER_FAILED",
+  SETTLEMENT_FAILED: "SETTLEMENT_FAILED",
+  RESEARCH_FAILED: "RESEARCH_FAILED"
+};
+var RULE_TYPES = {
+  RUNNER_STALLED: "RUNNER_STALLED",
+  LOOP_FAILED: "LOOP_FAILED",
+  SESSION_BLOCKED: "SESSION_BLOCKED",
+  REQUIRED_QUOTE_STALE: "REQUIRED_QUOTE_STALE",
+  DRAWDOWN_TRIPPED: "DRAWDOWN_TRIPPED",
+  PROTECTIVE_EXIT_BLOCKED: "PROTECTIVE_EXIT_BLOCKED",
+  T_RECOVERY_INCOMPLETE: "T_RECOVERY_INCOMPLETE",
+  SETTLEMENT_LATE: "SETTLEMENT_LATE",
+  LEDGER_INVARIANT_FAILED: "LEDGER_INVARIANT_FAILED",
+  ALERT_PIPELINE_STALLED: "ALERT_PIPELINE_STALLED",
+  AI_OR_RESEARCH_FAILED: "AI_OR_RESEARCH_FAILED"
+};
+var EVENT_TYPES = {
+  LOOP_ERROR: "LOOP_ERROR",
+  LOOP_RESULT: "LOOP_RESULT",
+  DAILY_RESULT: "DAILY_RESULT",
+  LEDGER_INVARIANT: "LEDGER_INVARIANT",
+  RESEARCH_RESULT: "RESEARCH_RESULT",
+  TEST: "TEST",
+  MAINTENANCE: "MAINTENANCE"
+};
+var DEFAULT_ALERT_POLICY = {
+  runnerStalledSeconds: 90,
+  // max(90, 6×轮询间隔) 在评估时取较大值
+  loopFailedRounds: 3,
+  loopFailedSeconds: 30,
+  loopFailedEscalateSeconds: 90,
+  requiredQuoteStaleSeconds: 30,
+  requiredQuoteStaleCriticalSeconds: 60,
+  settlementLateWarningAt: "15:20:00",
+  settlementLateCriticalAt: "15:30:00",
+  tRecoveryCheckAt: "14:50:00",
+  tRecoveryCriticalAt: "14:55:00",
+  escalateAfterSeconds: 300,
+  // 持续 5 分钟升级一次
+  remindEverySeconds: 900,
+  // 之后每 15 分钟提醒
+  resumeGraceSeconds: 120,
+  maxAttempts: 5,
+  backoffSeconds: [5, 30, 120, 600]
+};
+function validateAlertPolicy(policy) {
+  if (!policy || typeof policy !== "object") throw new Error("\u7B56\u7565\u5FC5\u987B\u4E3A\u5BF9\u8C61");
+  const int = (key, min, max) => {
+    const value = policy[key];
+    if (!Number.isInteger(value) || value < min || value > max || (key === "escalateAfterSeconds" || key === "remindEverySeconds" ? value < 30 : false))
+      throw new Error(`\u7B56\u7565\u9879 ${key} \u5FC5\u987B\u4E3A ${min}\u2013${max} \u7684\u6574\u6570`);
+  };
+  int("runnerStalledSeconds", 30, 3600);
+  int("loopFailedRounds", 1, 60);
+  int("loopFailedSeconds", 10, 3600);
+  int("loopFailedEscalateSeconds", 30, 3600);
+  int("requiredQuoteStaleSeconds", 10, 3600);
+  int("requiredQuoteStaleCriticalSeconds", 20, 3600);
+  int("escalateAfterSeconds", 30, 86400);
+  int("remindEverySeconds", 30, 86400);
+  int("resumeGraceSeconds", 0, 3600);
+  int("maxAttempts", 1, 20);
+  for (const key of [
+    "settlementLateWarningAt",
+    "settlementLateCriticalAt",
+    "tRecoveryCheckAt",
+    "tRecoveryCriticalAt"
+  ])
+    if (!/^\d{2}:\d{2}:\d{2}$/.test(policy[key] ?? ""))
+      throw new Error(`\u7B56\u7565\u9879 ${key} \u5FC5\u987B\u4E3A HH:MM:SS`);
+  if (policy.settlementLateWarningAt >= policy.settlementLateCriticalAt || policy.tRecoveryCheckAt >= policy.tRecoveryCriticalAt)
+    throw new Error("\u7B56\u7565\u9879\u7684\u8B66\u544A\u65F6\u70B9\u5FC5\u987B\u65E9\u4E8E\u5347\u7EA7\u65F6\u70B9");
+  if (!Array.isArray(policy.backoffSeconds) || !policy.backoffSeconds.length)
+    throw new Error("\u7B56\u7565\u9879 backoffSeconds \u5FC5\u987B\u4E3A\u975E\u7A7A\u6570\u7EC4");
+  if (policy.backoffSeconds.some((v) => !Number.isInteger(v) || v < 1 || v > 3600))
+    throw new Error("\u9000\u907F\u79D2\u6570\u5FC5\u987B\u4E3A 1\u20133600 \u7684\u6574\u6570");
+  return policy;
+}
+function classifyOperationalFacts(input) {
+  const events = [];
+  const { source = "loop", result = null, now, tradeDate = null } = input ?? {};
+  const base = { occurredAt: now, tradeDate, source };
+  if (source === "loop") {
+    const status = result?.status;
+    const problems = [];
+    if (status === "ERROR" || result?.error)
+      problems.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_ERROR,
+        ruleType: RULE_TYPES.LOOP_FAILED,
+        reasonCode: REASON_CODES.RUNNER_FAILED,
+        entityRef: "primary",
+        safeFacts: { status: status ?? "ERROR", isException: true }
+      });
+    else if (status === "BLOCKED")
+      problems.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.SESSION_BLOCKED,
+        reasonCode: /计划/.test(result.reason ?? "") ? REASON_CODES.MISSING_PLAN : REASON_CODES.MISSING_SETTLEMENT,
+        entityRef: "primary",
+        safeFacts: {}
+      });
+    const missingQuoteCodes = Array.isArray(result?.missingQuoteCodes) ? result.missingQuoteCodes : [];
+    if (status === "STALE_QUOTES" || missingQuoteCodes.length)
+      problems.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.REQUIRED_QUOTE_STALE,
+        reasonCode: REASON_CODES.STALE_QUOTE,
+        entityRef: "primary",
+        safeFacts: {
+          freshQuotes: result.freshQuotes ?? 0,
+          watchedCodes: result.watchedCodes ?? 0,
+          missingQuotes: missingQuoteCodes.length || null,
+          affectsProtectiveExit: Boolean(result.affectsProtectiveExit)
+        }
+      });
+    if (result?.drawdownBreached)
+      problems.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.DRAWDOWN_TRIPPED,
+        reasonCode: REASON_CODES.DRAWDOWN_LIMIT,
+        entityRef: "primary",
+        safeFacts: { drawdown: result.drawdown ?? null }
+      });
+    const blockedProtectiveExits = Array.isArray(result?.blockedProtectiveExits) ? result.blockedProtectiveExits : [];
+    if (blockedProtectiveExits.length)
+      problems.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.PROTECTIVE_EXIT_BLOCKED,
+        reasonCode: REASON_CODES.PROTECTIVE_EXIT_BLOCKED,
+        entityRef: "primary",
+        safeFacts: { codes: blockedProtectiveExits }
+      });
+    const incompleteRecoveries = Array.isArray(result?.incompleteRecoveries) ? result.incompleteRecoveries : [];
+    if (incompleteRecoveries.length)
+      problems.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.T_RECOVERY_INCOMPLETE,
+        reasonCode: REASON_CODES.T_RECOVERY_INCOMPLETE,
+        entityRef: "primary",
+        safeFacts: { codes: incompleteRecoveries }
+      });
+    const corporateActionHolds = Array.isArray(result?.corporateActionHolds) ? result.corporateActionHolds : [];
+    if (corporateActionHolds.length)
+      problems.push({
+        ...base,
+        type: EVENT_TYPES.LOOP_RESULT,
+        ruleType: RULE_TYPES.SESSION_BLOCKED,
+        reasonCode: REASON_CODES.CORPORATE_ACTION_UNVERIFIED,
+        entityRef: "primary",
+        safeFacts: { codes: corporateActionHolds }
+      });
+    events.push(...problems);
+    const verified = status === "RUNNING" || status === "STALE_QUOTES";
+    if (verified) {
+      const reported = new Set(problems.map((event) => event.ruleType));
+      const clearable = [
+        RULE_TYPES.LOOP_FAILED,
+        RULE_TYPES.SESSION_BLOCKED,
+        RULE_TYPES.PROTECTIVE_EXIT_BLOCKED,
+        RULE_TYPES.T_RECOVERY_INCOMPLETE,
+        RULE_TYPES.REQUIRED_QUOTE_STALE
+      ];
+      for (const ruleType of clearable) {
+        if (reported.has(ruleType)) continue;
+        if (ruleType === RULE_TYPES.REQUIRED_QUOTE_STALE && missingQuoteCodes.length)
+          continue;
+        if (ruleType === RULE_TYPES.SESSION_BLOCKED && status !== "RUNNING")
+          continue;
+        events.push({
+          ...base,
+          type: EVENT_TYPES.LOOP_RESULT,
+          ruleType,
+          reasonCode: null,
+          entityRef: "primary",
+          cleared: true,
+          safeFacts: {}
+        });
+      }
+    }
+  } else if (source === "daily") {
+    const paper = result?.paper ?? {};
+    const settled = paper.status === "SETTLED" || paper.status === "NON_TRADING_DAY";
+    const snapshotSaved = result?.snapshot?.saved !== false;
+    const nextPlan = Boolean(paper.nextPlan);
+    const late = !settled || !snapshotSaved || !nextPlan && paper.status === "SETTLED";
+    if (late)
+      events.push({
+        ...base,
+        type: EVENT_TYPES.DAILY_RESULT,
+        ruleType: RULE_TYPES.SETTLEMENT_LATE,
+        reasonCode: REASON_CODES.SETTLEMENT_FAILED,
+        entityRef: "primary",
+        safeFacts: { settled, snapshotSaved, nextPlan }
+      });
+    else
+      events.push({
+        ...base,
+        type: EVENT_TYPES.DAILY_RESULT,
+        ruleType: RULE_TYPES.SETTLEMENT_LATE,
+        reasonCode: null,
+        entityRef: "primary",
+        cleared: true,
+        safeFacts: {}
+      });
+    const tournament = result?.tournament;
+    if (tournament && tournament.error)
+      events.push({
+        ...base,
+        type: EVENT_TYPES.RESEARCH_RESULT,
+        ruleType: RULE_TYPES.AI_OR_RESEARCH_FAILED,
+        reasonCode: REASON_CODES.RESEARCH_FAILED,
+        entityRef: "tournament",
+        safeFacts: {}
+      });
+    else if (tournament)
+      events.push({
+        ...base,
+        type: EVENT_TYPES.RESEARCH_RESULT,
+        ruleType: RULE_TYPES.AI_OR_RESEARCH_FAILED,
+        reasonCode: null,
+        entityRef: "tournament",
+        cleared: true,
+        safeFacts: {}
+      });
+  } else if (source === "ledger") {
+    events.push({
+      ...base,
+      type: EVENT_TYPES.LEDGER_INVARIANT,
+      ruleType: RULE_TYPES.LEDGER_INVARIANT_FAILED,
+      reasonCode: REASON_CODES.LEDGER_INVARIANT_FAILED,
+      entityRef: input.accountId ?? "primary",
+      safeFacts: {}
+    });
+  } else if (source === "research") {
+    events.push({
+      ...base,
+      type: EVENT_TYPES.RESEARCH_RESULT,
+      ruleType: RULE_TYPES.AI_OR_RESEARCH_FAILED,
+      reasonCode: REASON_CODES.RESEARCH_FAILED,
+      entityRef: input.entityRef ?? "research",
+      safeFacts: {}
+    });
+  }
+  return events;
+}
+var MAINTENANCE_SUPPRESSED_RULES = /* @__PURE__ */ new Set([
+  RULE_TYPES.LOOP_FAILED,
+  RULE_TYPES.RUNNER_STALLED,
+  RULE_TYPES.REQUIRED_QUOTE_STALE,
+  RULE_TYPES.SETTLEMENT_LATE,
+  RULE_TYPES.AI_OR_RESEARCH_FAILED
+]);
+
+// backend/domain/alert-messages.js
+function instanceAlias(env) {
+  const alias = env?.ALERT_INSTANCE_ALIAS;
+  return typeof alias === "string" && alias.trim() ? alias.trim().slice(0, 40) : "paper-instance";
+}
+function beijingStamp(iso) {
+  if (!iso) return "";
+  const at = new Date(iso);
+  if (!Number.isFinite(at.getTime())) return "";
+  const clock = marketClock(at);
+  return `${clock.date} ${clock.time}`;
+}
+
+// backend/services/notifications.js
+var TIMEOUT_MS = 8e3;
+function notificationChannels(env) {
+  const channels = [];
+  const feishuConfigured = typeof env?.FEISHU_WEBHOOK_URL === "string" && env.FEISHU_WEBHOOK_URL.startsWith("https://");
+  channels.push({
+    ref: "feishu",
+    name: "\u98DE\u4E66\u673A\u5668\u4EBA",
+    configured: feishuConfigured
+  });
+  return channels;
+}
+function alertsEnabled(env) {
+  return env?.ALERTS_ENABLED !== "false" && notificationChannels(env).some((c) => c.configured);
+}
+async function fetchJson(url, init) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      ...init,
+      redirect: "error",
+      signal: controller.signal
+    });
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    return { response, body };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function sendFeishu({ config, text, eventId: eventId2 }) {
+  let url = config.webhookUrl;
+  if (config.secret) {
+    const timestamp = Math.floor(Date.now() / 1e3);
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(`${timestamp}
+${config.secret}`),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const signature = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode("")
+    );
+    const sign = btoa(String.fromCharCode(...new Uint8Array(signature)));
+    const signed = new URL(url);
+    signed.searchParams.set("timestamp", String(timestamp));
+    signed.searchParams.set("sign", sign);
+    url = signed.toString();
+  }
+  let response, body;
+  try {
+    ({ response, body } = await fetchJson(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        msg_type: "text",
+        content: { text: eventId2 ? `${text}
+\u4E8B\u4EF6: ${eventId2}` : text }
+      })
+    }));
+  } catch {
+    return { ok: false, retryable: true, reason: "NETWORK_ERROR" };
+  }
+  if (response.status === 429)
+    return { ok: false, retryable: true, reason: "RATE_LIMITED" };
+  if (!response.ok)
+    return { ok: false, retryable: true, reason: `HTTP_${response.status}` };
+  if (body === null)
+    return { ok: false, retryable: true, reason: "INVALID_RESPONSE" };
+  const code = body?.code ?? body?.StatusCode;
+  if (code === 0) return { ok: true, providerRef: String(body.msgId ?? "") };
+  const configError = code === 19021 || code === 9499 || code === 19020;
+  return {
+    ok: false,
+    retryable: !configError,
+    reason: configError ? "CONFIG_ERROR" : `PROVIDER_${code ?? "UNKNOWN"}`
+  };
+}
+async function sendNotification({
+  channelRef,
+  env,
+  safeMessage,
+  eventId: eventId2
+}) {
+  if (channelRef === "feishu") {
+    if (!env?.FEISHU_WEBHOOK_URL?.startsWith("https://"))
+      return { ok: false, retryable: false, reason: "CHANNEL_NOT_CONFIGURED" };
+    return sendFeishu({
+      config: { webhookUrl: env.FEISHU_WEBHOOK_URL, secret: env.FEISHU_SECRET },
+      text: safeMessage.text,
+      eventId: eventId2
+    });
+  }
+  return { ok: false, retryable: false, reason: "UNKNOWN_CHANNEL" };
+}
+
+// backend/services/alerts.js
+var nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
+function eventId(event) {
+  return `${event.instanceId}:${event.accountId}:${event.tradeDate ?? "na"}:${event.sourceSequence ?? 0}:${event.type}:${event.ruleType ?? "-"}:${event.entityRef ?? "primary"}:${event.occurredAt}`;
+}
+function buildOperationEvents(input, instanceId) {
+  const events = [];
+  for (const event of classifyOperationalFacts(input)) {
+    const full = {
+      ...event,
+      instanceId,
+      accountId: input.accountId ?? "primary",
+      sourceSequence: input.sourceSequence ?? null,
+      // cleared 必须随事实落库：规则推进只从库里重建事实，丢了它就会把
+      // "本轮已验证正常"误当成问题，制造假实例与假通知。
+      payload: {
+        ...event.safeFacts ?? {},
+        ...event.cleared ? { cleared: true } : {}
+      }
+    };
+    events.push({ ...full, id: eventId(full) });
+  }
+  return events;
+}
+async function alertsStatus(env) {
+  const store = new AlertRepository(env);
+  const state = await store.processorState();
+  const health = await store.outboxHealth();
+  return {
+    enabled: alertsEnabled(env),
+    channels: notificationChannels(env).map(({ ref, name, configured }) => ({
+      ref,
+      name,
+      configured
+    })),
+    watchdog: {
+      progressConfigured: Boolean(env?.WATCHDOG_PROGRESS_URL),
+      pipelineConfigured: Boolean(env?.WATCHDOG_PIPELINE_URL),
+      lastProgressAt: state?.lastProgressAt ?? null
+    },
+    outbox: health,
+    ruleVersion: (await store.latestRuleVersion())?.id ?? "default",
+    note: alertsEnabled(env) ? "\u4E3B\u52A8\u544A\u8B66\u5DF2\u542F\u7528" : "\u4E3B\u52A8\u544A\u8B66\u672A\u542F\u7528\uFF1A\u8BF7\u5728\u670D\u52A1\u7AEF .env \u914D\u7F6E FEISHU_WEBHOOK_URL"
+  };
+}
+async function listAlertIncidents(env, { cursor = 0, activeOnly = false } = {}) {
+  const store = new AlertRepository(env);
+  const limit = 20;
+  const offset = Number(cursor) || 0;
+  const incidents = await store.listIncidents({ limit, offset, activeOnly });
+  return {
+    incidents,
+    nextCursor: incidents.length === limit ? offset + limit : null
+  };
+}
+async function ackIncident(env, incidentId, { hours = 1 } = {}) {
+  const store = new AlertRepository(env);
+  const incident = await store.getIncident(incidentId);
+  if (!incident) return null;
+  if (!Number.isFinite(hours) || hours < 0.5 || hours > 72)
+    throw new Error("\u786E\u8BA4\u65F6\u957F\u5FC5\u987B\u4E3A 0.5\u201372 \u5C0F\u65F6");
+  const now = nowIso();
+  const ackUntil = new Date(
+    new Date(now).getTime() + hours * 3600 * 1e3
+  ).toISOString();
+  await store.commitIncidentTransition({
+    id: incidentId,
+    patch: { ackUntil },
+    eventType: "ACKED",
+    eventPayload: { ackUntil },
+    now
+  });
+  await store.dismissExpiredDeliveries({ incidentId, now });
+  return { ackUntil };
+}
+async function saveAlertRules(env, policy) {
+  const validated = validateAlertPolicy({ ...DEFAULT_ALERT_POLICY, ...policy });
+  const store = new AlertRepository(env);
+  const version = await store.saveRuleVersion(validated, nowIso());
+  return version;
+}
+async function sendTestNotification(env) {
+  if (!alertsEnabled(env))
+    throw new Error("\u4E3B\u52A8\u544A\u8B66\u672A\u542F\u7528\uFF1A\u8BF7\u5148\u914D\u7F6E FEISHU_WEBHOOK_URL");
+  const store = new AlertRepository(env);
+  const now = nowIso();
+  const instanceId = instanceAlias(env);
+  const event = {
+    instanceId,
+    accountId: "test",
+    tradeDate: null,
+    sourceSequence: null,
+    type: EVENT_TYPES.TEST,
+    reasonCode: null,
+    occurredAt: now,
+    entityRef: "test",
+    payload: { source: "test" },
+    id: `${instanceId}:test:na:0:${EVENT_TYPES.TEST}:test:${now}`
+  };
+  await store.recordOperationEvent(event);
+  const outcome = await sendNotification({
+    channelRef: "feishu",
+    env,
+    safeMessage: {
+      title: "[\u6D4B\u8BD5] \u544A\u8B66\u901A\u9053",
+      text: `[\u6D4B\u8BD5] \u544A\u8B66\u901A\u9053
+\u5B9E\u4F8B: ${instanceId}
+\u5317\u4EAC\u65F6\u95F4: ${beijingStamp(now)}
+\u8FD9\u662F\u4E00\u6761\u7528\u6237\u4E3B\u52A8\u89E6\u53D1\u7684\u6D4B\u8BD5\u901A\u77E5`
+    },
+    eventId: event.id
+  });
+  if (!outcome.ok) throw new Error(`\u6D4B\u8BD5\u901A\u77E5\u53D1\u9001\u5931\u8D25\uFF1A${outcome.reason}`);
+  return { sent: true, providerRef: outcome.providerRef ?? null };
+}
+async function setMaintenanceWindow(env, { minutes = 60, reason = "" } = {}) {
+  if (!Number.isInteger(minutes) || minutes < 15 || minutes > 24 * 60)
+    throw new Error("\u7EF4\u62A4\u7A97\u53E3\u5FC5\u987B\u4E3A 15\u20131440 \u5206\u949F");
+  const store = new AlertRepository(env);
+  const now = nowIso();
+  const until = new Date(
+    new Date(now).getTime() + minutes * 6e4
+  ).toISOString();
+  await store.recordOperationEvent({
+    id: `maint:${now}:${crypto.randomUUID().slice(0, 8)}`,
+    instanceId: instanceAlias(env),
+    accountId: "maintenance",
+    tradeDate: null,
+    sourceSequence: null,
+    type: EVENT_TYPES.MAINTENANCE,
+    reasonCode: null,
+    occurredAt: now,
+    entityRef: "maintenance",
+    payload: { until, reason: String(reason).slice(0, 120) }
+  });
+  return { until };
+}
 
 // backend/services/realtime.js
 var calendars = /* @__PURE__ */ new Map();
@@ -6949,11 +7956,6 @@ async function pollTrading(env, now = /* @__PURE__ */ new Date(), providers = {}
       pollIntervalSeconds: Number(env.TRADING_POLL_SECONDS || 10)
     };
     const result = advanceSession(account.book, session, observation);
-    if (!await repo.commitObservation(account.revision, result, observation))
-      return heartbeat({
-        status: "CONFLICT",
-        reason: "\u53E6\u4E00\u4E2A\u6267\u884C\u5668\u5148\u63D0\u4EA4\uFF0C\u672C\u6B21\u7ED3\u679C\u4E22\u5F03\uFF0C\u4E0B\u8F6E\u91CD\u65B0\u8BFB\u53D6"
-      });
     const observedMs = new Date(observation.observedAt).getTime();
     const fresh = (quote) => {
       const time = new Date(quote?.timestamp).getTime();
@@ -6988,7 +7990,7 @@ async function pollTrading(env, now = /* @__PURE__ */ new Date(), providers = {}
     ];
     const drawdown = 1 - result.book.equityCents / result.book.peakEquityCents;
     const quoted = codes.length === 0 || missingQuoteCodes.length === 0;
-    return heartbeat({
+    const summary = {
       status: quoted ? "RUNNING" : "STALE_QUOTES",
       date: clock.date,
       sequence: result.session.sequence,
@@ -7006,7 +8008,28 @@ async function pollTrading(env, now = /* @__PURE__ */ new Date(), providers = {}
       ),
       lastQuoteAt: Object.values(result.session.quotes).map((q) => q.timestamp).sort().at(-1) || null,
       reason: quoted ? "\u5B9E\u65F6\u6A21\u62DF\u4EA4\u6613\u5FAA\u73AF\u5DF2\u5904\u7406" : "\u62A5\u4EF7\u9648\u65E7\u6216\u7F3A\u5931\uFF0C\u672C\u8F6E\u4E0D\u6267\u884C\u6210\u4EA4"
-    });
+    };
+    const operationEvents = buildOperationEvents(
+      {
+        source: "loop",
+        result: summary,
+        now: observation.observedAt,
+        tradeDate: clock.date,
+        sourceSequence: result.session.sequence
+      },
+      instanceAlias(env)
+    );
+    if (!await repo.commitObservation(
+      account.revision,
+      result,
+      observation,
+      operationEvents
+    ))
+      return heartbeat({
+        status: "CONFLICT",
+        reason: "\u53E6\u4E00\u4E2A\u6267\u884C\u5668\u5148\u63D0\u4EA4\uFF0C\u672C\u6B21\u7ED3\u679C\u4E22\u5F03\uFF0C\u4E0B\u8F6E\u91CD\u65B0\u8BFB\u53D6"
+      });
+    return heartbeat({ ...summary, eventsRecorded: true });
   } catch (error) {
     return heartbeat({ status: "ERROR", reason: safeError(error) });
   }
@@ -11953,755 +12976,6 @@ async function cohortExport(env, cohortId) {
     quoteFrames: framesByDate,
     note: "\u68C0\u67E5\u70B9\u4E00\u81F4\u7684\u6279\u6B21\u7814\u7A76\u5BFC\u51FA\uFF1A\u6210\u5458\u51BB\u7ED3\u6E05\u5355\u3001\u9010\u8D26\u6237\u8BA1\u5212/\u6210\u4EA4/\u51C0\u503C\u3001\u4E8B\u4EF6\u94FE\u4E0E\u7EDF\u8BA1\u8F93\u5165"
   };
-}
-
-// backend/storage/alerts.js
-var NOTIFICATION_FIELDS = [
-  "notifiedOnce",
-  "lastNotifiedAt",
-  "notifyScheduledAt"
-];
-function mergedIncidentPayload(current, patch) {
-  const next = { ...current.payload, ...patch?.payload ?? {} };
-  for (const field of NOTIFICATION_FIELDS) {
-    next[field] = patch?.[field] ?? current.payload?.[field];
-    if (next[field] === void 0) delete next[field];
-  }
-  return next;
-}
-var AlertRepository = class {
-  constructor(env) {
-    this.db = env.DB;
-  }
-  // ---------- 追加事实（源事件 ID 幂等；rule_type 随事实落库） ----------
-  // ingest_seq 在插入时取当前最大值 +1，是唯一的分发游标：只反映入库顺序，
-  // 迟到事件（occurred_at 更早但入库更晚）因此不会被永久跳过。
-  async recordOperationEvent(event) {
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO operation_events (id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, occurred_at, entity_ref, payload, ingest_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(ingest_seq), 0) + 1 FROM operation_events))"
-    ).bind(
-      event.id,
-      event.instanceId,
-      event.accountId,
-      event.tradeDate ?? null,
-      event.sourceSequence ?? null,
-      event.type,
-      event.ruleType ?? null,
-      event.reasonCode ?? null,
-      event.occurredAt,
-      event.entityRef ?? null,
-      JSON.stringify(event.payload ?? event.safeFacts ?? {})
-    ).run();
-  }
-  async eventsSince(cursor, limit = 200) {
-    const columns = "ingest_seq, occurred_at, id, instance_id, account_id, trade_date, source_sequence, type, rule_type, reason_code, entity_ref, payload";
-    const rows = cursor?.ingestSeq == null ? (await this.db.prepare(
-      `SELECT ${columns} FROM operation_events ORDER BY ingest_seq LIMIT ?`
-    ).bind(limit).all()).results : (await this.db.prepare(
-      `SELECT ${columns} FROM operation_events WHERE ingest_seq > ? ORDER BY ingest_seq LIMIT ?`
-    ).bind(cursor.ingestSeq, limit).all()).results;
-    return rows.map((row) => ({
-      ingestSeq: Number(row.ingest_seq),
-      occurredAt: row.occurred_at,
-      id: row.id,
-      instanceId: row.instance_id,
-      accountId: row.account_id,
-      tradeDate: row.trade_date,
-      sourceSequence: row.source_sequence,
-      type: row.type,
-      ruleType: row.rule_type,
-      reasonCode: row.reason_code,
-      entityRef: row.entity_ref,
-      payload: JSON.parse(row.payload)
-    }));
-  }
-  async latestEventCursor() {
-    const row = await this.db.prepare("SELECT MAX(ingest_seq) AS n FROM operation_events").first();
-    return row?.n == null ? null : { ingestSeq: Number(row.n) };
-  }
-  // ---------- 规则版本（不可变；阈值范围校验在服务层） ----------
-  async latestRuleVersion() {
-    const row = await this.db.prepare(
-      "SELECT id, created_at, payload, digest FROM alert_rule_versions ORDER BY created_at DESC LIMIT 1"
-    ).first();
-    return row ? {
-      id: row.id,
-      createdAt: row.created_at,
-      payload: JSON.parse(row.payload),
-      digest: row.digest
-    } : null;
-  }
-  async saveRuleVersion(payload, now) {
-    const id = `rules-${now}`;
-    await this.db.prepare(
-      "INSERT INTO alert_rule_versions (id, created_at, payload, digest) VALUES (?, ?, ?, ?)"
-    ).bind(id, now, JSON.stringify(payload), await digestOf(payload)).run();
-    return { id, createdAt: now, payload, digest: await digestOf(payload) };
-  }
-  // ---------- 告警实例（活动指纹唯一 + revision CAS） ----------
-  async activeIncident(fingerprint) {
-    const row = await this.db.prepare(
-      "SELECT * FROM alert_incidents WHERE fingerprint = ? AND resolved_at IS NULL"
-    ).bind(fingerprint).first();
-    return row ? this.rowToIncident(row) : null;
-  }
-  rowToIncident(row) {
-    const payload = JSON.parse(row.payload);
-    return {
-      id: row.id,
-      fingerprint: row.fingerprint,
-      generation: row.generation,
-      status: row.status,
-      severity: row.severity,
-      ruleType: row.rule_type,
-      entityRef: payload.entityRef ?? null,
-      firstSeen: row.first_seen,
-      lastSeen: row.last_seen,
-      ackUntil: row.ack_until,
-      resolvedAt: row.resolved_at,
-      ruleVersion: row.rule_version,
-      revision: row.revision,
-      notifiedOnce: Boolean(payload.notifiedOnce),
-      lastNotifiedAt: payload.lastNotifiedAt ?? null,
-      notifyScheduledAt: payload.notifyScheduledAt ?? null,
-      payload
-    };
-  }
-  async getIncident(id) {
-    const row = await this.db.prepare("SELECT * FROM alert_incidents WHERE id = ?").bind(id).first();
-    return row ? this.rowToIncident(row) : null;
-  }
-  async listIncidents({ limit = 20, offset = 0, activeOnly = false } = {}) {
-    const rows = activeOnly ? (await this.db.prepare(
-      "SELECT * FROM alert_incidents WHERE resolved_at IS NULL ORDER BY last_seen DESC LIMIT ? OFFSET ?"
-    ).bind(limit, offset).all()).results : (await this.db.prepare(
-      "SELECT * FROM alert_incidents ORDER BY last_seen DESC LIMIT ? OFFSET ?"
-    ).bind(limit, offset).all()).results;
-    return rows.map((row) => this.rowToIncident(row));
-  }
-  async countIncidents(activeOnly = false) {
-    const row = activeOnly ? await this.db.prepare(
-      "SELECT COUNT(*) AS n FROM alert_incidents WHERE resolved_at IS NULL"
-    ).first() : await this.db.prepare("SELECT COUNT(*) AS n FROM alert_incidents").first();
-    return Number(row?.n ?? 0);
-  }
-  // 单事务提交（§5.2/§7.2）：实例状态迁移、事件审计与发送入队必须一起生效。
-  // 分开提交会留下"状态已迁移但关键通知永久丢失"的窗口；这里在同一个
-  // IMMEDIATE 事务内完成 CAS 迁移、追加 alert_events 与 alert_outbox。
-  // eventType 为 null 时只推进状态（观测心跳），不追加审计事件也不入队。
-  async commitIncidentTransition({
-    create = null,
-    id = null,
-    patch = null,
-    eventType = null,
-    eventPayload = {},
-    channels = [],
-    now,
-    expectedRevision = null
-  }) {
-    return this.db.transaction(async () => {
-      const runId = crypto.randomUUID();
-      let incidentId = id;
-      let revision;
-      if (create) {
-        incidentId = `inc-${now}-${crypto.randomUUID().slice(0, 8)}`;
-        revision = 1;
-        await this.db.prepare(
-          "INSERT INTO alert_incidents (id, fingerprint, generation, status, severity, rule_type, first_seen, last_seen, ack_until, resolved_at, rule_version, revision, last_run_id, payload) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, NULL, NULL, ?, 1, ?, ?)"
-        ).bind(
-          incidentId,
-          create.fingerprint,
-          create.generation ?? 1,
-          create.severity,
-          create.ruleType,
-          create.firstSeen ?? now,
-          now,
-          create.ruleVersion,
-          runId,
-          JSON.stringify(create.payload ?? {})
-        ).run();
-      } else {
-        const current = await this.getIncident(id);
-        if (!current) throw new Error("\u544A\u8B66\u5B9E\u4F8B\u4E0D\u5B58\u5728");
-        if (expectedRevision !== null && expectedRevision !== current.revision)
-          return {
-            id,
-            applied: false,
-            reason: "CONTENTION",
-            revision: current.revision
-          };
-        revision = current.revision + 1;
-        const result = await this.db.prepare(
-          "UPDATE alert_incidents SET status = ?, severity = ?, last_seen = ?, ack_until = ?, resolved_at = ?, revision = revision + 1, last_run_id = ?, payload = ? WHERE id = ? AND revision = ?"
-        ).bind(
-          patch?.status ?? current.status,
-          patch?.severity ?? current.severity,
-          patch?.lastSeen ?? current.lastSeen,
-          patch?.ackUntil ?? current.ackUntil,
-          patch?.resolvedAt ?? current.resolvedAt,
-          runId,
-          JSON.stringify(mergedIncidentPayload(current, patch)),
-          id,
-          current.revision
-        ).run();
-        if (result.meta.changes !== 1)
-          return {
-            id,
-            applied: false,
-            reason: "CONTENTION",
-            revision: current.revision
-          };
-      }
-      if (!eventType)
-        return {
-          id: incidentId,
-          applied: true,
-          revision,
-          runId,
-          sequence: null
-        };
-      const sequence = Number(
-        (await this.db.prepare(
-          "SELECT COALESCE(MAX(sequence), 0) AS n FROM alert_events WHERE incident_id = ?"
-        ).bind(incidentId).first())?.n ?? 0
-      ) + 1;
-      await this.db.prepare(
-        "INSERT INTO alert_events (incident_id, sequence, type, created_at, payload) VALUES (?, ?, ?, ?, ?)"
-      ).bind(
-        incidentId,
-        sequence,
-        eventType,
-        now,
-        JSON.stringify(eventPayload ?? {})
-      ).run();
-      const deliveryIds = [];
-      for (const channelRef of channels) {
-        const deliveryId = `out-${now}-${crypto.randomUUID().slice(0, 8)}`;
-        await this.db.prepare(
-          "INSERT OR IGNORE INTO alert_outbox (id, incident_id, event_sequence, channel_ref, status, attempt, next_attempt_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'PENDING', 0, ?, ?, ?)"
-        ).bind(deliveryId, incidentId, sequence, channelRef, now, now, now).run();
-        deliveryIds.push(deliveryId);
-      }
-      return {
-        id: incidentId,
-        applied: true,
-        revision,
-        runId,
-        sequence,
-        deliveryIds
-      };
-    });
-  }
-  async incidentEvents(incidentId) {
-    const rows = (await this.db.prepare(
-      "SELECT sequence, type, created_at, payload FROM alert_events WHERE incident_id = ? ORDER BY sequence"
-    ).bind(incidentId).all()).results;
-    return rows.map((row) => ({
-      sequence: row.sequence,
-      type: row.type,
-      createdAt: row.created_at,
-      payload: JSON.parse(row.payload)
-    }));
-  }
-  // ---------- 发送队列（§5.4）：租约领取、有界重试、退避在服务层计算 ----------
-  // 领取有期限租约：PENDING 到期项，或租约过期的 SENDING 项（接管）。
-  async claimDeliveries({ now, leaseOwner, leaseSeconds = 60, limit = 10 }) {
-    const leaseUntil = new Date(
-      new Date(now).getTime() + leaseSeconds * 1e3
-    ).toISOString();
-    const rows = (await this.db.prepare(
-      "SELECT id FROM alert_outbox WHERE status = 'PENDING' AND next_attempt_at <= ? ORDER BY next_attempt_at LIMIT ?"
-    ).bind(now, limit).all()).results;
-    const takenOver = (await this.db.prepare(
-      "SELECT id FROM alert_outbox WHERE status = 'SENDING' AND lease_until IS NOT NULL AND lease_until < ? ORDER BY next_attempt_at LIMIT ?"
-    ).bind(now, limit).all()).results;
-    const claimed = [];
-    for (const row of [...rows, ...takenOver].slice(0, limit)) {
-      const result = await this.db.prepare(
-        "UPDATE alert_outbox SET status = 'SENDING', lease_until = ?, lease_owner = ?, updated_at = ? WHERE id = ? AND (status = 'PENDING' OR (status = 'SENDING' AND lease_until < ?))"
-      ).bind(leaseUntil, leaseOwner, now, row.id, now).run();
-      if (result.meta.changes === 1) claimed.push(row.id);
-    }
-    const deliveries = [];
-    for (const id of claimed) {
-      const outbox = await this.db.prepare("SELECT * FROM alert_outbox WHERE id = ?").bind(id).first();
-      if (outbox) deliveries.push(this.rowToDelivery(outbox));
-    }
-    return deliveries;
-  }
-  rowToDelivery(row) {
-    return {
-      id: row.id,
-      incidentId: row.incident_id,
-      eventSequence: row.event_sequence,
-      channelRef: row.channel_ref,
-      status: row.status,
-      attempt: row.attempt,
-      nextAttemptAt: row.next_attempt_at,
-      leaseUntil: row.lease_until,
-      leaseOwner: row.lease_owner,
-      providerRef: row.provider_ref,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-  // 结果写入一律带租约 CAS：租约被接管后，迟到执行器写不进任何终态，
-  // 避免旧执行器覆盖新执行器的 SENT / PENDING / EXPIRED 结果。
-  async completeDelivery({ id, leaseOwner, leaseUntil, providerRef, now }) {
-    const result = await this.db.prepare(
-      "UPDATE alert_outbox SET status = 'SENT', provider_ref = ?, lease_until = NULL, updated_at = ? WHERE id = ? AND status = 'SENDING' AND lease_owner = ? AND lease_until = ?"
-    ).bind(providerRef ?? null, now, id, leaseOwner, leaseUntil).run();
-    return result.meta.changes === 1;
-  }
-  async retryDelivery({ id, leaseOwner, leaseUntil, nextAttemptAt, now }) {
-    const result = await this.db.prepare(
-      "UPDATE alert_outbox SET status = 'PENDING', attempt = attempt + 1, next_attempt_at = ?, lease_until = NULL, updated_at = ? WHERE id = ? AND status = 'SENDING' AND lease_owner = ? AND lease_until = ?"
-    ).bind(nextAttemptAt, now, id, leaseOwner, leaseUntil).run();
-    return result.meta.changes === 1;
-  }
-  async expireDelivery({ id, leaseOwner, leaseUntil, now }) {
-    const result = await this.db.prepare(
-      "UPDATE alert_outbox SET status = 'EXPIRED', lease_until = NULL, updated_at = ? WHERE id = ? AND status = 'SENDING' AND lease_owner = ? AND lease_until = ?"
-    ).bind(now, id, leaseOwner, leaseUntil).run();
-    return result.meta.changes === 1;
-  }
-  // 重试耗尽（EXPIRED）意味着关键通知已丢失：健康信号必须持续上报不健康，
-  // 直到所有者确认过该实例（ACK 表示"已知悉这次丢失"），否则一次瞬时故障
-  // 会让管道永远红着、或者（放宽阈值后）把丢失悄悄当成健康。
-  async dismissExpiredDeliveries({ incidentId, now }) {
-    const result = await this.db.prepare(
-      "UPDATE alert_outbox SET status = 'DISMISSED', updated_at = ? WHERE incident_id = ? AND status = 'EXPIRED'"
-    ).bind(now, incidentId).run();
-    return result.meta.changes;
-  }
-  // 队列健康：overdue 是"现在就该发却没人领"的项，是分发器停滞的直接证据；
-  // 只看 pending 总量会把空闲队列当成健康（分发器已死时队列恰好是空的）。
-  // longPending: 在 PENDING/SENDING 状态超过 2 分钟的关键通知——这类积压即使
-  // 未达 maxAttempts 也应视为不健康，直到被送达或所有者 ACK。
-  async outboxHealth({ now = (/* @__PURE__ */ new Date()).toISOString() } = {}) {
-    const twoMinutesAgo = new Date(
-      new Date(now).getTime() - 2 * 60 * 1e3
-    ).toISOString();
-    const row = await this.db.prepare(
-      "SELECT SUM(CASE WHEN status IN ('PENDING','SENDING') THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status = 'PENDING' AND next_attempt_at > ? THEN 1 ELSE 0 END) AS scheduled, SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) AS sent, SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END) AS expired, SUM(CASE WHEN (status = 'PENDING' AND next_attempt_at <= ?) OR (status = 'SENDING' AND lease_until < ?) THEN 1 ELSE 0 END) AS overdue, SUM(CASE WHEN status IN ('PENDING','SENDING') AND updated_at <= ? THEN 1 ELSE 0 END) AS long_pending FROM alert_outbox"
-    ).bind(now, now, now, twoMinutesAgo).first();
-    return {
-      pending: Number(row?.pending ?? 0),
-      scheduled: Number(row?.scheduled ?? 0),
-      sent: Number(row?.sent ?? 0),
-      expired: Number(row?.expired ?? 0),
-      overdue: Number(row?.overdue ?? 0),
-      longPending: Number(row?.long_pending ?? 0)
-    };
-  }
-  // ---------- 分发器游标与进度（外部监测依据，§4） ----------
-  async processorState(id = "dispatcher") {
-    const row = await this.db.prepare("SELECT * FROM alert_processor_state WHERE id = ?").bind(id).first();
-    return row ? {
-      id: row.id,
-      revision: row.revision,
-      lastEventCursor: await this.resolveCursor(row.last_event_cursor),
-      lastProgressAt: row.last_progress_at,
-      lastRunId: row.last_run_id
-    } : null;
-  }
-  // 旧格式游标（按发生时间 {occurredAt, id}）折算为摄取序号。
-  // 旧方案按 (occurred_at, id) 分页消费，游标是"已消费的最大键"，因此
-  // "未消费"集合 = 键大于游标的事件 ∪ 键不大于游标但在游标写入之后才入库的事件。
-  // 后者里可能存在 ingest_seq 比游标行更小的事件（例如键更大的事件先入库），
-  // 直接把游标折算成那一行的 ingest_seq 会永久跳过它们；因此取
-  // min(键大于游标的最小 ingest_seq - 1, 游标行的 ingest_seq)：宁可重放少量
-  // 已消费事件（状态机与入队对重放幂等），也绝不跳过未消费事件。
-  async resolveCursor(raw) {
-    if (!raw) return null;
-    let cursor = null;
-    try {
-      cursor = typeof raw === "string" ? JSON.parse(raw) : raw;
-    } catch {
-      return null;
-    }
-    if (!cursor) return null;
-    if (Number.isInteger(cursor.ingestSeq))
-      return { ingestSeq: cursor.ingestSeq };
-    if (!cursor.occurredAt || !cursor.id) return null;
-    const row = await this.db.prepare("SELECT ingest_seq FROM operation_events WHERE id = ?").bind(cursor.id).first();
-    if (!row) return { ingestSeq: 0 };
-    const cursorSeq = Number(row.ingest_seq);
-    const after = await this.db.prepare(
-      "SELECT MIN(ingest_seq) AS n FROM operation_events WHERE (occurred_at > ?) OR (occurred_at = ? AND id > ?)"
-    ).bind(cursor.occurredAt, cursor.occurredAt, cursor.id).first();
-    if (after?.n == null) return { ingestSeq: cursorSeq };
-    return { ingestSeq: Math.min(Number(after.n) - 1, cursorSeq) };
-  }
-  // 游标只能前进，且写入必须携带调用方读到的 revision：只对比事务内的新
-  // revision 挡不住"基于旧快照的评估"——它会把已经推进的游标写回旧位置，
-  // 造成事件重复消费（甚至漏读）。
-  async advanceProcessorState({
-    id = "dispatcher",
-    lastEventCursor,
-    now,
-    expectedRevision = null
-  }) {
-    const current = await this.processorState(id);
-    const runId = crypto.randomUUID();
-    if (!current) {
-      const created = await this.db.prepare(
-        "INSERT OR IGNORE INTO alert_processor_state (id, revision, last_event_cursor, last_progress_at, last_run_id) VALUES (?, 1, ?, ?, ?)"
-      ).bind(id, JSON.stringify(lastEventCursor ?? null), now, runId).run();
-      if (created.meta.changes === 1)
-        return { applied: true, revision: 1, runId };
-      const winner = await this.processorState(id);
-      return {
-        applied: false,
-        reason: "CONTENTION",
-        revision: winner?.revision ?? null,
-        // 不回退游标：返回胜出者的游标供调用方保留。
-        winnerCursor: winner?.lastEventCursor ?? lastEventCursor
-      };
-    }
-    if (expectedRevision !== null && expectedRevision !== current.revision)
-      return {
-        applied: false,
-        reason: "CONTENTION",
-        revision: current.revision,
-        winnerCursor: current.lastEventCursor
-      };
-    const result = await this.db.prepare(
-      "UPDATE alert_processor_state SET revision = revision + 1, last_event_cursor = ?, last_progress_at = ?, last_run_id = ? WHERE id = ? AND revision = ?"
-    ).bind(
-      JSON.stringify(lastEventCursor ?? current.lastEventCursor),
-      now,
-      runId,
-      id,
-      current.revision
-    ).run();
-    if (result.meta.changes !== 1)
-      return {
-        applied: false,
-        reason: "CONTENTION",
-        revision: current.revision,
-        winnerCursor: current.lastEventCursor
-      };
-    return { applied: true, revision: current.revision + 1, runId };
-  }
-};
-
-// backend/domain/alert-rules.js
-var RULE_TYPES = {
-  RUNNER_STALLED: "RUNNER_STALLED",
-  LOOP_FAILED: "LOOP_FAILED",
-  SESSION_BLOCKED: "SESSION_BLOCKED",
-  REQUIRED_QUOTE_STALE: "REQUIRED_QUOTE_STALE",
-  DRAWDOWN_TRIPPED: "DRAWDOWN_TRIPPED",
-  PROTECTIVE_EXIT_BLOCKED: "PROTECTIVE_EXIT_BLOCKED",
-  T_RECOVERY_INCOMPLETE: "T_RECOVERY_INCOMPLETE",
-  SETTLEMENT_LATE: "SETTLEMENT_LATE",
-  LEDGER_INVARIANT_FAILED: "LEDGER_INVARIANT_FAILED",
-  ALERT_PIPELINE_STALLED: "ALERT_PIPELINE_STALLED",
-  AI_OR_RESEARCH_FAILED: "AI_OR_RESEARCH_FAILED"
-};
-var EVENT_TYPES = {
-  LOOP_ERROR: "LOOP_ERROR",
-  LOOP_RESULT: "LOOP_RESULT",
-  DAILY_RESULT: "DAILY_RESULT",
-  LEDGER_INVARIANT: "LEDGER_INVARIANT",
-  RESEARCH_RESULT: "RESEARCH_RESULT",
-  TEST: "TEST",
-  MAINTENANCE: "MAINTENANCE"
-};
-var DEFAULT_ALERT_POLICY = {
-  runnerStalledSeconds: 90,
-  // max(90, 6×轮询间隔) 在评估时取较大值
-  loopFailedRounds: 3,
-  loopFailedSeconds: 30,
-  loopFailedEscalateSeconds: 90,
-  requiredQuoteStaleSeconds: 30,
-  requiredQuoteStaleCriticalSeconds: 60,
-  settlementLateWarningAt: "15:20:00",
-  settlementLateCriticalAt: "15:30:00",
-  tRecoveryCheckAt: "14:50:00",
-  tRecoveryCriticalAt: "14:55:00",
-  escalateAfterSeconds: 300,
-  // 持续 5 分钟升级一次
-  remindEverySeconds: 900,
-  // 之后每 15 分钟提醒
-  resumeGraceSeconds: 120,
-  maxAttempts: 5,
-  backoffSeconds: [5, 30, 120, 600]
-};
-function validateAlertPolicy(policy) {
-  if (!policy || typeof policy !== "object") throw new Error("\u7B56\u7565\u5FC5\u987B\u4E3A\u5BF9\u8C61");
-  const int = (key, min, max) => {
-    const value = policy[key];
-    if (!Number.isInteger(value) || value < min || value > max || (key === "escalateAfterSeconds" || key === "remindEverySeconds" ? value < 30 : false))
-      throw new Error(`\u7B56\u7565\u9879 ${key} \u5FC5\u987B\u4E3A ${min}\u2013${max} \u7684\u6574\u6570`);
-  };
-  int("runnerStalledSeconds", 30, 3600);
-  int("loopFailedRounds", 1, 60);
-  int("loopFailedSeconds", 10, 3600);
-  int("loopFailedEscalateSeconds", 30, 3600);
-  int("requiredQuoteStaleSeconds", 10, 3600);
-  int("requiredQuoteStaleCriticalSeconds", 20, 3600);
-  int("escalateAfterSeconds", 30, 86400);
-  int("remindEverySeconds", 30, 86400);
-  int("resumeGraceSeconds", 0, 3600);
-  int("maxAttempts", 1, 20);
-  for (const key of [
-    "settlementLateWarningAt",
-    "settlementLateCriticalAt",
-    "tRecoveryCheckAt",
-    "tRecoveryCriticalAt"
-  ])
-    if (!/^\d{2}:\d{2}:\d{2}$/.test(policy[key] ?? ""))
-      throw new Error(`\u7B56\u7565\u9879 ${key} \u5FC5\u987B\u4E3A HH:MM:SS`);
-  if (policy.settlementLateWarningAt >= policy.settlementLateCriticalAt || policy.tRecoveryCheckAt >= policy.tRecoveryCriticalAt)
-    throw new Error("\u7B56\u7565\u9879\u7684\u8B66\u544A\u65F6\u70B9\u5FC5\u987B\u65E9\u4E8E\u5347\u7EA7\u65F6\u70B9");
-  if (!Array.isArray(policy.backoffSeconds) || !policy.backoffSeconds.length)
-    throw new Error("\u7B56\u7565\u9879 backoffSeconds \u5FC5\u987B\u4E3A\u975E\u7A7A\u6570\u7EC4");
-  if (policy.backoffSeconds.some((v) => !Number.isInteger(v) || v < 1 || v > 3600))
-    throw new Error("\u9000\u907F\u79D2\u6570\u5FC5\u987B\u4E3A 1\u20133600 \u7684\u6574\u6570");
-  return policy;
-}
-var MAINTENANCE_SUPPRESSED_RULES = /* @__PURE__ */ new Set([
-  RULE_TYPES.LOOP_FAILED,
-  RULE_TYPES.RUNNER_STALLED,
-  RULE_TYPES.REQUIRED_QUOTE_STALE,
-  RULE_TYPES.SETTLEMENT_LATE,
-  RULE_TYPES.AI_OR_RESEARCH_FAILED
-]);
-
-// backend/domain/alert-messages.js
-function instanceAlias(env) {
-  const alias = env?.ALERT_INSTANCE_ALIAS;
-  return typeof alias === "string" && alias.trim() ? alias.trim().slice(0, 40) : "paper-instance";
-}
-function beijingStamp(iso) {
-  if (!iso) return "";
-  const at = new Date(iso);
-  if (!Number.isFinite(at.getTime())) return "";
-  const clock = marketClock(at);
-  return `${clock.date} ${clock.time}`;
-}
-
-// backend/services/notifications.js
-var TIMEOUT_MS = 8e3;
-function notificationChannels(env) {
-  const channels = [];
-  const feishuConfigured = typeof env?.FEISHU_WEBHOOK_URL === "string" && env.FEISHU_WEBHOOK_URL.startsWith("https://");
-  channels.push({
-    ref: "feishu",
-    name: "\u98DE\u4E66\u673A\u5668\u4EBA",
-    configured: feishuConfigured
-  });
-  return channels;
-}
-function alertsEnabled(env) {
-  return env?.ALERTS_ENABLED !== "false" && notificationChannels(env).some((c) => c.configured);
-}
-async function fetchJson(url, init) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      ...init,
-      redirect: "error",
-      signal: controller.signal
-    });
-    let body = null;
-    try {
-      body = await response.json();
-    } catch {
-      body = null;
-    }
-    return { response, body };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-async function sendFeishu({ config, text, eventId }) {
-  let url = config.webhookUrl;
-  if (config.secret) {
-    const timestamp = Math.floor(Date.now() / 1e3);
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(`${timestamp}
-${config.secret}`),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    const signature = await crypto.subtle.sign(
-      "HMAC",
-      key,
-      new TextEncoder().encode("")
-    );
-    const sign = btoa(String.fromCharCode(...new Uint8Array(signature)));
-    const signed = new URL(url);
-    signed.searchParams.set("timestamp", String(timestamp));
-    signed.searchParams.set("sign", sign);
-    url = signed.toString();
-  }
-  let response, body;
-  try {
-    ({ response, body } = await fetchJson(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        msg_type: "text",
-        content: { text: eventId ? `${text}
-\u4E8B\u4EF6: ${eventId}` : text }
-      })
-    }));
-  } catch {
-    return { ok: false, retryable: true, reason: "NETWORK_ERROR" };
-  }
-  if (response.status === 429)
-    return { ok: false, retryable: true, reason: "RATE_LIMITED" };
-  if (!response.ok)
-    return { ok: false, retryable: true, reason: `HTTP_${response.status}` };
-  if (body === null)
-    return { ok: false, retryable: true, reason: "INVALID_RESPONSE" };
-  const code = body?.code ?? body?.StatusCode;
-  if (code === 0) return { ok: true, providerRef: String(body.msgId ?? "") };
-  const configError = code === 19021 || code === 9499 || code === 19020;
-  return {
-    ok: false,
-    retryable: !configError,
-    reason: configError ? "CONFIG_ERROR" : `PROVIDER_${code ?? "UNKNOWN"}`
-  };
-}
-async function sendNotification({
-  channelRef,
-  env,
-  safeMessage,
-  eventId
-}) {
-  if (channelRef === "feishu") {
-    if (!env?.FEISHU_WEBHOOK_URL?.startsWith("https://"))
-      return { ok: false, retryable: false, reason: "CHANNEL_NOT_CONFIGURED" };
-    return sendFeishu({
-      config: { webhookUrl: env.FEISHU_WEBHOOK_URL, secret: env.FEISHU_SECRET },
-      text: safeMessage.text,
-      eventId
-    });
-  }
-  return { ok: false, retryable: false, reason: "UNKNOWN_CHANNEL" };
-}
-
-// backend/services/alerts.js
-var nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
-async function alertsStatus(env) {
-  const store = new AlertRepository(env);
-  const state = await store.processorState();
-  const health = await store.outboxHealth();
-  return {
-    enabled: alertsEnabled(env),
-    channels: notificationChannels(env).map(({ ref, name, configured }) => ({
-      ref,
-      name,
-      configured
-    })),
-    watchdog: {
-      progressConfigured: Boolean(env?.WATCHDOG_PROGRESS_URL),
-      pipelineConfigured: Boolean(env?.WATCHDOG_PIPELINE_URL),
-      lastProgressAt: state?.lastProgressAt ?? null
-    },
-    outbox: health,
-    ruleVersion: (await store.latestRuleVersion())?.id ?? "default",
-    note: alertsEnabled(env) ? "\u4E3B\u52A8\u544A\u8B66\u5DF2\u542F\u7528" : "\u4E3B\u52A8\u544A\u8B66\u672A\u542F\u7528\uFF1A\u8BF7\u5728\u670D\u52A1\u7AEF .env \u914D\u7F6E FEISHU_WEBHOOK_URL"
-  };
-}
-async function listAlertIncidents(env, { cursor = 0, activeOnly = false } = {}) {
-  const store = new AlertRepository(env);
-  const limit = 20;
-  const offset = Number(cursor) || 0;
-  const incidents = await store.listIncidents({ limit, offset, activeOnly });
-  return {
-    incidents,
-    nextCursor: incidents.length === limit ? offset + limit : null
-  };
-}
-async function ackIncident(env, incidentId, { hours = 1 } = {}) {
-  const store = new AlertRepository(env);
-  const incident = await store.getIncident(incidentId);
-  if (!incident) return null;
-  if (!Number.isFinite(hours) || hours < 0.5 || hours > 72)
-    throw new Error("\u786E\u8BA4\u65F6\u957F\u5FC5\u987B\u4E3A 0.5\u201372 \u5C0F\u65F6");
-  const now = nowIso();
-  const ackUntil = new Date(
-    new Date(now).getTime() + hours * 3600 * 1e3
-  ).toISOString();
-  await store.commitIncidentTransition({
-    id: incidentId,
-    patch: { ackUntil },
-    eventType: "ACKED",
-    eventPayload: { ackUntil },
-    now
-  });
-  await store.dismissExpiredDeliveries({ incidentId, now });
-  return { ackUntil };
-}
-async function saveAlertRules(env, policy) {
-  const validated = validateAlertPolicy({ ...DEFAULT_ALERT_POLICY, ...policy });
-  const store = new AlertRepository(env);
-  const version = await store.saveRuleVersion(validated, nowIso());
-  return version;
-}
-async function sendTestNotification(env) {
-  if (!alertsEnabled(env))
-    throw new Error("\u4E3B\u52A8\u544A\u8B66\u672A\u542F\u7528\uFF1A\u8BF7\u5148\u914D\u7F6E FEISHU_WEBHOOK_URL");
-  const store = new AlertRepository(env);
-  const now = nowIso();
-  const instanceId = instanceAlias(env);
-  const event = {
-    instanceId,
-    accountId: "test",
-    tradeDate: null,
-    sourceSequence: null,
-    type: EVENT_TYPES.TEST,
-    reasonCode: null,
-    occurredAt: now,
-    entityRef: "test",
-    payload: { source: "test" },
-    id: `${instanceId}:test:na:0:${EVENT_TYPES.TEST}:test:${now}`
-  };
-  await store.recordOperationEvent(event);
-  const outcome = await sendNotification({
-    channelRef: "feishu",
-    env,
-    safeMessage: {
-      title: "[\u6D4B\u8BD5] \u544A\u8B66\u901A\u9053",
-      text: `[\u6D4B\u8BD5] \u544A\u8B66\u901A\u9053
-\u5B9E\u4F8B: ${instanceId}
-\u5317\u4EAC\u65F6\u95F4: ${beijingStamp(now)}
-\u8FD9\u662F\u4E00\u6761\u7528\u6237\u4E3B\u52A8\u89E6\u53D1\u7684\u6D4B\u8BD5\u901A\u77E5`
-    },
-    eventId: event.id
-  });
-  if (!outcome.ok) throw new Error(`\u6D4B\u8BD5\u901A\u77E5\u53D1\u9001\u5931\u8D25\uFF1A${outcome.reason}`);
-  return { sent: true, providerRef: outcome.providerRef ?? null };
-}
-async function setMaintenanceWindow(env, { minutes = 60, reason = "" } = {}) {
-  if (!Number.isInteger(minutes) || minutes < 15 || minutes > 24 * 60)
-    throw new Error("\u7EF4\u62A4\u7A97\u53E3\u5FC5\u987B\u4E3A 15\u20131440 \u5206\u949F");
-  const store = new AlertRepository(env);
-  const now = nowIso();
-  const until = new Date(
-    new Date(now).getTime() + minutes * 6e4
-  ).toISOString();
-  await store.recordOperationEvent({
-    id: `maint:${now}:${crypto.randomUUID().slice(0, 8)}`,
-    instanceId: instanceAlias(env),
-    accountId: "maintenance",
-    tradeDate: null,
-    sourceSequence: null,
-    type: EVENT_TYPES.MAINTENANCE,
-    reasonCode: null,
-    occurredAt: now,
-    entityRef: "maintenance",
-    payload: { until, reason: String(reason).slice(0, 120) }
-  });
-  return { until };
 }
 
 // backend/routes/api.js

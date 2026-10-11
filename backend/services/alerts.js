@@ -37,26 +37,36 @@ function eventId(event) {
 }
 
 // ---------- 事实入站（交易循环调用，只写事件表） ----------
+// 事实分类与事件 ID 生成（不入库）：pollTrading 在账户提交的同一事务里
+// 直接写入风险事件时复用同一套 ID 规则，与 recordOperationEvents 幂等一致。
+export function buildOperationEvents(input, instanceId) {
+  const events = [];
+  for (const event of classifyOperationalFacts(input)) {
+    const full = {
+      ...event,
+      instanceId,
+      accountId: input.accountId ?? "primary",
+      sourceSequence: input.sourceSequence ?? null,
+      // cleared 必须随事实落库：规则推进只从库里重建事实，丢了它就会把
+      // "本轮已验证正常"误当成问题，制造假实例与假通知。
+      payload: {
+        ...(event.safeFacts ?? {}),
+        ...(event.cleared ? { cleared: true } : {}),
+      },
+    };
+    events.push({ ...full, id: eventId(full) });
+  }
+  return events;
+}
+
 export async function recordOperationEvents(env, inputs) {
   const store = new AlertRepository(env);
   const instanceId = instanceAlias(env);
   const written = [];
   for (const input of inputs) {
-    for (const event of classifyOperationalFacts(input)) {
-      const full = {
-        ...event,
-        instanceId,
-        accountId: input.accountId ?? "primary",
-        sourceSequence: input.sourceSequence ?? null,
-        // cleared 必须随事实落库：规则推进只从库里重建事实，丢了它就会把
-        // "本轮已验证正常"误当成问题，制造假实例与假通知。
-        payload: {
-          ...(event.safeFacts ?? {}),
-          ...(event.cleared ? { cleared: true } : {}),
-        },
-      };
-      await store.recordOperationEvent({ ...full, id: eventId(full) });
-      written.push(full);
+    for (const event of buildOperationEvents(input, instanceId)) {
+      await store.recordOperationEvent(event);
+      written.push(event);
     }
   }
   return written;
@@ -113,6 +123,10 @@ export async function processAlerts(
   }
   let incidents = 0;
   let contended = 0;
+  let unresolvedContention = false;
+  // 提交结果区分三种：applied（已推进）、skipped（无需写库）、
+  // contended（CAS 冲突）。冲突必须与"无需提交"严格分开——把冲突当成
+  // 完成，本批事实就随着游标一起被永久跳过。
   const commit = async ({ previous, evaluation, group }) => {
     const transition = transitionIncident({
       incident: previous,
@@ -120,7 +134,7 @@ export async function processAlerts(
       now,
       policy,
     });
-    if (!transition) return false;
+    if (!transition) return { skipped: true };
     // 维护窗口只静默通知，不冻结状态：观测心跳与严重度仍继续更新。
     const maintenanceSuppressed = suppressedByMaintenance(
       evaluation.event?.ruleType,
@@ -130,7 +144,8 @@ export async function processAlerts(
     const notify = maintenanceSuppressed ? null : transition.notify;
     const notifying = Boolean(notify) && channels.length > 0;
     const hasPatch = Object.keys(transition.patch ?? {}).length > 0;
-    if (transition.action === "KEEP" && !notifying && !hasPatch) return false;
+    if (transition.action === "KEEP" && !notifying && !hasPatch)
+      return { skipped: true };
     // 入队只代表"已安排通知"，不代表送达：送达标记由 outbox 在成功后写入。
     const notificationFacts = notifying
       ? { notifyScheduledAt: now, lastScheduledType: notify.type }
@@ -178,13 +193,15 @@ export async function processAlerts(
     });
     if (!result.applied) {
       contended += 1;
-      return false;
+      return { contended: true };
     }
     if (transition.action !== "KEEP") incidents += 1;
-    return true;
+    return { applied: true };
   };
   for (const [fingerprint, group] of grouped) {
-    let previous = await store.activeIncident(fingerprint);
+    // 最近实例（含已恢复）：补读旧事件时幂等守卫要拿 resolvedAt 比较，
+    // 只查活动实例会让"重放不得重开已恢复告警"的判断永远落空。
+    let previous = await store.recentIncident(fingerprint);
     const evaluations = evaluateAlertRules({
       events: group,
       previousIncident: previous,
@@ -195,14 +212,21 @@ export async function processAlerts(
     // 同一指纹的多条事件按根因聚合：一次评估，摘要列出受影响角色（§5.3）。
     const evaluation = evaluations.find((row) => !row.absent) ?? evaluations[0];
     if (!evaluation || evaluation.suppressed) continue;
-    // 并发冲突时重读实例并重新评估：避免基于旧快照的评估丢失 CRITICAL 升级
-    // 或把已恢复的状态覆盖回旧值。最多重试 3 次，仍失败则记录冲突交由下一轮。
+    // 并发冲突时重读实例并重新评估，然后必须重试提交："严重度相同"不代表
+    // 结果已被胜出者提交——胜出者可能只是无关的 ACK 或心跳 patch，它推进
+    // 了 revision 却没有处理本批事实。只有重评后动作本身变成无需写库
+    // （commit 返回 skipped）才算完成。最多重试 3 次，仍冲突则不推进游标，
+    // 下一轮按摄取顺序重放（状态机与入队对重放幂等）。
+    let contendedOut = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       const result = await commit({ previous, evaluation, group });
-      if (result) break; // 成功推进
-      // 冲突：重读最新实例，基于新状态重新评估同一批事实
-      previous = await store.activeIncident(fingerprint);
-      if (!previous) break; // 实例已消失（如被并发恢复），放弃本轮
+      if (!result.contended) {
+        contendedOut = false;
+        break;
+      }
+      contendedOut = true;
+      // 冲突：重读最新实例（含已恢复），基于新状态重新评估同一批事实。
+      previous = await store.recentIncident(fingerprint);
       const reEval = evaluateAlertRules({
         events: group,
         previousIncident: previous,
@@ -211,17 +235,19 @@ export async function processAlerts(
         now,
       });
       const re = reEval.find((row) => row.fingerprint === fingerprint);
-      if (!re || re.suppressed || re.absent) break;
-      // 若严重度未变且无新通知动作，无需继续重试
-      if (re.severity === evaluation.severity && !re.cleared) break;
-      // 否则用新评估继续
+      if (!re || re.absent) break;
       Object.assign(evaluation, re);
     }
+    // 重试耗尽仍冲突：本批事实未提交，游标不得越过它们。
+    if (contendedOut) unresolvedContention = true;
   }
   // 游标只按摄取顺序前进；无事件时不回退（null 表示从头读，绝不能写回）。
-  const nextCursor = events.length
-    ? { ingestSeq: events.at(-1).ingestSeq }
-    : cursor;
+  // 有未提交的冲突事实时也不前进：推进等于宣布"这批已消费"，升级会被
+  // 永久跳过；停在原位重放，由幂等的状态机重新处理。
+  const nextCursor =
+    events.length && !unresolvedContention
+      ? { ingestSeq: events.at(-1).ingestSeq }
+      : cursor;
   // 空转也要更新进度心跳：停滞检测依赖 lastProgressAt，"空闲"不等于"停滞"。
   const advanced = await store.advanceProcessorState({
     lastEventCursor: nextCursor,

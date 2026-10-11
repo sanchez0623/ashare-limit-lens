@@ -17,6 +17,7 @@ import {
 } from "../backend/domain/realtime.js";
 import { RealtimeRepository } from "../backend/storage/realtime.js";
 import { pollTrading } from "../backend/services/realtime.js";
+import { buildOperationEvents } from "../backend/services/alerts.js";
 import { parseTencentQuotes } from "../backend/services/market.js";
 import { exportPaper, verifyExport } from "../backend/services/paper.js";
 import { localDatabase } from "../scripts/local-db.mjs";
@@ -330,12 +331,18 @@ test("除权不匹配：引擎拒收报价并留下结构化标记，报价恢�
     db.close();
   }
 });
-test("账户提交后事件写入失败不丢风险事实：缓冲到下一轮补写", async () => {
+test("事件写入与账户提交同事务：写入失败提交回滚，下轮重放补齐风险事实", async () => {
   const db = localDatabase(),
     env = { DB: db, TRADING_POLL_SECONDS: "3" };
+  // 预置：前一日已结算并冻结计划，本日轮询才能走到账户提交路径。
+  const repo = new RealtimeRepository(env);
+  await baseline(repo);
+  await repo.savePlan(frozen([["HOLD", 0]], dateAt(0)));
   const realPrepare = db.prepare.bind(db);
   let failEventWrite = true;
-  // 只让第一次事件写入失败，模拟"账户提交已成功、随后写事件异常"。
+  // 让事务里的第一条事件写入失败：事件与账户状态在同一个 batch 里，
+  // 必须整体回滚——退出钩子覆盖不了 SIGKILL/断电，只有同事务写入才能
+  // 保证"已提交的账户风险"必然有对应事件。
   db.prepare = (sql) => {
     if (
       failEventWrite &&
@@ -345,6 +352,9 @@ test("账户提交后事件写入失败不丢风险事实：缓冲到下一轮�
       return {
         bind: () => ({
           run: async () => {
+            throw new Error("disk unavailable");
+          },
+          _run: () => {
             throw new Error("disk unavailable");
           },
         }),
@@ -360,16 +370,34 @@ test("账户提交后事件写入失败不丢风险事实：缓冲到下一轮�
       now: () =>
         new Date(Date.parse("2026-01-02T01:35:00.000Z") + ++calls * 20000),
       providers: {
-        calendar: async () => ({ dates: ["2026-01-02"], benchmark: [] }),
-        quotes: async () => ({}),
+        calendar: async () => ({
+          dates: [dateAt(0), "2026-01-02"],
+          benchmark: [],
+        }),
+        quotes: async () =>
+          observation("2026-01-02", "09:30:00", 1000, 100000).quotes,
       },
     });
     await runner.ready;
-    const first = await db
-      .prepare("SELECT COUNT(*) AS n FROM operation_events")
+    const sessions = await db
+      .prepare("SELECT COUNT(*) AS n FROM paper_live_sessions")
       .first();
-    assert.equal(Number(first.n), 0, "第一次写入失败，事件不得凭空消失");
-    // 下一轮：缓冲补写成功，第一轮的风险事实仍然入账。
+    assert.equal(
+      Number(sessions.n),
+      0,
+      "事件写入失败时账户提交一并回滚，不留无事件的风险敞口",
+    );
+    // 提交失败轮次由 runner 以 ERROR 事实入账（缓冲补写），失败不静默。
+    const first = await db
+      .prepare(
+        "SELECT type, rule_type FROM operation_events ORDER BY ingest_seq",
+      )
+      .all();
+    assert.ok(
+      first.results.some((row) => row.rule_type === "LOOP_FAILED"),
+      `提交失败轮次必须以 RUNNER_FAILED 事实入账：${JSON.stringify(first.results)}`,
+    );
+    // 下一轮：账户提交成功，运行事实随同一事务落库。
     await new Promise((resolve) => setTimeout(resolve, 1400));
     const second = await db
       .prepare(
@@ -378,10 +406,78 @@ test("账户提交后事件写入失败不丢风险事实：缓冲到下一轮�
       .all();
     assert.ok(
       second.results.length >= 2,
-      `写入恢复后必须补上失败那一轮的事实，实际 ${JSON.stringify(second.results)}`,
+      `下轮提交成功后事实齐备，实际 ${JSON.stringify(second.results)}`,
     );
+    const settled = await db
+      .prepare("SELECT COUNT(*) AS n FROM paper_live_sessions")
+      .first();
+    assert.equal(Number(settled.n), 1, "下轮账户提交成功");
   } finally {
     runner?.stop();
+    db.close();
+  }
+});
+test("风险事实随账户提交同事务落库：已提交账户的回撤与保护退出阻塞必然有事件", async () => {
+  const db = localDatabase(),
+    repo = new RealtimeRepository({ DB: db });
+  try {
+    await baseline(repo);
+    let account = await repo.account();
+    const intent = createPlan(
+      snapshot(dateAt(0)),
+      account.book,
+      BASE_STRATEGY,
+      "baseline-v1",
+      `${dateAt(0)}T07:10:00.000Z`,
+    );
+    await repo.savePlan(intent);
+    let session = openSession(account.book, intent, dateAt(1));
+    account = await repo.account();
+    const obs = observation(dateAt(1), "09:30:00", 800, 100000, 1000, {
+      // 前收一致（不触发除权拒收），但价格跌破止损 → 保护退出触发且
+      // 跌停无法成交 → 保护退出阻塞；净值回撤超限。
+      limitDownCents: 700,
+    });
+    const step = advanceSession(account.book, session, obs);
+    const summary = {
+      status: "RUNNING",
+      drawdown: 0.2,
+      drawdownBreached: true,
+      blockedProtectiveExits: ["600001"],
+      incompleteRecoveries: [],
+      corporateActionHolds: [],
+    };
+    const events = buildOperationEvents(
+      {
+        source: "loop",
+        result: summary,
+        now: obs.observedAt,
+        tradeDate: dateAt(1),
+        sourceSequence: step.session.sequence,
+      },
+      "test-instance",
+    );
+    assert.ok(
+      events.some((event) => event.ruleType === "DRAWDOWN_TRIPPED") &&
+        events.some((event) => event.ruleType === "PROTECTIVE_EXIT_BLOCKED"),
+      "风险事实已分类",
+    );
+    assert.equal(
+      await repo.commitObservation(account.revision, step, obs, events),
+      true,
+    );
+    const rows = await db
+      .prepare(
+        "SELECT rule_type, payload FROM operation_events WHERE rule_type IN ('DRAWDOWN_TRIPPED','PROTECTIVE_EXIT_BLOCKED')",
+      )
+      .all();
+    const rules = rows.results.map((row) => row.rule_type).sort();
+    assert.deepEqual(
+      rules,
+      ["DRAWDOWN_TRIPPED", "PROTECTIVE_EXIT_BLOCKED"],
+      "账户提交成功时风险事件必然已在同一事务落库",
+    );
+  } finally {
     db.close();
   }
 });

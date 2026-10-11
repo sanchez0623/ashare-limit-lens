@@ -133,6 +133,20 @@ export class AlertRepository {
     return row ? this.rowToIncident(row) : null;
   }
 
+  // 最近实例：优先活动实例，没有活动实例时返回最近恢复的实例。
+  // 迁移防重（P1-4）依赖已恢复实例做幂等判定——"补读旧事件不得重新打开
+  // 已恢复告警"的守卫在 transitionIncident 里比较 resolvedAt，只查活动
+  // 实例时该守卫永远无法命中。
+  async recentIncident(fingerprint) {
+    const row = await this.db
+      .prepare(
+        "SELECT * FROM alert_incidents WHERE fingerprint = ? ORDER BY (resolved_at IS NULL) DESC, last_seen DESC LIMIT 1",
+      )
+      .bind(fingerprint)
+      .first();
+    return row ? this.rowToIncident(row) : null;
+  }
+
   rowToIncident(row) {
     const payload = JSON.parse(row.payload);
     return {
@@ -250,16 +264,24 @@ export class AlertRepository {
             revision: current.revision,
           };
         revision = current.revision + 1;
+        // 显式 null 与"未指定"必须区分：重开实例要清除 resolved_at 与
+        // ack_until、重置 first_seen，?? 会把 null 当缺省值回填旧数据，
+        // 导致重开后恢复标记残留、活动实例查询永远漏掉它。
+        const pick = (key) =>
+          patch && Object.prototype.hasOwnProperty.call(patch, key)
+            ? patch[key]
+            : current[key];
         const result = await this.db
           .prepare(
-            "UPDATE alert_incidents SET status = ?, severity = ?, last_seen = ?, ack_until = ?, resolved_at = ?, revision = revision + 1, last_run_id = ?, payload = ? WHERE id = ? AND revision = ?",
+            "UPDATE alert_incidents SET status = ?, severity = ?, last_seen = ?, ack_until = ?, resolved_at = ?, first_seen = ?, revision = revision + 1, last_run_id = ?, payload = ? WHERE id = ? AND revision = ?",
           )
           .bind(
-            patch?.status ?? current.status,
-            patch?.severity ?? current.severity,
-            patch?.lastSeen ?? current.lastSeen,
-            patch?.ackUntil ?? current.ackUntil,
-            patch?.resolvedAt ?? current.resolvedAt,
+            pick("status"),
+            pick("severity"),
+            pick("lastSeen"),
+            pick("ackUntil"),
+            pick("resolvedAt"),
+            pick("firstSeen"),
             runId,
             JSON.stringify(mergedIncidentPayload(current, patch)),
             id,
@@ -451,15 +473,16 @@ export class AlertRepository {
 
   // 队列健康：overdue 是"现在就该发却没人领"的项，是分发器停滞的直接证据；
   // 只看 pending 总量会把空闲队列当成健康（分发器已死时队列恰好是空的）。
-  // longPending: 在 PENDING/SENDING 状态超过 2 分钟的关键通知——这类积压即使
-  // 未达 maxAttempts 也应视为不健康，直到被送达或所有者 ACK。
+  // longPending: 入队（created_at）后超过 2 分钟仍未送达的项——计时基准必须
+  // 是入队时刻而不是 updated_at：每次失败重试都会刷新 updated_at，靠它计时
+  // 时"等了 150 秒还没发出去"的通知会被刚发生的重试重置成健康（P1-3）。
   async outboxHealth({ now = new Date().toISOString() } = {}) {
     const twoMinutesAgo = new Date(
       new Date(now).getTime() - 2 * 60 * 1000,
     ).toISOString();
     const row = await this.db
       .prepare(
-        "SELECT SUM(CASE WHEN status IN ('PENDING','SENDING') THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status = 'PENDING' AND next_attempt_at > ? THEN 1 ELSE 0 END) AS scheduled, SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) AS sent, SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END) AS expired, SUM(CASE WHEN (status = 'PENDING' AND next_attempt_at <= ?) OR (status = 'SENDING' AND lease_until < ?) THEN 1 ELSE 0 END) AS overdue, SUM(CASE WHEN status IN ('PENDING','SENDING') AND updated_at <= ? THEN 1 ELSE 0 END) AS long_pending FROM alert_outbox",
+        "SELECT SUM(CASE WHEN status IN ('PENDING','SENDING') THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status = 'PENDING' AND next_attempt_at > ? THEN 1 ELSE 0 END) AS scheduled, SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) AS sent, SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END) AS expired, SUM(CASE WHEN (status = 'PENDING' AND next_attempt_at <= ?) OR (status = 'SENDING' AND lease_until < ?) THEN 1 ELSE 0 END) AS overdue, SUM(CASE WHEN status IN ('PENDING','SENDING') AND created_at <= ? THEN 1 ELSE 0 END) AS long_pending FROM alert_outbox",
       )
       .bind(now, now, now, twoMinutesAgo)
       .first();
@@ -563,17 +586,24 @@ export class AlertRepository {
         revision: current.revision,
         winnerCursor: current.lastEventCursor,
       };
+    // 游标单调保护：无论什么路径（并发评估、首次启动读到已存在的行），
+    // proposed 都不得小于库中已推进的位置——写回旧游标就是永久漏读。
+    const proposed = lastEventCursor ?? current.lastEventCursor;
+    const proposedSeq = Number.isInteger(proposed?.ingestSeq)
+      ? proposed.ingestSeq
+      : null;
+    const currentSeq = Number.isInteger(current.lastEventCursor?.ingestSeq)
+      ? current.lastEventCursor.ingestSeq
+      : null;
+    const finalCursor =
+      proposedSeq != null && currentSeq != null && proposedSeq < currentSeq
+        ? current.lastEventCursor
+        : proposed;
     const result = await this.db
       .prepare(
         "UPDATE alert_processor_state SET revision = revision + 1, last_event_cursor = ?, last_progress_at = ?, last_run_id = ? WHERE id = ? AND revision = ?",
       )
-      .bind(
-        JSON.stringify(lastEventCursor ?? current.lastEventCursor),
-        now,
-        runId,
-        id,
-        current.revision,
-      )
+      .bind(JSON.stringify(finalCursor), now, runId, id, current.revision)
       .run();
     if (result.meta.changes !== 1)
       return {
