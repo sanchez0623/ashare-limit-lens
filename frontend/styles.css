@@ -1771,6 +1771,36 @@ table {
   font-size: 18px;
   letter-spacing: 0.2px;
 }
+.strategy-metrics {
+  padding-inline: 22px;
+}
+.strategy-metrics > div {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+.strategy-metrics .mini-label {
+  margin-bottom: 0;
+}
+.strategy-metrics strong {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.strategy-metrics small {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+#strategies-status .strategy-metrics {
+  margin-bottom: 0;
+}
+@media (max-width: 720px) {
+  .strategy-metrics,
+  #strategies-view .panel-footnote {
+    padding-inline: 17px;
+  }
+}
 .version-row {
   margin: 16px 24px;
   padding: 14px 0;

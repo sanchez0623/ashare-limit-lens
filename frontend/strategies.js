@@ -50,7 +50,7 @@ function renderStatus() {
   }
   const active = status.activeCohort;
   container.innerHTML = `
-    <div class="metrics">
+    <div class="metrics strategy-metrics">
       <div><span class="mini-label">活动批次</span><strong>${
         active ? `${active.id.slice(0, 18)}…` : "无"
       }</strong><small>${active ? (stageNames[active.stage] ?? active.stage) : "可发起新批次"}</small></div>
@@ -144,7 +144,7 @@ async function renderDetail() {
     )
     .join("");
   container.innerHTML = `
-    <div class="metrics">
+    <div class="metrics strategy-metrics">
       <div><span class="mini-label">冠军</span><strong>${
         evaluation?.champion?.memberId ?? "无"
       }</strong><small>${
