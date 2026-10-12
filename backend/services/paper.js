@@ -1,19 +1,28 @@
-import { PaperRepository, digest } from "../storage/paper.js";
+import {
+  PaperRepository,
+  digest,
+  buildOriginalScoreLookup,
+} from "../storage/paper.js";
 import {
   newBook,
   createPlan,
   defensivePlan,
   executePlan,
   auditLedger,
-  RISK_LIMITS,
 } from "../domain/trading.js";
-import { collectTradingDay, tradingCalendar } from "./market.js";
+import {
+  collectTradingDay,
+  tradingCalendar,
+  indexDailyCloses,
+} from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { safeError } from "../http.js";
 import { feesForBook } from "../../shared/fees.js";
+import { riskLimitsForBook } from "../../shared/risk-limits.js";
+import { DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
 import { RealtimeRepository } from "../storage/realtime.js";
 import {
   openSession,
@@ -48,7 +57,8 @@ async function settlePaperDay(env, date) {
     )
       .toISOString()
       .slice(0, 10);
-    calendar = await tradingCalendar(from, date);
+    const benchmarkCode = account.book.benchmarkCode || DEFAULT_BENCHMARK;
+    calendar = await tradingCalendar(from, date, benchmarkCode);
     calendarDates = calendar.dates.filter((day) => day > date).slice(0, 10);
     if (!calendar.dates.includes(date))
       return {
@@ -123,8 +133,12 @@ async function settlePaperDay(env, date) {
       await repository.logRun(date, "BLOCKED", { reason: error.message });
       return { status: "BLOCKED", reason: error.message, calendarDates };
     }
+    // 基准指数可切换：切换后按新指数当日收盘重新起算，避免跨指数混算。
+    settlement.book.benchmarkCode = benchmarkCode;
     settlement.book.benchmarkBaseCents =
-      account.book.benchmarkBaseCents || benchmark?.closeCents || null;
+      account.book.benchmarkCode === benchmarkCode
+        ? account.book.benchmarkBaseCents || benchmark?.closeCents || null
+        : benchmark?.closeCents || null;
     settlement.equity.benchmarkReturn =
       benchmark?.closeCents && settlement.book.benchmarkBaseCents
         ? benchmark.closeCents / settlement.book.benchmarkBaseCents - 1
@@ -165,6 +179,12 @@ async function settlePaperDay(env, date) {
     // 新政策从下一个尚未冻结的计划生效（§3.2）：计划冻结完整政策 bundle。
     const executionCostPolicy = await effectiveExecutionCostPolicy(env);
     const strategy = await repository.strategy(account.book);
+    // 持仓股掉出当日涨停池时，从最近快照归档回查原始评分用于计划展示。
+    const originalScoreLookup = await buildOriginalScoreLookup(
+      repository.db,
+      date,
+      account.book.positions.map((position) => position.code),
+    );
     nextPlan = await repository.savePlan(
       snapshot
         ? createPlan(
@@ -173,7 +193,7 @@ async function settlePaperDay(env, date) {
             strategy,
             account.book.activeStrategy,
             new Date().toISOString(),
-            { executionCostPolicy },
+            { executionCostPolicy, originalScoreLookup },
           )
         : defensivePlan(
             date,
@@ -181,7 +201,7 @@ async function settlePaperDay(env, date) {
             strategy,
             account.book.activeStrategy,
             new Date().toISOString(),
-            { executionCostPolicy },
+            { executionCostPolicy, originalScoreLookup },
           ),
     );
   }
@@ -250,7 +270,7 @@ export async function exportPaper(env, attempt = 0) {
     exportedAt: new Date().toISOString(),
     initialCashCents: book.initialCashCents,
     book,
-    riskLimits: RISK_LIMITS,
+    riskLimits: riskLimitsForBook(book),
     feeConfig: feesForBook(book),
     executionCostPolicy: await effectiveExecutionCostPolicy(env),
     equities: rows[0].map((row) => JSON.parse(row.payload)).reverse(),
@@ -416,6 +436,25 @@ export async function paperOverview(env, attempt = 0) {
     ),
   );
   const equities = rows[0].map((row) => JSON.parse(row.payload)).reverse();
+  // 收益曲线基准随账户设置整体重算：切换指数后历史段仍保持同一基准口径。
+  const benchmarkCode = book.benchmarkCode || DEFAULT_BENCHMARK;
+  if (equities.length) {
+    try {
+      const closes = await indexDailyCloses(
+        benchmarkCode,
+        equities[0].date,
+        equities.at(-1).date,
+      );
+      const base = closes.get(equities[0].date);
+      if (base)
+        for (const row of equities) {
+          const close = closes.get(row.date);
+          row.benchmarkReturn = close ? close / base - 1 : null;
+        }
+    } catch {
+      // 基准行情暂不可用时保留结算时记录的数值
+    }
+  }
   const allLedger = (await repository.history("paper_ledger", 100000)).map(
     (row) => JSON.parse(row.payload),
   );
@@ -436,11 +475,12 @@ export async function paperOverview(env, attempt = 0) {
     book,
     equity: equities.at(-1) || null,
     equities,
+    benchmarkCode,
     ledger: rows[1].map((row) => JSON.parse(row.payload)),
     plan: rows[2][0] ? JSON.parse(rows[2][0].payload) : null,
     run: rows[3][0] ? JSON.parse(rows[3][0].payload) : null,
     audit,
-    riskLimits: RISK_LIMITS,
+    riskLimits: riskLimitsForBook(book),
     feeConfig: feesForBook(book),
     canEditCapital,
     versions,

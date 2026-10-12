@@ -10,6 +10,12 @@ import {
   EXECUTION_COST_MODEL,
   defaultExecutionCostPolicy,
 } from "../../shared/execution-cost.js";
+import {
+  DEFAULT_RISK_LIMITS,
+  normalizeRiskLimits,
+  riskLimitsForBook,
+  planRiskLimits,
+} from "../../shared/risk-limits.js";
 import { buildExecutionContext, solveFillQuantity } from "./execution-cost.js";
 
 export const ACTIONS = Object.freeze({
@@ -34,13 +40,9 @@ export const BASE_STRATEGY = Object.freeze({
   tBuyDip: 0.02,
   tSellRise: 0.02,
 });
-export const RISK_LIMITS = Object.freeze({
-  maxGrossExposure: 0.6,
-  maxPositionWeight: 0.2,
-  maxDrawdown: 0.1,
-  maxParticipation: 0.01,
-  slippageBps: 10,
-});
+// 兼容别名：旧执行器与既有引用仍使用默认风控；账户级自定义值
+// 通过 book.riskLimits / plan.riskLimits 传递（shared/risk-limits.js）。
+export const RISK_LIMITS = DEFAULT_RISK_LIMITS;
 export const toCents = (value) => Math.round(Number(value) * 100);
 export const roundLot = (quantity) =>
   Math.floor(Math.max(0, quantity) / 100) * 100;
@@ -79,6 +81,8 @@ export function newBook(
     feeModel: "itemized-v2",
     feeConfig: normalizeFees(feeConfig),
     feeConfigVersion: 1,
+    riskLimits: normalizeRiskLimits(DEFAULT_RISK_LIMITS),
+    riskLimitsVersion: 1,
   };
 }
 
@@ -157,6 +161,9 @@ export function createPlan(
   // 新政策从下一个尚未冻结的计划生效，持仓本身不重置。
   const executionCostPolicy =
     options.executionCostPolicy ?? defaultExecutionCostPolicy();
+  // 原始分跨日回查：持仓股掉出当日涨停池时，按最近一次快照归档评分回填，
+  // 查不到才如实置空；不参与任何策略决策，仅还原展示口径。
+  const originalScoreLookup = options.originalScoreLookup ?? null;
   const previousLimitUpCodes = (snapshot.stocks ?? [])
     .filter((stock) => Number(stock.height) >= 1)
     .map((stock) => stock.code);
@@ -164,9 +171,10 @@ export function createPlan(
   const byCode = new Map(signals.map((stock) => [stock.code, stock]));
   const equity = book.equityCents;
   const drawdown = book.peakEquityCents ? 1 - equity / book.peakEquityCents : 0;
+  const riskLimits = riskLimitsForBook(book);
   const emotion = snapshot.emotion ?? 0;
   const targetExposure =
-    drawdown >= RISK_LIMITS.maxDrawdown
+    drawdown >= riskLimits.maxDrawdown
       ? 0
       : emotion >= 65
         ? 0.55
@@ -199,7 +207,8 @@ export function createPlan(
       name: position.name,
       sector: position.sector,
       score,
-      originalScore: signal?.originalScore ?? null,
+      originalScore:
+        signal?.originalScore ?? originalScoreLookup?.(position.code) ?? null,
       referenceCents,
       stopCents: Math.round(
         (costBasis(position) / quantity) * (1 - strategy.stopLoss),
@@ -209,7 +218,7 @@ export function createPlan(
       ),
     };
     if (
-      drawdown >= RISK_LIMITS.maxDrawdown ||
+      drawdown >= riskLimits.maxDrawdown ||
       pnl <= -strategy.stopLoss ||
       position.heldDays >= strategy.maxHoldDays
     ) {
@@ -219,7 +228,7 @@ export function createPlan(
         side: "SELL",
         quantity,
         reason:
-          drawdown >= RISK_LIMITS.maxDrawdown
+          drawdown >= riskLimits.maxDrawdown
             ? "账户回撤触及风险上限"
             : pnl <= -strategy.stopLoss
               ? "收盘亏损达到止损阈值"
@@ -304,7 +313,7 @@ export function createPlan(
   const slots = Math.max(0, strategy.maxPositions - book.positions.length);
   let opened = 0;
   for (const signal of signals) {
-    if (opened >= slots || emotion < 40 || drawdown >= RISK_LIMITS.maxDrawdown)
+    if (opened >= slots || emotion < 40 || drawdown >= riskLimits.maxDrawdown)
       break;
     if (
       holdings.has(signal.code) ||
@@ -359,6 +368,8 @@ export function createPlan(
     feeModel: book.feeModel || "legacy-v1",
     feeConfig: structuredClone(feesForBook(book)),
     feeConfigVersion: book.feeConfigVersion || 0,
+    riskLimits: structuredClone(riskLimits),
+    riskLimitsVersion: book.riskLimitsVersion || 0,
     createdAt,
     strategyVersion,
     strategy,
@@ -368,8 +379,14 @@ export function createPlan(
     previousLimitUpKnown: true,
     emotion,
     targetExposure,
-    maxExposure: RISK_LIMITS.maxGrossExposure,
-    orders: carriedPlanOrders(orders, book, snapshot.date, strategy),
+    maxExposure: riskLimits.maxGrossExposure,
+    orders: carriedPlanOrders(
+      orders,
+      book,
+      snapshot.date,
+      strategy,
+      originalScoreLookup,
+    ),
     constraints:
       "下一交易日执行；T+1；整手买入；涨跌停不保证成交；成交费用和滑点计入账本。",
   };
@@ -395,7 +412,7 @@ function consumeLots(position, quantity, date) {
   if (remaining) throw new Error("成交数量超过 T+1 可卖数量");
   return basis;
 }
-function carriedPlanOrders(orders, book, date, strategy) {
+function carriedPlanOrders(orders, book, date, strategy, originalScoreLookup) {
   const carried = new Map();
   const create = (item, action, side, quantity, reason) => {
     const p = book.positions.find((p) => p.code === item.code);
@@ -407,7 +424,7 @@ function carriedPlanOrders(orders, book, date, strategy) {
       name: p.name,
       sector: p.sector,
       score: p.lastScore ?? null,
-      originalScore: null,
+      originalScore: originalScoreLookup?.(item.code) ?? null,
       referenceCents: p.markCents,
       stopCents: Math.round(basis * (1 - strategy.stopLoss)),
       takeProfitCents: Math.round(basis * (1 + strategy.takeProfit)),
@@ -463,12 +480,17 @@ export function defensivePlan(
   // 缺少昨日冻结信息时如实声明：昨日涨停风险项不适用，不猜测。
   const executionCostPolicy =
     options.executionCostPolicy ?? defaultExecutionCostPolicy();
+  // 当日评分整体缺失，策略加权分保持为空；原始分仍按最近归档回查展示。
+  const originalScoreLookup = options.originalScoreLookup ?? null;
   const drawdown = 1 - book.equityCents / book.peakEquityCents;
+  const riskLimits = riskLimitsForBook(book);
   return {
     signalDate: date,
     feeModel: book.feeModel || "legacy-v1",
     feeConfig: structuredClone(feesForBook(book)),
     feeConfigVersion: book.feeConfigVersion || 0,
+    riskLimits: structuredClone(riskLimits),
+    riskLimitsVersion: book.riskLimitsVersion || 0,
     createdAt,
     strategyVersion,
     strategy,
@@ -479,13 +501,13 @@ export function defensivePlan(
     sourceSnapshotMissing: true,
     emotion: null,
     targetExposure: 0,
-    maxExposure: RISK_LIMITS.maxGrossExposure,
+    maxExposure: riskLimits.maxGrossExposure,
     orders: carriedPlanOrders(
       book.positions.map((position) => {
         const quantity = totalQuantity(position),
           basis = costBasis(position);
         const exit =
-          drawdown >= RISK_LIMITS.maxDrawdown ||
+          drawdown >= riskLimits.maxDrawdown ||
           (quantity * position.markCents) / basis - 1 <= -strategy.stopLoss ||
           position.heldDays >= strategy.maxHoldDays;
         return {
@@ -494,7 +516,7 @@ export function defensivePlan(
           name: position.name,
           sector: position.sector,
           score: null,
-          originalScore: null,
+          originalScore: originalScoreLookup?.(position.code) ?? null,
           referenceCents: position.markCents,
           stopCents: Math.round((basis / quantity) * (1 - strategy.stopLoss)),
           takeProfitCents: Math.round(
@@ -511,6 +533,7 @@ export function defensivePlan(
       book,
       date,
       strategy,
+      originalScoreLookup,
     ),
     constraints: "缺少评分时不构造信号；只允许基于已结算持仓执行风险保护。",
   };
@@ -961,6 +984,8 @@ function executeFillWithCostModel(
   const quotes = dataset.quotes;
   const feeConfig = plan?.feeConfig || LEGACY_FEES;
   const feeModel = plan?.feeModel || "legacy-v1";
+  // 计划冻结的风控约束（§3.2 同一模式）：旧计划回退默认值。
+  const riskLimits = planRiskLimits(plan);
   const quote = quotes[order.code];
   const point = event.priceCents;
   if (
@@ -1001,8 +1026,8 @@ function executeFillWithCostModel(
       : 0;
     capCents = Math.min(
       book.cashCents,
-      equity * RISK_LIMITS.maxPositionWeight - current,
-      equity * RISK_LIMITS.maxGrossExposure - value,
+      equity * riskLimits.maxPositionWeight - current,
+      equity * riskLimits.maxGrossExposure - value,
     );
   }
   const solved = solveFillQuantity({

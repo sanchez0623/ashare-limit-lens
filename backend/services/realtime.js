@@ -6,7 +6,7 @@ import {
   inSession,
   TERMINAL,
 } from "../domain/realtime.js";
-import { RISK_LIMITS } from "../domain/trading.js";
+import { planRiskLimits } from "../../shared/risk-limits.js";
 import { tradingQuotes, tradingCalendar } from "./market.js";
 import { readWeights } from "./review.js";
 import { buildOperationEvents } from "./alerts.js";
@@ -179,7 +179,8 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
       watchedCodes: codes.length,
       missingQuoteCodes,
       drawdown,
-      drawdownBreached: drawdown >= RISK_LIMITS.maxDrawdown,
+      drawdownBreached:
+        drawdown >= planRiskLimits(result.session.plan).maxDrawdown,
       blockedProtectiveExits,
       incompleteRecoveries,
       corporateActionHolds,

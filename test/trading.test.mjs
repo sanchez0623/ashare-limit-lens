@@ -15,7 +15,10 @@ import {
   validateProposal,
   validateCandidate,
 } from "../backend/domain/validation.js";
-import { PaperRepository } from "../backend/storage/paper.js";
+import {
+  PaperRepository,
+  buildOriginalScoreLookup,
+} from "../backend/storage/paper.js";
 import { exportPaper, verifyExport } from "../backend/services/paper.js";
 import { requestProposal } from "../backend/services/improvement.js";
 import { proposeImprovement as improveStrategy } from "../backend/services/research.js";
@@ -481,4 +484,80 @@ test("评分源缺失时只冻结防守计划，完整多日账本可以独立�
     ),
   );
   DB.close();
+});
+
+test("持仓掉出当日评分池时，原始分按最近快照归档回查", () => {
+  const book = entered().book;
+  const snap = snapshot(dateAt(2));
+  snap.stocks = snap.stocks.filter((stock) => stock.code !== "600001");
+  const missing = createPlan(snap, book, BASE_STRATEGY, "v", "now");
+  assert.equal(missing.orders[0].action, "T_FORWARD");
+  assert.equal(missing.orders[0].score, 90);
+  assert.equal(missing.orders[0].originalScore, null);
+  const backfilled = createPlan(snap, book, BASE_STRATEGY, "v", "now", {
+    originalScoreLookup: (code) => (code === "600001" ? 88 : null),
+  });
+  assert.equal(backfilled.orders[0].action, "T_FORWARD");
+  assert.equal(backfilled.orders[0].originalScore, 88);
+});
+
+test("结转单与防御计划的原始分同样按归档回查", () => {
+  const lookup = (code) => (code === "600001" ? 88 : null);
+  const book = entered().book;
+  book.pendingExits = [
+    { code: "600001", name: "合成样本", sector: "测试行业" },
+  ];
+  const snap = snapshot(dateAt(2));
+  snap.stocks = snap.stocks.filter((stock) => stock.code !== "600001");
+  const carriedPlan = createPlan(snap, book, BASE_STRATEGY, "v", "now", {
+    originalScoreLookup: lookup,
+  });
+  const carriedOrder = carriedPlan.orders.find((order) => order.carried);
+  assert.equal(carriedOrder.action, "EXIT");
+  assert.equal(carriedOrder.originalScore, 88);
+  const defensive = defensivePlan(
+    dateAt(2),
+    entered().book,
+    BASE_STRATEGY,
+    "v",
+    "now",
+    { originalScoreLookup: lookup },
+  );
+  assert.equal(defensive.orders[0].score, null);
+  assert.equal(defensive.orders[0].originalScore, 88);
+});
+
+test("原始分回查只读归档，最近一次有效评分胜出", async () => {
+  const DB = localDatabase();
+  try {
+    const write = (date, stocks) =>
+      DB.prepare(
+        "INSERT INTO snapshots (trade_date, created_at, payload) VALUES (?, ?, ?)",
+      )
+        .bind(date, `${date}T07:10:00.000Z`, JSON.stringify({ date, stocks }))
+        .run();
+    await write(dateAt(0), [
+      { code: "600001", score: 70 },
+      { code: "600002", score: null },
+    ]);
+    await write(dateAt(1), [
+      { code: "600002", score: 83 },
+      { code: "600003", score: 91 },
+    ]);
+    await write(dateAt(2), [{ code: "600001", score: null }]);
+    const lookup = await buildOriginalScoreLookup(DB, dateAt(2), [
+      "600001",
+      "600002",
+      "600003",
+      "699999",
+    ]);
+    assert.equal(lookup("600001"), 70);
+    assert.equal(lookup("600002"), 83);
+    assert.equal(lookup("600003"), 91);
+    assert.equal(lookup("699999"), null);
+    const none = await buildOriginalScoreLookup(DB, dateAt(2), []);
+    assert.equal(none("600001"), null);
+  } finally {
+    DB.close();
+  }
 });

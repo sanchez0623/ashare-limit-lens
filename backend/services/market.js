@@ -2,6 +2,7 @@ import { publicFetch } from "./public-fetch.js";
 import { symbol, beijingDate } from "./review.js";
 import { toCents } from "../domain/trading.js";
 import { normalize, promotionStats } from "../../shared/scoring.js";
+import { BENCHMARK_CODES } from "../../shared/benchmarks.js";
 const CACHE = new Map();
 const EM_BASE = "https://push2ex.eastmoney.com/";
 const TOKEN = "7eea3edcaed734bea9cbfc24409ed989";
@@ -87,18 +88,19 @@ export async function marketData(date) {
   return result;
 }
 
-export async function tradingCalendar(startDate, endDate) {
+// 拉取单个指数的日线（含当日实时报价合并）；交易日历与基准曲线共用。
+async function indexKline(code, startDate, endDate) {
   const url = new URL("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get");
-  url.searchParams.set("param", `sh000001,day,${startDate},${endDate},80,qfq`);
+  url.searchParams.set("param", `${code},day,${startDate},${endDate},80,qfq`);
   const response = await publicFetch(url, 12000);
   if (!response.ok) throw new Error("交易日行情暂不可用");
   const body = await response.json();
-  const item = body.data?.sh000001;
+  const item = body.data?.[code];
   if (!item) throw new Error("缺少交易日校验数据");
   const days = (item.day || item.qfqday || []).filter(
     (row) => row[0] >= startDate && row[0] <= endDate,
   );
-  const quote = item.qt?.sh000001;
+  const quote = item.qt?.[code];
   const quoteDate = quote?.[30]?.slice(0, 8);
   const format = (value) =>
     `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
@@ -109,14 +111,44 @@ export async function tradingCalendar(startDate, endDate) {
   ) {
     days.push([endDate, quote[5], quote[3], quote[33], quote[34], quote[6]]);
   }
+  return days;
+}
+
+export async function tradingCalendar(startDate, endDate, benchmarkCode) {
+  // 交易日历固定取上证指数；基准曲线用账户所选指数，缺失时回退上证。
+  const days = await indexKline("sh000001", startDate, endDate);
+  let benchmarkDays = days;
+  if (benchmarkCode && benchmarkCode !== "sh000001") {
+    try {
+      const rows = await indexKline(benchmarkCode, startDate, endDate);
+      if (rows.length) benchmarkDays = rows;
+    } catch {
+      benchmarkDays = days;
+    }
+  }
   return {
     dates: days.map((day) => day[0]).sort(),
-    benchmark: days.map((day) => ({
+    benchmark: benchmarkDays.map((day) => ({
       date: day[0],
       closeCents: toCents(day[2]),
       openCents: toCents(day[1]),
     })),
   };
+}
+
+const INDEX_CLOSES_CACHE = new Map();
+// 按日期查询指数收盘价（分）；用于账户收益曲线按所选基准指数整体重算。
+export async function indexDailyCloses(code, startDate, endDate) {
+  if (!BENCHMARK_CODES.has(code)) throw new Error("不支持的基准指数");
+  const key = `${code}|${startDate}|${endDate}`;
+  const hit = INDEX_CLOSES_CACHE.get(key);
+  if (hit && Date.now() - hit.time < 600000) return hit.value;
+  const days = await indexKline(code, startDate, endDate);
+  const closes = new Map(days.map((day) => [day[0], toCents(day[2])]));
+  if (INDEX_CLOSES_CACHE.size >= 20)
+    INDEX_CLOSES_CACHE.delete(INDEX_CLOSES_CACHE.keys().next().value);
+  INDEX_CLOSES_CACHE.set(key, { time: Date.now(), value: closes });
+  return closes;
 }
 
 // 首页默认日期用：返回不晚于 today 的最后一个真实交易日，取不到返回 null。

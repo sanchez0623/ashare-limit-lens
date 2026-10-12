@@ -735,8 +735,8 @@ function renderReview() {
     ? "已配置"
     : "未配置";
   $("model-ai-detail").textContent = state.aiConfig.configured
-    ? `已配置 ${state.aiConfig.model}。只向模型发送冻结评分与核验结果，评价会与原始数据一并保存。`
-    : "服务端配置密钥、接口地址和模型后，AI 会根据冻结评分与已核验市场结果生成评价。密钥不进入浏览器。";
+    ? `已配置 ${state.aiConfig.model}。只向模型发送冻结评分、核验结果与近期客观指标（不含过往AI意见），评价会与原始数据一并保存。`
+    : "服务端配置密钥、接口地址和模型后，AI 会根据冻结评分、已核验市场结果与近期客观指标趋势生成评价。密钥不进入浏览器。";
   $("ai-content").innerHTML = ai
     ? `<div class="ai-score"><strong>${ai.score}</strong><span>AI 主观评价 / 100<small>${escape(ai.model)} · ${ai.confidence === "high" ? "较高" : ai.confidence === "medium" ? "中等" : "较低"}置信度</small></span></div><p class="ai-summary">${escape(ai.summary)}</p><h3>评价依据</h3><ul>${ai.evidence.map((v) => `<li>${escape(v)}</li>`).join("")}</ul>${ai.failures.length ? `<h3>判断不足</h3><ul>${ai.failures.map((v) => `<li>${escape(v)}</li>`).join("")}</ul>` : ""}${ai.suggestions.length ? `<h3>改进建议</h3><ul>${ai.suggestions.map((v) => `<li>${escape(v)}</li>`).join("")}</ul>` : ""}<p class="ai-note">AI 评价与规则反馈分分别保留。建议不会自动改写模型。</p>`
     : `<div class="ai-empty"><span class="ai-symbol">${icon("sliders")}</span><h3>${state.aiConfig.configured ? "等待已核验结果" : "大模型尚未配置"}</h3><p>${state.aiConfig.configured ? "积累事前快照并取得次日收盘结果后，AI 才对系统评价。" : "已预留 DeepSeek、OpenAI、通义兼容接口。配置服务端密钥后启用；不会用模拟 AI 结论替代真实调用。"}</p><div class="ai-process">冻结昨日评分<span>↓</span>核验今日市场结果<span>↓</span>AI 评分、证据与改进建议</div></div>`;

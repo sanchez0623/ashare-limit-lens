@@ -235,6 +235,8 @@ async function runBacktestInner(
     coverage.notes.push(
       "数据集未记录完整交易日历（旧版本），邻接检查退化为成功日期序列；建议重新导入以启用严格日历邻接",
     );
+  // 原始分跨日回查：逐日累积已见评分，持仓掉出当日评分池时取最近一次入池评分。
+  const scoreHistory = new Map();
   for (let index = 0; index + 1 < scores.length; index++) {
     const signal = scores[index];
     const signalDate = signal.tradeDate;
@@ -257,6 +259,11 @@ async function runBacktestInner(
       continue;
     }
     const snapshot = signal.payload;
+    for (const stock of snapshot?.stocks ?? []) {
+      if (stock?.score == null) continue;
+      const score = Number(stock.score);
+      if (Number.isFinite(score)) scoreHistory.set(stock.code, score);
+    }
     let plan;
     try {
       plan = createPlan(
@@ -265,7 +272,10 @@ async function runBacktestInner(
         strategyParams,
         `backtest-${runId}`,
         `${signalDate}T07:10:00.000Z`,
-        { executionCostPolicy: policyBundle },
+        {
+          executionCostPolicy: policyBundle,
+          originalScoreLookup: (code) => scoreHistory.get(code) ?? null,
+        },
       );
     } catch (error) {
       coverage.skippedPairs.push({

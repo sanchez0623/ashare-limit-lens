@@ -6,6 +6,11 @@ import {
   defensivePlan,
 } from "../domain/trading.js";
 import { normalizeFees, feesForBook } from "../../shared/fees.js";
+import {
+  normalizeRiskLimits,
+  riskLimitsForBook,
+} from "../../shared/risk-limits.js";
+import { BENCHMARK_CODES, DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
 import { latestPolicyBundle, verifyPolicyBundle } from "./execution-cost.js";
 
 function canonical(value) {
@@ -28,6 +33,36 @@ export async function digest(value) {
   ).join("");
 }
 const parse = (row) => (row ? JSON.parse(row.payload) : null);
+// 原始分跨日回查：从 snapshots 归档按日期倒序扫描，取每只股票最近一次
+// 入池的有效评分；评分缺失的快照跳过，继续向前找，直到找齐或扫完窗口。
+export async function buildOriginalScoreLookup(db, date, codes, lookback = 15) {
+  const wanted = new Set(codes);
+  const found = new Map();
+  if (!wanted.size) return () => null;
+  const result = await db
+    .prepare(
+      "SELECT trade_date, payload FROM snapshots WHERE trade_date <= ? ORDER BY trade_date DESC LIMIT ?",
+    )
+    .bind(date, lookback)
+    .all();
+  for (const row of result.results ?? []) {
+    let stocks;
+    try {
+      stocks = JSON.parse(row.payload)?.stocks ?? [];
+    } catch {
+      continue;
+    }
+    for (const stock of stocks) {
+      if (!wanted.has(stock.code) || found.has(stock.code)) continue;
+      // Number(null) === 0，必须先判空，避免缺失评分被当作 0 分回填。
+      if (stock?.score == null) continue;
+      const score = Number(stock.score);
+      if (Number.isFinite(score)) found.set(stock.code, score);
+    }
+    if (found.size === wanted.size) break;
+  }
+  return (code) => found.get(code) ?? null;
+}
 export class PaperRepository {
   constructor(env) {
     this.db = database(env);
@@ -270,10 +305,26 @@ export class PaperRepository {
       book.feeModel = "itemized-v2";
       book.feeConfigVersion = (book.feeConfigVersion || 0) + 1;
     }
+    const riskLimits =
+      settings.riskLimits === undefined
+        ? riskLimitsForBook(book)
+        : normalizeRiskLimits(settings.riskLimits);
+    const riskChanged =
+      settings.riskLimits !== undefined &&
+      JSON.stringify(riskLimitsForBook(book)) !== JSON.stringify(riskLimits);
+    if (riskChanged) {
+      book.riskLimits = riskLimits;
+      book.riskLimitsVersion = (book.riskLimitsVersion || 0) + 1;
+    }
     if (settings.improvementMode !== undefined) {
       if (!["auto", "manual"].includes(settings.improvementMode))
         throw new Error("改进模式无效");
       book.improvementMode = settings.improvementMode;
+    }
+    if (settings.benchmarkCode !== undefined) {
+      if (!BENCHMARK_CODES.has(settings.benchmarkCode))
+        throw new Error("基准指数无效");
+      book.benchmarkCode = settings.benchmarkCode;
     }
     const stamp = now.toISOString(),
       nonce = crypto.randomUUID();
@@ -322,7 +373,7 @@ export class PaperRepository {
     let replacement = null;
     // Only revise a plan on its signal day after close; never alter an executable intraday plan.
     if (
-      (capitalChanged || feesChanged) &&
+      (capitalChanged || feesChanged || riskChanged) &&
       book.lastDate === day &&
       time >= "15:05"
     ) {
@@ -334,12 +385,20 @@ export class PaperRepository {
         strategy = await this.strategy(book);
       // 重冻计划也带当前生效政策，避免替换计划悄悄退回旧口径。
       const executionCostPolicy = await latestPolicyBundle(this.db);
+      // 持仓股掉出当日涨停池时，从最近快照归档回查原始评分用于计划展示。
+      const originalScoreLookup = await buildOriginalScoreLookup(
+        this.db,
+        day,
+        book.positions.map((position) => position.code),
+      );
       replacement = snapshot
         ? createPlan(snapshot, book, strategy, book.activeStrategy, stamp, {
             executionCostPolicy,
+            originalScoreLookup,
           })
         : defensivePlan(day, book, strategy, book.activeStrategy, stamp, {
             executionCostPolicy,
+            originalScoreLookup,
           });
       if (previousPlan)
         statements.push(
@@ -380,17 +439,24 @@ export class PaperRepository {
       createdAt: stamp,
       capitalChanged,
       feesChanged,
+      riskChanged,
       before: {
         initialCashCents: account.book.initialCashCents,
         fees: feesForBook(account.book),
         feeConfigVersion: account.book.feeConfigVersion || 0,
+        riskLimits: riskLimitsForBook(account.book),
+        riskLimitsVersion: account.book.riskLimitsVersion || 0,
         improvementMode: account.book.improvementMode,
+        benchmarkCode: account.book.benchmarkCode || DEFAULT_BENCHMARK,
       },
       after: {
         initialCashCents: book.initialCashCents,
         fees: feesForBook(book),
         feeConfigVersion: book.feeConfigVersion || 0,
+        riskLimits: riskLimitsForBook(book),
+        riskLimitsVersion: book.riskLimitsVersion || 0,
         improvementMode: book.improvementMode,
+        benchmarkCode: book.benchmarkCode || DEFAULT_BENCHMARK,
       },
       previousBaselines: baselines.map((row) => JSON.parse(row.payload)),
       revisedPlanDate: replacement?.signalDate || null,

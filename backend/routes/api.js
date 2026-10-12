@@ -399,7 +399,14 @@ export async function api(request, env) {
       if (
         !body ||
         Object.keys(body).some(
-          (key) => !["initialCapital", "improvementMode", "fees"].includes(key),
+          (key) =>
+            ![
+              "initialCapital",
+              "improvementMode",
+              "fees",
+              "riskLimits",
+              "benchmarkCode",
+            ].includes(key),
         )
       )
         return json({ error: "不支持的账户设置" }, 400);

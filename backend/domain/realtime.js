@@ -5,9 +5,9 @@ import {
   availableQuantity,
   costBasis,
   roundLot,
-  RISK_LIMITS,
   BASE_STRATEGY,
 } from "./trading.js";
+import { planRiskLimits } from "../../shared/risk-limits.js";
 
 export const TERMINAL = new Set([
   "FILLED",
@@ -175,6 +175,8 @@ export function advanceSession(inputBook, inputSession, observation) {
     session = structuredClone(inputSession),
     ledger = [];
   if (session.status !== "OPEN") return { book, session, ledger };
+  // 计划冻结的风控约束：回撤熔断与旧模型参与率/滑点按会话计划执行。
+  const riskLimits = planRiskLimits(session.plan);
   const observed = new Date(observation.observedAt),
     clock = marketClock(observed);
   if (
@@ -271,7 +273,7 @@ export function advanceSession(inputBook, inputSession, observation) {
     const useCostModel = !!session.executionState;
     let budget = useCostModel
       ? Infinity
-      : roundLot(volume * RISK_LIMITS.maxParticipation);
+      : roundLot(volume * riskLimits.maxParticipation);
     const list = session.orders
       .filter((o) => o.code === code)
       .sort(
@@ -284,7 +286,7 @@ export function advanceSession(inputBook, inputSession, observation) {
       order.attempts++;
       if (
         side === "BUY" &&
-        1 - book.equityCents / book.peakEquityCents >= RISK_LIMITS.maxDrawdown
+        1 - book.equityCents / book.peakEquityCents >= riskLimits.maxDrawdown
       ) {
         order.status = "BLOCKED";
         order.reason = "账户回撤达到上限，暂停买入";
@@ -342,12 +344,12 @@ export function advanceSession(inputBook, inputSession, observation) {
           if (
             quote.closeCents > order.stopCents &&
             quote.closeCents < order.takeProfitCents &&
-            dd < RISK_LIMITS.maxDrawdown
+            dd < riskLimits.maxDrawdown
           )
             continue;
           order.triggered = true;
           order.action =
-            quote.closeCents <= order.stopCents || dd >= RISK_LIMITS.maxDrawdown
+            quote.closeCents <= order.stopCents || dd >= riskLimits.maxDrawdown
               ? "EXIT"
               : "REDUCE";
           const held = quantityOf(book, code);

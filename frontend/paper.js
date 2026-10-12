@@ -1,4 +1,10 @@
 import { DEFAULT_FEES, FEE_FIELDS } from "../shared/fees.js";
+import { DEFAULT_RISK_LIMITS, RISK_FIELDS } from "../shared/risk-limits.js";
+import {
+  BENCHMARK_INDEXES,
+  benchmarkName,
+  DEFAULT_BENCHMARK,
+} from "../shared/benchmarks.js";
 const $ = (id) => document.getElementById(id);
 const escape = (value) =>
   String(value ?? "").replace(
@@ -105,6 +111,20 @@ function feeSummary(config) {
       `${label} ${feeDisplay(key, config[key])}${unit === "元" ? " 元" : " / 万"}`,
   ).join(" · ");
 }
+const riskDisplay = (key, value) =>
+  RISK_FIELDS.find((field) => field.key === key)?.percent
+    ? Number((value * 100).toFixed(4))
+    : value;
+function fillRiskInputs(config) {
+  for (const { key } of RISK_FIELDS)
+    $(`risk-${key}`).value = riskDisplay(key, config[key]);
+}
+function riskSummary(config) {
+  return RISK_FIELDS.map(
+    ({ key, label, unit }) =>
+      `${label} ${riskDisplay(key, config[key])}${unit}`,
+  ).join(" · ");
+}
 function breakdown(fill) {
   const labels = {
     commission: "佣金",
@@ -132,7 +152,7 @@ function priceConditions(order) {
             : "持有并监控保护阈值";
   return reference + execution + protection;
 }
-function chart(rows) {
+function chart(rows, benchmarkLabel = "上证指数") {
   if (!rows.length)
     return '<div class="empty"><strong>收益曲线从首个结算日开始</strong>保存真实计划并执行后，逐日积累净值。</div>';
   const width = 760,
@@ -160,11 +180,11 @@ function chart(rows) {
       )
       .filter(Boolean)
       .join(" ");
-  return `<svg class="equity-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="账户累计收益率与上证指数收益率"><line x1="${padding}" x2="${width - padding}" y1="${y(0)}" y2="${y(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${padding}" y="18" class="chart-axis">${percent(high)}</text><text x="${padding}" y="${height - 7}" class="chart-axis">${percent(low)}</text><polyline points="${points("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${points("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${rows.map((row, index) => `<circle cx="${x(index)}" cy="${y(row.totalReturn)}" r="3" fill="#13977e"><title>${escape(row.date)}：账户 ${percent(row.totalReturn)}；基准 ${percent(row.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>模拟账户</span><span><i class="benchmark"></i>上证指数</span><span>${escape(rows[0].date)} — ${escape(rows.at(-1).date)} · ${rows.length} 个结算日</span></div>${rows.length === 1 ? '<p class="panel-footnote">首次结算只建立收益基准；下一交易日起执行事前计划。</p>' : ""}`;
+  return `<svg class="equity-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="账户累计收益率与${escape(benchmarkLabel)}收益率"><line x1="${padding}" x2="${width - padding}" y1="${y(0)}" y2="${y(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${padding}" y="18" class="chart-axis">${percent(high)}</text><text x="${padding}" y="${height - 7}" class="chart-axis">${percent(low)}</text><polyline points="${points("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${points("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${rows.map((row, index) => `<circle cx="${x(index)}" cy="${y(row.totalReturn)}" r="3" fill="#13977e"><title>${escape(row.date)}：账户 ${percent(row.totalReturn)}；基准 ${percent(row.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>模拟账户</span><span><i class="benchmark"></i>${escape(benchmarkLabel)}</span><span>${escape(rows[0].date)} — ${escape(rows.at(-1).date)} · ${rows.length} 个结算日</span></div>${rows.length === 1 ? '<p class="panel-footnote">首次结算只建立收益基准；下一交易日起执行事前计划。</p>' : ""}`;
 }
 function render() {
   if (!data) return;
-  const { book, equity, plan, run, versions } = data;
+  const { book, equity, plan, run, versions, riskLimits } = data;
   const live = data.realtime;
   const health = live?.health;
   $("paper-live-tag").textContent = live?.running
@@ -230,9 +250,12 @@ function render() {
     : "账本核对异常";
   $("paper-audit").className =
     `outline-tag ${data.audit.passed ? "verified" : "down"}`;
-  $("paper-chart").innerHTML = chart(data.equities);
+  $("paper-chart").innerHTML = chart(
+    data.equities,
+    benchmarkName(data.benchmarkCode || book.benchmarkCode),
+  );
   $("paper-risk").textContent =
-    `单股上限 20% · 总仓位上限 60% · 回撤 ${percent(equity?.drawdown ?? 0)} / 10% · 不透支`;
+    `单股上限 ${percent(riskLimits.maxPositionWeight)} · 总仓位上限 ${percent(riskLimits.maxGrossExposure)} · 回撤 ${percent(equity?.drawdown ?? 0)} / ${percent(riskLimits.maxDrawdown)} · 不透支`;
   $("paper-position-rows").innerHTML = book.positions.length
     ? book.positions
         .map((position) => {
@@ -306,11 +329,18 @@ function render() {
     `费用配置 v${book.feeConfigVersion || 0}`;
   $("paper-fee-summary").textContent =
     `下一计划：${plan?.feeConfig ? feeSummary(plan.feeConfig) : "旧版固定费用"}。新设置随计划冻结，历史成交按当时配置核验。`;
+  if (!settingsDirty) fillRiskInputs(data.riskLimits);
+  $("paper-risk-version").textContent =
+    `风控配置 v${book.riskLimitsVersion || 0}`;
+  $("paper-risk-summary").textContent =
+    `下一计划：${plan?.riskLimits ? riskSummary(plan.riskLimits) : "默认风控"}。新设置随计划冻结，历史成交按当时配置核验。`;
   if (!settingsDirty)
     $("paper-improvement-mode").value = book.improvementMode || "auto";
+  if (!settingsDirty)
+    $("paper-benchmark").value = book.benchmarkCode || DEFAULT_BENCHMARK;
   $("paper-config-note").textContent = data.canEditCapital
-    ? "交易计划开始执行前可自定义初始资金；费用随时可调整。"
-    : "初始资金作为收益基准已冻结；费用仍可自定义，适用于后续新计划。";
+    ? "交易计划开始执行前可自定义初始资金；费用与风控随时可调整。"
+    : "初始资金作为收益基准已冻结；费用与风控仍可自定义，适用于后续新计划。";
   document.querySelectorAll("[data-activate]").forEach(
     (button) =>
       (button.onclick = () =>
@@ -360,10 +390,22 @@ export function initializePaper() {
     ({ key, label, unit, direction }) =>
       `<label for="fee-${key}">${label}（${unit}）<input id="fee-${key}" type="number" min="0" max="${key === "commission_min" ? 10000 : 100}" step="${key === "commission_min" ? "0.01" : "0.001"}" value="${feeDisplay(key, DEFAULT_FEES[key])}" required><span>${direction}</span></label>`,
   ).join("");
+  $("paper-risk-controls").innerHTML = RISK_FIELDS.map(
+    ({ key, label, unit, percent, hint }) =>
+      `<label for="risk-${key}" title="${escape(hint)}">${label}（${unit}）<input id="risk-${key}" type="number" min="${percent ? 0.01 : 0}" max="${percent ? 100 : 200}" step="${percent ? "0.01" : "1"}" value="${riskDisplay(key, DEFAULT_RISK_LIMITS[key])}" required></label>`,
+  ).join("");
+  $("paper-benchmark").innerHTML = BENCHMARK_INDEXES.map(
+    ({ code, name }) => `<option value="${code}">${name}</option>`,
+  ).join("");
   $("paper-fee-defaults").onclick = () => {
     fillFeeInputs(DEFAULT_FEES);
     settingsDirty = true;
     message("已填入图中默认费用，保存设置后生效。");
+  };
+  $("paper-risk-defaults").onclick = () => {
+    fillRiskInputs(DEFAULT_RISK_LIMITS);
+    settingsDirty = true;
+    message("已填入默认风控约束，保存设置后生效。");
   };
   $("paper-run").onclick = () =>
     perform(async () => {
@@ -396,6 +438,7 @@ export function initializePaper() {
           ? { initialCapital: Number($("paper-initial-capital").value) }
           : {}),
         improvementMode: $("paper-improvement-mode").value,
+        benchmarkCode: $("paper-benchmark").value || DEFAULT_BENCHMARK,
         fees: Object.fromEntries(
           FEE_FIELDS.map(({ key }) => [
             key,
@@ -404,9 +447,17 @@ export function initializePaper() {
               : Number($(`fee-${key}`).value) / 10000,
           ]),
         ),
+        riskLimits: Object.fromEntries(
+          RISK_FIELDS.map(({ key, percent }) => [
+            key,
+            percent
+              ? Number($(`risk-${key}`).value) / 100
+              : Number($(`risk-${key}`).value),
+          ]),
+        ),
       });
       settingsDirty = false;
-      return "资金与费用设置已保存；新计划采用新配置，已执行记录保留原配置。";
+      return "资金、费用与风控设置已保存；新计划采用新配置，已执行记录保留原配置。";
     });
   };
   window.addEventListener("paper-updated", refresh);

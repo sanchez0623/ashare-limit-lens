@@ -1,4 +1,5 @@
 import { ShadowAccountRepository } from "../storage/shadow.js";
+import { buildOriginalScoreLookup } from "../storage/paper.js";
 import {
   openSession,
   advanceSession,
@@ -142,9 +143,16 @@ export async function freezePortfolioPlan(
   // 同一批次与主账户冻结相同政策（§3.2）：影子组合是独立假设路径，
   // 但成本假设必须一致，否则对照与赛马排名不可比。
   const executionCostPolicy = await latestPolicyBundle(env.DB);
+  // 持仓股掉出当日涨停池时，从最近快照归档回查原始评分用于计划展示。
+  const originalScoreLookup = await buildOriginalScoreLookup(
+    env.DB,
+    snapshot?.date ?? account.book.lastDate,
+    account.book.positions.map((position) => position.code),
+  );
   const plan = snapshot
     ? createPlan(snapshot, account.book, strategy, strategyVersion, now, {
         executionCostPolicy,
+        originalScoreLookup,
       })
     : defensivePlan(
         account.book.lastDate,
@@ -152,7 +160,7 @@ export async function freezePortfolioPlan(
         strategy,
         strategyVersion,
         now,
-        { executionCostPolicy },
+        { executionCostPolicy, originalScoreLookup },
       );
   return shadows.savePlan(accountId, plan);
 }

@@ -6,7 +6,12 @@ import {
   analyzeStock,
   PRESETS,
 } from "../shared/scoring.js";
-import { correlation, evaluateSnapshot } from "../backend/services/review.js";
+import {
+  correlation,
+  evaluateSnapshot,
+  parseModelJson,
+  reviewHistorySummary,
+} from "../backend/services/review.js";
 const base = {
   c: "002001",
   n: "测试股份",
@@ -147,4 +152,45 @@ test("少量样本仅展示结果，不伪造系统评价分", () => {
   const r = evaluateSnapshot(snapshot, quotes, [], "2026-10-09");
   assert.equal(r.systemScore, null);
   assert.ok(Math.abs(r.topMean - 5) < 0.0001);
+});
+test("AI评价解析兼容代码围栏、前后空白与多余说明文字", () => {
+  const grade = {
+    score: 60,
+    confidence: "medium",
+    summary: "x",
+    evidence: ["a"],
+    failures: [],
+    suggestions: [],
+  };
+  const json = JSON.stringify(grade);
+  assert.deepEqual(parseModelJson(json), grade);
+  assert.deepEqual(parseModelJson(`\n\`\`\`json\n${json}\n\`\`\`\n`), grade);
+  assert.deepEqual(parseModelJson(`\`\`\`\n${json}\n\`\`\``), grade);
+  assert.deepEqual(parseModelJson(`评价结果：${json}，请参考。`), grade);
+  assert.equal(parseModelJson("不是JSON输出"), null);
+  assert.equal(parseModelJson(""), null);
+});
+test("评价历史摘要只提取客观指标，损坏记录跳过", () => {
+  const rows = [
+    {
+      trade_date: "2026-10-09",
+      payload: JSON.stringify({
+        systemScore: 62,
+        rho: 0.2,
+        excess: 0.5,
+        topContinue: 0.3,
+        baseContinue: 0.25,
+        coverage: 0.9,
+        validCount: 50,
+        summary: "不应出现在摘要中",
+      }),
+    },
+    { trade_date: "2026-10-10", payload: "{损坏的JSON" },
+  ];
+  const s = reviewHistorySummary(rows);
+  assert.equal(s.length, 1);
+  assert.equal(s[0].date, "2026-10-09");
+  assert.equal(s[0].systemScore, 62);
+  assert.equal(s[0].rankingCorrelation, 0.2);
+  assert.equal(s[0].summary, undefined);
 });

@@ -96,6 +96,8 @@ export function replayStrategy(
     fills = [];
   let covered = true;
   let reason = null;
+  // 原始分跨日回查：逐日累积已见评分，持仓掉出当日评分池时取最近一次入池评分。
+  const scoreHistory = new Map();
   for (const pair of pairs) {
     if (
       pair.snapshot.date !== pair.dataset.previousTradingDate ||
@@ -105,6 +107,11 @@ export function replayStrategy(
       reason = "冻结评分与行情不是相邻交易日";
       break;
     }
+    for (const stock of pair.snapshot?.stocks ?? []) {
+      if (stock?.score == null) continue;
+      const score = Number(stock.score);
+      if (Number.isFinite(score)) scoreHistory.set(stock.code, score);
+    }
     // 情景重放（§6.2）：每个情景冻结自己的成本政策，重新生成因果计划与成交；
     // 未显式传入时使用默认政策，新研究不再默认全时段 10bps。
     const plan = createPlan(
@@ -113,7 +120,10 @@ export function replayStrategy(
       strategy,
       "validation",
       pair.snapshot.createdAt,
-      { executionCostPolicy: executionCostPolicy ?? undefined },
+      {
+        executionCostPolicy: executionCostPolicy ?? undefined,
+        originalScoreLookup: (code) => scoreHistory.get(code) ?? null,
+      },
     );
     try {
       let result;

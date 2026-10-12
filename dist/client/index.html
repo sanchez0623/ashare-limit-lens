@@ -606,7 +606,9 @@
                     <option value="auto">自动启用新策略</option>
                     <option value="manual">人工选择启用</option>
                   </select></label
-                >
+                ><label
+                  >收益基准指数<select id="paper-benchmark"></select
+                ></label>
                 <fieldset class="paper-fee-settings">
                   <legend>费用构成与自定义值</legend>
                   <div class="fee-settings-heading">
@@ -623,6 +625,30 @@
                     class="text-button"
                   >
                     恢复图中默认费用
+                  </button>
+                </fieldset>
+                <fieldset class="paper-fee-settings">
+                  <legend>风控约束与自定义值</legend>
+                  <div class="fee-settings-heading">
+                    <p>
+                      单股与总仓位上限约束买入规模，回撤熔断线触发清仓并暂停买入；比例按
+                      % 输入。新设置随下一计划冻结，历史成交按当时配置核验。
+                    </p>
+                    <span class="outline-tag" id="paper-risk-version"
+                      >风控配置 v1</span
+                    >
+                  </div>
+                  <div
+                    id="paper-risk-controls"
+                    class="paper-fee-controls"
+                  ></div>
+                  <p id="paper-risk-summary" class="fee-settings-note"></p>
+                  <button
+                    type="button"
+                    id="paper-risk-defaults"
+                    class="text-button"
+                  >
+                    恢复默认风控
                   </button>
                 </fieldset>
                 <button class="secondary" type="submit" data-paper-operation>
