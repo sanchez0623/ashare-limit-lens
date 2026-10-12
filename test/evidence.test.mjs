@@ -1016,6 +1016,23 @@ test("verifier：合法退化组合通过，方法/状态/方向/manifest 篡改
     const trimAudit = await verifyEvidenceBundle(familyTrimmed);
     assert.equal(trimAudit.passed, false);
     assert.match(trimAudit.reason, /检验族/);
+    // 单项状态 READY → DEGENERATE（保留区间与 p 值）并重算摘要：拒绝（P2-1）
+    const degenerateFlip = structuredClone(bundle);
+    degenerateFlip.report.payload.family[0].status = "DEGENERATE";
+    degenerateFlip.report.digest = await digestOf(
+      degenerateFlip.report.payload,
+    );
+    const degenerateAudit = await verifyEvidenceBundle(degenerateFlip);
+    assert.equal(degenerateAudit.passed, false);
+    assert.match(degenerateAudit.reason, /状态与重算不一致/);
+    // 翻转 mixedContext 并切换状态分支：上下文标记与窗口指标不一致，拒绝
+    const mixedFlip = structuredClone(bundle);
+    mixedFlip.report.payload.context.mixedContext = true;
+    mixedFlip.report.payload.status = "MIXED_CONTEXT";
+    mixedFlip.report.digest = await digestOf(mixedFlip.report.payload);
+    const mixedAudit = await verifyEvidenceBundle(mixedFlip);
+    assert.equal(mixedAudit.passed, false);
+    assert.match(mixedAudit.reason, /上下文/);
   } finally {
     DB.close();
   }
@@ -1267,6 +1284,235 @@ test("迁移前旧报告：无冻结指标列仍可通过核验（P2-2）", asyn
     assert.equal(legacyBundle.dailyMetrics.length, 20, "导出回退当前日指标");
     const audit = await verifyEvidenceBundle(legacyBundle);
     assert.equal(audit.passed, true, JSON.stringify(audit));
+  } finally {
+    DB.close();
+  }
+});
+
+// ---------- 攻击者复刻发布算法重算族（绕过数值核验的结构闸门） ----------
+const forgeMetricValueKey = (metric) =>
+  metric === "MEAN_DAILY_IC"
+    ? "ic"
+    : metric === "MEAN_DAILY_EXCESS"
+      ? "excessDecimal"
+      : "meanDailyReturn";
+async function forgeFamily(bundle, policy) {
+  const report = bundle.report;
+  const validDates = report.payload.window.validDates;
+  const byDate = new Map(
+    bundle.dailyMetrics.map((row) => [row.outcomeDate, row]),
+  );
+  const validSet = new Set(validDates);
+  const segmentLengths = [];
+  let current = 0;
+  for (const date of report.payload.window.expectedDates) {
+    if (validSet.has(date)) current++;
+    else if (current) {
+      segmentLengths.push(current);
+      current = 0;
+    }
+  }
+  if (current) segmentLengths.push(current);
+  const { matrix } = await resampleSegmentIndexMatrix({
+    segmentLengths,
+    blockLength: policy.blockLength,
+    resamples: policy.resamples,
+    seedInput: report.payload.method.seed,
+  });
+  const rawResults = new Map();
+  const entries = [];
+  for (const metric of ["MEAN_DAILY_IC", "MEAN_DAILY_EXCESS"]) {
+    const values = validDates.map(
+      (date) => byDate.get(date).payload.values[forgeMetricValueKey(metric)],
+    );
+    const outcome = bootstrapMeanEvidence({
+      values,
+      indexMatrix: matrix,
+      confidenceLevel: policy.confidenceLevel,
+      nullMean: 0,
+      side: "TWO_SIDED",
+      minValidDays: policy.minValidDays,
+    });
+    rawResults.set(metric, { key: metric, pRaw: outcome.pRaw });
+    entries.push({
+      metric,
+      unit: metric === "MEAN_DAILY_IC" ? "CORRELATION" : "DECIMAL_RETURN",
+      status: outcome.status,
+      estimate: outcome.estimate,
+      ci: outcome.ci ? { ...outcome.ci, scope: "POINTWISE" } : null,
+      pRaw: outcome.pRaw ?? null,
+      pAdjustedWithinFamily: null,
+      standardError: outcome.standardError ?? null,
+      validDays: validDates.length,
+      reasons: [],
+      direction: outcome.ci
+        ? outcome.ci.lower > 0
+          ? "POSITIVE"
+          : outcome.ci.upper < 0
+            ? "NEGATIVE"
+            : "INCLUDES_ZERO"
+        : null,
+    });
+  }
+  const family = adjustEvidenceFamily({
+    declaredHypotheses: ["MEAN_DAILY_IC", "MEAN_DAILY_EXCESS"],
+    results: [...rawResults.values()],
+    method: "HOLM",
+  });
+  for (const entry of entries) {
+    const hypothesis = family.hypotheses.find(
+      (row) => row.key === entry.metric,
+    );
+    entry.pAdjustedWithinFamily = hypothesis.pAdjustedWithinFamily;
+  }
+  return entries;
+}
+
+test("结构闸门：覆盖不足与短片段塞入重算一致的族仍被拒绝（P1-1/P1-2）", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(120);
+    await seedReviewHistory(env, dates, { effect: 0.004 });
+    const policy = normalizeEvidencePolicy(undefined);
+    // 情景一：h60 窗口只登记 dates[60..98] → 39/60 = 65% 覆盖
+    for (const date of dates.slice(1, 99))
+      await recordReviewDailyMetric(env, date);
+    const sparse = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.equal(sparse.payload.status, "INCOMPLETE_DATA");
+    assert.equal(sparse.payload.window.coverage, 0.65);
+    const sparseBundle = await exportEvidence(env, { id: sparse.id });
+    // 攻击者用真实算法重算族塞入、状态改 READY、重算报告摘要：
+    // 数值核验全部一致，必须由覆盖率闸门拒绝（P1-1）
+    const forged = structuredClone(sparseBundle);
+    forged.report.payload.family = await forgeFamily(forged, policy);
+    forged.report.payload.status = "READY";
+    forged.report.digest = await digestOf(forged.report.payload);
+    const forgedAudit = await verifyEvidenceBundle(forged);
+    assert.equal(forgedAudit.passed, false);
+    assert.match(forgedAudit.reason, /覆盖低于政策最低要求/);
+    // 情景二：h20 窗口隔日登记 → 每个连续片段 1 天 < 区块长度 5
+    for (const [index, date] of dates.slice(100, 120).entries()) {
+      if (index % 2 === 0) await recordReviewDailyMetric(env, date);
+    }
+    const fragmented = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 20,
+      calendarDates: dates,
+    });
+    assert.equal(fragmented.payload.status, "INCOMPLETE_DATA");
+    const fragmentedBundle = await exportEvidence(env, {
+      id: fragmented.id,
+    });
+    // 攻击者塞入编造的区间与 p 值：短片段分支必须拒绝任何族内容（P1-2）
+    const fabricated = structuredClone(fragmentedBundle);
+    const validCount = fragmented.payload.window.validDates.length;
+    fabricated.report.payload.family = [
+      {
+        metric: "MEAN_DAILY_IC",
+        unit: "CORRELATION",
+        status: "READY",
+        estimate: 0.5,
+        ci: { level: 0.95, lower: 0.4, upper: 0.6, scope: "POINTWISE" },
+        pRaw: 0.001,
+        pAdjustedWithinFamily: 0.002,
+        standardError: 0.01,
+        validDays: validCount,
+        reasons: [],
+        direction: "POSITIVE",
+      },
+      {
+        metric: "MEAN_DAILY_EXCESS",
+        unit: "DECIMAL_RETURN",
+        status: "READY",
+        estimate: 0.02,
+        ci: { level: 0.95, lower: 0.01, upper: 0.03, scope: "POINTWISE" },
+        pRaw: 0.004,
+        pAdjustedWithinFamily: 0.008,
+        standardError: 0.005,
+        validDays: validCount,
+        reasons: [],
+        direction: "POSITIVE",
+      },
+    ];
+    fabricated.report.payload.status = "READY";
+    fabricated.report.digest = await digestOf(fabricated.report.payload);
+    const fabricatedAudit = await verifyEvidenceBundle(fabricated);
+    assert.equal(fabricatedAudit.passed, false);
+    assert.match(fabricatedAudit.reason, /片段短于区块长度时不得输出检验结果/);
+  } finally {
+    DB.close();
+  }
+});
+
+test("报告 id 自洽：同步改写窗口与摘要的深伪造被拒绝（P1）", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(120);
+    await seedReviewHistory(env, dates, { effect: 0.004 });
+    for (const date of dates.slice(1)) await recordReviewDailyMetric(env, date);
+    const report = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 20,
+      calendarDates: dates,
+    });
+    const bundle = await exportEvidence(env, { id: report.id });
+    // 深伪造：把最后一个有效日挪到缺失、同步清单/覆盖/输入摘要/种子
+    // 与报告摘要——payload 层所有检查都能自洽，只有 id 对不上。
+    const forged = structuredClone(bundle);
+    const fr = forged.report;
+    const removed = fr.payload.window.validDates.pop();
+    fr.payload.window.missingDates.push(removed);
+    fr.payload.window.missingDates.sort();
+    fr.payload.window.coverage = Number(
+      (
+        fr.payload.window.validDates.length /
+        fr.payload.window.expectedDates.length
+      ).toFixed(4),
+    );
+    fr.inputs.metrics = fr.inputs.metrics.filter(
+      (row) => row.outcomeDate !== removed,
+    );
+    delete fr.inputs.sourceDigests[removed];
+    fr.inputs.manifestDigest = await digestOf({
+      orderedDates: fr.inputs.orderedDates,
+      sourceRefs: fr.inputs.sourceRefs,
+      sourceDigests: fr.inputs.sourceDigests,
+      contextDigest: fr.payload.context.digest,
+      metrics: fr.inputs.metrics,
+    });
+    fr.inputDigest = await digestOf({
+      seriesId: fr.seriesId,
+      window: {
+        expectedDates: fr.payload.window.expectedDates,
+        validDates: fr.payload.window.validDates,
+        missingDates: fr.payload.window.missingDates,
+      },
+      contextDigest: fr.payload.context.digest,
+      metrics: Object.fromEntries(
+        fr.payload.window.validDates.map((date) => [
+          date,
+          forged.dailyMetrics.find((row) => row.outcomeDate === date).payload,
+        ]),
+      ),
+    });
+    fr.payload.method.seed = await evidenceSeed({
+      namespace: fr.namespace,
+      purpose: fr.purpose,
+      asOf: fr.asOf,
+      orderedWindowDates: fr.payload.window.validDates,
+      inputDigest: fr.inputDigest,
+      policyDigest: fr.policyDigest,
+    });
+    fr.digest = await digestOf(fr.payload);
+    const forgedAudit = await verifyEvidenceBundle(forged);
+    assert.equal(forgedAudit.passed, false);
+    assert.match(forgedAudit.reason, /报告 id 与冻结标识不一致/);
   } finally {
     DB.close();
   }

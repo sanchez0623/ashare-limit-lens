@@ -8,6 +8,9 @@ import assert from "node:assert/strict";
 import {
   normalizeEvidencePolicy,
   SERIES_METRIC_FAMILIES,
+  REVIEW_EVIDENCE_SERIES,
+  ACCOUNT_EVIDENCE_SERIES,
+  METHOD_QUALIFIED_HORIZONS,
 } from "../backend/domain/evidence-policy.js";
 import {
   resampleSegmentIndexMatrix,
@@ -24,6 +27,13 @@ const metricValueKey = (metric) =>
     : metric === "MEAN_DAILY_EXCESS"
       ? "excessDecimal"
       : "meanDailyReturn";
+
+const metricUnit = (metric) =>
+  metric === "MEAN_DAILY_IC"
+    ? "CORRELATION"
+    : metric === "MEAN_DAILY_EXCESS" || metric === "MEAN_DAILY_RETURN"
+      ? "DECIMAL_RETURN"
+      : "UNKNOWN";
 
 const fail = (checks, reason) => ({ passed: false, checks, reason });
 
@@ -50,6 +60,20 @@ export async function verifyEvidenceBundle(bundle) {
     // 报告 payload 摘要覆盖 status/direction/tags 等全部字段（P1-6）。
     if ((await digestOf(report.payload)) !== report.digest)
       return fail(checks, "报告摘要不一致");
+    // 报告 id 由冻结标识派生（P1）：标识字段（seriesId/asOf/horizon/
+    // purpose/inputDigest/policyDigest/methodVersion）与 id 必须自洽——
+    // 同步改写窗口与全部摘要的深伪造在 id 对不上时仍被拒绝。
+    const expectedId = `evidence-${await digestOf({
+      seriesId: report.seriesId,
+      asOf: report.asOf,
+      horizon: report.horizon,
+      purpose: report.purpose,
+      inputDigest: report.inputDigest,
+      policyDigest: report.policyDigest,
+      methodVersion: report.methodVersion,
+    })}`;
+    if (expectedId !== report.id)
+      return fail(checks, "报告 id 与冻结标识不一致");
     for (const metric of bundle.dailyMetrics ?? [])
       if ((await digestOf(metric.payload)) !== metric.digest)
         return fail(checks, "日指标摘要不一致");
@@ -115,6 +139,13 @@ export async function verifyEvidenceBundle(bundle) {
         JSON.stringify(manifestDates) !== JSON.stringify([...validDates].sort())
       )
         return fail(checks, "冻结输入指标与窗口有效日期不一致");
+      // 上下文标记一致性：窗口参与计算的指标上下文唯一性必须与
+      // mixedContext 一致，防止改标记后切换状态分支。
+      const contextMixed =
+        new Set(report.inputs.metrics.map((row) => row.payload.contextDigest))
+          .size > 1;
+      if (contextMixed !== !!report.payload.context?.mixedContext)
+        return fail(checks, "上下文标记与窗口指标不一致");
     }
     // 窗口划分与覆盖率如实（P1-3/P1-6）：有效/缺失/质量剔除互斥且并集
     // 等于冻结日历，覆盖率等于有效占比。报告覆盖率按 4 位小数发布，
@@ -202,6 +233,10 @@ export async function verifyEvidenceBundle(bundle) {
         seedInput: seed,
       });
       if (!matrix) {
+        // 片段过短（P1-2）：发布端此时不输出任何检验结果——族必须为空，
+        // 编造的区间与 p 值在这里被拒绝。
+        if (recordedMetrics.length)
+          return fail(checks, "片段短于区块长度时不得输出检验结果");
         if (report.payload.status !== "INCOMPLETE_DATA")
           return fail(checks, "片段短于区块长度时报告应标注 INCOMPLETE_DATA");
       } else if (!recordedMetrics.length) {
@@ -212,6 +247,10 @@ export async function verifyEvidenceBundle(bundle) {
         if (report.payload.status !== "INCOMPLETE_DATA")
           return fail(checks, "覆盖不足的空检验族报告应标注 INCOMPLETE_DATA");
       } else {
+        // 覆盖闸门（P1-1）：发布端覆盖不足时族恒为空——即使攻击者用
+        // 真实算法重算族塞入并改 READY，也必须被覆盖率闸门拒绝。
+        if ((report.payload.window.coverage ?? 0) < policy.minWindowCoverage)
+          return fail(checks, "窗口覆盖低于政策最低要求，不得输出检验结果");
         // 全量重算全部族成员（P1-6）：不再跳过非 READY 报告，也不再
         // 假设所有成员都有区间——合法退化组合（区间为 null）按重算
         // 状态逐项核对。
@@ -237,8 +276,28 @@ export async function verifyEvidenceBundle(bundle) {
               policy.maxDegenerateResampleRatio;
           const estimable = outcome.status === "READY" && !degenerate;
           if (estimable) {
+            // 单项状态必须与重算一致（P2-1）：READY 改 DEGENERATE 但
+            // 保留区间与 p 值的篡改在此被拒。
+            if (entry.status !== "READY")
+              return fail(checks, `${entry.metric} 状态与重算不一致`);
             if (!entry.ci)
               return fail(checks, `${entry.metric} 缺少应输出的区间`);
+            // 其余字段逐项核对（P2-1 同类封口）：单位、有效天数、区间
+            // 参数与标准误不得脱离重算结果单独篡改。
+            if (entry.unit !== metricUnit(entry.metric))
+              return fail(checks, `${entry.metric} 单位与指标不一致`);
+            if (entry.validDays !== validDates.length)
+              return fail(checks, `${entry.metric} 有效天数与窗口不一致`);
+            if (
+              entry.ci.level !== policy.confidenceLevel ||
+              entry.ci.scope !== "POINTWISE"
+            )
+              return fail(checks, `${entry.metric} 区间参数与政策不一致`);
+            assert.ok(
+              Math.abs((entry.standardError ?? NaN) - outcome.standardError) <
+                1e-12,
+              `${entry.metric} 标准误不一致`,
+            );
             assert.ok(
               Math.abs(outcome.estimate - entry.estimate) < 1e-12,
               "点估计不一致",
@@ -259,6 +318,18 @@ export async function verifyEvidenceBundle(bundle) {
               return fail(checks, `${entry.metric} 不可估计时不应携带 p 值`);
             if (entry.status !== expectedStatus)
               return fail(checks, `${entry.metric} 状态与重算不一致`);
+            if (entry.unit !== metricUnit(entry.metric))
+              return fail(checks, `${entry.metric} 单位与指标不一致`);
+            if (entry.validDays !== validDates.length)
+              return fail(checks, `${entry.metric} 有效天数与窗口不一致`);
+            const expectedError = outcome.standardError ?? null;
+            if (
+              (entry.standardError ?? null) === null
+                ? expectedError !== null
+                : expectedError === null ||
+                  Math.abs(entry.standardError - expectedError) >= 1e-12
+            )
+              return fail(checks, `${entry.metric} 标准误与重算不一致`);
             if (outcome.estimate != null) {
               assert.ok(
                 entry.estimate != null &&
@@ -320,6 +391,30 @@ export async function verifyEvidenceBundle(bundle) {
         }
       }
     }
+    // 标签由窗口/政策/系列结构完全派生（§4/§7.1/§10）：篡改受限标注
+    // （如 METHOD_SIMULATION_LIMITED）以美化展示在此被拒。
+    const expectedTags = ["EXPLORATORY_REPEATED_LOOKS"];
+    if (
+      (report.payload.window.missingDates ?? []).length ||
+      (report.payload.window.excludedDates ?? []).length
+    )
+      expectedTags.push("CONDITIONAL_ON_OBSERVED_DAYS");
+    if (report.seriesId === REVIEW_EVIDENCE_SERIES)
+      expectedTags.push("OBSERVATION_NOT_EXECUTABLE");
+    if (report.seriesId === ACCOUNT_EVIDENCE_SERIES)
+      expectedTags.push("COST_PRIOR_UNCALIBRATED", "NO_COMPARABLE_BASELINE");
+    if (
+      report.horizon !== policy.primaryWindow &&
+      report.horizon === policy.windows[0]
+    )
+      expectedTags.push("SHORT_WINDOW");
+    if (!METHOD_QUALIFIED_HORIZONS.includes(report.horizon))
+      expectedTags.push("METHOD_SIMULATION_LIMITED");
+    if (
+      JSON.stringify([...(report.payload.tags ?? [])].sort()) !==
+      JSON.stringify(expectedTags.sort())
+    )
+      return fail(checks, "标签与窗口/政策/系列结构不一致");
     checks.statistics = true;
     // 用途限制：诊断报告永久无晋级资格
     assert.equal(report.purpose, "DIAGNOSTIC");
