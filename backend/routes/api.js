@@ -12,6 +12,7 @@ import {
   historyList,
 } from "../services/review.js";
 import { marketData, latestTradingDate } from "../services/market.js";
+import { marketForDisplay } from "../services/market-display.js";
 import {
   paperOverview,
   runPaperDay,
@@ -294,7 +295,7 @@ export async function api(request, env) {
       const date = url.searchParams.get("date") || beijingDate();
       if (!validDate(date) || date > beijingDate())
         return json({ error: "请选择今天或历史有效日期" }, 400);
-      return json(await marketData(date));
+      return json(await marketForDisplay(env, date));
     }
     if (path === "/api/market/latest-date")
       return json({ date: await latestTradingDate() });

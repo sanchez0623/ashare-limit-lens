@@ -180,14 +180,16 @@ function scoreHtml(s) {
   return `<div class="score-cell"><span class="score-number ${scoreClass(s)}">${s ?? "—"}</span><span class="score-track"><i style="width:${s ?? 0}%"></i></span></div>`;
 }
 function recalculate() {
-  state.analysis = state.payload
-    ? analyze(
-        state.payload.rows.map(normalize),
-        state.payload.broken,
-        state.payload.previous?.map(normalize) || null,
-        state.weights,
-      )
-    : null;
+  state.analysis = state.payload?.archived
+    ? structuredClone(state.payload.analysis)
+    : state.payload
+      ? analyze(
+          state.payload.rows.map(normalize),
+          state.payload.broken,
+          state.payload.previous?.map(normalize) || null,
+          state.weights,
+        )
+      : null;
 }
 function render() {
   const a = state.analysis,
@@ -234,7 +236,7 @@ function render() {
       caption: has
         ? a.emotion === null
           ? "当日无有效评分样本"
-          : `${a.emotion >= 75 ? "强度较高" : a.emotion >= 45 ? "强度中等" : "强度较低"} · 数据覆盖 ${a.emotionCoverage}%`
+          : `${a.emotion >= 75 ? "强度较高" : a.emotion >= 45 ? "强度中等" : "强度较低"} · ${a.emotionCoverage == null ? "已归档的收盘判断" : `数据覆盖 ${a.emotionCoverage}%`}`
         : "涨停规模 · 封板率 · 高度",
       icon: "dashboard",
       pct: has ? (a.emotion ?? 0) : 0,
@@ -376,19 +378,25 @@ function updateSource() {
     : state.demo
       ? "演示数据"
       : p
-        ? "公开行情"
+        ? p.archived
+          ? "历史归档"
+          : "公开行情"
         : "数据暂不可用";
   $("data-time").textContent = state.loading
     ? "正在获取所选交易日涨停池"
     : p
       ? state.demo
         ? "虚构样本，仅用于体验评分和交互"
-        : `${p.date} · ${p.source} · 获取于 ${new Date(p.fetchedAt).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}（北京时间）${p.cached ? " · 2 分钟缓存" : ""}`
+        : p.archived
+          ? `${p.date} · ${p.source} · 归档于 ${new Date(p.archivedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}（北京时间）`
+          : `${p.date} · ${p.source} · 获取于 ${new Date(p.fetchedAt).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}（北京时间）${p.cached ? " · 2 分钟缓存" : ""}`
       : "未使用演示数据替代真实行情";
   $("sidebar-source").textContent = state.demo
     ? "演示模式"
     : p
-      ? "东方财富 · 已接入"
+      ? p.archived
+        ? "历史归档 · 已读取"
+        : "东方财富 · 已接入"
       : "东方财富 · 等待数据";
   $("demo-btn").textContent = state.demo ? "返回公开行情" : "查看演示";
   $("notice").hidden = !state.error && !state.demo && !p?.warnings?.length;
@@ -404,6 +412,7 @@ function updateSource() {
 }
 async function loadData() {
   const req = ++state.request;
+  const requestedDate = $("trade-date").value;
   state.demo = false;
   state.loading = true;
   state.error = null;
@@ -417,13 +426,19 @@ async function loadData() {
   renderReview();
   try {
     const response = await fetch(
-      `/api/market?date=${encodeURIComponent($("trade-date").value)}`,
+      `/api/market?date=${encodeURIComponent(requestedDate)}`,
       { signal: AbortSignal.timeout(20000) },
     );
     const payload = await response.json();
     if (req !== state.request) return;
-    if (!response.ok || !Array.isArray(payload.rows))
+    const hasArchive =
+      payload.archived === true &&
+      Array.isArray(payload.analysis?.stocks) &&
+      Array.isArray(payload.analysis?.sectors);
+    if (!response.ok || (!Array.isArray(payload.rows) && !hasArchive))
       throw new Error(payload.error || "公开行情请求失败");
+    if (payload.date !== requestedDate)
+      throw new Error("返回的数据日期与所选日期不一致，请重新刷新");
     state.payload = payload;
     recalculate();
   } catch (e) {
@@ -437,8 +452,13 @@ async function loadData() {
       state.loading = false;
       updateFilters();
       updateSource();
+      updateWeightSummary();
       render();
-      if (state.payload?.date === today && state.storageAvailable)
+      if (
+        state.payload?.date === today &&
+        !state.payload.archived &&
+        state.storageAvailable
+      )
         void runDaily(req);
       else void readReview(req);
     }
@@ -532,8 +552,9 @@ function renderWeights() {
 function updateWeightSummary() {
   const total = state.weights.reduce((a, b) => a + b, 0);
   $("weight-total").textContent = `合计 ${total}%`;
-  $("model-status").textContent =
-    total === 100
+  $("model-status").textContent = state.payload?.archived
+    ? "当前展示当天冻结评分；修改权重不会重算历史归档"
+    : total === 100
       ? "已即时重算 · 即时重算"
       : `合计 ${total}%，计算时自动归一化`;
   document.querySelectorAll("[data-preset]").forEach((btn) =>

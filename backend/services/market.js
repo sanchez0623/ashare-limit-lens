@@ -29,8 +29,14 @@ export async function getPool(endpoint, date) {
   if (pool.some((r) => typeof r.c !== "string" || typeof r.n !== "string"))
     throw new Error("行情字段格式变化");
   const sourceDate = String(body.data.qdate ?? "").replaceAll("-", "");
-  if (sourceDate !== date.replaceAll("-", ""))
-    throw new Error("来源数据日期与请求日期不一致");
+  if (sourceDate !== date.replaceAll("-", "")) {
+    const actualDate = /^\d{8}$/.test(sourceDate)
+      ? `${sourceDate.slice(0, 4)}-${sourceDate.slice(4, 6)}-${sourceDate.slice(6, 8)}`
+      : "未确认";
+    throw new Error(
+      `来源数据日期与请求日期不一致（请求 ${date}，来源 ${actualDate}）`,
+    );
+  }
   return {
     pool,
     date,

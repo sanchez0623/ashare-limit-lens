@@ -60,7 +60,13 @@ export async function saveSnapshot(env, market, weights) {
       date: old.trade_date,
       createdAt: old.created_at,
     };
-  const a = analyze(market.rows.map(normalize), market.broken, null, weights);
+  const a = analyze(
+    market.rows.map(normalize),
+    market.broken,
+    market.previous?.map(normalize) ?? null,
+    weights,
+  );
+  const { stocks, sectors, ...marketSummary } = a;
   const createdAt = new Date().toISOString();
   const payload = {
     date: market.date,
@@ -70,9 +76,16 @@ export async function saveSnapshot(env, market, weights) {
     modelVersion: "rules-v1",
     judgment:
       "以评分前 20% 个股作为优先观察组，下一交易日检验其相对当日完整涨停样本的表现。",
-    stocks: a.stocks,
-    sectors: a.sectors,
+    stocks,
+    sectors,
     emotion: a.emotion,
+    marketSummary,
+    market: {
+      rows: market.rows,
+      broken: market.broken ?? null,
+      previous: market.previous ?? null,
+      fetchedAt: market.fetchedAt ?? createdAt,
+    },
   };
   await db
     .prepare(
