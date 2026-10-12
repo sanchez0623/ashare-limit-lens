@@ -42,6 +42,14 @@ export class EvidenceRepository {
       .all();
     return rows.results.map(parsePolicyRow);
   }
+  async getPolicyByDigest(digest) {
+    if (!digest) return null;
+    const row = await this.db
+      .prepare("SELECT * FROM evidence_policies WHERE digest=? LIMIT 1")
+      .bind(digest)
+      .first();
+    return row ? parsePolicyRow(row) : null;
+  }
   async savePolicy(payload, { effectiveFrom = null } = {}) {
     const normalized = normalizeEvidencePolicy(payload);
     const digest = await digestOf(normalized);
@@ -129,6 +137,9 @@ export class EvidenceRepository {
   }
   // 不可变发布：同 (series, asOf, horizon, purpose, input, policy, method)
   // 唯一；重复发布返回已有行且 created=false，不覆写。
+  // 报告与冻结输入清单（含参与计算的每日指标）同批原子提交（P1-7）：
+  // 任一失败整体回滚，不存在"有报告无清单"的残缺状态；历史残缺报告在
+  // 重试时自动补齐清单（ON CONFLICT DO NOTHING，不覆写已冻结清单）。
   async publishReport({
     namespace,
     seriesId,
@@ -143,7 +154,14 @@ export class EvidenceRepository {
   }) {
     const digest = await digestOf(payload);
     const id = `evidence-${await digestOf({ seriesId, asOf, horizon, purpose, inputDigest, policyDigest, methodVersion })}`;
-    const inserted = await this.db
+    const manifest = {
+      orderedDates: inputs.orderedDates,
+      sourceRefs: inputs.sourceRefs,
+      sourceDigests: inputs.sourceDigests,
+      contextDigest: inputs.contextDigest,
+      metrics: inputs.metrics ?? [],
+    };
+    const reportStatement = this.db
       .prepare(
         "INSERT OR IGNORE INTO evidence_reports (id,namespace,series_id,as_of,horizon,purpose,input_digest,policy_digest,method_version,payload,digest,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
       )
@@ -160,46 +178,24 @@ export class EvidenceRepository {
         JSON.stringify(payload),
         digest,
         new Date().toISOString(),
+      );
+    const inputsStatement = this.db
+      .prepare(
+        "INSERT INTO evidence_report_inputs (report_id,ordered_dates,source_refs,source_digests,metrics_json,manifest_digest) VALUES (?,?,?,?,?,?) ON CONFLICT(report_id) DO NOTHING",
       )
-      .run();
-    const changes = inserted.meta?.changes ?? inserted.changes;
-    if (changes) {
-      await this.db
-        .prepare(
-          "INSERT OR REPLACE INTO evidence_report_inputs (report_id,ordered_dates,source_refs,source_digests,manifest_digest) VALUES (?,?,?,?,?)",
-        )
-        .bind(
-          id,
-          JSON.stringify(inputs.orderedDates),
-          JSON.stringify(inputs.sourceRefs),
-          JSON.stringify(inputs.sourceDigests),
-          await digestOf(inputs),
-        )
-        .run();
-    }
-    const row = await this.db
-      .prepare("SELECT * FROM evidence_reports WHERE id=?")
-      .bind(id)
-      .first();
-    return {
-      created: !!changes,
-      report: row
-        ? {
-            id: row.id,
-            namespace: row.namespace,
-            seriesId: row.series_id,
-            asOf: row.as_of,
-            horizon: row.horizon,
-            purpose: row.purpose,
-            inputDigest: row.input_digest,
-            policyDigest: row.policy_digest,
-            methodVersion: row.method_version,
-            payload: JSON.parse(row.payload),
-            digest: row.digest,
-            createdAt: row.created_at,
-          }
-        : null,
-    };
+      .bind(
+        id,
+        JSON.stringify(manifest.orderedDates),
+        JSON.stringify(manifest.sourceRefs),
+        JSON.stringify(manifest.sourceDigests),
+        JSON.stringify(manifest.metrics),
+        await digestOf(manifest),
+      );
+    const results = await this.db.batch([reportStatement, inputsStatement]);
+    const changes = results?.[0]?.meta?.changes ?? 0;
+    // 返回值带冻结输入清单（与 getReport 一致），调用方据此引用固化输入
+    const report = await this.getReport(id);
+    return { created: !!changes, report };
   }
   async getReport(id) {
     const row = await this.db
@@ -229,6 +225,10 @@ export class EvidenceRepository {
             orderedDates: JSON.parse(inputs.ordered_dates),
             sourceRefs: JSON.parse(inputs.source_refs),
             sourceDigests: JSON.parse(inputs.source_digests),
+            // 旧版清单无冻结指标列：保持 null，导出与核验按旧口径回退
+            metrics: inputs.metrics_json
+              ? JSON.parse(inputs.metrics_json)
+              : null,
             manifestDigest: inputs.manifest_digest,
           }
         : null,

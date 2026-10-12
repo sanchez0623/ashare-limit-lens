@@ -101,17 +101,6 @@ async function runDaily(env) {
   } catch (error) {
     tournament = { error: safeError(error) };
   }
-  // 统计证据（§8.3）：来源提交后登记日指标并幂等发布诊断报告；
-  // 失败不阻塞交易与复盘，次日重跑按幂等 id 补齐。
-  let evidence = null;
-  try {
-    evidence = await refreshEvidence(env, {
-      date,
-      calendarDates: paper?.calendarDates ?? [],
-    });
-  } catch (error) {
-    evidence = { error: safeError(error) };
-  }
   let result = { review: null, reason: marketError },
     aiError = null;
   if (market) {
@@ -128,6 +117,16 @@ async function runDaily(env) {
     } catch (error) {
       aiError = safeError(error);
     }
+  }
+  // 统计证据（§8.3）：必须在复盘核验行保存之后刷新，否则首次运行读不到
+  // 当天复盘、漏登记当日指标（P1-1）。日历由证据服务自行冻结：账户结算
+  // 交出的是未来日历，直接传入会冻结出空窗口（P1-2）。
+  // 失败不阻塞交易与复盘，次日重跑按幂等 id 补齐。
+  let evidence = null;
+  try {
+    evidence = await refreshEvidence(env, { date });
+  } catch (error) {
+    evidence = { error: safeError(error) };
   }
   return {
     ...result,
@@ -517,17 +516,22 @@ export async function api(request, env) {
       );
     }
     if (path === "/api/evidence" || path === "/api/evidence/history") {
-      // 无查询参数时返回证据总览（政策 + 两个系列的主视图报告）
-      if (path === "/api/evidence" && ![...url.searchParams.keys()].length)
-        return json(await evidenceOverview(env));
-      const series = url.searchParams.get("series") || REVIEW_SERIES;
-      if (![REVIEW_SERIES, ACCOUNT_SERIES].includes(series))
-        return json({ error: "未知证据系列" }, 400);
-      const horizon = Number(url.searchParams.get("horizon") ?? 0);
-      if (!Number.isInteger(horizon) || horizon < 5 || horizon > 250)
-        return json({ error: "horizon 必须是 5–250 的整数" }, 400);
       const asOf = url.searchParams.get("asOf") || undefined;
       if (asOf && !validDate(asOf)) return json({ error: "日期格式无效" }, 400);
+      const series = url.searchParams.get("series") || REVIEW_SERIES;
+      const horizon = Number(url.searchParams.get("horizon") ?? 0);
+      // 仅带 asOf：返回按所选日期截取的证据总览（复盘页历史日期不得
+      // 混入该日期之后发布的滚动证据，P1-8）。
+      if (
+        path === "/api/evidence" &&
+        !url.searchParams.get("series") &&
+        !url.searchParams.get("horizon")
+      )
+        return json(await evidenceOverview(env, { asOf }));
+      if (![REVIEW_SERIES, ACCOUNT_SERIES].includes(series))
+        return json({ error: "未知证据系列" }, 400);
+      if (!Number.isInteger(horizon) || horizon < 5 || horizon > 250)
+        return json({ error: "horizon 必须是 5–250 的整数" }, 400);
       const result = await getEvidence(env, { series, asOf, horizon });
       return json(
         path === "/api/evidence/history"

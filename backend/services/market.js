@@ -87,9 +87,14 @@ export async function marketData(date) {
   return result;
 }
 
-export async function tradingCalendar(startDate, endDate) {
+export async function tradingCalendar(startDate, endDate, limit = 80) {
+  if (!Number.isInteger(limit) || limit < 1)
+    throw new Error("交易日历条数限制无效");
   const url = new URL("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get");
-  url.searchParams.set("param", `sh000001,day,${startDate},${endDate},80,qfq`);
+  url.searchParams.set(
+    "param",
+    `sh000001,day,${startDate},${endDate},${limit},qfq`,
+  );
   const response = await publicFetch(url, 12000);
   if (!response.ok) throw new Error("交易日行情暂不可用");
   const body = await response.json();

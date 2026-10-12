@@ -54,24 +54,45 @@ async function policyBundle(repository) {
 
 // 冻结窗口日历：截至 asOf 的最后 horizon 个真实交易日。
 // 不向窗口外寻找补位日期；asOf 非交易日时回退到最后一个交易日。
+// 返回窗口日期与窗口之前的最近交易日（predecessor）：账户系列据此核验
+// 期初净值与窗口首日的相邻性（§3.3 窗口首日相对捕获期初权益）。
 async function freezeCalendar({ asOf, horizon, calendarDates }) {
+  const selfFreeze = async () => {
+    const start = new Date(
+      Date.parse(`${asOf}T00:00:00Z`) - Math.ceil(horizon * 2.2) * 86400000,
+    )
+      .toISOString()
+      .slice(0, 10);
+    // 行情接口按条数截断：必须请求覆盖整个回看区间的条数，否则 120 日
+    // 窗口只能取到接口默认的 80 条（P1-2）。
+    const limit = Math.ceil(horizon * 2.2) + 10;
+    const { dates } = await tradingCalendar(start, asOf, limit);
+    const ordered = dates.filter((date) => date <= asOf);
+    const expected = ordered.slice(-horizon);
+    if (expected.length !== horizon)
+      throw new Error("交易日历不足窗口长度，不补长窗口");
+    const index = ordered.indexOf(expected[0]);
+    return {
+      dates: expected,
+      predecessor: index > 0 ? ordered[index - 1] : null,
+    };
+  };
   if (Array.isArray(calendarDates)) {
     const ordered = [...calendarDates].filter((date) => date <= asOf).sort();
+    // 自动流程可能误传“未来日历”（如账户结算交出的下一交易日列表）：
+    // 过滤后为空说明调用方没有提供窗口内的历史日历，回退到自行冻结，
+    // 而不是把窗口冻结成空（P1-2）。
+    if (!ordered.length) return await selfFreeze();
     const expected = ordered.slice(-horizon);
     if (expected.length !== horizon)
       throw new Error("冻结日历不足窗口长度，不补长窗口");
-    return expected;
+    const index = ordered.indexOf(expected[0]);
+    return {
+      dates: expected,
+      predecessor: index > 0 ? ordered[index - 1] : null,
+    };
   }
-  const start = new Date(
-    Date.parse(`${asOf}T00:00:00Z`) - Math.ceil(horizon * 2.2) * 86400000,
-  )
-    .toISOString()
-    .slice(0, 10);
-  const { dates } = await tradingCalendar(start, asOf);
-  const expected = dates.filter((date) => date <= asOf).slice(-horizon);
-  if (expected.length !== horizon)
-    throw new Error("交易日历不足窗口长度，不补长窗口");
-  return expected;
+  return await selfFreeze();
 }
 
 // 来源提交后登记每日指标：复盘核验行 → 小数口径日指标（§3.1）。
@@ -154,10 +175,29 @@ async function publishWindowReport({
   costUncalibrated,
   noComparableBaseline,
 }) {
+  // 每日质量闸门（§4/§5.1）：仅 status=READY 的日指标进入诊断序列。
+  // 未通过质量的日期留在窗口里并公开剔除原因，不计入覆盖率与有效天数；
+  // 空评分等不合格样本不得计为有效（P1-3）。
+  const readyMetrics = new Map();
+  const excludedDates = [];
+  const exclusionReasons = {};
+  for (const date of expectedDates) {
+    const row = metrics.get(date);
+    if (!row) continue;
+    if (row.payload?.status === "READY") {
+      readyMetrics.set(date, row);
+      continue;
+    }
+    excludedDates.push(date);
+    exclusionReasons[date] =
+      row.payload?.reasons?.join("；") ??
+      row.payload?.status ??
+      "日指标质量不合格";
+  }
   // 证据 epoch（§5.2）：窗口内上下文摘要不一致时标记 MIXED_CONTEXT。
   const contextDigests = [
     ...new Set(
-      [...metrics.values()]
+      [...readyMetrics.values()]
         .filter(Boolean)
         .map((row) => row.payload.contextDigest),
     ),
@@ -166,26 +206,46 @@ async function publishWindowReport({
   const mixedContext = contextDigests.length > 1;
   const window = buildEvidenceWindow({
     expectedDates,
-    dailyMetrics: metrics,
+    dailyMetrics: readyMetrics,
     horizon,
     contextDigest,
   });
+  // 质量剔除日与无指标缺失日分开呈现：missingDates 只含无日指标的日期，
+  // 与 validDates/excludedDates 互斥并覆盖冻结日历（P1-3/P1-6）。
+  const excludedDateSet = new Set(excludedDates);
+  const missingDates = window.missingDates.filter(
+    (date) => !excludedDateSet.has(date),
+  );
   const sourceDigests = Object.fromEntries(
     window.validDates.map((date) => [
       date,
-      metrics.get(date).sourceDigest ?? null,
+      readyMetrics.get(date).sourceDigest ?? null,
     ]),
+  );
+  // 冻结输入清单（§8.2）：报告发布时把参与计算的每日指标连同摘要一起
+  // 固化到 manifest，来源修订后旧报告仍可从导出独立重算（P1-5）。
+  const manifestMetrics = await Promise.all(
+    window.validDates.map(async (date) => {
+      const row = readyMetrics.get(date);
+      return {
+        outcomeDate: date,
+        contextDigest: row.payload.contextDigest,
+        sourceDigest: row.sourceDigest ?? null,
+        payload: row.payload,
+        digest: row.digest ?? (await digestOf(row.payload)),
+      };
+    }),
   );
   const inputDigest = await digestOf({
     seriesId,
     window: {
       expectedDates: window.expectedDates,
       validDates: window.validDates,
-      missingDates: window.missingDates,
+      missingDates,
     },
     contextDigest,
     metrics: Object.fromEntries(
-      window.validDates.map((date) => [date, metrics.get(date).payload]),
+      window.validDates.map((date) => [date, readyMetrics.get(date).payload]),
     ),
   });
   const seed = await evidenceSeed({
@@ -206,7 +266,9 @@ async function publishWindowReport({
     window: {
       expectedDates: window.expectedDates,
       validDates: window.validDates,
-      missingDates: window.missingDates,
+      missingDates,
+      excludedDates,
+      exclusionReasons,
       coverage: Number(window.coverage.toFixed(4)),
     },
     context: { digest: contextDigest, mixedContext },
@@ -239,10 +301,24 @@ async function publishWindowReport({
         sourceRefs: window.validDates.map((date) => `${seriesId}:${date}`),
         sourceDigests,
         contextDigest,
+        metrics: manifestMetrics,
       },
     });
-  if (!window.validDates.length)
-    return (await publish({ ...base, status: "PENDING", family: [] })).report;
+  if (!window.validDates.length) {
+    const allExcluded = excludedDates.length > 0;
+    return (
+      await publish({
+        ...base,
+        status: allExcluded ? "INSUFFICIENT_SAMPLE" : "PENDING",
+        family: [],
+        reasons: allExcluded
+          ? [
+              `窗口内全部 ${excludedDates.length} 个日指标未通过每日质量闸门，不输出统计结论`,
+            ]
+          : undefined,
+      })
+    ).report;
+  }
   if (window.coverage < policy.minWindowCoverage)
     return (
       await publish({
@@ -276,7 +352,7 @@ async function publishWindowReport({
   const estimates = new Map();
   for (const metric of metricKeys) {
     const values = validDates.map(
-      (date) => metrics.get(date).payload.values[metricValueKey(metric)],
+      (date) => readyMetrics.get(date).payload.values[metricValueKey(metric)],
     );
     const outcome = bootstrapMeanEvidence({
       values,
@@ -371,12 +447,13 @@ export async function buildReviewEvidence(
   horizon = horizon ?? policy.primaryWindow;
   if (!policy.windows.includes(horizon))
     throw new Error(`窗口 ${horizon} 不在预登记 windows 内`);
-  let expectedDates;
+  let frozen;
   try {
-    expectedDates = await freezeCalendar({ asOf, horizon, calendarDates });
+    frozen = await freezeCalendar({ asOf, horizon, calendarDates });
   } catch (error) {
     return { status: "PENDING", reason: `交易日历不可用：${error.message}` };
   }
+  const expectedDates = frozen.dates;
   const asOfEffective = expectedDates.at(-1);
   const allMetrics = await repository
     .listDailyMetricsAcrossContexts({
@@ -421,12 +498,13 @@ export async function buildAccountEvidence(
   horizon = horizon ?? policy.primaryWindow;
   if (!policy.windows.includes(horizon))
     throw new Error(`窗口 ${horizon} 不在预登记 windows 内`);
-  let expectedDates;
+  let frozen;
   try {
-    expectedDates = await freezeCalendar({ asOf, horizon, calendarDates });
+    frozen = await freezeCalendar({ asOf, horizon, calendarDates });
   } catch (error) {
     return { status: "PENDING", reason: `交易日历不可用：${error.message}` };
   }
+  const expectedDates = frozen.dates;
   const asOfEffective = expectedDates.at(-1);
   const paper = new PaperRepository(env);
   const { book } = await paper.initialize();
@@ -439,9 +517,25 @@ export async function buildAccountEvidence(
     .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
   const byDate = new Map(rows.map((row) => [row.tradeDate, row.equityCents]));
   const prior = rows.filter((row) => row.tradeDate < expectedDates[0]);
-  const baseEquityCents = prior.length
-    ? prior.at(-1).equityCents
-    : book.initialCashCents;
+  // 净值完整性（§5.2）：期初权益必须是窗口首日之前最近交易日的已结算净值。
+  // 无法核验相邻性、或账户存在更早历史但净值序列缺失时，窗口首日的收益
+  // 可能跨越多个交易日，不得算作单日样本（P1-4）。
+  let baseEquityCents;
+  let firstDayAdjacent;
+  if (prior.length) {
+    baseEquityCents = prior.at(-1).equityCents;
+    firstDayAdjacent =
+      frozen.predecessor != null &&
+      prior.at(-1).tradeDate === frozen.predecessor;
+  } else if (book.lastDate && book.lastDate < expectedDates[0]) {
+    // 账户在窗口之前已有结算，但净值序列缺失：期初权益不可信。
+    baseEquityCents = book.initialCashCents;
+    firstDayAdjacent = false;
+  } else {
+    // 账户首个结算日不早于窗口首日：期初现金即捕获期初权益。
+    baseEquityCents = book.initialCashCents;
+    firstDayAdjacent = true;
+  }
   // 账户上下文摘要（§5.2）：期初权益、费用模型、引擎与净值完整性口径。
   const contextDigest = await digestOf({
     account: "primary-continuous",
@@ -449,33 +543,64 @@ export async function buildAccountEvidence(
     feeModel: book.feeModel ?? null,
     executionCost: book.executionCost ?? null,
     returnMeasure: "EQUITY_CHAIN_DECIMAL",
+    equityIntegrity: "GAP_INVALIDATES_FOLLOWING_DAY",
   });
-  const validDates = expectedDates.filter((date) => byDate.get(date));
-  const missingDates = expectedDates.filter((date) => !byDate.get(date));
   const metrics = new Map();
+  const buildPayload = (date, values, status, reasons = []) => ({
+    outcomeDate: date,
+    contextDigest,
+    sourceDigest: null,
+    values,
+    status,
+    quality: {},
+    exclusionReasons: {},
+    ...(reasons.length ? { reasons } : {}),
+  });
   let previousEquity = baseEquityCents;
+  // firstDayAdjacent=false 时窗口首日不可作为单日样本；缺口后的第一天
+  // 同理：跨缺口收益是多个交易日的合计，不能算成一天（P1-4）。
+  let previousSettled = firstDayAdjacent;
+  let pendingReason = firstDayAdjacent
+    ? null
+    : "期初净值与窗口首日不相邻或不可核验，跨期收益无法拆分为单日";
   for (const date of expectedDates) {
     const equity = byDate.get(date);
-    if (!equity) {
+    if (equity === undefined || equity === null) {
       metrics.set(date, null);
+      if (previousSettled)
+        pendingReason = "前一日净值缺失，跨缺口收益无法拆分为单日";
+      previousSettled = false;
       continue;
     }
+    if (!previousSettled) {
+      metrics.set(date, {
+        outcomeDate: date,
+        sourceDigest: await digestOf({ date, equityCents: equity }),
+        payload: buildPayload(
+          date,
+          { meanDailyReturn: null },
+          "INSUFFICIENT_SAMPLE",
+          [pendingReason ?? "前一日净值缺失，跨缺口收益无法拆分为单日"],
+        ),
+      });
+      pendingReason = null;
+      previousSettled = true;
+      previousEquity = equity;
+      continue;
+    }
+    const value = equity / previousEquity - 1;
+    const broken = !Number.isFinite(value) || previousEquity <= 0 || equity < 0;
     metrics.set(date, {
       outcomeDate: date,
       sourceDigest: await digestOf({ date, equityCents: equity }),
-      payload: {
-        outcomeDate: date,
-        contextDigest,
-        sourceDigest: null,
-        values: { meanDailyReturn: equity / previousEquity - 1 },
-        status: "READY",
-        quality: {},
-        exclusionReasons: {},
-      },
+      payload: broken
+        ? buildPayload(date, { meanDailyReturn: null }, "INSUFFICIENT_SAMPLE", [
+            "期初或当日净值无效，无法计算单日收益",
+          ])
+        : buildPayload(date, { meanDailyReturn: value }, "READY"),
     });
     previousEquity = equity;
   }
-  void missingDates;
   return publishWindowReport({
     repository,
     policy,
@@ -527,14 +652,36 @@ export async function exportEvidence(env, { id }) {
   const repository = new EvidenceRepository(env);
   const report = await repository.getReport(id);
   if (!report) throw new Error("证据报告不存在");
-  const dailyMetrics = await repository
-    .listDailyMetricsAcrossContexts({
-      seriesId: report.seriesId,
-      fromDate: report.inputs?.orderedDates?.[0] ?? "0000-01-01",
-      toDate: report.asOf,
-    })
-    .catch(() => []);
+  // 输入冻结（P1-5）：优先使用报告发布时固化的 manifest 指标，来源修订
+  // 后旧报告仍可独立重算；旧报告（无冻结清单）回退当前日指标。
+  const frozenMetrics = report.inputs?.metrics;
+  const dailyMetrics = frozenMetrics?.length
+    ? frozenMetrics
+    : await repository
+        .listDailyMetricsAcrossContexts({
+          seriesId: report.seriesId,
+          fromDate: report.inputs?.orderedDates?.[0] ?? "0000-01-01",
+          toDate: report.asOf,
+        })
+        .catch(() => []);
+  // 政策必须能按报告的 policyDigest 找回，否则 verifier 无法重算（P1-5）。
   const policies = await repository.listPolicies(5);
+  const byDigest = await repository.getPolicyByDigest(report.policyDigest);
+  if (byDigest && !policies.some((row) => row.digest === byDigest.digest))
+    policies.unshift(byDigest);
+  if (!policies.some((row) => row.digest === report.policyDigest)) {
+    const fallbackPayload = normalizeEvidencePolicy(undefined);
+    const fallbackDigest = await digestOf(fallbackPayload);
+    if (fallbackDigest === report.policyDigest)
+      policies.push({
+        id: "default",
+        version: 0,
+        payload: fallbackPayload,
+        digest: fallbackDigest,
+        effectiveFrom: null,
+        createdAt: null,
+      });
+  }
   return {
     format: "limit-lens-evidence-v1",
     exportedAt: new Date().toISOString(),
@@ -548,21 +695,23 @@ export async function exportEvidence(env, { id }) {
 export async function getEvidence(env, { series, asOf, horizon }) {
   const repository = new EvidenceRepository(env);
   const reports = await repository.listReports({ seriesId: series, limit: 60 });
-  const matching = reports.filter(
-    (report) => report.horizon === horizon && (!asOf || report.asOf <= asOf),
-  );
-  return { report: matching.at(0) ?? null, history: reports.slice(0, 12) };
+  // asOf 截取（P1-8）：报告与历史都不得混入所选日期之后的数据。
+  const scoped = reports.filter((report) => !asOf || report.asOf <= asOf);
+  const matching = scoped.filter((report) => report.horizon === horizon);
+  return { report: matching.at(0) ?? null, history: scoped.slice(0, 12) };
 }
 
-export async function evidenceOverview(env) {
+export async function evidenceOverview(env, { asOf } = {}) {
   const repository = new EvidenceRepository(env);
   const policyRow = await policyBundle(repository);
   const review = await getEvidence(env, {
     series: REVIEW_SERIES,
+    asOf,
     horizon: policyRow.payload.primaryWindow,
   });
   const account = await getEvidence(env, {
     series: ACCOUNT_SERIES,
+    asOf,
     horizon: policyRow.payload.primaryWindow,
   });
   return {

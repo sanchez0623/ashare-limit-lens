@@ -713,6 +713,7 @@ function renderReview() {
   $("review-conclusion").hidden = !r;
   // 滚动证据摘要（§9）：均值、95% 区间、覆盖与方法标签；区间跨零表示
   // 证据不足；方法模拟受限的窗口只作探索展示，不作结论性表述。
+  // 历史复盘按所选日期截取（P1-8）：不混入所选日期之后发布的报告。
   const evidenceReport = state.evidence?.review?.report;
   let evidenceText = "";
   if (evidenceReport) {
@@ -722,10 +723,12 @@ function renderReview() {
     const limited = evidenceReport.payload.tags?.includes(
       "METHOD_SIMULATION_LIMITED",
     );
+    const horizon = evidenceReport.horizon;
+    const validDays = evidenceReport.payload.window.validDates.length;
     if (entry?.ci)
-      evidenceText = `60 日滚动证据（探索诊断）：平均日 IC ${entry.estimate.toFixed(2)}，95% 区间 [${entry.ci.lower.toFixed(2)}, ${entry.ci.upper.toFixed(2)}]，${evidenceReport.payload.window.validDates}/${evidenceReport.payload.window.expectedDates.length} 个有效交易日${limited ? "；方法模拟受限，仅作探索展示" : ""}。区间跨零表示证据不足，不等于策略无效。`;
+      evidenceText = `${horizon} 日滚动证据（探索诊断）：平均日 IC ${entry.estimate.toFixed(2)}，95% 区间 [${entry.ci.lower.toFixed(2)}, ${entry.ci.upper.toFixed(2)}]，${validDays}/${evidenceReport.payload.window.expectedDates.length} 个有效交易日${limited ? "；方法模拟受限，仅作探索展示" : ""}。区间跨零表示证据不足，不等于策略无效。`;
     else
-      evidenceText = `60 日滚动证据：${evidenceReport.payload.status}${evidenceReport.payload.reasons?.length ? `（${evidenceReport.payload.reasons[0]}）` : "，样本积累中"}。`;
+      evidenceText = `${horizon} 日滚动证据：${evidenceReport.payload.status}${evidenceReport.payload.reasons?.length ? `（${evidenceReport.payload.reasons[0]}）` : "，样本积累中"}。`;
   }
   $("review-conclusion").textContent =
     `${r?.conclusion || ""}${evidenceText ? ` ${evidenceText}` : ""}`;
@@ -777,7 +780,8 @@ async function readReview(req = state.request) {
     const [response, historyResponse, evidenceResponse] = await Promise.all([
       fetch(`/api/review?date=${encodeURIComponent($("trade-date").value)}`),
       fetch("/api/history"),
-      fetch("/api/evidence"),
+      // 证据按所选复盘日期截取（P1-8）：历史日期不显示之后的滚动证据。
+      fetch(`/api/evidence?asOf=${encodeURIComponent($("trade-date").value)}`),
     ]);
     const p = await response.json(),
       h = await historyResponse.json();

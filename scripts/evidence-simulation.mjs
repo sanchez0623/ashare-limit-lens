@@ -1,8 +1,10 @@
 // 统计方法独立模拟验收（docs/design/statistical-evidence.md §10）：
 // npm run verify:evidence-simulation
 // 固定公开种子、 IID/AR(1)/波动聚集/正效应、长度 20/60/120，各不少于
-// 1000 条模拟序列；验收阈值：95% 区间经验覆盖至少 90%，零效应拒绝率
-// 至多 7%（双侧 raw p<0.05），同时给出 Monte Carlo 二项区间。
+// 1000 条模拟序列；验收阈值：95% 区间对真实效应的经验覆盖至少 90%
+// （零效应情景真实均值为 0，正效应情景为已知效应 0.002），零效应拒绝率
+// （I 类错误）至多 7%（双侧 raw p<0.05）；正效应情景的拒绝率按检验力
+// 记录，不做 I 类错误验收。同时给出 Monte Carlo 二项区间。
 // 本脚本只验证诊断方法（DIAGNOSTIC_BASIC_BLOCK_V1），不代表正式极小 α。
 import {
   resampleSegmentIndexMatrix,
@@ -39,11 +41,13 @@ function gaussian(random) {
 const SCENARIOS = {
   IID_NULL: {
     label: "IID 零效应",
+    trueMean: 0,
     generate: (random, n) =>
       Array.from({ length: n }, () => gaussian(random) * 0.01),
   },
   AR1_NULL: {
     label: "AR(1) φ=0.3 零效应",
+    trueMean: 0,
     generate: (random, n) => {
       const out = [];
       let last = 0;
@@ -56,6 +60,7 @@ const SCENARIOS = {
   },
   VOL_CLUSTER_NULL: {
     label: "波动聚集零效应",
+    trueMean: 0,
     generate: (random, n) => {
       const out = [];
       let sigma = 0.01;
@@ -75,6 +80,8 @@ const SCENARIOS = {
   },
   IID_POSITIVE: {
     label: "IID 正效应 0.2σ",
+    // 覆盖率目标必须对准真实效应 0.002，而不是零（P2-2）。
+    trueMean: 0.002,
     generate: (random, n) =>
       Array.from({ length: n }, () => gaussian(random) * 0.01 + 0.002),
   },
@@ -128,7 +135,13 @@ async function runConfig(scenarioKey, length) {
     });
     if (outcome.status !== "READY") continue;
     estimable++;
-    if (outcome.ci.lower <= 0 && outcome.ci.upper >= 0) covered++;
+    // 覆盖率 = 区间包含真实效应的比例（P2-2）：零效应为 0，
+    // 正效应为已知效应 0.002，不能一律对零判定。
+    if (
+      outcome.ci.lower <= scenario.trueMean &&
+      outcome.ci.upper >= scenario.trueMean
+    )
+      covered++;
     if (outcome.pRaw < ALPHA) rejected++;
   }
   const coverage = {
@@ -136,7 +149,10 @@ async function runConfig(scenarioKey, length) {
     low: binomialInterval(covered / estimable, estimable)[0],
     high: binomialInterval(covered / estimable, estimable)[1],
   };
-  const typeI = {
+  // 零效应情景的拒绝率是 I 类错误；正效应情景的拒绝率是检验力（P2-2）。
+  const isNull = scenario.trueMean === 0;
+  const rejection = {
+    role: isNull ? "TYPE_I_ERROR" : "POWER",
     value: rejected / estimable,
     low: binomialInterval(rejected / estimable, estimable)[0],
     high: binomialInterval(rejected / estimable, estimable)[1],
@@ -145,9 +161,10 @@ async function runConfig(scenarioKey, length) {
     scenario: scenarioKey,
     label: scenario.label,
     length,
+    trueMean: scenario.trueMean,
     estimable,
     coverage,
-    typeI,
+    rejection,
   };
 }
 
@@ -158,14 +175,14 @@ for (const scenarioKey of Object.keys(SCENARIOS))
 
 const failures = [];
 for (const row of results) {
-  const isNull = row.scenario.endsWith("_NULL");
-  if (isNull && row.coverage.value < 0.9)
+  const isNull = row.rejection.role === "TYPE_I_ERROR";
+  if (row.coverage.value < 0.9)
     failures.push(
-      `${row.scenario} h${row.length} 覆盖率 ${row.coverage.value.toFixed(3)} 低于 0.90`,
+      `${row.scenario} h${row.length} 对真实效应 ${row.trueMean} 的覆盖率 ${row.coverage.value.toFixed(3)} 低于 0.90`,
     );
-  if (isNull && row.typeI.value > 0.07)
+  if (isNull && row.rejection.value > 0.07)
     failures.push(
-      `${row.scenario} h${row.length} 零效应拒绝率 ${row.typeI.value.toFixed(3)} 超过 0.07`,
+      `${row.scenario} h${row.length} 零效应拒绝率 ${row.rejection.value.toFixed(3)} 超过 0.07`,
     );
 }
 // 如实输出全部情景：未达阈值者列入 limitations，产品层降为受限探索展示
@@ -187,9 +204,9 @@ console.log(
           results
             .filter(
               (row) =>
-                row.scenario.endsWith("_NULL") &&
+                row.rejection.role === "TYPE_I_ERROR" &&
                 row.coverage.value >= 0.9 &&
-                row.typeI.value <= 0.07,
+                row.rejection.value <= 0.07,
             )
             .map((row) => row.length),
         ),
@@ -197,6 +214,7 @@ console.log(
       results: results.map((row) => ({
         scenario: row.scenario,
         length: row.length,
+        trueMean: row.trueMean,
         estimable: row.estimable,
         coverage: {
           value: Number(row.coverage.value.toFixed(4)),
@@ -205,11 +223,12 @@ console.log(
             Number(row.coverage.high.toFixed(4)),
           ],
         },
-        typeI: {
-          value: Number(row.typeI.value.toFixed(4)),
+        rejection: {
+          role: row.rejection.role,
+          value: Number(row.rejection.value.toFixed(4)),
           ci95: [
-            Number(row.typeI.low.toFixed(4)),
-            Number(row.typeI.high.toFixed(4)),
+            Number(row.rejection.low.toFixed(4)),
+            Number(row.rejection.high.toFixed(4)),
           ],
         },
       })),
