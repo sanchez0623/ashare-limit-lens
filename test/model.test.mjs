@@ -39,6 +39,40 @@ test("涨停与炸板分母一致，ST个股剔除并保留说明", () => {
   assert.ok(Math.abs(result.sealRate - 200 / 3) < 0.01);
   assert.equal(analyze([normalize(base)], null).sealRate, null);
 });
+test("连板数兼容昨日池 ylbc，保持当日 lbc 优先级", () => {
+  assert.equal(normalize({ ...base, lbc: undefined, ylbc: "1" }).height, 1);
+  assert.equal(normalize({ ...base, lbc: null, ylbc: 3 }).height, 3);
+  assert.equal(normalize({ ...base, ylbc: 1 }).height, 2);
+  assert.equal(normalize({ ...base, lbc: "invalid", ylbc: 1 }).height, 1);
+  assert.equal(normalize({ ...base, lbc: undefined }).height, null);
+});
+test("昨日池只含 ylbc 时，两样本一晋级为 50%，无人晋级为 0%", () => {
+  const previous = [
+    { ...base, lbc: undefined, ylbc: 1 },
+    { ...base, c: "002002", lbc: undefined, ylbc: 2 },
+  ].map(normalize);
+  const promoted = analyze([normalize(base)], 0, previous);
+  assert.equal(promoted.previousCount, 2);
+  assert.equal(promoted.promotion, 50);
+  assert.equal(
+    analyze([normalize({ ...base, lbc: 1 })], 0, previous).promotion,
+    0,
+  );
+  assert.equal(analyze([], 0, previous).promotion, 0);
+  assert.equal(
+    analyze([normalize({ ...base, n: "ST测试" })], 0, previous).promotion,
+    0,
+  );
+});
+test("缺昨日样本或有效连板数时晋级率暂缺，不误报零晋级", () => {
+  const rows = [normalize(base)];
+  assert.equal(analyze(rows, 0, null).promotion, null);
+  assert.equal(analyze(rows, 0, []).promotion, null);
+  for (const height of [undefined, null, "invalid", 0, -1, 1.5]) {
+    const previous = [normalize({ ...base, lbc: undefined, ylbc: height })];
+    assert.equal(analyze(rows, 0, previous).promotion, null);
+  }
+});
 test("多项风险扣分最多20分，不能将一字封板当成易成交", () => {
   const row = normalize({ ...base, lbc: 6, hs: 45, zbc: 4, lbt: 145500 });
   const r = analyzeStock(row, 90);

@@ -1,6 +1,7 @@
 import { publicFetch } from "./public-fetch.js";
 import { symbol, beijingDate } from "./review.js";
 import { toCents } from "../domain/trading.js";
+import { normalize, promotionStats } from "../../shared/scoring.js";
 const CACHE = new Map();
 const EM_BASE = "https://push2ex.eastmoney.com/";
 const TOKEN = "7eea3edcaed734bea9cbfc24409ed989";
@@ -58,6 +59,13 @@ export async function marketData(date) {
   if (broken.status === "rejected") warnings.push("炸板池未返回，封板率暂缺。");
   if (yesterday.status === "rejected" || !yesterday.value?.pool.length)
     warnings.push("昨日涨停池未返回有效样本，晋级率暂缺。");
+  else if (
+    promotionStats(
+      main.value.pool.map(normalize),
+      yesterday.value.pool.map(normalize),
+    ).promotion === null
+  )
+    warnings.push("昨日连板字段缺失或无效，晋级率暂缺。");
   const result = {
     date,
     source: "东方财富公开行情",

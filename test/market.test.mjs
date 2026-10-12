@@ -223,3 +223,228 @@ test("新盘后快照同时归档原始行情与统计，重复保存不改写�
     DB.close();
   }
 });
+
+const yesterdayRows = (height = 1) => [
+  { c: raw.c, n: raw.n, ylbc: height },
+  { c: "600002", n: "合成昨日二板", ylbc: 2 },
+];
+for (const fixture of [
+  {
+    name: "ylbc 昨日池正常晋级",
+    date: "2026-09-21",
+    previous: yesterdayRows(),
+    promotion: 50,
+  },
+  {
+    name: "有效样本无人晋级",
+    date: "2026-09-22",
+    previous: yesterdayRows(2),
+    promotion: 0,
+  },
+  {
+    name: "昨日样本缺失",
+    date: "2026-09-23",
+    previous: [],
+    promotion: null,
+    warning: /昨日涨停池未返回有效样本/,
+  },
+  {
+    name: "昨日连板字段缺失",
+    date: "2026-09-24",
+    previous: [{ c: raw.c, n: raw.n }],
+    promotion: null,
+    warning: /昨日连板字段缺失或无效/,
+  },
+]) {
+  test(`实时 API、盘后归档和历史展示一致：${fixture.name}`, async (t) => {
+    t.mock.timers.enable({
+      apis: ["Date"],
+      now: Date.parse(`${fixture.date}T07:20:00.000Z`),
+    });
+    const DB = localDatabase(),
+      originalFetch = globalThis.fetch,
+      calls = [];
+    globalThis.fetch = async (address) => {
+      const url = new URL(address),
+        endpoint = url.pathname.slice(1);
+      calls.push({ endpoint, date: url.searchParams.get("date") });
+      assert.ok(
+        ["getTopicZTPool", "getTopicZBPool", "getYesterdayZTPool"].includes(
+          endpoint,
+        ),
+      );
+      const pool =
+        endpoint === "getTopicZTPool"
+          ? [raw]
+          : endpoint === "getYesterdayZTPool"
+            ? fixture.previous
+            : [];
+      return Response.json({
+        rc: 0,
+        data: { qdate: fixture.date.replaceAll("-", ""), pool },
+      });
+    };
+    try {
+      const response = await api(request(fixture.date), { DB });
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      const live = analyze(
+        payload.rows.map(normalize),
+        payload.broken,
+        payload.previous?.map(normalize) ?? null,
+      );
+      assert.equal(live.promotion, fixture.promotion);
+      if (fixture.warning)
+        assert.ok(
+          payload.warnings.some((warning) => fixture.warning.test(warning)),
+        );
+      else assert.deepEqual(payload.warnings, []);
+      assert.equal(
+        (await saveSnapshot({ DB }, payload, PRESETS.balanced)).saved,
+        true,
+      );
+      const stored = await DB.prepare(
+        "SELECT payload FROM snapshots WHERE trade_date=?",
+      )
+        .bind(fixture.date)
+        .first();
+      assert.equal(
+        JSON.parse(stored.payload).marketSummary.promotion,
+        fixture.promotion,
+      );
+      const archive = await marketForDisplay({ DB }, fixture.date, {
+        today: "2026-09-30",
+      });
+      assert.equal(archive.analysis.promotion, fixture.promotion);
+      assert.notEqual(
+        archive.promotionBackfilled,
+        true,
+        "新归档已保存正确统计，无需补算",
+      );
+      assert.equal(
+        (
+          await DB.prepare("SELECT payload FROM snapshots WHERE trade_date=?")
+            .bind(fixture.date)
+            .first()
+        ).payload,
+        stored.payload,
+      );
+      assert.equal(calls.length, 3, "历史展示直接读取归档，不增加行情请求");
+      assert.ok(
+        calls.every((call) => call.date === fixture.date.replaceAll("-", "")),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      DB.close();
+    }
+  });
+}
+
+for (const expected of [50, 0]) {
+  test(`旧归档只在展示补算晋级率 ${expected}%，快照与冻结评分保持不变`, async () => {
+    const DB = localDatabase();
+    try {
+      const snapshot = oldSnapshot();
+      snapshot.marketSummary = {
+        ...analyze([normalize(raw)], 2),
+        promotion: null,
+        previousCount: 2,
+      };
+      delete snapshot.marketSummary.stocks;
+      delete snapshot.marketSummary.sectors;
+      delete snapshot.marketSummary.emotion;
+      snapshot.market = {
+        rows: [raw],
+        previous: yesterdayRows(expected === 50 ? 1 : 2),
+        broken: 2,
+      };
+      await insertArchive(DB, snapshot);
+      const before = await DB.prepare("SELECT payload FROM snapshots").first();
+      for (let i = 0; i < 2; i++) {
+        const archive = await marketForDisplay({ DB }, DATE, {
+          today: "2026-10-12",
+          loadMarket: async () => {
+            throw new Error("历史补算不得联网");
+          },
+        });
+        assert.equal(archive.analysis.promotion, expected);
+        assert.equal(archive.analysis.previousCount, 2);
+        assert.equal(archive.promotionBackfilled, true);
+        assert.match(archive.warnings.join(" "), /由归档.*补算/);
+        assert.deepEqual(archive.analysis.stocks, snapshot.stocks);
+        assert.deepEqual(archive.analysis.sectors, snapshot.sectors);
+        assert.equal(archive.analysis.emotion, snapshot.emotion);
+        assert.equal(
+          archive.analysis.sealRate,
+          snapshot.marketSummary.sealRate,
+        );
+        assert.deepEqual(
+          await DB.prepare("SELECT payload FROM snapshots").first(),
+          before,
+        );
+      }
+    } finally {
+      DB.close();
+    }
+  });
+}
+
+test("旧归档已有晋级率包括 0% 时保留原值，不覆盖已冻结统计", async () => {
+  const DB = localDatabase();
+  try {
+    const snapshot = oldSnapshot();
+    snapshot.marketSummary = { promotion: 0, previousCount: 77 };
+    snapshot.market = { rows: [raw], previous: yesterdayRows() };
+    await insertArchive(DB, snapshot);
+    const before = await DB.prepare("SELECT payload FROM snapshots").first();
+    const archive = await marketForDisplay({ DB }, DATE, {
+      today: "2026-10-12",
+    });
+    assert.equal(archive.analysis.promotion, 0);
+    assert.equal(archive.analysis.previousCount, 77);
+    assert.notEqual(archive.promotionBackfilled, true);
+    assert.deepEqual(
+      await DB.prepare("SELECT payload FROM snapshots").first(),
+      before,
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+for (const fixture of [
+  { name: "无原始行情", market: undefined },
+  { name: "无当日池", market: { previous: yesterdayRows() } },
+  { name: "无昨日池", market: { rows: [raw] } },
+  { name: "原始行无效", market: { rows: [null], previous: yesterdayRows() } },
+  {
+    name: "原始行情错日",
+    market: { date: "2026-10-08", rows: [raw], previous: yesterdayRows() },
+  },
+  {
+    name: "昨日连板数缺失",
+    market: { rows: [raw], previous: [{ c: raw.c, n: raw.n }] },
+  },
+]) {
+  test(`旧归档数据不足时保留空晋级率与明确提示：${fixture.name}`, async () => {
+    const DB = localDatabase();
+    try {
+      const snapshot = { ...oldSnapshot(), market: fixture.market };
+      await insertArchive(DB, snapshot);
+      const before = await DB.prepare("SELECT payload FROM snapshots").first();
+      const archive = await marketForDisplay({ DB }, DATE, {
+        today: "2026-10-12",
+      });
+      assert.equal(archive.analysis.promotion, null);
+      assert.notEqual(archive.promotionBackfilled, true);
+      assert.match(archive.warnings.join(" "), /晋级率暂缺/);
+      assert.deepEqual(archive.analysis.stocks, snapshot.stocks);
+      assert.deepEqual(
+        await DB.prepare("SELECT payload FROM snapshots").first(),
+        before,
+      );
+    } finally {
+      DB.close();
+    }
+  });
+}

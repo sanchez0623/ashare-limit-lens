@@ -2,6 +2,13 @@ import { database } from "../storage/database.js";
 import { beijingDate } from "./review.js";
 import { marketData } from "./market.js";
 import { safeError } from "../http.js";
+import { normalize, promotionStats } from "../../shared/scoring.js";
+
+const validPool = (rows) =>
+  Array.isArray(rows) &&
+  rows.every(
+    (row) => row && typeof row.c === "string" && typeof row.n === "string",
+  );
 
 // Display archived judgments without fetching today's provider data or rescoring
 // an old snapshot with current weights. Trading continues to use marketData.
@@ -23,24 +30,54 @@ async function archivedMarket(env, date) {
   )
     throw new Error("历史归档日期或内容不一致，请核对存储中的评分快照");
 
-  const summary = snapshot.marketSummary ?? {
-    count: snapshot.stocks.length,
-    excluded: null,
-    first: snapshot.stocks.filter((stock) => stock.height === 1).length,
-    relay: snapshot.stocks.filter((stock) => stock.height > 1).length,
-    height: Math.max(0, ...snapshot.stocks.map((stock) => stock.height || 0)),
-    sealRate: null,
-    emotionCoverage: null,
-    promotion: null,
-    previousCount: null,
+  const summary = {
+    ...(snapshot.marketSummary ?? {
+      count: snapshot.stocks.length,
+      excluded: null,
+      first: snapshot.stocks.filter((stock) => stock.height === 1).length,
+      relay: snapshot.stocks.filter((stock) => stock.height > 1).length,
+      height: Math.max(0, ...snapshot.stocks.map((stock) => stock.height || 0)),
+      sealRate: null,
+      emotionCoverage: null,
+      promotion: null,
+      previousCount: null,
+    }),
   };
   const warnings = ["当前展示已保存的盘后评分，个股与板块得分保持当天冻结值。"];
   if (!snapshot.marketSummary)
-    warnings.push("旧版归档未保存炸板池与晋级统计，缺失指标显示为“—”。");
+    warnings.push("旧版归档未保存完整市场统计，无法补算的指标显示为“—”。");
+  let promotionBackfilled = false;
+  if (summary.promotion == null) {
+    const raw = snapshot.market;
+    if (
+      validPool(raw?.rows) &&
+      validPool(raw?.previous) &&
+      (raw.date == null || raw.date === date)
+    ) {
+      const stats = promotionStats(
+        raw.rows.map(normalize),
+        raw.previous.map(normalize),
+      );
+      if (stats.promotion !== null) {
+        Object.assign(summary, stats);
+        promotionBackfilled = true;
+        warnings.push("晋级率由归档的当日及昨日涨停池补算，原始快照未改写。");
+      } else {
+        warnings.push(
+          raw.previous.length
+            ? "归档昨日连板字段缺失或无效，晋级率暂缺。"
+            : "归档昨日涨停池没有有效样本，晋级率暂缺。",
+        );
+      }
+    } else {
+      warnings.push("归档缺少同日有效的当日或昨日涨停池原始数据，晋级率暂缺。");
+    }
+  }
   return {
     date,
     source: snapshot.source ?? "已保存的评分快照",
     archived: true,
+    ...(promotionBackfilled ? { promotionBackfilled: true } : {}),
     archivedAt: row.created_at,
     fetchedAt: snapshot.market?.fetchedAt ?? row.created_at,
     rows: snapshot.market?.rows ?? null,

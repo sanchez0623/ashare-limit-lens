@@ -366,7 +366,7 @@ function renderLadder() {
     )
     .join("");
   $("ladder-insight").textContent = a
-    ? `上一交易日涨停股晋级率：${fmt(a.promotion)}%${a.previousCount !== null ? `（样本 ${a.previousCount} 家）` : "，昨日数据暂缺"}。连板梯队仅反映当日结构。`
+    ? `上一交易日涨停股晋级率：${a.promotion == null ? "暂缺" : `${fmt(a.promotion)}%`}${a.previousCount !== null ? `（样本 ${a.previousCount} 家）` : "，昨日数据暂缺"}${state.payload?.promotionBackfilled ? "，按归档样本补算" : ""}。连板梯队仅反映当日结构。`
     : "用首板供给与连板高度共同观察接力结构。";
 }
 function updateSource() {

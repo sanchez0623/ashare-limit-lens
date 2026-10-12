@@ -68,7 +68,8 @@ export function normalize(row) {
     first: num(row.fbt),
     last: num(row.lbt),
     breaks: num(row.zbc),
-    height: num(row.lbc),
+    // 当日涨停池使用 lbc，昨日涨停池使用 ylbc（昨日连板数）。
+    height: num(row.lbc) ?? num(row.ylbc),
     history: row.zttj ? `${row.zttj.days} 天 ${row.zttj.ct} 板` : null,
   };
 }
@@ -235,6 +236,29 @@ export function analyzeStock(row, sectorScore, weights = PRESETS.balanced) {
       row.seal !== null && row.amount > 0 ? row.seal / row.amount : null,
   };
 }
+// 只计算晋级统计，供实时评分和旧归档展示共用，不重算冻结评分。
+export function promotionStats(rows, previous = null) {
+  const clean = rows.filter((r) => r.code && !/ST|退/.test(r.name));
+  const prevCodes = previous ? new Set(previous.map((r) => r.code)) : null;
+  const prevEligible = previous?.filter(
+    (r) => Number.isInteger(r.height) && r.height > 0,
+  );
+  return {
+    promotion: prevEligible?.length
+      ? (prevEligible.filter((r) =>
+          clean.some(
+            (s) =>
+              s.code === r.code &&
+              Number.isInteger(s.height) &&
+              s.height > r.height,
+          ),
+        ).length /
+          prevEligible.length) *
+        100
+      : null,
+    previousCount: prevCodes ? prevCodes.size : null,
+  };
+}
 export function analyze(
   rows,
   broken = null,
@@ -270,19 +294,7 @@ export function analyze(
           eWeight,
       )
     : null;
-  const prevCodes = previous ? new Set(previous.map((r) => r.code)) : null,
-    prevEligible = previous ? previous.filter((r) => r.height !== null) : null;
-  const promotion =
-    prevEligible && prevEligible.length
-      ? (prevEligible.filter((r) =>
-          clean.some(
-            (s) =>
-              s.code === r.code && s.height !== null && s.height > r.height,
-          ),
-        ).length /
-          prevEligible.length) *
-        100
-      : null;
+  const { promotion, previousCount } = promotionStats(clean, previous);
   return {
     stocks,
     sectors,
@@ -295,6 +307,6 @@ export function analyze(
     emotion,
     emotionCoverage: eWeight,
     promotion,
-    previousCount: prevCodes ? prevCodes.size : null,
+    previousCount,
   };
 }
