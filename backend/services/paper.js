@@ -25,6 +25,10 @@ import { riskLimitsForBook } from "../../shared/risk-limits.js";
 import { DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
 import { RealtimeRepository } from "../storage/realtime.js";
 import {
+  frozenSelectionPolicy,
+  selectionSnapshotDigest,
+} from "../domain/signal-selection.js";
+import {
   openSession,
   advanceSession,
   closeSession,
@@ -193,7 +197,11 @@ async function settlePaperDay(env, date) {
             strategy,
             account.book.activeStrategy,
             new Date().toISOString(),
-            { executionCostPolicy, originalScoreLookup },
+            {
+              executionCostPolicy,
+              originalScoreLookup,
+              snapshotDigest: await selectionSnapshotDigest(snapshot),
+            },
           )
         : defensivePlan(
             date,
@@ -336,6 +344,18 @@ export async function verifyExport(bundle) {
     // 冻结政策的内容寻址核验（§3.2）：计划内嵌政策 payload 必须与摘要一致，
     // 否则重放无法证明使用了声明过的成交假设。
     for (const row of bundle.plans) {
+      frozenSelectionPolicy(row.payload);
+      const audit = row.payload.selectionAudit;
+      if (audit?.snapshotDigest) {
+        const snapshot = bundle.snapshots?.find(
+          (s) => s.date === row.payload.signalDate,
+        );
+        if (
+          !snapshot ||
+          (await selectionSnapshotDigest(snapshot)) !== audit.snapshotDigest
+        )
+          hashes = false;
+      }
       const frozen = row.payload.executionCostPolicy;
       if (frozen && (await digest(frozen.payload)) !== frozen.payloadDigest)
         hashes = false;

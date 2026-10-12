@@ -14,6 +14,10 @@ import {
   policyDigest,
 } from "../storage/execution-cost.js";
 import { PaperRepository } from "../storage/paper.js";
+import {
+  selectionPolicyForBook,
+  selectionPolicyFields,
+} from "../domain/signal-selection.js";
 
 // 情景 bundle：把登记的压力倍数冻结进政策 payload 并重算摘要，
 // 使每个情景都是一份完整声明过假设的成本政策。
@@ -77,6 +81,7 @@ export async function runExecutionSensitivity(
     })),
   );
   const results = [];
+  const selectionPolicy = selectionPolicyForBook(account?.book);
   for (const bundle of bundles) {
     const replay = replayStrategy(
       pairs,
@@ -85,6 +90,7 @@ export async function runExecutionSensitivity(
       feeConfig,
       null,
       bundle,
+      { selectionPolicy },
     );
     const impliedCostCents = replay.fills.reduce(
       (sum, fill) => sum + (fill.executionCost?.impliedCostCents ?? 0),
@@ -103,6 +109,7 @@ export async function runExecutionSensitivity(
     });
   }
   const manifest = {
+    ...selectionPolicyFields(selectionPolicy),
     namespace: "execution-cost",
     basePolicy: {
       id: basePolicy.id,

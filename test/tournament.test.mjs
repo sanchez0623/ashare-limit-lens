@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { localDatabase } from "../scripts/local-db.mjs";
+import {
+  selectionPolicyForBook,
+  selectionPolicyFields,
+} from "../backend/domain/signal-selection.js";
 import { PaperRepository } from "../backend/storage/paper.js";
 import { RealtimeRepository } from "../backend/storage/realtime.js";
 import { ResearchRepository } from "../backend/storage/research.js";
@@ -1493,6 +1497,7 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
   };
   const forwardManifest = {
     captureDate: dateAt(4),
+    ...selectionPolicyFields(selectionPolicyForBook(account.book)),
     requiredDays: 1,
     feeConfig,
     feeConfigDigest,
@@ -1518,6 +1523,7 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
     .bind(now, now)
     .run();
   const baseReport = (finalEquityCents) => ({
+    ...selectionPolicyFields(selectionPolicyForBook(account.book)),
     cohortId: "c-promo",
     evaluatedAt: now,
     windowDates: [dateAt(5)],
@@ -1738,6 +1744,21 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
     promotion: { promoted: false, reason: "主账户正在更新，晋级未应用" },
   };
   retryable.digest = await digestOf(retryable);
+  for (const accountId of [
+    "shadow-exp-x",
+    "shadow-parent-x",
+    "shadow-baseline-x",
+  ])
+    await shadows.savePlan(
+      accountId,
+      defensivePlan(
+        dateAt(4),
+        account.book,
+        BASE_STRATEGY,
+        "baseline-v1",
+        `${dateAt(4)}T07:10:00.000Z`,
+      ),
+    );
   const retried = await promoteCohortChampion(env, "c-promo", {
     evaluation: retryable,
     effectiveTradeDate: dateAt(6),

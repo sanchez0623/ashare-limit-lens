@@ -19,6 +19,12 @@ import {
 } from "../domain/research-lineage.js";
 import { ResearchRepository } from "../storage/research.js";
 import { safeError } from "../http.js";
+import {
+  selectionPolicyForBook,
+  selectionPolicyFields,
+  selectionPolicyMatches,
+  frozenSelectionPolicy,
+} from "../domain/signal-selection.js";
 
 const EXECUTOR_ID = crypto.randomUUID();
 const REQUEST_LEASE_MS = 120000;
@@ -110,6 +116,7 @@ async function evaluateAndConclude({
   initialCapitalCents = null,
   attemptSequence,
   recovered = false,
+  selectionPolicy = selectionPolicyForBook(account.book),
 }) {
   const validation = validateCandidate(
     training,
@@ -120,6 +127,9 @@ async function evaluateAndConclude({
       ? initialCapitalCents / 100
       : account.book.initialCashCents / 100,
     feeConfig,
+    null,
+    null,
+    { selectionPolicy },
   );
   const report = {
     experimentId,
@@ -144,6 +154,7 @@ async function evaluateAndConclude({
     feeConfig,
     initialCashCents: initialCapitalCents ?? account.book.initialCashCents,
     recovered,
+    ...selectionPolicyFields(selectionPolicy),
     method:
       "历史筛查只提供进入影子阶段的资格；通过不代表可启用，前瞻影子验证由后续批次实施",
     passed: validation.passed,
@@ -207,6 +218,19 @@ async function recoverExperiment(repository, env, research, active) {
     const frozenTestDates =
       manifest.testDates ?? experiment.reservationPayload.testDates ?? [];
     const account = await repository.account();
+    if (!selectionPolicyMatches(manifest, account.book)) {
+      await research.recordInvalidated(
+        experiment.id,
+        versionId,
+        "选股政策与冻结清单不一致，恢复验证判定失效",
+        experiment.revision,
+      );
+      return {
+        outcome: "INVALIDATED",
+        experimentId: experiment.id,
+        reason: "选股政策与冻结清单不一致",
+      };
+    }
     const currentFees = feesForBook(account.book);
     if (manifest.feeConfigDigest !== (await digestOf(currentFees))) {
       await research.recordInvalidated(
@@ -323,6 +347,7 @@ async function recoverExperiment(repository, env, research, active) {
       initialCapitalCents: manifest.initialCashCents,
       attemptSequence: experiment.reservationPayload.attemptSequence ?? null,
       recovered: true,
+      selectionPolicy: frozenSelectionPolicy(manifest),
     });
     return {
       outcome: stage,
@@ -432,6 +457,7 @@ export async function proposeImprovement(
   const base = await repository.strategy(account.book);
   const feeConfig = feesForBook(account.book);
   const samples = await buildSamples(windows);
+  const selectionPolicy = selectionPolicyForBook(account.book);
   let reserved;
   try {
     reserved = await research.reserveAttempt({
@@ -450,6 +476,7 @@ export async function proposeImprovement(
       },
       testDates: windows.testDates,
       samples,
+      selectionPolicy,
     });
   } catch (error) {
     const reason = String(error?.message ?? error);
@@ -476,12 +503,20 @@ export async function proposeImprovement(
   });
   let versionId = null;
   try {
+    if (
+      !selectionPolicyMatches(
+        selectionPolicyFields(selectionPolicy),
+        (await repository.account()).book,
+      )
+    )
+      throw new Error("预留期间选股政策已变化，拒绝混用研究输入");
     const proposal = await propose(
       env,
       base,
       windows.training,
       account.book.initialCashCents / 100,
       feeConfig,
+      { selectionPolicy },
     );
     const candidate = validateCandidatePatch({
       proposal,
@@ -515,6 +550,7 @@ export async function proposeImprovement(
       initialCashCents: account.book.initialCashCents,
       executionVersion: EXECUTION_VERSION,
       scoringVersion: SCORING_VERSION,
+      selectionPolicy,
     });
     const { stage, validation } = await evaluateAndConclude({
       research,
@@ -528,6 +564,7 @@ export async function proposeImprovement(
       account,
       feeConfig,
       attemptSequence: reserved.attemptSequence,
+      selectionPolicy,
     });
     return {
       status: stage === "AWAITING_SHADOW" ? "AWAITING_SHADOW" : "REJECTED",
@@ -684,6 +721,7 @@ export async function proposeBootstrapImprovement(
   const feeConfig = feesForBook(account.book);
   // 冷启动训练窗口只有日线观察数据：按观察口径重放（§4.4），
   // 记录性指标不构成验证或启用资格，候选仍需未来前瞻影子验证。
+  const selectionPolicy = selectionPolicyForBook(account.book);
   const dryRun = replayStrategy(
     trainingPairs,
     base,
@@ -691,7 +729,7 @@ export async function proposeBootstrapImprovement(
     feeConfig,
     null,
     null,
-    { observationOnly: true },
+    { observationOnly: true, selectionPolicy },
   );
   if (dryRun.covered === false || !dryRun.days)
     return {
@@ -717,6 +755,7 @@ export async function proposeBootstrapImprovement(
       samples,
       datasetId,
       datasetManifestDigest: dataset.manifestDigest,
+      selectionPolicy,
     });
   } catch {
     return { status: "BUSY", reason: "并发预留冲突，本次未发起模型调用" };
@@ -735,12 +774,20 @@ export async function proposeBootstrapImprovement(
   });
   let versionId = null;
   try {
+    if (
+      !selectionPolicyMatches(
+        selectionPolicyFields(selectionPolicy),
+        (await repository.account()).book,
+      )
+    )
+      throw new Error("预留期间选股政策已变化，拒绝混用研究输入");
     const proposal = await propose(
       env,
       base,
       trainingPairs,
       account.book.initialCashCents / 100,
       feeConfig,
+      { observationOnly: true, selectionPolicy },
     );
     const candidate = validateCandidatePatch({
       proposal,
@@ -775,6 +822,7 @@ export async function proposeBootstrapImprovement(
         initialCashCents: account.book.initialCashCents,
         executionVersion: EXECUTION_VERSION,
         scoringVersion: SCORING_VERSION,
+        selectionPolicy,
       },
       "PROPOSING",
     );
@@ -785,7 +833,7 @@ export async function proposeBootstrapImprovement(
       feeConfig,
       null,
       null,
-      { observationOnly: true },
+      { observationOnly: true, selectionPolicy },
     );
     const candidateReplay = replayStrategy(
       trainingPairs,
@@ -794,7 +842,7 @@ export async function proposeBootstrapImprovement(
       feeConfig,
       null,
       null,
-      { observationOnly: true },
+      { observationOnly: true, selectionPolicy },
     );
     const { stage } = await research.concludeBootstrap(
       experimentId,
@@ -804,6 +852,7 @@ export async function proposeBootstrapImprovement(
           experimentId,
           attemptSequence: reserved.attemptSequence,
           kind: "BOOTSTRAP",
+          ...selectionPolicyFields(selectionPolicy),
           datasetId,
           datasetManifestDigest: dataset.manifestDigest,
           trainingDates,

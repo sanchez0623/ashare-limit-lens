@@ -7,7 +7,8 @@
 | 使用指南      | [Windows 常驻模拟交易](windows.md)                          | 当前实现 | 安装、启动、自动执行、数据保留与收益核验                                                                                                               |
 | 使用指南      | [模拟交易与收益核验](paper-trading.md)                      | 当前实现 | 成交约束、费用、账本、AI 改进和模块说明                                                                                                                |
 | 设计方案      | [AI 策略改进与前瞻验证](design/ai-strategy-walk-forward.md) | 实施中   | 完整血缘、一次性测试样本、影子账户、启用规则、数据库、接口与验证计划；第 1 批次（研究记录与启用闸门）已实施                                            |
-| 设计方案 · P0 | [开盘成交成本与滑点模型](design/opening-execution-cost.md)  | 实施中   | 分时成本、流动性与盘口代理、政策冻结、逐笔审计、完整压力重放和校准验收；批次 A/B 与敏感性重放已实施，晋级闸门与真实校准为后续批次                                           |
+| 设计方案      | [精确评分与流动性决胜](design/signal-selection.md)          | 已实施   | 精确排序、成交额决胜、版本冻结、历史兼容与选择审计                                                                                                     |
+| 设计方案 · P0 | [开盘成交成本与滑点模型](design/opening-execution-cost.md)  | 实施中   | 分时成本、流动性与盘口代理、政策冻结、逐笔审计、完整压力重放和校准验收；批次 A/B 与敏感性重放已实施，晋级闸门与真实校准为后续批次                      |
 | 设计方案 · P0 | [统计证据与滚动显著性](design/statistical-evidence.md)      | 待实施   | 评分/板块/交易口径、区块置信区间、零假设检验、重复查看控制、任务与独立核验                                                                             |
 | 设计方案 · P1 | [主动告警与常驻执行可靠性](design/operations-alerting.md)   | 已实施   | 业务告警、去重与恢复、持久化通知队列、外部失联监测、接口与验收                                                                                         |
 | 设计方案 · P2 | [历史冷启动与研究回测](design/historical-cold-start.md)     | 已实施   | 数据源能力探测、历史评分、分钟回测、输入隔离、AI 初始化与前瞻衔接                                                                                      |
@@ -22,6 +23,7 @@ docs/
   paper-trading.md                  当前模拟交易与核验说明
   design/
     ai-strategy-walk-forward.md      AI 改进与前瞻验证设计
+    signal-selection.md             精确评分与流动性决胜
     opening-execution-cost.md        P0 开盘成交成本、滑点和压力验证
     statistical-evidence.md          P0 统计证据、置信区间和滚动诊断
     operations-alerting.md           P1 主动告警与运维可靠性

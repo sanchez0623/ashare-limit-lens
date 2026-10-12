@@ -19,6 +19,8 @@ function snapshotPayload(date, priceStep) {
       sector: "测试行业",
       price: 10.5 + index * 0.5 + priceStep,
       deduction: 0,
+      coverage: 100,
+      height: 1,
       factors: FACTORS.map((factor, i) => ({
         key: factor.key,
         name: factor.name,
@@ -165,6 +167,61 @@ test("非六因子数据集拒绝回测", async () => {
     await assert.rejects(
       () => runBacktest(env, { datasetId }),
       /六因子历史评分数据集/,
+    );
+  } finally {
+    DB.close();
+    store.close();
+    try {
+      unlinkSync(researchPath);
+    } catch {}
+  }
+});
+test("历史重跑显式绑定 v1/v2；实际计划政策不符时收益验证失败", async () => {
+  const DB = localDatabase();
+  const researchPath = `.sites-runtime/test-bt-${crypto.randomUUID()}.sqlite`;
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: researchPath };
+  const store = openHistoryStore(env);
+  const datasetId = await seedDataset(env, store, { minuteOn: DATES.slice(1) });
+  try {
+    for (const version of ["signal-ranking-v1", "signal-ranking-v2"]) {
+      const run = await runBacktest(env, {
+        datasetId,
+        selectionPolicyVersion: version,
+      });
+      const detail = await backtestDetail(env, run.id);
+      assert.equal(run.initialBook.selectionPolicy.version, version);
+      assert.ok(
+        detail.plans.every((p) => p.selectionPolicy.version === version),
+      );
+      assert.equal(detail.verification.selectionPolicyMatches, true);
+    }
+    const run = await runBacktest(env, { datasetId });
+    const rows = await store.db
+      .prepare(
+        "SELECT signal_date,payload FROM backtest_plans WHERE run_id=? ORDER BY signal_date",
+      )
+      .bind(run.id)
+      .all();
+    const tampered = JSON.parse(rows.results[0].payload);
+    tampered.selectionPolicy.scorePrecision = 2;
+    const { digestOf } = await import("../backend/domain/research-lineage.js");
+    await store.db
+      .prepare(
+        "UPDATE backtest_plans SET payload=?,digest=? WHERE run_id=? AND signal_date=?",
+      )
+      .bind(
+        JSON.stringify(tampered),
+        await digestOf(tampered),
+        run.id,
+        rows.results[0].signal_date,
+      )
+      .run();
+    const bad = await backtestDetail(env, run.id);
+    assert.equal(bad.verification.selectionPolicyMatches, false);
+    assert.equal(bad.verification.totalReturnMatches, false);
+    await assert.rejects(
+      () => runBacktest(env, { datasetId, selectionPolicyVersion: "unknown" }),
+      /不受支持/,
     );
   } finally {
     DB.close();

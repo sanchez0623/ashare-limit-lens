@@ -46,8 +46,15 @@ import {
   consumePortfolioFrame,
   settlePortfolioDay,
   freezePortfolioPlan,
+  portfolioSelectionEvidence,
 } from "./portfolio-runner.js";
 import { promoteCohortChampion } from "./promotion.js";
+import {
+  selectionPolicyForBook,
+  selectionPolicyFields,
+  selectionPolicyMatches,
+  frozenSelectionPolicy,
+} from "../domain/signal-selection.js";
 
 const REQUEST_LEASE_MS = 120000;
 const continuousBaselineId = "shadow-baseline-continuous";
@@ -159,6 +166,7 @@ export async function reserveCohort(
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
   const samples = await buildSamples(windows);
+  const selectionPolicy = selectionPolicyForBook(account.book);
   let reserved;
   try {
     reserved = await cohorts.reserveCohort({
@@ -187,6 +195,7 @@ export async function reserveCohort(
       },
       feeConfig,
       feeConfigDigest,
+      selectionPolicy,
     });
   } catch (error) {
     return {
@@ -210,6 +219,13 @@ export async function reserveCohort(
   let modelOutput = null;
   let modelError = null;
   try {
+    if (
+      !selectionPolicyMatches(
+        selectionPolicyFields(selectionPolicy),
+        (await repository.account()).book,
+      )
+    )
+      throw new Error("预留期间选股政策已变化，拒绝混用研究输入");
     modelOutput = await propose(
       env,
       base,
@@ -217,6 +233,7 @@ export async function reserveCohort(
       account.book.initialCashCents / 100,
       feeConfig,
       memberCount,
+      { selectionPolicy },
     );
   } catch (error) {
     modelError = safeError(error);
@@ -284,6 +301,7 @@ export async function reserveCohort(
         initialCashCents: account.book.initialCashCents,
         executionVersion: EXECUTION_VERSION,
         scoringVersion: SCORING_VERSION,
+        ...selectionPolicyFields(selectionPolicy),
         frozenAt: new Date().toISOString(),
       });
       await cohorts.updateMember(cohortId, memberId, {
@@ -379,6 +397,9 @@ export async function reserveCohort(
       memberRow.params,
       account.book.initialCashCents / 100,
       feeConfig,
+      null,
+      null,
+      { selectionPolicy },
     );
     const passed = validation.passed;
     await cohorts.transitionMember(cohortId, member.memberId, {
@@ -540,6 +561,16 @@ export async function scheduleCohortForward(
     };
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
+  if (!selectionPolicyMatches(cohort.reservationManifest, account.book)) {
+    await closeCohort(
+      cohorts,
+      cohortId,
+      "SCHEDULED",
+      "选股政策在冻结后变化，批次失效",
+    );
+    return { scheduled: false, reason: "选股政策已变化，批次失效" };
+  }
+  const selectionPolicy = frozenSelectionPolicy(cohort.reservationManifest);
   if (feeConfigDigest !== cohort.reservationManifest?.feeConfigDigest) {
     await closeCohort(
       cohorts,
@@ -718,6 +749,7 @@ export async function scheduleCohortForward(
     feeConfig,
     feeConfigDigest,
     parentVersion: cohort.parentVersion,
+    ...selectionPolicyFields(selectionPolicy),
     requiredDays: cohort.forwardDays,
     // 固定窗口日历：随 runDaily 交易日历冻结，窗口结束日不因缺失顺延（§8.2）。
     windowDates: [],
@@ -1366,7 +1398,7 @@ export async function evaluateCohort(
       registered: manifest.tradingDates.includes(date),
     });
   }
-  const commonDataMissing = commonCoverage.some(
+  let commonDataMissing = commonCoverage.some(
     (row) =>
       !row.datasetSettled ||
       row.claimOwner !== `COHORT:${cohortId}` ||
@@ -1387,6 +1419,7 @@ export async function evaluateCohort(
   const feeConfig = feesForBook(primary.book);
   const feeConfigDigest = await digestOf(feeConfig);
   const fingerprint = {
+    selectionPolicyMatches: selectionPolicyMatches(manifest, primary.book),
     feeConfigMatches: feeConfigDigest === manifest.feeConfigDigest,
     parentStrategyMatches: primary.book.activeStrategy === cohort.parentVersion,
     membersIntact,
@@ -1396,7 +1429,19 @@ export async function evaluateCohort(
       feeConfigDigest === manifest.feeConfigDigest &&
       primary.book.activeStrategy === cohort.parentVersion &&
       membersIntact,
+    // 当前账户与窗口冻结政策必须相同；源码同时保留 v1/v2，部署本身不改窗口。
   };
+  fingerprint.environmentValid &&= fingerprint.selectionPolicyMatches;
+  const controlSelection = await Promise.all(
+    [manifest.accounts.parentMatch, manifest.accounts.baselineMatch].map((id) =>
+      portfolioSelectionEvidence(env, id, { ...manifest, windowDates }),
+    ),
+  );
+  fingerprint.controlSelectionMatches = controlSelection.every(
+    (e) => e.matches,
+  );
+  commonDataMissing ||= controlSelection.some((e) => !e.complete);
+  fingerprint.environmentValid &&= fingerprint.controlSelectionMatches;
   const metricsOf = async (accountId) => {
     const account = await shadows.account(accountId);
     if (!account) return null;
@@ -1486,11 +1531,16 @@ export async function evaluateCohort(
     const decided = decidedStages.includes(member.stage);
     const accountId = `shadow-${member.experimentId}`;
     const metrics = await metricsOf(accountId);
+    const selectionEvidence = await portfolioSelectionEvidence(env, accountId, {
+      ...manifest,
+      windowDates,
+    });
     const checks = {
-      fingerprint: fingerprint.environmentValid,
+      fingerprint: fingerprint.environmentValid && selectionEvidence.matches,
       // 数据覆盖：窗口日缺失或净值行按盘中观测价盯市（complete:false）
       // 都算覆盖失败——盘中价不冒充收盘价参与晋级资格。
       coverage:
+        selectionEvidence.complete &&
         Boolean(metrics) &&
         metrics.metrics.missingDates.length === 0 &&
         metrics.metrics.incompleteDates.length === 0,
@@ -1608,6 +1658,7 @@ export async function evaluateCohort(
     promotion: null,
     executionVersion: EXECUTION_VERSION,
     scoringVersion: SCORING_VERSION,
+    ...selectionPolicyFields(frozenSelectionPolicy(manifest)),
     note: "仅从通过全部闸门的合格集合按冻结排序启用至多一个候选；全部不通过时保持当前策略",
   };
   // 报告摘要在晋级之前先按"未含晋级结果"的版本冻结：晋级服务重算该摘要

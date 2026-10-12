@@ -1,5 +1,6 @@
 import { database } from "./database.js";
 import { digestOf, eventDigest } from "../domain/research-lineage.js";
+import { selectionPolicyFields } from "../domain/signal-selection.js";
 import {
   validateCohortPolicy,
   DEFAULT_COHORT_POLICY,
@@ -158,6 +159,7 @@ export class CohortRepository {
     statisticsBudget = null,
     feeConfig = null,
     feeConfigDigest = null,
+    selectionPolicy,
   }) {
     const memberCount = Number(
       cohortPolicy.payload?.maxCandidates ?? cohortPolicy.maxCandidates,
@@ -205,6 +207,7 @@ export class CohortRepository {
         statisticsBudget,
         feeConfig,
         feeConfigDigest,
+        ...(selectionPolicy ? selectionPolicyFields(selectionPolicy) : {}),
         reservedAt: now,
       };
       const reservationDigest = await digestOf(reservation);
@@ -810,6 +813,9 @@ export class CohortRepository {
           JSON.stringify(manifest.candidateParams),
           JSON.stringify({
             cohortId: manifest.cohortId,
+            ...(manifest.selectionPolicy
+              ? selectionPolicyFields(manifest.selectionPolicy)
+              : {}),
             memberId: manifest.memberId,
             attemptSequence: manifest.attemptSequence,
             parentVersion: manifest.parentVersion,

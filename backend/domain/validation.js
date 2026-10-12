@@ -1,5 +1,9 @@
 import { createPlan, executePlan, newBook, BASE_STRATEGY } from "./trading.js";
 import {
+  selectionPolicyForBook,
+  selectionPolicyFields,
+} from "./signal-selection.js";
+import {
   openSession,
   advanceSession,
   closeSession,
@@ -92,6 +96,8 @@ export function replayStrategy(
   let book = initialBook
     ? structuredClone(initialBook)
     : newBook(initialCapital, feeConfig);
+  const policy = options.selectionPolicy ?? selectionPolicyForBook(book);
+  const policyFields = selectionPolicyFields(policy);
   const equities = [],
     fills = [];
   let covered = true;
@@ -123,6 +129,7 @@ export function replayStrategy(
       {
         executionCostPolicy: executionCostPolicy ?? undefined,
         originalScoreLookup: (code) => scoreHistory.get(code) ?? null,
+        selectionPolicy: policy,
       },
     );
     try {
@@ -217,6 +224,7 @@ export function replayStrategy(
     // 观察口径声明：为 true 时该窗口的收益是日线观察口径，
     // 不是可执行净收益（§4.4）。
     observationOnly: observationGrade,
+    ...policyFields,
     reason,
     totalReturn:
       book.equityCents /
@@ -239,6 +247,7 @@ export function validateCandidate(
   feeConfig = DEFAULT_FEES,
   initialBook = null,
   executionCostPolicy = null,
+  options = {},
 ) {
   const baseline = replayStrategy(
     holdoutPairs,
@@ -247,6 +256,7 @@ export function validateCandidate(
     feeConfig,
     initialBook,
     executionCostPolicy,
+    options,
   );
   const proposed = replayStrategy(
     holdoutPairs,
@@ -255,6 +265,7 @@ export function validateCandidate(
     feeConfig,
     initialBook,
     executionCostPolicy,
+    options,
   );
   const checks = {
     trainingSize: trainingPairs.length >= 20,
@@ -278,6 +289,8 @@ export function validateCandidate(
     baseline,
     candidate: proposed,
     feeConfig: normalizeFees(feeConfig),
+    selectionPolicy: baseline.selectionPolicy,
+    selectionPolicyDigest: baseline.selectionPolicyDigest,
     executionCostPolicy: executionCostPolicy
       ? {
           modelVersion: executionCostPolicy.modelVersion,

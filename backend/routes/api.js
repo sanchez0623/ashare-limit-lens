@@ -258,6 +258,7 @@ export async function api(request, env) {
       const body = await readJson(request);
       const run = await runBacktest(env, {
         datasetId: body.datasetId,
+        selectionPolicyVersion: body.selectionPolicyVersion,
         name: body.name,
         strategy: body.strategy,
         initialCapital: body.initialCapital,

@@ -12,6 +12,15 @@ import {
 } from "../../shared/risk-limits.js";
 import { BENCHMARK_CODES, DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
 import { latestPolicyBundle, verifyPolicyBundle } from "./execution-cost.js";
+import {
+  DEFAULT_SELECTION_VERSION,
+  selectionPolicy,
+  selectionPolicyFields,
+  selectionPolicyForBook,
+  selectionPolicyMatches,
+  frozenSelectionPolicy,
+  selectionSnapshotDigest,
+} from "../domain/signal-selection.js";
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -94,7 +103,53 @@ export class PaperRepository {
         }),
       )
       .run();
+    await this.upgradeSelectionPolicy();
     return this.account();
+  }
+  async upgradeSelectionPolicy() {
+    const account = await this.account();
+    // 有显式版本的账户不自动改参；旧账户只在研究窗口释放后采用 v2。
+    if (!account || account.book.selectionPolicyVersion !== undefined) return;
+    const owner = await this.db
+      .prepare(
+        "SELECT owner_id FROM research_window_owners WHERE namespace = 'main'",
+      )
+      .first();
+    if (owner) return;
+    const nonce = crypto.randomUUID(),
+      stamp = new Date().toISOString();
+    const book = {
+      ...account.book,
+      selectionPolicyVersion: DEFAULT_SELECTION_VERSION,
+    };
+    const change = {
+      id: nonce,
+      createdAt: stamp,
+      type: "SELECTION_POLICY_UPGRADE",
+      before: selectionPolicyFields(selectionPolicyForBook(account.book)),
+      after: selectionPolicyFields(selectionPolicy(DEFAULT_SELECTION_VERSION)),
+      effective:
+        "只用于后续未冻结的计划；旧计划及活动研究保持原政策；尚未声称收益改善",
+    };
+    await this.db.batch([
+      this.db
+        .prepare(
+          "UPDATE paper_accounts SET state=?, revision=revision+1, last_run_id=?, updated_at=? WHERE id='primary' AND revision=? AND NOT EXISTS (SELECT 1 FROM research_window_owners WHERE namespace='main')",
+        )
+        .bind(JSON.stringify(book), nonce, stamp, account.revision),
+      this.db
+        .prepare(
+          "INSERT INTO paper_configuration_history (id,created_at,payload,digest) SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM paper_accounts WHERE id='primary' AND revision=? AND last_run_id=?)",
+        )
+        .bind(
+          nonce,
+          stamp,
+          JSON.stringify(change),
+          await digest(change),
+          account.revision + 1,
+          nonce,
+        ),
+    ]);
   }
   async account() {
     const row = await this.db
@@ -120,6 +175,7 @@ export class PaperRepository {
     );
   }
   async savePlan(plan) {
+    frozenSelectionPolicy(plan);
     // 冻结入口核验（§3.2）：计划内嵌政策 payload 必须与摘要一致，
     // 防止改参不改编号的计划进入执行链。
     if (
@@ -383,6 +439,10 @@ export class PaperRepository {
         .first();
       const snapshot = await this.snapshot(day),
         strategy = await this.strategy(book);
+      // 调整费用/资金不借机换选股政策；仍使用被替换计划的冻结版本。
+      const policy = previousPlan
+        ? frozenSelectionPolicy(JSON.parse(previousPlan.payload))
+        : selectionPolicyForBook(book);
       // 重冻计划也带当前生效政策，避免替换计划悄悄退回旧口径。
       const executionCostPolicy = await latestPolicyBundle(this.db);
       // 持仓股掉出当日涨停池时，从最近快照归档回查原始评分用于计划展示。
@@ -395,10 +455,13 @@ export class PaperRepository {
         ? createPlan(snapshot, book, strategy, book.activeStrategy, stamp, {
             executionCostPolicy,
             originalScoreLookup,
+            selectionPolicy: policy,
+            snapshotDigest: await selectionSnapshotDigest(snapshot),
           })
         : defensivePlan(day, book, strategy, book.activeStrategy, stamp, {
             executionCostPolicy,
             originalScoreLookup,
+            selectionPolicy: policy,
           });
       if (previousPlan)
         statements.push(
@@ -512,6 +575,10 @@ export class PaperRepository {
         evidence.initialCashCents !== book.initialCashCents)
     )
       throw new Error("验证所用费用或资金已变更，请等待新配置下的独立验证");
+    if (!selectionPolicyMatches(evidence, book))
+      throw new Error(
+        "验证所用选股政策与当前账户不一致，请等待新政策下的独立验证",
+      );
     book.activeStrategy = id;
     const nonce = crypto.randomUUID();
     await this.db.batch([

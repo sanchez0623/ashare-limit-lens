@@ -26,6 +26,7 @@ import { DEFAULT_FEES, feesForBook } from "../shared/fees.js";
 import { api } from "../backend/routes/api.js";
 import { localDatabase } from "../scripts/local-db.mjs";
 import { pairs, dateAt } from "./fixtures/trading.mjs";
+import { selectionPolicyForBook } from "../backend/domain/signal-selection.js";
 
 async function seedRepository(count = 80) {
   const DB = localDatabase();
@@ -614,6 +615,9 @@ test("提案中断恢复：请求发出后停机记为 ERROR 且预算保留；�
     });
     const account = await repository.account();
     await research.freezeCandidate(refrozen.experimentId, {
+      selectionPolicy: selectionPolicyForBook(
+        (await repository.account()).book,
+      ),
       versionId: refrozen.experimentId,
       params: { ...BASE_STRATEGY, minScore: 82 },
       patch: { minScore: 82 },
@@ -808,6 +812,9 @@ async function seedFrozenExperiment(env, all) {
   });
   const account = await new PaperRepository(env).account();
   await research.freezeCandidate(reserved.experimentId, {
+    selectionPolicy: selectionPolicyForBook(
+      (await new PaperRepository(env).account()).book,
+    ),
     versionId: reserved.experimentId,
     params: { ...BASE_STRATEGY, minScore: 82 },
     patch: { minScore: 82 },
@@ -829,6 +836,35 @@ async function seedFrozenExperiment(env, all) {
   });
   return { research, reserved, policy };
 }
+test("部署新排序后，已有 v1 冻结窗口按原政策恢复历史验证", async () => {
+  const { DB, env, repository, all } = await seedRepository(80);
+  try {
+    const account = await repository.account();
+    delete account.book.selectionPolicyVersion;
+    await DB.prepare("UPDATE paper_accounts SET state=? WHERE id='primary'")
+      .bind(JSON.stringify(account.book))
+      .run();
+    const { reserved } = await seedFrozenExperiment(env, all);
+    await repository.initialize();
+    assert.equal(
+      selectionPolicyForBook((await repository.account()).book).version,
+      "signal-ranking-v1",
+    );
+    const result = await proposeImprovement(repository, env);
+    assert.equal(result.status, "AWAITING_SHADOW");
+    const row = await DB.prepare(
+      "SELECT payload FROM research_reports WHERE experiment_id=? AND stage='historical'",
+    )
+      .bind(reserved.experimentId)
+      .first();
+    assert.equal(
+      JSON.parse(row.payload).selectionPolicy.version,
+      "signal-ranking-v1",
+    );
+  } finally {
+    DB.close();
+  }
+});
 test("恢复验证使用冻结输入：手续费或快照变化判 INVALIDATED 且释放窗口", async () => {
   const feeDb = localDatabase();
   const feeEnv = { DB: feeDb, AI_API_KEY: "x" };

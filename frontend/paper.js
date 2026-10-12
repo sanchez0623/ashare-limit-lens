@@ -282,16 +282,24 @@ function render() {
     ? `${plan.signalDate} 盘后制定 → 下一交易日`
     : "尚未生成计划";
   $("paper-plan-meta").textContent = plan
-    ? `策略 ${plan.strategyVersion} · 费用 v${plan.feeConfigVersion || 0} · 成本 ${plan.executionCostPolicy ? `${plan.executionCostPolicy.modelVersion} v${plan.executionCostPolicy.version || 0}` : "旧版固定 10bps"}${plan.sourceSnapshotMissing ? " · 评分缺失，仅执行风险保护" : ""} · 目标仓位 ${percent(plan.targetExposure)} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
+    ? `策略 ${plan.strategyVersion} · 选股 ${plan.selectionPolicy?.version === "signal-ranking-v2" ? "精确分 → 成交额 → 代码" : "整数分 → 代码"} · 费用 v${plan.feeConfigVersion || 0} · 成本 ${plan.executionCostPolicy ? `${plan.executionCostPolicy.modelVersion} v${plan.executionCostPolicy.version || 0}` : "旧版固定 10bps"}${plan.sourceSnapshotMissing ? " · 评分缺失，仅执行风险保护" : ""} · 目标仓位 ${percent(plan.targetExposure)} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
     : "当日评分保存后，生成下一交易日计划。";
   $("paper-plan-rows").innerHTML = plan?.orders.length
     ? plan.orders
         .map(
           (order) =>
-            `<tr><td><strong>${escape(order.name)}</strong><span class="stock-code">${escape(order.code)} · ${escape(order.sector)}</span></td><td><span class="action-tag">${actionNames[order.action]}</span></td><td>${order.score ?? "—"}<span class="stock-code">原始 ${order.originalScore ?? "—"}</span></td><td>${order.quantity || "—"} 股</td><td class="plan-price-conditions">${priceConditions(order)}</td><td class="plan-reason">${escape(order.reason)}</td></tr>`,
+            `<tr><td><strong>${escape(order.name)}</strong><span class="stock-code">${escape(order.code)} · ${escape(order.sector)}</span></td><td><span class="action-tag">${actionNames[order.action]}</span></td><td>${order.score ?? "—"}${Number.isFinite(order.scoreValue) ? `<span class="stock-code">精确 ${Number(order.scoreValue.toFixed(6))}</span>` : ""}<span class="stock-code">原始 ${order.originalScore ?? "—"}</span></td><td>${order.quantity || "—"} 股</td><td class="plan-price-conditions">${priceConditions(order)}</td><td class="plan-reason">${escape(order.reason)}</td></tr>`,
         )
         .join("")
     : `<tr><td colspan="6"><div class="empty compact">${plan ? "当前没有满足建仓条件的个股，保持空仓。" : "等待有效盘后评分。"}</div></td></tr>`;
+  const candidates = plan?.selectionAudit?.candidates ?? [];
+  const selectionExpanded =
+    $("paper-selection-audit").querySelector("details")?.open ?? false;
+  $("paper-selection-audit").innerHTML = candidates.length
+    ? `<details><summary>选股依据 · ${candidates.filter((c) => c.status === "SELECTED").length} 只入选 / ${candidates.length} 只候选</summary><div class="table-scroll"><table><thead><tr><th>顺序</th><th>个股</th><th>精确评分</th><th>信号日成交额</th><th>选择结果</th></tr></thead><tbody>${candidates.map((c) => `<tr><td>${c.rank}</td><td>${escape(c.name)}<span class="stock-code">${escape(c.code)}</span></td><td>${Number.isFinite(c.scoreValue) ? Number(c.scoreValue.toFixed(6)) : "—"}</td><td>${Number.isFinite(c.liquidityAmountCents) ? `¥ ${metricMoney(c.liquidityAmountCents)}` : "未知"}</td><td>${c.status === "SELECTED" ? "已入选" : "未入选"}<span class="stock-code">${escape(c.reason)}</span></td></tr>`).join("")}</tbody></table></div><p class="small-muted">成交额取自信号日冻结数据，仅作同分决胜；实际成交仍受下一交易日行情、资金及容量限制。</p></details>`
+    : "";
+  const selectionDetails = $("paper-selection-audit").querySelector("details");
+  if (selectionDetails) selectionDetails.open = selectionExpanded;
   $("paper-outcomes").innerHTML = run?.outcomes?.length
     ? `<details><summary>最近执行反馈 · ${escape(run.date)}</summary><div class="execution-feedback">${run.outcomes.map((order) => `<p><strong>${escape(order.name)} · ${actionNames[order.action]}</strong><span>${order.status === "FILLED" ? "已成交" : order.status === "PARTIAL" ? "部分完成" : "未执行"} ${order.filledQuantity ? `${order.filledQuantity} 股` : ""} · ${escape(order.reason || "")}</span></p>`).join("")}</div></details>`
     : "";

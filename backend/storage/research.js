@@ -1,4 +1,5 @@
 import { database } from "./database.js";
+import { selectionPolicyFields } from "../domain/signal-selection.js";
 import {
   digestOf,
   eventDigest,
@@ -337,6 +338,7 @@ export class ResearchRepository {
     windowPayload,
     testDates,
     samples,
+    selectionPolicy,
   }) {
     const attempt = async () => {
       const registry = await this.assertReservationFreshness(testDates);
@@ -356,6 +358,7 @@ export class ResearchRepository {
         policyId: policy.id,
         policyDigest: policy.digest,
         legacyCutoff: registry.legacyCutoff,
+        ...(selectionPolicy ? selectionPolicyFields(selectionPolicy) : {}),
         reservedAt: now,
       };
       const reservationDigest = await digestOf(reservation);
@@ -488,6 +491,7 @@ export class ResearchRepository {
     samples,
     datasetId,
     datasetManifestDigest,
+    selectionPolicy,
   }) {
     const attempt = async () => {
       await this.assertTrainingDatesUsable(trainingDates);
@@ -506,6 +510,7 @@ export class ResearchRepository {
         experimentId,
         namespace: this.namespace,
         kind: "BOOTSTRAP",
+        ...(selectionPolicy ? selectionPolicyFields(selectionPolicy) : {}),
         attemptSequence,
         parentVersion,
         trainingDates,
@@ -767,6 +772,7 @@ export class ResearchRepository {
       initialCashCents,
       executionVersion,
       scoringVersion,
+      selectionPolicy,
     },
     targetStage = "HISTORICAL_CHECK",
   ) {
@@ -791,6 +797,7 @@ export class ResearchRepository {
       initialCashCents,
       executionVersion,
       scoringVersion,
+      ...(selectionPolicy ? selectionPolicyFields(selectionPolicy) : {}),
       frozenAt: now,
       note: "模型输出、最终参数与执行环境指纹在历史测试前冻结；真实模型版本无法获得时记录为未知",
     };
@@ -826,6 +833,7 @@ export class ResearchRepository {
           JSON.stringify(params),
           JSON.stringify({
             type: "research-candidate",
+            ...(selectionPolicy ? selectionPolicyFields(selectionPolicy) : {}),
             experimentId,
             rationale,
             parentVersion,

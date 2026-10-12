@@ -8,6 +8,7 @@ import {
   BASE_STRATEGY,
 } from "./trading.js";
 import { planRiskLimits } from "../../shared/risk-limits.js";
+import { frozenSelectionPolicy } from "./signal-selection.js";
 
 export const TERMINAL = new Set([
   "FILLED",
@@ -47,6 +48,7 @@ function running(order) {
   };
 }
 export function openSession(book, plan, date) {
+  if (plan) frozenSelectionPolicy(plan);
   if (
     !plan ||
     plan.signalDate !== book.lastDate ||
@@ -171,6 +173,7 @@ function mark(book) {
 
 // One observation advances only durable state. No future bars, timers or side effects.
 export function advanceSession(inputBook, inputSession, observation) {
+  if (inputSession.plan) frozenSelectionPolicy(inputSession.plan);
   const book = structuredClone(inputBook),
     session = structuredClone(inputSession),
     ledger = [];

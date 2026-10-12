@@ -1,5 +1,6 @@
 import { database } from "./database.js";
 import { digest } from "./paper.js";
+import { frozenSelectionPolicy } from "../domain/signal-selection.js";
 
 // 影子账户体系（§6/§7）：多账户隔离的 CAS 提交、计划、成交、净值与消费游标。
 // 物理存储键采用 (account_id, localId)/(account_id, trade_date) 组合键；
@@ -93,6 +94,7 @@ export class ShadowAccountRepository {
     return row ? { ...JSON.parse(row.payload), digest: row.digest } : null;
   }
   async savePlan(accountId, plan) {
+    frozenSelectionPolicy(plan);
     const digestValue = await digest(plan);
     const existing = await this.plan(accountId, plan.signalDate);
     if (existing) {

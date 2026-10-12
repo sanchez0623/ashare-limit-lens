@@ -17,6 +17,16 @@ import {
   planRiskLimits,
 } from "../../shared/risk-limits.js";
 import { buildExecutionContext, solveFillQuantity } from "./execution-cost.js";
+import {
+  DEFAULT_SELECTION_VERSION,
+  LEGACY_SELECTION_VERSION,
+  selectionPolicy,
+  selectionPolicyForBook,
+  selectionPolicyFields,
+  frozenSelectionPolicy,
+  liquidityAmountCents,
+  rankSignals,
+} from "./signal-selection.js";
 
 export const ACTIONS = Object.freeze({
   OPEN: "建仓",
@@ -83,6 +93,7 @@ export function newBook(
     feeConfigVersion: 1,
     riskLimits: normalizeRiskLimits(DEFAULT_RISK_LIMITS),
     riskLimitsVersion: 1,
+    selectionPolicyVersion: DEFAULT_SELECTION_VERSION,
   };
 }
 
@@ -118,35 +129,46 @@ export function transactionFees(
   };
 }
 
-export function scoreSignals(snapshot, strategy) {
+export function scoreSignals(snapshot, strategy, policy = selectionPolicy()) {
+  const legacy = policy.version === LEGACY_SELECTION_VERSION;
   const sectorScores = new Map(
     snapshot.sectors.map((sector) => [sector.name, sector.score]),
   );
-  return snapshot.stocks
-    .map((stock) => {
-      const factors = stock.factors.filter((factor) => factor.value !== null);
-      const weight = factors.reduce(
-        (sum, factor) => sum + strategy.weights[stock.factors.indexOf(factor)],
-        0,
-      );
-      const weighted = factors.reduce(
-        (sum, factor) =>
-          sum + factor.value * strategy.weights[stock.factors.indexOf(factor)],
-        0,
-      );
-      return {
-        ...stock,
-        originalScore: stock.score,
-        score: weight
-          ? Math.round(clamp(weighted / weight - stock.deduction))
-          : null,
-        sectorScore: sectorScores.get(stock.sector) ?? null,
-      };
-    })
-    .sort(
-      (a, b) =>
-        (b.score ?? -1) - (a.score ?? -1) || a.code.localeCompare(b.code),
-    );
+  const signals = snapshot.stocks.map((stock) => {
+    let weight = 0,
+      weighted = 0;
+    stock.factors.forEach((factor, index) => {
+      if (legacy ? factor.value === null : !Number.isFinite(factor.value))
+        return;
+      const factorWeight =
+        strategy.weights[
+          policy.version === LEGACY_SELECTION_VERSION
+            ? stock.factors.indexOf(factor)
+            : index
+        ];
+      weight += factorWeight;
+      weighted += factor.value * factorWeight;
+    });
+    const raw = weight ? clamp(weighted / weight - stock.deduction) : null;
+    const scoreValue = Number.isFinite(raw) ? raw : null;
+    return {
+      ...stock,
+      originalScore: stock.score,
+      score: legacy
+        ? weight
+          ? Math.round(raw)
+          : null
+        : scoreValue === null
+          ? null
+          : Math.round(scoreValue),
+      scoreValue,
+      scoreRankKey:
+        scoreValue === null ? null : Math.round(scoreValue * 1_000_000),
+      liquidityAmountCents: liquidityAmountCents(stock.amount),
+      sectorScore: sectorScores.get(stock.sector) ?? null,
+    };
+  });
+  return rankSignals(signals, policy);
 }
 
 export function createPlan(
@@ -164,10 +186,16 @@ export function createPlan(
   // 原始分跨日回查：持仓股掉出当日涨停池时，按最近一次快照归档评分回填，
   // 查不到才如实置空；不参与任何策略决策，仅还原展示口径。
   const originalScoreLookup = options.originalScoreLookup ?? null;
+  const policy = options.selectionPolicy ?? selectionPolicyForBook(book);
+  const policyFields = selectionPolicyFields(policy);
+  const modernSelection = policy.version !== LEGACY_SELECTION_VERSION;
   const previousLimitUpCodes = (snapshot.stocks ?? [])
     .filter((stock) => Number(stock.height) >= 1)
     .map((stock) => stock.code);
-  const signals = scoreSignals(snapshot, strategy);
+  if (modernSelection) previousLimitUpCodes.sort();
+  const signals = scoreSignals(snapshot, strategy, policy);
+  if (new Set(signals.map((s) => s.code)).size !== signals.length)
+    throw new Error("评分快照存在重复股票代码，拒绝生成计划");
   const byCode = new Map(signals.map((stock) => [stock.code, stock]));
   const equity = book.equityCents;
   const drawdown = book.peakEquityCents ? 1 - equity / book.peakEquityCents : 0;
@@ -183,6 +211,32 @@ export function createPlan(
           : 0.15;
   const orders = [];
   const holdings = new Set(book.positions.map((position) => position.code));
+  const selectionAudit = {
+    signalDate: snapshot.date,
+    snapshotCreatedAt: snapshot.createdAt ?? null,
+    snapshotDigest: options.snapshotDigest ?? null,
+    candidates: signals.map((s, index) => ({
+      rank: index + 1,
+      code: s.code,
+      name: s.name,
+      sector: s.sector,
+      score: s.score,
+      scoreValue: s.scoreValue,
+      scoreRankKey: s.scoreRankKey,
+      liquidityAmountCents: s.liquidityAmountCents,
+      factors: s.factors.map((f) =>
+        Number.isFinite(f.value) ? f.value : null,
+      ),
+      deduction: s.deduction ?? null,
+      coverage: s.coverage ?? null,
+      sectorScore: s.sectorScore,
+      height: s.height ?? null,
+      price: s.price ?? null,
+      risks: s.risks.map((r) => r.text),
+      status: "SKIPPED",
+      reason: "尚未评估",
+    })),
+  };
   let plannedBudget = 0;
   let plannedExposure = book.positions.reduce(
     (sum, position) => sum + totalQuantity(position) * position.markCents,
@@ -207,6 +261,7 @@ export function createPlan(
       name: position.name,
       sector: position.sector,
       score,
+      ...(modernSelection ? { scoreValue: signal?.scoreValue ?? null } : {}),
       originalScore:
         signal?.originalScore ?? originalScoreLookup?.(position.code) ?? null,
       referenceCents,
@@ -312,20 +367,36 @@ export function createPlan(
 
   const slots = Math.max(0, strategy.maxPositions - book.positions.length);
   let opened = 0;
-  for (const signal of signals) {
-    if (opened >= slots || emotion < 40 || drawdown >= riskLimits.maxDrawdown)
-      break;
+  for (const [index, signal] of signals.entries()) {
+    const audit = selectionAudit.candidates[index];
+    if (holdings.has(signal.code)) {
+      audit.reason = "已有持仓，按持仓计划处理";
+      continue;
+    }
     if (
-      holdings.has(signal.code) ||
       !/^\d{6}$/.test(signal.code) ||
+      (modernSelection &&
+        (!Number.isFinite(signal.score) ||
+          !Number.isFinite(signal.coverage) ||
+          !Number.isFinite(signal.sectorScore))) ||
       signal.coverage < 80 ||
       signal.score < strategy.minScore ||
       signal.sectorScore < strategy.minSectorScore ||
       signal.height >= 5 ||
       signal.risks.some((risk) => ["一字特征", "高换手"].includes(risk.text)) ||
       !(signal.price > 0)
-    )
+    ) {
+      audit.reason = "未满足评分、板块、覆盖、风险或价格条件";
       continue;
+    }
+    if (emotion < 40 || drawdown >= riskLimits.maxDrawdown) {
+      audit.reason = "市场情绪或账户回撤限制新增交易";
+      continue;
+    }
+    if (opened >= slots) {
+      audit.reason = "建仓名额已用完";
+      continue;
+    }
     const referenceCents = toCents(signal.price);
     const budget = Math.max(
       0,
@@ -333,15 +404,36 @@ export function createPlan(
         (equity * targetExposure) / strategy.maxPositions,
         equity * targetExposure - plannedExposure,
         book.cashCents - plannedBudget - 1000,
+        ...(modernSelection
+          ? [
+              equity * riskLimits.maxPositionWeight,
+              equity * riskLimits.maxGrossExposure - plannedExposure,
+            ]
+          : []),
       ),
     );
     const quantity = roundLot(budget / referenceCents);
-    if (quantity < 100) continue;
+    if (quantity < 100) {
+      audit.reason = "剩余资金或敞口不足一手";
+      continue;
+    }
+    audit.status = "SELECTED";
+    audit.reason = "通过资格与资金检查，按冻结排序入选";
+    audit.quantity = quantity;
+    audit.referenceNotionalCents = quantity * referenceCents;
     addOrder({
       code: signal.code,
       name: signal.name,
       sector: signal.sector,
       score: signal.score,
+      ...(modernSelection
+        ? {
+            scoreValue: signal.scoreValue,
+            scoreRankKey: signal.scoreRankKey,
+            liquidityAmountCents: signal.liquidityAmountCents,
+            selectionRank: audit.rank,
+          }
+        : {}),
       originalScore: signal.originalScore,
       referenceCents,
       action: "OPEN",
@@ -373,6 +465,8 @@ export function createPlan(
     createdAt,
     strategyVersion,
     strategy,
+    ...policyFields,
+    selectionAudit,
     executionCostModel: EXECUTION_COST_MODEL,
     executionCostPolicy: structuredClone(executionCostPolicy),
     previousLimitUpCodes,
@@ -494,6 +588,14 @@ export function defensivePlan(
     createdAt,
     strategyVersion,
     strategy,
+    ...selectionPolicyFields(
+      options.selectionPolicy ?? selectionPolicyForBook(book),
+    ),
+    selectionAudit: {
+      signalDate: date,
+      snapshotCreatedAt: null,
+      candidates: [],
+    },
     executionCostModel: EXECUTION_COST_MODEL,
     executionCostPolicy: structuredClone(executionCostPolicy),
     previousLimitUpCodes: [],
@@ -540,6 +642,7 @@ export function defensivePlan(
 }
 
 export function executePlan(inputBook, plan, dataset) {
+  if (plan) frozenSelectionPolicy(plan);
   const book = structuredClone(inputBook);
   const date = dataset.date;
   if (

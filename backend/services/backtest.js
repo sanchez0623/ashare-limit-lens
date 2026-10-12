@@ -17,6 +17,14 @@ import {
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { digestOf } from "../domain/research-lineage.js";
 import {
+  selectionPolicy as policyForVersion,
+  selectionPolicyForBook,
+  selectionPolicyFields,
+  selectionSnapshotDigest,
+  selectionPolicyDigest,
+  frozenSelectionPolicy,
+} from "../domain/signal-selection.js";
+import {
   HISTORICAL_EXECUTION_MODEL,
   HISTORICAL_EXECUTION_VERSION,
   assertCausalObservations,
@@ -137,6 +145,7 @@ export async function runBacktest(
     weights,
     fees,
     executionCostPolicy,
+    selectionPolicyVersion,
   },
 ) {
   const store = openHistoryStore(env);
@@ -164,6 +173,11 @@ export async function runBacktest(
     throw new Error("回测成本政策与摘要不一致，拒绝用于回测");
   const runId = newId("bt");
   let book = newBook(initialCapital ?? 1000000, feeConfig);
+  const selectionPolicy =
+    selectionPolicyVersion === undefined
+      ? selectionPolicyForBook(book)
+      : policyForVersion(selectionPolicyVersion);
+  book.selectionPolicyVersion = selectionPolicy.version;
   const paramsDigest = await digestOf(strategyParams);
   const feeDigest = await digestOf(feeConfig);
   await store.createBacktestRun({
@@ -180,6 +194,7 @@ export async function runBacktest(
     initialBook: {
       initialCashCents: book.initialCashCents,
       executionCostPolicy: policyBundle,
+      ...selectionPolicyFields(selectionPolicy),
     },
   });
   try {
@@ -188,6 +203,7 @@ export async function runBacktest(
       feeConfig,
       book,
       policyBundle,
+      selectionPolicy,
     });
   } catch (error) {
     const reason = String(error?.message ?? error).slice(0, 300);
@@ -203,7 +219,7 @@ async function runBacktestInner(
   store,
   runId,
   dataset,
-  { strategyParams, feeConfig, book, policyBundle },
+  { strategyParams, feeConfig, book, policyBundle, selectionPolicy },
 ) {
   const datasetId = dataset.id;
   const scores = await store.listScores(datasetId);
@@ -211,6 +227,7 @@ async function runBacktestInner(
   const adjacency = tradingAdjacency(dataset.coverage);
   const tradingDates = adjacency.tradingDates;
   const coverage = {
+    ...selectionPolicyFields(selectionPolicy),
     executionModel: HISTORICAL_EXECUTION_MODEL,
     plannedPairs: 0,
     executedPairs: 0,
@@ -275,6 +292,8 @@ async function runBacktestInner(
         {
           executionCostPolicy: policyBundle,
           originalScoreLookup: (code) => scoreHistory.get(code) ?? null,
+          selectionPolicy,
+          snapshotDigest: await selectionSnapshotDigest(snapshot),
         },
       );
     } catch (error) {
@@ -401,6 +420,23 @@ export async function backtestDetail(env, runId) {
     store.listBacktestLedger(runId),
     store.listBacktestEquity(runId),
   ]);
+  let selectionMatches = true;
+  try {
+    const policyDigest = selectionPolicyDigest(
+      frozenSelectionPolicy(run.initialBook),
+    );
+    for (const row of plans) {
+      const { digest: storedDigest, ...payload } = row;
+      if (
+        selectionPolicyDigest(frozenSelectionPolicy(payload)) !==
+          policyDigest ||
+        (await digestOf(payload)) !== storedDigest
+      )
+        selectionMatches = false;
+    }
+  } catch {
+    selectionMatches = false;
+  }
   const recomputedTotalReturn =
     equity.length && run.initialBook?.initialCashCents
       ? equity.at(-1).equityCents / run.initialBook.initialCashCents - 1
@@ -477,6 +513,7 @@ export async function backtestDetail(env, runId) {
     ledgerCount: ledger.length,
     equity,
     verification: {
+      selectionPolicyMatches: selectionMatches,
       ledgerCountMatches,
       cashChainMatches,
       cashIssues: cashIssues.slice(0, 10),
@@ -487,7 +524,8 @@ export async function backtestDetail(env, runId) {
         !ledgerCountMatches ||
         !ledger.length ||
         !cashChainMatches ||
-        !positionsRebuilt
+        !positionsRebuilt ||
+        !selectionMatches
           ? false
           : Math.abs(
               (recomputedTotalReturn ?? 0) - (run.coverage?.totalReturn ?? 0),
@@ -497,9 +535,10 @@ export async function backtestDetail(env, runId) {
         ledger.length &&
         ledgerCountMatches &&
         cashChainMatches &&
-        positionsRebuilt
+        positionsRebuilt &&
+        selectionMatches
           ? "收益核验基于账本独立重放（逐笔现金变动重算 + 逐日现金链 + 持仓数量重建）与权益终值"
-          : "账本缺失、行数不符、现金重放或持仓重建不一致，无法核验收益；不得将 totalReturn 视为已验证",
+          : "账本缺失、行数不符、现金重放、持仓重建或选股政策／计划摘要不一致，无法核验收益；不得将 totalReturn 视为已验证",
     },
   };
 }

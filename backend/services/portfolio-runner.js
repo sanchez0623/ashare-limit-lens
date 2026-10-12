@@ -1,5 +1,11 @@
 import { ShadowAccountRepository } from "../storage/shadow.js";
-import { buildOriginalScoreLookup } from "../storage/paper.js";
+import { buildOriginalScoreLookup, digest } from "../storage/paper.js";
+import {
+  selectionPolicyForBook,
+  frozenSelectionPolicy,
+  selectionPolicyDigest,
+  selectionSnapshotDigest,
+} from "../domain/signal-selection.js";
 import {
   openSession,
   advanceSession,
@@ -140,6 +146,13 @@ export async function freezePortfolioPlan(
 ) {
   const account = await shadows.account(accountId);
   if (!account) throw new Error("影子账户不存在");
+  const signalDate = snapshot?.date ?? account.book.lastDate;
+  const existing = await shadows.plan(accountId, signalDate);
+  if (existing) {
+    frozenSelectionPolicy(existing);
+    return existing;
+  }
+  const selectionPolicy = selectionPolicyForBook(account.book);
   // 同一批次与主账户冻结相同政策（§3.2）：影子组合是独立假设路径，
   // 但成本假设必须一致，否则对照与赛马排名不可比。
   const executionCostPolicy = await latestPolicyBundle(env.DB);
@@ -153,6 +166,8 @@ export async function freezePortfolioPlan(
     ? createPlan(snapshot, account.book, strategy, strategyVersion, now, {
         executionCostPolicy,
         originalScoreLookup,
+        selectionPolicy,
+        snapshotDigest: await selectionSnapshotDigest(snapshot),
       })
     : defensivePlan(
         account.book.lastDate,
@@ -160,7 +175,43 @@ export async function freezePortfolioPlan(
         strategy,
         strategyVersion,
         now,
-        { executionCostPolicy, originalScoreLookup },
+        { executionCostPolicy, originalScoreLookup, selectionPolicy },
       );
   return shadows.savePlan(accountId, plan);
+}
+
+// 晋级所依据的每个执行日都必须使用窗口政策；不能只检查当前账户标签。
+// 没有政策标记的旧窗口保留历史兼容，新窗口检查实际冻结计划及内容摘要。
+export async function portfolioSelectionMatches(env, accountId, manifest) {
+  const evidence = await portfolioSelectionEvidence(env, accountId, manifest);
+  return evidence.matches && evidence.complete;
+}
+export async function portfolioSelectionEvidence(env, accountId, manifest) {
+  const policy = frozenSelectionPolicy(manifest);
+  if (!manifest.selectionPolicy) return { matches: true, complete: true };
+  const shadows = new ShadowAccountRepository(env);
+  const dates = [
+    manifest.captureDate,
+    ...(manifest.windowDates ?? manifest.tradingDates ?? []).slice(0, -1),
+  ];
+  let complete = true;
+  for (const date of dates) {
+    const plan = await shadows.plan(accountId, date);
+    if (!plan) {
+      complete = false;
+      continue;
+    }
+    const { digest: storedDigest, ...payload } = plan;
+    try {
+      if (
+        selectionPolicyDigest(frozenSelectionPolicy(plan)) !==
+          selectionPolicyDigest(policy) ||
+        (await digest(payload)) !== storedDigest
+      )
+        return { matches: false, complete };
+    } catch {
+      return { matches: false, complete };
+    }
+  }
+  return { matches: true, complete };
 }

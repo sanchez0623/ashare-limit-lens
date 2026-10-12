@@ -8,6 +8,12 @@ import {
   SCORING_VERSION,
 } from "../domain/research-lineage.js";
 import { feesForBook } from "../../shared/fees.js";
+import {
+  selectionPolicyMatches,
+  selectionPolicyDigest,
+  frozenSelectionPolicy,
+} from "../domain/signal-selection.js";
+import { portfolioSelectionMatches } from "./portfolio-runner.js";
 
 // 统一晋级入口（§8.3）：全部自动、人工和旧 API 启用入口共用。
 // 验证报告摘要、成员资格、当前父策略和配置指纹后，以主账户 revision CAS
@@ -141,6 +147,20 @@ export async function promoteCohortChampion(
     throw new Error(`冠军期末净值与影子账本不一致；${REPORT_UNTRUSTED}`);
   // 环境指纹核验：费用、父策略、执行与评分源码在窗口期内未变化。
   const account = await papers.account();
+  if (
+    !selectionPolicyMatches(forwardManifest, account.book) ||
+    selectionPolicyDigest(frozenSelectionPolicy(report)) !==
+      selectionPolicyDigest(frozenSelectionPolicy(forwardManifest))
+  )
+    throw new Error("选股政策与冻结清单或晋级报告不一致，本批资格失效");
+  for (const accountId of evidenceAccountIds)
+    if (
+      !(await portfolioSelectionMatches(env, accountId, {
+        ...forwardManifest,
+        windowDates,
+      }))
+    )
+      throw new Error("评估账户计划的选股政策或摘要不一致，本批资格失效");
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
   if (feeConfigDigest !== forwardManifest.feeConfigDigest)

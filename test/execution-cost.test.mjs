@@ -954,6 +954,7 @@ test("影子账户与主账户冻结相同政策", async () => {
     });
     const saved = { plan: null };
     const shadows = {
+      plan: async () => null,
       account: async () => ({
         book: { ...newBook(100000), lastDate: dateAt(0) },
         status: "ACTIVE",

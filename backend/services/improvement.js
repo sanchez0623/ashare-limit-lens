@@ -9,6 +9,7 @@ export async function requestProposal(
   trainingPairs,
   initialCapital,
   feeConfig = DEFAULT_FEES,
+  options = {},
 ) {
   const config = aiConfig(env);
   if (!config.configured) throw new Error("尚未配置服务端大模型密钥");
@@ -17,6 +18,9 @@ export async function requestProposal(
     base,
     initialCapital,
     feeConfig,
+    null,
+    null,
+    options,
   );
   const evidence = {
     currentStrategy: base,
@@ -91,6 +95,7 @@ export async function requestCohortProposal(
   initialCapital,
   feeConfig = DEFAULT_FEES,
   candidateCount = 4,
+  options = {},
 ) {
   const config = aiConfig(env);
   if (!config.configured) throw new Error("尚未配置服务端大模型密钥");
@@ -99,6 +104,9 @@ export async function requestCohortProposal(
     base,
     initialCapital,
     feeConfig,
+    null,
+    null,
+    options,
   );
   const evidence = {
     currentStrategy: base,
