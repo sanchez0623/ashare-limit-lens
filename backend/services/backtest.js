@@ -10,6 +10,10 @@ import {
   closeSession,
 } from "../domain/realtime.js";
 import { DEFAULT_FEES, normalizeFees } from "../../shared/fees.js";
+import {
+  defaultExecutionCostPolicy,
+  normalizeExecutionCostPolicy,
+} from "../../shared/execution-cost.js";
 import { digestOf } from "../domain/research-lineage.js";
 import {
   HISTORICAL_EXECUTION_MODEL,
@@ -121,7 +125,15 @@ function endOfDayQuotes({ date, minuteByCode, templates }) {
 }
 export async function runBacktest(
   env,
-  { datasetId, name, strategy, initialCapital, weights, fees },
+  {
+    datasetId,
+    name,
+    strategy,
+    initialCapital,
+    weights,
+    fees,
+    executionCostPolicy,
+  },
 ) {
   const store = openHistoryStore(env);
   if (!store)
@@ -139,6 +151,11 @@ export async function runBacktest(
     throw new Error("回测需要六因子历史评分数据集（SIX_FACTOR_V1）");
   const strategyParams = strategy ?? BASE_STRATEGY;
   const feeConfig = fees ? normalizeFees(fees) : DEFAULT_FEES;
+  // 冻结成本政策（§4.3/§5.4）：整个回测批次使用同一政策，与费用分开记录；
+  // 缺省为 TIME_LIQUIDITY_V1 默认政策，不再默认全时段 10bps。
+  const policyBundle = executionCostPolicy
+    ? normalizeExecutionCostPolicy(executionCostPolicy)
+    : defaultExecutionCostPolicy();
   const runId = newId("bt");
   let book = newBook(initialCapital ?? 1000000, feeConfig);
   const paramsDigest = await digestOf(strategyParams);
@@ -153,14 +170,18 @@ export async function runBacktest(
     feeConfig,
     feeDigest,
     executionModel: HISTORICAL_EXECUTION_MODEL,
-    executionVersion: HISTORICAL_EXECUTION_VERSION,
-    initialBook: { initialCashCents: book.initialCashCents },
+    executionVersion: `${HISTORICAL_EXECUTION_VERSION}+${policyBundle.modelVersion.toLowerCase()}`,
+    initialBook: {
+      initialCashCents: book.initialCashCents,
+      executionCostPolicy: policyBundle,
+    },
   });
   try {
     return await runBacktestInner(store, runId, dataset, {
       strategyParams,
       feeConfig,
       book,
+      policyBundle,
     });
   } catch (error) {
     const reason = String(error?.message ?? error).slice(0, 300);
@@ -176,7 +197,7 @@ async function runBacktestInner(
   store,
   runId,
   dataset,
-  { strategyParams, feeConfig, book },
+  { strategyParams, feeConfig, book, policyBundle },
 ) {
   const datasetId = dataset.id;
   const scores = await store.listScores(datasetId);
@@ -193,8 +214,15 @@ async function runBacktestInner(
     maxDrawdown: null,
     fillCount: 0,
     feesCents: null,
+    executionCostPolicy: policyBundle
+      ? {
+          modelVersion: policyBundle.modelVersion,
+          payloadDigest: policyBundle.payloadDigest,
+        }
+      : null,
     notes: [
       "研究回测：MINUTE_SAMPLE_V1 采样价模型，涨跌停边界按上一收盘 ±10% 近似；不含可成交性保证，不代表可执行策略收益",
+      `执行成本：${policyBundle.modelVersion} 政策 v${policyBundle.version}（摘要 ${policyBundle.payloadDigest.slice(0, 12)}）；分钟采样按声明倍数计残余成本，不代表实时滑点测量`,
     ],
   };
   if (!tradingDates.length)
@@ -231,6 +259,7 @@ async function runBacktestInner(
         strategyParams,
         `backtest-${runId}`,
         `${signalDate}T07:10:00.000Z`,
+        { executionCostPolicy: policyBundle },
       );
     } catch (error) {
       coverage.skippedPairs.push({

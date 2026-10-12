@@ -82,6 +82,7 @@ export function replayStrategy(
   initialCapital = DEFAULT_INITIAL_CAPITAL,
   feeConfig = DEFAULT_FEES,
   initialBook = null,
+  executionCostPolicy = null,
 ) {
   let book = initialBook
     ? structuredClone(initialBook)
@@ -99,12 +100,15 @@ export function replayStrategy(
       reason = "冻结评分与行情不是相邻交易日";
       break;
     }
+    // 情景重放（§6.2）：每个情景冻结自己的成本政策，重新生成因果计划与成交；
+    // 未显式传入时使用默认政策，新研究不再默认全时段 10bps。
     const plan = createPlan(
       pair.snapshot,
       book,
       strategy,
       "validation",
       pair.snapshot.createdAt,
+      { executionCostPolicy: executionCostPolicy ?? undefined },
     );
     try {
       let result;
@@ -183,6 +187,8 @@ export function replayStrategy(
       1,
     maxDrawdown: Math.max(0, ...equities.map((row) => row.drawdown)),
     fillCount: fills.length,
+    // 逐笔成交随重放返回：成本敏感性据此汇总隐含成本（§6.2）。
+    fills,
     feesCents: book.feesCents,
     equities,
   };
@@ -195,6 +201,7 @@ export function validateCandidate(
   initialCapital,
   feeConfig = DEFAULT_FEES,
   initialBook = null,
+  executionCostPolicy = null,
 ) {
   const baseline = replayStrategy(
     holdoutPairs,
@@ -202,6 +209,7 @@ export function validateCandidate(
     initialCapital,
     feeConfig,
     initialBook,
+    executionCostPolicy,
   );
   const proposed = replayStrategy(
     holdoutPairs,
@@ -209,6 +217,7 @@ export function validateCandidate(
     initialCapital,
     feeConfig,
     initialBook,
+    executionCostPolicy,
   );
   const checks = {
     trainingSize: trainingPairs.length >= 20,
@@ -232,6 +241,12 @@ export function validateCandidate(
     baseline,
     candidate: proposed,
     feeConfig: normalizeFees(feeConfig),
+    executionCostPolicy: executionCostPolicy
+      ? {
+          modelVersion: executionCostPolicy.modelVersion,
+          payloadDigest: executionCostPolicy.payloadDigest,
+        }
+      : null,
     trainingStart: trainingPairs[0]?.dataset.date,
     trainingEnd: trainingPairs.at(-1)?.dataset.date,
     validationStart: holdoutPairs[0]?.dataset.date,

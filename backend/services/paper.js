@@ -10,6 +10,7 @@ import {
 import { collectTradingDay, tradingCalendar } from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
+import { effectiveExecutionCostPolicy } from "./execution-cost.js";
 import { safeError } from "../http.js";
 import { feesForBook } from "../../shared/fees.js";
 import { RealtimeRepository } from "../storage/realtime.js";
@@ -151,6 +152,8 @@ async function settlePaperDay(env, date) {
   const snapshot = await repository.snapshot(date);
   let nextPlan = await repository.plan(date);
   if (!nextPlan) {
+    // 新政策从下一个尚未冻结的计划生效（§3.2）：计划冻结完整政策 bundle。
+    const executionCostPolicy = await effectiveExecutionCostPolicy(env);
     const strategy = await repository.strategy(account.book);
     nextPlan = await repository.savePlan(
       snapshot
@@ -160,6 +163,7 @@ async function settlePaperDay(env, date) {
             strategy,
             account.book.activeStrategy,
             new Date().toISOString(),
+            { executionCostPolicy },
           )
         : defensivePlan(
             date,
@@ -167,6 +171,7 @@ async function settlePaperDay(env, date) {
             strategy,
             account.book.activeStrategy,
             new Date().toISOString(),
+            { executionCostPolicy },
           ),
     );
   }
@@ -231,11 +236,13 @@ export async function exportPaper(env, attempt = 0) {
   }
   return {
     format: "limit-lens-paper-v1",
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     initialCashCents: book.initialCashCents,
     book,
     riskLimits: RISK_LIMITS,
     feeConfig: feesForBook(book),
+    executionCostPolicy: await effectiveExecutionCostPolicy(env),
     equities: rows[0].map((row) => JSON.parse(row.payload)).reverse(),
     ledger: rows[1]
       .map((row) => JSON.parse(row.payload))
@@ -296,6 +303,13 @@ export async function verifyExport(bundle) {
       ...(bundle.realtimeObservations || []).flatMap((row) => row.observations),
     ])
       if ((await digest(row.payload)) !== row.digest) hashes = false;
+    // 冻结政策的内容寻址核验（§3.2）：计划内嵌政策 payload 必须与摘要一致，
+    // 否则重放无法证明使用了声明过的成交假设。
+    for (const row of bundle.plans) {
+      const frozen = row.payload.executionCostPolicy;
+      if (frozen && (await digest(frozen.payload)) !== frozen.payloadDigest)
+        hashes = false;
+    }
     for (let index = 0; index < bundle.datasets.length; index++) {
       const dataset = bundle.datasets[index].payload;
       const plan = index ? plans.get(dataset.previousTradingDate) : null;

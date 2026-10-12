@@ -259,7 +259,7 @@ function render() {
     ? `${plan.signalDate} 盘后制定 → 下一交易日`
     : "尚未生成计划";
   $("paper-plan-meta").textContent = plan
-    ? `策略 ${plan.strategyVersion} · 费用 v${plan.feeConfigVersion || 0}${plan.sourceSnapshotMissing ? " · 评分缺失，仅执行风险保护" : ""} · 目标仓位 ${percent(plan.targetExposure)} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
+    ? `策略 ${plan.strategyVersion} · 费用 v${plan.feeConfigVersion || 0} · 成本 ${plan.executionCostPolicy ? `${plan.executionCostPolicy.modelVersion} v${plan.executionCostPolicy.version || 0}` : "旧版固定 10bps"}${plan.sourceSnapshotMissing ? " · 评分缺失，仅执行风险保护" : ""} · 目标仓位 ${percent(plan.targetExposure)} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
     : "当日评分保存后，生成下一交易日计划。";
   $("paper-plan-rows").innerHTML = plan?.orders.length
     ? plan.orders
@@ -277,7 +277,7 @@ function render() {
         .sort((a, b) => b.date.localeCompare(a.date) || b.sequence - a.sequence)
         .map(
           (fill) =>
-            `<tr><td>${escape(fill.date)}<span class="stock-code">${escape(fill.time)}</span></td><td><strong>${escape(fill.name)}</strong><span class="stock-code">${escape(fill.code)}</span></td><td>${actionNames[fill.action]} · ${fill.side === "BUY" ? "买" : "卖"}</td><td>${fill.quantity}</td><td>${money(fill.priceCents)}</td><td title="${escape(breakdown(fill))}"><details class="fee-breakdown"><summary>¥ ${money(fill.feeCents)}</summary><span>${escape(breakdown(fill))}</span></details><span class="stock-code">费用 v${fill.feeConfigVersion || 0}</span></td><td class="${tone(fill.cashDeltaCents)}">${money(fill.cashDeltaCents)}</td><td>${fill.dataQuality === "realtime_poll" ? "实时 HTTP 轮询" : fill.dataQuality === "minute" ? "历史分钟采样" : "开盘假设"}</td></tr>`,
+            `<tr><td>${escape(fill.date)}<span class="stock-code">${escape(fill.time)}</span></td><td><strong>${escape(fill.name)}</strong><span class="stock-code">${escape(fill.code)}</span></td><td>${actionNames[fill.action]} · ${fill.side === "BUY" ? "买" : "卖"}</td><td>${fill.quantity}</td><td>${money(fill.priceCents)}</td><td title="${escape(breakdown(fill))}"><details class="fee-breakdown"><summary>¥ ${money(fill.feeCents)}</summary><span>${escape(breakdown(fill))}</span></details><span class="stock-code">费用 v${fill.feeConfigVersion || 0}</span></td><td class="${tone(fill.cashDeltaCents)}">${money(fill.cashDeltaCents)}</td><td>${fill.dataQuality === "realtime_poll" ? "实时 HTTP 轮询" : fill.dataQuality === "minute" ? "历史分钟采样" : "开盘假设"}${fill.executionCost ? `<span class="stock-code">滑点 ${fill.executionCost.totalBps}bps · ${fill.executionCost.spreadSource === "BOOK" ? "盘口价差" : "回退价差"}</span>` : ""}</td></tr>`,
         )
         .join("")
     : '<tr><td colspan="8"><div class="empty compact">尚无成交记录。未满足成交条件的计划不会记为收益。</div></td></tr>';

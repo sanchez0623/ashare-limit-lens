@@ -156,6 +156,32 @@ export function parseTencentQuotes(text, date) {
         ? toCents(value)
         : null;
     if (!positive(fields[3]) || !positive(fields[4])) continue;
+    // 可选盘口（§5.1）：腾讯响应缺少稳定正式字段契约，买一/卖一取
+    // fields[9]/fields[19]（价格）与 fields[10]/fields[20]（量，手）。
+    // 解析失败必须降级并记录质量标志，不能假定索引永远代表相同字段。
+    const bid1Cents = positive(fields[9]);
+    const ask1Cents = positive(fields[19]);
+    const bid1Shares = Number.isFinite(Number(fields[10]))
+      ? Math.max(0, Math.round(Number(fields[10]) * 100))
+      : null;
+    const ask1Shares = Number.isFinite(Number(fields[20]))
+      ? Math.max(0, Math.round(Number(fields[20]) * 100))
+      : null;
+    let orderBookQuality = "OK";
+    let orderBook = {};
+    if (bid1Cents && ask1Cents && bid1Shares !== null && ask1Shares !== null) {
+      if (bid1Cents > ask1Cents) {
+        // 倒挂盘口不可作为价格锚点：降级为声明的回退假设并留痕。
+        orderBookQuality = "INVERTED";
+      } else {
+        orderBook = {
+          bid1Cents,
+          ask1Cents,
+          bid1Shares,
+          ask1Shares,
+        };
+      }
+    } else orderBookQuality = "MISSING";
     quotes[match[2]] = {
       date,
       closeCents: positive(fields[3]),
@@ -166,6 +192,12 @@ export function parseTencentQuotes(text, date) {
       volumeShares: Math.round(Number(fields[6]) * 100),
       limitUpCents: positive(fields[47]),
       limitDownCents: positive(fields[48]),
+      ...orderBook,
+      orderBookQuality,
+      orderBookTimestamp: /^\d{14}$/.test(fields[30])
+        ? `${date}T${fields[30].slice(8, 10)}:${fields[30].slice(10, 12)}:${fields[30].slice(12, 14)}+08:00`
+        : null,
+      quoteSchemaVersion: "tencent-qt-v1",
       timestamp: /^\d{14}$/.test(fields[30])
         ? `${date}T${fields[30].slice(8, 10)}:${fields[30].slice(10, 12)}:${fields[30].slice(12, 14)}+08:00`
         : null,

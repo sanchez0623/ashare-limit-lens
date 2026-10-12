@@ -55,6 +55,13 @@ import {
   sendTestNotification,
   setMaintenanceWindow,
 } from "../services/alerts.js";
+import {
+  getExecutionCostConfig,
+  saveExecutionCostPolicy,
+  executionCostDiagnostics,
+} from "../services/execution-cost.js";
+import { runExecutionSensitivity } from "../services/execution-sensitivity.js";
+import { ExecutionCostRepository } from "../storage/execution-cost.js";
 
 async function runDaily(env) {
   const date = beijingDate();
@@ -128,6 +135,9 @@ export async function api(request, env) {
     "/api/paper/settings": ["POST"],
     "/api/paper/export": ["GET"],
     "/api/paper/verify": ["GET"],
+    "/api/paper/execution-cost": ["GET", "PUT"],
+    "/api/paper/execution-cost/diagnostics": ["GET"],
+    "/api/research/execution-sensitivity": ["GET", "POST"],
     "/api/paper/improve": ["POST"],
     "/api/research/bootstrap": ["POST"],
     "/api/paper/activate": ["POST"],
@@ -460,6 +470,26 @@ export async function api(request, env) {
     }
     if (path === "/api/paper/verify")
       return json(await verifyExport(await exportPaper(env)));
+    if (path === "/api/paper/execution-cost") {
+      if (request.method === "GET")
+        return json(await getExecutionCostConfig(env));
+      const body = await readJson(request);
+      return json(await saveExecutionCostPolicy(env, body));
+    }
+    if (path === "/api/paper/execution-cost/diagnostics")
+      return json(await executionCostDiagnostics(env));
+    if (path === "/api/research/execution-sensitivity") {
+      if (request.method === "GET")
+        return json({
+          runs: await new ExecutionCostRepository(env).listSensitivityRuns(20),
+        });
+      const body = await readJson(request);
+      return json(
+        await runExecutionSensitivity(env, {
+          days: Number(body?.days ?? 40),
+        }),
+      );
+    }
     const repository = new PaperRepository(env);
     await repository.initialize(await readWeights(env));
     if (path === "/api/paper/improve")

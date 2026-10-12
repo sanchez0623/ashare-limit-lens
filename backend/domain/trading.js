@@ -6,6 +6,11 @@ import {
   normalizeFees,
   feesForBook,
 } from "../../shared/fees.js";
+import {
+  EXECUTION_COST_MODEL,
+  defaultExecutionCostPolicy,
+} from "../../shared/execution-cost.js";
+import { buildExecutionContext, solveFillQuantity } from "./execution-cost.js";
 
 export const ACTIONS = Object.freeze({
   OPEN: "建仓",
@@ -146,7 +151,15 @@ export function createPlan(
   strategy,
   strategyVersion,
   createdAt,
+  options = {},
 ) {
+  // 政策冻结（§3.2）：订单计划保存完整规范化政策与内容摘要；
+  // 新政策从下一个尚未冻结的计划生效，持仓本身不重置。
+  const executionCostPolicy =
+    options.executionCostPolicy ?? defaultExecutionCostPolicy();
+  const previousLimitUpCodes = (snapshot.stocks ?? [])
+    .filter((stock) => Number(stock.height) >= 1)
+    .map((stock) => stock.code);
   const signals = scoreSignals(snapshot, strategy);
   const byCode = new Map(signals.map((stock) => [stock.code, stock]));
   const equity = book.equityCents;
@@ -349,6 +362,10 @@ export function createPlan(
     createdAt,
     strategyVersion,
     strategy,
+    executionCostModel: EXECUTION_COST_MODEL,
+    executionCostPolicy: structuredClone(executionCostPolicy),
+    previousLimitUpCodes,
+    previousLimitUpKnown: true,
     emotion,
     targetExposure,
     maxExposure: RISK_LIMITS.maxGrossExposure,
@@ -441,7 +458,11 @@ export function defensivePlan(
   strategy,
   strategyVersion,
   createdAt,
+  options = {},
 ) {
+  // 缺少昨日冻结信息时如实声明：昨日涨停风险项不适用，不猜测。
+  const executionCostPolicy =
+    options.executionCostPolicy ?? defaultExecutionCostPolicy();
   const drawdown = 1 - book.equityCents / book.peakEquityCents;
   return {
     signalDate: date,
@@ -451,6 +472,10 @@ export function defensivePlan(
     createdAt,
     strategyVersion,
     strategy,
+    executionCostModel: EXECUTION_COST_MODEL,
+    executionCostPolicy: structuredClone(executionCostPolicy),
+    previousLimitUpCodes: [],
+    previousLimitUpKnown: false,
     sourceSnapshotMissing: true,
     emotion: null,
     targetExposure: 0,
@@ -500,6 +525,11 @@ export function executePlan(inputBook, plan, dataset) {
   ) {
     throw new Error("交易计划必须在执行日开盘前冻结，禁止使用当日收盘评分交易");
   }
+  // 新版本计划缺政策/摘要时暂停执行（§3.2）；旧计划无标记则分派旧 10bps 执行器。
+  const policyBundle = plan ? executionPolicyBundle(plan) : null;
+  const execution = policyBundle
+    ? { policyDigest: policyBundle.payloadDigest, byCode: {} }
+    : null;
   const ledger = [];
   const outcomes = [];
   const notices = [];
@@ -580,6 +610,7 @@ export function executePlan(inputBook, plan, dataset) {
           orderId: order.id,
           code: order.code,
           quality: "minute",
+          intervalKey: `${date}:${bar.time}`,
         });
     } else {
       events.push({
@@ -589,6 +620,7 @@ export function executePlan(inputBook, plan, dataset) {
         priceCents: quote.openCents,
         volumeShares: null,
         quality: "daily_open_assumption",
+        intervalKey: `${date}:09:30`,
       });
     }
   }
@@ -613,6 +645,7 @@ export function executePlan(inputBook, plan, dataset) {
         orderId: order.id,
         code: order.code,
         quality: "minute",
+        intervalKey: `${date}:${bar.time}`,
       });
   }
   events.sort(
@@ -634,6 +667,7 @@ export function executePlan(inputBook, plan, dataset) {
       side,
       quantity,
       event,
+      execution,
     );
 
   for (const event of events) {
@@ -711,7 +745,10 @@ export function executePlan(inputBook, plan, dataset) {
         outcomes.push({
           ...order,
           status: "SKIPPED",
-          reason: "开盘执行窗口内未取得可成交数据",
+          // 拒绝原因进入订单 outcome（§5.2）：保留窗口内最后一次真实拒绝原因，
+          // 并记录最终未成交数量；不只记录成功交易。
+          reason: running.lastReason || "开盘执行窗口内未取得可成交数据",
+          unfilledQuantity: order.quantity - running.filled,
         });
         continue;
       }
@@ -799,6 +836,7 @@ export function executePlan(inputBook, plan, dataset) {
           running.stage === 1
             ? "做 T 的第二腿未完成，实际新增或减少的仓位保留到账本"
             : running.lastReason || "预设条件未触发",
+        unfilledQuantity: running.order.quantity - running.filled,
       });
     }
   }
@@ -848,6 +886,12 @@ export function executePlan(inputBook, plan, dataset) {
     positionCount: book.positions.length,
     missingMinuteOrders,
     source: dataset.source,
+    executionCost: policyBundle
+      ? {
+          modelVersion: policyBundle.modelVersion,
+          policyDigest: policyBundle.payloadDigest,
+        }
+      : null,
   };
   if (
     equityCents - book.initialCashCents !==
@@ -859,6 +903,205 @@ export function executePlan(inputBook, plan, dataset) {
 }
 
 export function executeFill(
+  book,
+  plan,
+  dataset,
+  prices,
+  ledger,
+  order,
+  side,
+  desiredQuantity,
+  event,
+  execution = null,
+) {
+  // 版本分派（§3.2/§5.4）：旧计划无政策标记 → 明确分派旧 10bps 兼容执行器；
+  // 新版本计划缺政策/摘要或版本未知 → 暂停执行，不静默回退。
+  const bundle = executionPolicyBundle(plan);
+  if (!bundle) return executeFillLegacy(...arguments);
+  return executeFillWithCostModel(
+    book,
+    plan,
+    dataset,
+    prices,
+    ledger,
+    order,
+    side,
+    desiredQuantity,
+    event,
+    execution,
+    bundle,
+  );
+}
+
+// 校验并返回计划冻结的成本政策 bundle；旧计划返回 null。
+export function executionPolicyBundle(plan) {
+  const bundle = plan?.executionCostPolicy ?? null;
+  if (!bundle && !plan?.executionCostModel) return null;
+  if (!bundle?.payload || !bundle?.payloadDigest)
+    throw new Error("计划版本要求成本政策，但缺少政策或摘要，暂停执行");
+  if (bundle.modelVersion !== EXECUTION_COST_MODEL)
+    throw new Error(`未知执行成本模型 ${bundle.modelVersion}，暂停执行`);
+  return bundle;
+}
+
+function executeFillWithCostModel(
+  book,
+  plan,
+  dataset,
+  prices,
+  ledger,
+  order,
+  side,
+  desiredQuantity,
+  event,
+  execution,
+  bundle,
+) {
+  const date = dataset.date;
+  const quotes = dataset.quotes;
+  const feeConfig = plan?.feeConfig || LEGACY_FEES;
+  const feeModel = plan?.feeModel || "legacy-v1";
+  const quote = quotes[order.code];
+  const point = event.priceCents;
+  if (
+    (side === "BUY" && quote.limitUpCents && point >= quote.limitUpCents) ||
+    (side === "SELL" && quote.limitDownCents && point <= quote.limitDownCents)
+  )
+    return {
+      ok: false,
+      reason: side === "BUY" ? "涨停排队不假设成交" : "跌停卖出不假设成交",
+    };
+  let position = book.positions.find((item) => item.code === order.code);
+  const desired =
+    side === "BUY"
+      ? roundLot(desiredQuantity)
+      : Math.min(
+          desiredQuantity,
+          position ? availableQuantity(position, date) : 0,
+        );
+  // 同股区间共享容量与冲击游标（§4.4）：保护单、普通卖单、买单和 T 两腿
+  // 共享同股区间的绝对成交容量；只有成交成功才推进状态。
+  const context = buildExecutionContext({
+    plan,
+    code: order.code,
+    event,
+    quote,
+    intervalState: execution?.byCode?.[order.code] ?? null,
+  });
+  let capCents = null;
+  if (side === "BUY") {
+    const value = book.positions.reduce(
+      (sum, item) =>
+        sum + totalQuantity(item) * (prices.get(item.code) || item.markCents),
+      0,
+    );
+    const equity = book.cashCents + value;
+    const current = position
+      ? totalQuantity(position) * (prices.get(order.code) || point)
+      : 0;
+    capCents = Math.min(
+      book.cashCents,
+      equity * RISK_LIMITS.maxPositionWeight - current,
+      equity * RISK_LIMITS.maxGrossExposure - value,
+    );
+  }
+  const solved = solveFillQuantity({
+    policy: bundle,
+    context,
+    side,
+    desiredQuantity: desired,
+    limits: {
+      maxPriceCents: order.maxPriceCents,
+      limitUpCents: quote.limitUpCents,
+      limitDownCents: quote.limitDownCents,
+      capCents,
+      availableQuantity: desired,
+    },
+    estimateFees: (notional, fillSide) =>
+      transactionFees(notional, fillSide, feeConfig, feeModel).total,
+  });
+  if (!solved.quantity)
+    return {
+      ok: false,
+      reason: solved.reason,
+      detail: solved.detail,
+      executionCost: solved.executionCost?.costBreakdown ?? null,
+    };
+  if (execution) execution.byCode[order.code] = solved.nextIntervalState;
+  const fillPriceCents = solved.executionCost.fillPriceCents;
+  const quantity = solved.quantity;
+  const notional = quantity * fillPriceCents;
+  const fees = transactionFees(notional, side, feeConfig, feeModel);
+  let basisCents = 0;
+  let realizedPnlCents = 0;
+  const cashDeltaCents =
+    side === "BUY" ? -notional - fees.total : notional - fees.total;
+  if (side === "BUY") {
+    if (!position) {
+      position = {
+        code: order.code,
+        name: order.name,
+        sector: order.sector,
+        lots: [],
+        heldDays: 0,
+        markCents: point,
+        lastScore: order.score,
+        markDate: date,
+      };
+      book.positions.push(position);
+    }
+    position.lots.push({
+      acquiredDate: date,
+      quantity,
+      costCents: notional + fees.total,
+      priceCents: fillPriceCents,
+    });
+  } else {
+    basisCents = consumeLots(position, quantity, date);
+    realizedPnlCents = cashDeltaCents - basisCents;
+    book.realizedPnlCents += realizedPnlCents;
+  }
+  book.cashCents += cashDeltaCents;
+  book.feesCents += fees.total;
+  prices.set(order.code, point);
+  ledger.push({
+    id: `${date}:${order.id}:${ledger.length}`,
+    date,
+    signalDate: plan.signalDate,
+    sequence: ledger.length,
+    time: event.time,
+    code: order.code,
+    name: order.name,
+    action: order.action,
+    side,
+    quantity,
+    priceCents: fillPriceCents,
+    notionalCents: notional,
+    feeCents: fees.total,
+    feeBreakdown: fees,
+    ...(feeModel === "itemized-v2"
+      ? {
+          feeModel,
+          feeConfig: structuredClone(feeConfig),
+          feeConfigVersion: plan.feeConfigVersion || 1,
+        }
+      : {}),
+    cashDeltaCents,
+    basisCents,
+    realizedPnlCents,
+    cashAfterCents: book.cashCents,
+    strategyVersion: plan.strategyVersion,
+    dataQuality: event.quality,
+    source: dataset.source,
+    sourcePriceCents: point,
+    executionCost: solved.executionCost.costBreakdown,
+  });
+  return { ok: true, quantity, priceCents: fillPriceCents };
+}
+
+// 旧 10bps 兼容执行器（LEGACY_FIXED_10BPS_V1）：历史计划与旧导出重放
+// 仍按原 Math.round、10bps 及原容量规则执行（§5.4），不得重写历史成交。
+function executeFillLegacy(
   book,
   plan,
   dataset,

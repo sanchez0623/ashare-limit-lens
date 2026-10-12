@@ -1,5 +1,6 @@
 import {
   executeFill,
+  executionPolicyBundle,
   totalQuantity,
   availableQuantity,
   costBasis,
@@ -53,6 +54,8 @@ export function openSession(book, plan, date) {
     plan.createdAt >= `${date}T01:15:00.000Z`
   )
     throw new Error("缺少执行日前冻结的计划，自动交易暂停");
+  // 新版本计划缺政策/摘要时暂停执行（§3.2）；旧计划返回 null 走旧执行器。
+  const policyBundle = executionPolicyBundle(plan);
   const carry = new Set([
     ...(book.pendingExits || []).map((x) => x.code),
     ...(book.pendingRecovery || []).map((x) => x.code),
@@ -151,6 +154,11 @@ export function openSession(book, plan, date) {
     quotes: {},
     orders,
     lastObservedAt: null,
+    // 同股区间成本状态（§4.4）：policyDigest + byCode 区间游标随会话
+    // 持久化，与账本同一次 CAS 提交，失败重读原状态再试。
+    executionState: policyBundle
+      ? { policyDigest: policyBundle.payloadDigest, byCode: {} }
+      : null,
   };
 }
 
@@ -255,7 +263,13 @@ export function advanceSession(inputBook, inputSession, observation) {
   for (const { code, quote, volume } of accepted.sort((a, b) =>
     a.code.localeCompare(b.code),
   )) {
-    let budget = roundLot(volume * RISK_LIMITS.maxParticipation);
+    // 新成本模型（§4.4）：同一报价区间内的订单共享绝对成交容量，由
+    // executeFill 依据 session.executionState 的区间游标执行；旧模型保持
+    // 原有的每帧预算分派。
+    const useCostModel = !!session.executionState;
+    let budget = useCostModel
+      ? Infinity
+      : roundLot(volume * RISK_LIMITS.maxParticipation);
     const list = session.orders
       .filter((o) => o.code === code)
       .sort(
@@ -293,7 +307,9 @@ export function advanceSession(inputBook, inputSession, observation) {
           priceCents: quote.closeCents,
           volumeShares: volume,
           quality: "realtime_poll",
+          intervalKey: quote.timestamp,
         },
+        session.executionState,
       );
       if (result.ok) {
         budget -= result.quantity;
@@ -304,7 +320,7 @@ export function advanceSession(inputBook, inputSession, observation) {
         row.quoteTimestamp = quote.timestamp;
         row.observationSequence = session.sequence;
         order.lastFillAt = quote.timestamp;
-        order.reason = "按实时行情、滑点及费用模拟成交";
+        order.reason = "按实时行情、成本模型及费用模拟成交";
       } else {
         order.reason = result.reason;
         order.status =
@@ -568,6 +584,12 @@ export function closeSession(inputBook, inputSession, dataset) {
     positionCount: book.positions.length,
     missingMinuteOrders: 0,
     source: "腾讯实时模拟成交与收盘盯市",
+    executionCost: session.plan?.executionCostPolicy
+      ? {
+          modelVersion: session.plan.executionCostPolicy.modelVersion,
+          policyDigest: session.plan.executionCostPolicy.payloadDigest,
+        }
+      : null,
   };
   if (
     book.cashCents < 0 ||

@@ -9,6 +9,7 @@
     "dev": "node dev.mjs",
     "start": "node server.mjs",
     "verify:paper": "node scripts/verify-paper.mjs",
+    "verify:execution-cost": "node scripts/verify-execution-cost.mjs",
     "format": "prettier --write frontend backend shared scripts test db build.mjs dev.mjs server.mjs",
     "check": "prettier --check frontend backend shared scripts test db build.mjs dev.mjs server.mjs"
   },

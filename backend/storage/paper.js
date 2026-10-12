@@ -6,6 +6,7 @@ import {
   defensivePlan,
 } from "../domain/trading.js";
 import { normalizeFees, feesForBook } from "../../shared/fees.js";
+import { latestPolicyBundle } from "./execution-cost.js";
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -324,9 +325,15 @@ export class PaperRepository {
         .first();
       const snapshot = await this.snapshot(day),
         strategy = await this.strategy(book);
+      // 重冻计划也带当前生效政策，避免替换计划悄悄退回旧口径。
+      const executionCostPolicy = await latestPolicyBundle(this.db);
       replacement = snapshot
-        ? createPlan(snapshot, book, strategy, book.activeStrategy, stamp)
-        : defensivePlan(day, book, strategy, book.activeStrategy, stamp);
+        ? createPlan(snapshot, book, strategy, book.activeStrategy, stamp, {
+            executionCostPolicy,
+          })
+        : defensivePlan(day, book, strategy, book.activeStrategy, stamp, {
+            executionCostPolicy,
+          });
       if (previousPlan)
         statements.push(
           this.db

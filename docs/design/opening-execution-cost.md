@@ -1,6 +1,8 @@
 # P0：开盘成交成本与滑点模型
 
-> 状态：待实施；本文交付实现方案，不表示功能已经上线。
+> 状态：实施中；批次 A（政策与统一成本内核）与批次 B 的盘口适配、质量标志、
+> 日线观察隔离已实施，`execution_sensitivity` 三情景完整重放引擎已交付；
+> 批次 C 的晋级闸门接线与批次 D（真实校准）尚未实施。
 > 设计日期：2026-10-11，时区 Asia/Shanghai。
 > 代码依据：[c7652c1](https://github.com/sanchez0623/ashare-limit-lens/commit/c7652c1d38295423ecd371fa8c8a31d9d11fe25f)。
 > 文档入口：[统一索引](../README.md)。配套方案：[统计证据与滚动显著性](statistical-evidence.md)。
