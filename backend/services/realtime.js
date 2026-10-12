@@ -85,6 +85,16 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
     }
     if (session.status !== "OPEN")
       return heartbeat({ status: session.status, reason: "交易日已关闭" });
+    // 每次轮询都核验会话冻结的政策摘要（§5.4）：已有会话同样不得在
+    // 政策被篡改后继续成交，不只是首次开会话时检查一次。
+    if (
+      session.plan?.executionCostPolicy &&
+      !(await verifyPolicyBundle(session.plan.executionCostPolicy))
+    )
+      return heartbeat({
+        status: "BLOCKED",
+        reason: "会话计划成本政策与摘要不一致，暂停交易；请重新冻结计划",
+      });
     const codes = [
       ...new Set([
         ...session.orders.map((o) => o.code),

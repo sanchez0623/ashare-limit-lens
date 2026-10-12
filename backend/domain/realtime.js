@@ -30,19 +30,6 @@ export function inSession(time) {
     (time >= "13:00:00" && time < "14:57:00")
   );
 }
-// 成本分段时刻必须取 Asia/Shanghai 墙钟（§3.1）：报价时间戳可能以
-// +08:00 或 UTC 表示，不能简单截取字符串当本地时段；无效时刻返回 null。
-export function shanghaiClockTime(value) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Shanghai",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(date);
-}
 const quantityOf = (book, code) => {
   const p = book.positions.find((p) => p.code === code);
   return p ? totalQuantity(p) : 0;
@@ -318,10 +305,10 @@ export function advanceSession(inputBook, inputSession, observation) {
         side,
         Math.min(desired, budget),
         {
-          // 分段时刻经 Asia/Shanghai 换算：同一时刻的 UTC/+08:00 表示
-          // 必须得到相同成本分段与容量（§3.1）。
-          time:
-            shanghaiClockTime(quote.timestamp) ?? quote.timestamp.slice(11, 19),
+          // 分段时刻取可因果执行的观察时刻（§3.1）：本帧在 clock.time
+          // （Asia/Shanghai）尝试成交，报价自身时间戳只用于新鲜度与
+          // 区间标识——09:31:05 观测到 09:30:55 的报价按 09:31 计费。
+          time: clock.time,
           priceCents: quote.closeCents,
           volumeShares: volume,
           // 采样质量来自观测本身：分钟采样重放与实时轮询分别声明（§4.5）。

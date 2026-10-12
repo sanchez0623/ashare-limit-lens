@@ -30,6 +30,7 @@ import {
 } from "../backend/storage/execution-cost.js";
 import { exportPaper, verifyExport } from "../backend/services/paper.js";
 import { freezePortfolioPlan } from "../backend/services/portfolio-runner.js";
+import { consumePortfolioFrame } from "../backend/services/portfolio-runner.js";
 import { replayStrategy } from "../backend/domain/validation.js";
 import {
   runExecutionSensitivity,
@@ -980,6 +981,289 @@ test("影子账户与主账户冻结相同政策", async () => {
     assert.equal(
       await verifyPolicyBundle(saved.plan.executionCostPolicy),
       true,
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+test("成本分段取观察时刻：09:31:05 观测到 09:30:55 的报价按早盘后段计费", async () => {
+  const DB = localDatabase(),
+    env = { DB },
+    repository = new PaperRepository(env);
+  const account = await repository.initialize();
+  await repository.settle(
+    account.revision,
+    executePlan(account.book, null, dataset(dateAt(0))),
+    dataset(dateAt(0)),
+  );
+  const current = await repository.account();
+  const frozen = await repository.savePlan(
+    createPlan(
+      snapshot(dateAt(0)),
+      current.book,
+      BASE_STRATEGY,
+      "baseline-v1",
+      `${dateAt(0)}T07:10:00.000Z`,
+    ),
+  );
+  // 报价时间 09:30:55（首分钟内），但帧在 09:31:05 才被观测执行：
+  // 可因果执行的时刻是 09:31:05 → openNextFourMinutes（§3.1）。
+  const book = structuredClone(current.book);
+  const session = openSession(book, frozen, dateAt(1));
+  const warm = advanceSession(book, session, {
+    observedAt: new Date(`${dateAt(1)}T01:30:45.000Z`).toISOString(),
+    quotes: {
+      600001: {
+        date: dateAt(1),
+        previousCloseCents: 1000,
+        openCents: 1000,
+        closeCents: 1000,
+        volumeShares: 10_000_000,
+        limitUpCents: 1100,
+        limitDownCents: 900,
+        timestamp: `${dateAt(1)}T09:30:45+08:00`,
+      },
+    },
+    pollIntervalSeconds: 10,
+  });
+  assert.equal(warm.ledger.length, 0, "首帧只预热");
+  const step = advanceSession(warm.book, warm.session, {
+    observedAt: new Date(`${dateAt(1)}T01:31:05.000Z`).toISOString(),
+    quotes: {
+      600001: {
+        date: dateAt(1),
+        previousCloseCents: 1000,
+        openCents: 1000,
+        closeCents: 1000,
+        volumeShares: 15_000_000,
+        limitUpCents: 1100,
+        limitDownCents: 900,
+        timestamp: `${dateAt(1)}T09:30:55+08:00`,
+      },
+    },
+    pollIntervalSeconds: 10,
+  });
+  // 陈旧但新鲜度允许的报价被接受，成本按观察时刻 09:31:05 分段
+  assert.equal(step.ledger.length, 1);
+  assert.equal(step.ledger[0].executionCost.period, "openNextFourMinutes");
+  assert.equal(step.ledger[0].executionCost.residualBps, 40);
+  DB.close();
+});
+
+test("已有会话与影子执行逐帧核验政策摘要：篡改后不得继续成交", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const repository = new PaperRepository(env);
+    await repository.initialize();
+    const plan = await repository.savePlan(
+      createPlan(
+        snapshot(dateAt(0)),
+        newBook(100000),
+        BASE_STRATEGY,
+        "baseline-v1",
+        `${dateAt(0)}T07:10:00.000Z`,
+      ),
+    );
+    const tamperedSession = {
+      date: dateAt(1),
+      status: "OPEN",
+      sequence: 3,
+      plan: structuredClone(plan),
+    };
+    tamperedSession.plan.executionCostPolicy.payload.periodBaseBps.regular = 1;
+    const shadows = {
+      account: async () => ({
+        book: { ...newBook(100000), lastDate: dateAt(0) },
+        status: "ACTIVE",
+        revision: 1,
+      }),
+      hasConsumed: () => false,
+      session: async () => tamperedSession,
+      plan: async () => null,
+      commitFrame: async () => ({ applied: true }),
+    };
+    const result = await consumePortfolioFrame(
+      env,
+      "shadow-1",
+      {
+        tradeDate: dateAt(1),
+        sequence: 1,
+        observedAt: new Date(`${dateAt(1)}T01:30:40.000Z`).toISOString(),
+        payload: { quotes: {} },
+      },
+      { shadows },
+    );
+    assert.equal(result.stalled, true);
+    assert.ok(String(result.reason).includes("政策与摘要不一致"));
+    // 无政策标记的旧会话不受影响
+    const legacySession = {
+      date: dateAt(1),
+      status: "OPEN",
+      sequence: 3,
+      quotes: {},
+      orders: [],
+      plan: { signalDate: dateAt(0), orders: [] },
+    };
+    const legacyShadows = {
+      ...shadows,
+      session: async () => legacySession,
+    };
+    const legacyResult = await consumePortfolioFrame(
+      env,
+      "shadow-1",
+      {
+        tradeDate: dateAt(1),
+        sequence: 1,
+        observedAt: new Date(`${dateAt(1)}T01:30:40.000Z`).toISOString(),
+        payload: { quotes: {} },
+      },
+      { shadows: legacyShadows },
+    );
+    assert.ok(
+      !legacyResult.stalled ||
+        !String(legacyResult.reason).includes("政策与摘要不一致"),
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+test("政策写入与窗口锁原子化：锁存在时写入失败且不落行", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const repository = new ExecutionCostRepository(env);
+    // 占住研究窗口锁
+    await DB.prepare(
+      "INSERT INTO research_window_owners (namespace,owner_type,owner_id,window_payload,created_at) VALUES (?,?,?,?,?)",
+    )
+      .bind("main", "EXPERIMENT", "exp-test", "{}", new Date().toISOString())
+      .run();
+    await assert.rejects(
+      () =>
+        repository.save({
+          payload: {
+            ...DEFAULT_EXECUTION_COST_PAYLOAD,
+            periodBaseBps: {
+              ...DEFAULT_EXECUTION_COST_PAYLOAD.periodBaseBps,
+              regular: 90,
+            },
+          },
+        }),
+      /活动研究窗口/,
+    );
+    const leaked = await DB.prepare(
+      "SELECT COUNT(*) AS count FROM execution_cost_policies",
+    ).first();
+    assert.equal(leaked.count, 0, "竞态写入不得落行");
+    // 释放窗口后写入成功
+    await DB.prepare("DELETE FROM research_window_owners").run();
+    const saved = await repository.save({
+      payload: {
+        ...DEFAULT_EXECUTION_COST_PAYLOAD,
+        periodBaseBps: {
+          ...DEFAULT_EXECUTION_COST_PAYLOAD.periodBaseBps,
+          regular: 90,
+        },
+      },
+    });
+    assert.equal(saved.payload.periodBaseBps.regular, 90);
+  } finally {
+    DB.close();
+  }
+});
+
+test("敏感性 manifest 冻结观测帧摘要：改变帧内容即被识别", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const repository = new PaperRepository(env);
+    await repository.initialize();
+    const sample = pairs(12);
+    // 观测帧挂在最后一对：days=10 的切片必须包含它
+    const withTicks = sample.map((pair, index) =>
+      index === sample.length - 1
+        ? {
+            ...pair,
+            // 标记实时模式：collectPairs 才会读取持久观测帧
+            dataset: { ...pair.dataset, executionMode: "realtime" },
+            observations: [
+              {
+                observedAt: new Date(
+                  `${pair.dataset.date}T01:30:40.000Z`,
+                ).toISOString(),
+                quotes: {
+                  600001: { timestamp: `${pair.dataset.date}T09:30:40+08:00` },
+                },
+                pollIntervalSeconds: 10,
+              },
+            ],
+          }
+        : pair,
+    );
+    for (const pair of withTicks) {
+      await DB.prepare(
+        "INSERT OR IGNORE INTO snapshots (trade_date,created_at,payload) VALUES (?,?,?)",
+      )
+        .bind(
+          pair.snapshot.date,
+          pair.snapshot.createdAt,
+          JSON.stringify(pair.snapshot),
+        )
+        .run();
+      await DB.prepare(
+        "INSERT INTO paper_market_days (trade_date,payload,digest) VALUES (?,?,?)",
+      )
+        .bind(pair.dataset.date, JSON.stringify(pair.dataset), "fixture")
+        .run();
+      // collectPairs 从 paper_live_ticks 读取实时观测帧
+      if (pair.observations)
+        for (const [sequence, tick] of pair.observations.entries())
+          await DB.prepare(
+            "INSERT INTO paper_live_ticks (trade_date,sequence,payload,digest) VALUES (?,?,?,?)",
+          )
+            .bind(
+              pair.dataset.date,
+              sequence + 1,
+              JSON.stringify(tick),
+              "fixture",
+            )
+            .run();
+    }
+    const first = await runExecutionSensitivity(env, { days: 10 });
+    // 改变帧内容 → manifest 必须不同
+    await DB.prepare(
+      "UPDATE paper_live_ticks SET payload = ? WHERE trade_date = ? AND sequence = 1",
+    )
+      .bind(
+        JSON.stringify([
+          {
+            observedAt: new Date(
+              `${withTicks.at(-1).dataset.date}T01:30:41.000Z`,
+            ).toISOString(),
+            quotes: {
+              600001: {
+                timestamp: `${withTicks.at(-1).dataset.date}T09:30:41+08:00`,
+              },
+            },
+            pollIntervalSeconds: 10,
+          },
+        ]),
+        withTicks.at(-1).dataset.date,
+      )
+      .run();
+    const second = await runExecutionSensitivity(env, { days: 10 });
+    const observedInput = first.manifest.inputs.at(-1);
+    assert.ok(observedInput.observationsDigest);
+    assert.notEqual(
+      observedInput.observationsDigest,
+      second.manifest.inputs.at(-1).observationsDigest,
+    );
+    assert.notEqual(
+      JSON.stringify(first.manifest),
+      JSON.stringify(second.manifest),
     );
   } finally {
     DB.close();

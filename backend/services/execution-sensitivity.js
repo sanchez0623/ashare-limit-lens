@@ -63,13 +63,17 @@ export async function runExecutionSensitivity(
   const feeConfig = feesForBook(account.book);
   const basePolicy = await new ExecutionCostRepository(env).latest();
   const bundles = await scenarioPolicyBundles(basePolicy);
-  // 独立复核所需的冻结输入（§6.2）：策略身份与摘要、逐对评分/行情摘要。
+  // 独立复核所需的冻结输入（§6.2）：策略身份与摘要、逐对评分/行情摘要、
+  // 实时观测帧摘要——仅改变有效帧即可被识别，manifest 不再与收益脱钩。
   const strategyDigest = await policyDigest(strategyParams);
   const inputDigests = await Promise.all(
     pairs.map(async (pair) => ({
       tradeDate: pair.dataset.date,
       snapshotDigest: await policyDigest(pair.snapshot),
       marketDigest: await policyDigest(pair.dataset),
+      observationsDigest: pair.observations
+        ? await policyDigest(pair.observations)
+        : null,
     })),
   );
   const results = [];

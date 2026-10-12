@@ -1,6 +1,7 @@
 // 执行成本政策版本与校准/敏感性结果的持久化（§5.4）。
 // 政策追加不可变：修改参数产生新版本；读取时重新校验摘要。
 import { database } from "./database.js";
+import { RESEARCH_NAMESPACE } from "./cohorts.js";
 import {
   EXECUTION_COST_MODEL,
   defaultExecutionCostPolicy,
@@ -128,9 +129,11 @@ export class ExecutionCostRepository {
       effectiveFrom,
       payload: normalized,
     });
-    await this.db
+    // 窗口守卫与写入原子化（§3.2）：消除“检查无锁后、写入前取得窗口锁”
+    // 的竞态——同一语句内 NOT EXISTS 判定，活动研究窗口存在时插入 0 行。
+    const result = await this.db
       .prepare(
-        "INSERT INTO execution_cost_policies (id,version,model_version,payload,digest,calibration_status,calibration_cutoff,effective_from,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO execution_cost_policies (id,version,model_version,payload,digest,calibration_status,calibration_cutoff,effective_from,created_at) SELECT ?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM research_window_owners WHERE namespace = ?)",
       )
       .bind(
         id,
@@ -142,8 +145,14 @@ export class ExecutionCostRepository {
         calibrationCutoff,
         effectiveFrom,
         new Date().toISOString(),
+        RESEARCH_NAMESPACE,
       )
       .run();
+    const changes = result.meta?.changes ?? result.changes;
+    if (!changes)
+      throw new Error(
+        "存在活动研究窗口，冻结政策继续服务已有批次，不能混用成本政策",
+      );
     return bundle;
   }
   async saveSensitivityRun(run) {

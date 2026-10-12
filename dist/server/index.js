@@ -1,810 +1,810 @@
 // .sites-runtime/assets.js
-var ASSETS = { "/": { "body": `<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#101e2e" />
-    <title>\u6DA8\u505C\u7814\u7A76\u53F0 \xB7 A \u80A1\u590D\u76D8\u4E0E\u8BC4\u5206</title>
-    <meta
-      name="description"
-      content="\u6BCF\u65E5 A \u80A1\u6DA8\u505C\u590D\u76D8\uFF0C\u67E5\u770B\u53EF\u89E3\u91CA\u7684\u4E2A\u80A1\u8BC4\u5206\u3001\u884C\u4E1A\u677F\u5757\u5F3A\u5EA6\u548C\u5E02\u573A\u60C5\u7EEA\u3002"
-    />
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101e2e'/%3E%3Cpath d='M7 24V17h4v7m3 0V12h4v12m3 0V7h4v17' stroke='%2356d3b5' stroke-width='3'/%3E%3C/svg%3E"
-    />
-    <link rel="stylesheet" href="/assets/styles.css" />
-  </head>
-  <body>
-    <div class="shell">
-      <aside class="sidebar">
-        <a class="brand" href="#overview" aria-label="\u6DA8\u505C\u7814\u7A76\u53F0\u9996\u9875"
-          ><span class="brand-mark"><i></i><i></i><i></i></span
-          ><span>\u6DA8\u505C\u7814\u7A76\u53F0<small>LIMIT LENS</small></span></a
-        >
-        <div class="nav-label">\u7814\u7A76\u5DE5\u4F5C\u53F0</div>
-        <nav aria-label="\u4E3B\u5BFC\u822A">
-          <button data-view="overview" class="nav-item active">
-            <span data-icon="dashboard"></span>\u603B\u89C8\u590D\u76D8
-          </button>
-          <button data-view="stocks" class="nav-item">
-            <span data-icon="chart"></span>\u4E2A\u80A1\u5206\u6790
-          </button>
-          <button data-view="sectors" class="nav-item">
-            <span data-icon="grid"></span>\u677F\u5757\u7814\u7A76
-          </button>
-          <button data-view="review" class="nav-item">
-            <span data-icon="shield"></span>\u6628\u65E5\u53CD\u9988
-          </button>
-          <button data-view="paper" class="nav-item">
-            <span data-icon="chart"></span>\u6A21\u62DF\u4EA4\u6613
-          </button>
-          <button data-view="strategies" class="nav-item">
-            <span data-icon="sliders"></span>\u7B56\u7565\u8D5B\u9A6C
-          </button>
-          <button data-view="alerts" class="nav-item">
-            <span data-icon="shield"></span>\u8FD0\u7EF4\u544A\u8B66
-          </button>
-          <button data-view="model" class="nav-item">
-            <span data-icon="sliders"></span>\u8BC4\u5206\u6A21\u578B
-          </button>
-        </nav>
-        <div class="sidebar-note">
-          <span class="mini-label">\u590D\u76D8\u95ED\u73AF</span
-          ><strong>\u8BC4\u5206 \xB7 \u68C0\u9A8C \xB7 \u6539\u8FDB</strong>
-          <p>\u4FDD\u5B58\u5F53\u65F6\u7684\u5224\u65AD\uFF0C\u518D\u7528\u4E0B\u4E00\u4EA4\u6613\u65E5\u7684\u7ED3\u679C\u68C0\u9A8C\u3002</p>
-          <div class="note-line"></div>
-          <span id="snapshot-status">\u6536\u76D8\u540E\u81EA\u52A8\u4FDD\u5B58\u8BC4\u5206\u5FEB\u7167</span>
-        </div>
-        <div class="sidebar-footer">
-          <span data-icon="database"></span>
-          <div>
-            \u516C\u5F00\u884C\u60C5\u63A5\u5165<small id="sidebar-source">\u6B63\u5728\u68C0\u67E5\u6570\u636E\u6E90</small>
-          </div>
-        </div>
-      </aside>
-      <div class="workspace">
-        <header class="topbar">
-          <div class="breadcrumb">
-            \u7814\u7A76\u5DE5\u4F5C\u53F0 <span>/</span> <strong id="crumb">\u603B\u89C8\u590D\u76D8</strong>
-          </div>
-          <div class="topbar-right">
-            <span class="session-label">A \u80A1 \xB7 \u6CAA\u6DF1\u5E02\u573A</span
-            ><button
-              class="icon-button"
-              id="help-btn"
-              aria-label="\u67E5\u770B\u6570\u636E\u53E3\u5F84"
-            >
-              <span data-icon="info"></span>
-            </button>
-          </div>
-        </header>
-        <main>
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">DAILY MARKET REVIEW</div>
-              <h1 id="page-title">\u6BCF\u65E5\u6DA8\u505C\u590D\u76D8</h1>
-              <p id="page-subtitle">\u628A\u6DA8\u505C\u62C6\u6210\u4FE1\u53F7\uFF0C\u628A\u5224\u65AD\u5EFA\u7ACB\u5728\u6570\u636E\u4E0A\u3002</p>
-            </div>
-            <div class="heading-actions">
-              <label class="date-control"
-                ><span data-icon="calendar"></span
-                ><input
-                  type="date"
-                  id="trade-date"
-                  aria-label="\u4EA4\u6613\u65E5\u671F" /></label
-              ><button class="primary" id="refresh-btn">
-                <span data-icon="refresh"></span>\u5237\u65B0\u884C\u60C5
-              </button>
-            </div>
-          </div>
-          <div class="data-strip">
-            <div>
-              <span class="source-tag" id="source-tag">\u884C\u60C5\u52A0\u8F7D\u4E2D</span
-              ><span id="data-time">\u6B63\u5728\u83B7\u53D6\u6240\u9009\u4EA4\u6613\u65E5\u6DA8\u505C\u6C60</span>
-            </div>
-            <button class="text-button" id="demo-btn">\u67E5\u770B\u6F14\u793A</button>
-          </div>
-          <div class="notice" id="notice" role="status" hidden></div>
-          <section id="summary" class="metrics" aria-label="\u5E02\u573A\u6982\u51B5"></section>
-          <div id="overview-content" class="overview-grid">
-            <section class="panel pool-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>
-                    \u6DA8\u505C\u4E2A\u80A1 <span class="count-chip" id="pool-count">\u2014</span>
-                  </h2>
-                  <p>\u6309\u7EFC\u5408\u8BC4\u5206\u6392\u5E8F\uFF0C\u70B9\u51FB\u4E2A\u80A1\u67E5\u770B\u5B8C\u6574\u8BCA\u65AD</p>
-                </div>
-                <span class="small-muted" id="coverage-label">\u516D\u7EF4\u8BC4\u5206</span>
-              </div>
-              <div class="filters">
-                <div class="search-control">
-                  <span data-icon="search"></span
-                  ><input
-                    id="search"
-                    placeholder="\u641C\u7D22\u540D\u79F0 / \u4EE3\u7801"
-                    aria-label="\u641C\u7D22\u6DA8\u505C\u4E2A\u80A1"
-                  />
-                </div>
-                <select id="sector-filter" aria-label="\u7B5B\u9009\u884C\u4E1A\u677F\u5757">
-                  <option value="">\u5168\u90E8\u884C\u4E1A</option>
-                </select>
-              </div>
-              <div class="table-subnav">
-                <div class="segments" role="group" aria-label="\u8FDE\u677F\u7B5B\u9009">
-                  <button data-height="all" class="active">\u5168\u90E8</button
-                  ><button data-height="first">\u9996\u677F</button
-                  ><button data-height="relay">\u8FDE\u677F</button>
-                </div>
-                <div class="sort-control">
-                  <label for="sort">\u6392\u5E8F</label
-                  ><select id="sort">
-                    <option value="score">\u7EFC\u5408\u8BC4\u5206</option>
-                    <option value="height">\u8FDE\u677F\u9AD8\u5EA6</option>
-                    <option value="seal">\u5C01\u5355\u91D1\u989D</option>
-                    <option value="first">\u9996\u5C01\u65F6\u95F4</option>
-                  </select>
-                </div>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u4E2A\u80A1 / \u4EE3\u7801</th>
-                      <th>\u7EFC\u5408\u8BC4\u5206</th>
-                      <th>\u884C\u4E1A\u677F\u5757</th>
-                      <th>\u8FDE\u677F</th>
-                      <th>\u9996\u5C01\u65F6\u95F4</th>
-                      <th>\u5C01\u5355\u91D1\u989D</th>
-                      <th>\u6362\u624B\u7387</th>
-                      <th>\u70B8\u677F</th>
-                    </tr>
-                  </thead>
-                  <tbody id="stock-rows"></tbody>
-                </table>
-              </div>
-              <div class="table-footer">
-                <span id="table-status">\u6B63\u5728\u8BFB\u53D6\u516C\u5F00\u884C\u60C5\u2026</span
-                ><span>\u8BC4\u5206\u533A\u95F4 0\u2013100</span>
-              </div>
-            </section>
-            <div class="right-column">
-              <section class="panel sector-panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u677F\u5757\u5F3A\u5EA6</h2>
-                    <p>\u6DA8\u505C\u96C6\u805A \xD7 \u8FDE\u677F\u9AD8\u5EA6 \xD7 \u5C01\u677F\u8868\u73B0</p>
-                  </div>
-                  <button
-                    class="icon-button"
-                    id="all-sectors"
-                    aria-label="\u67E5\u770B\u5168\u90E8\u884C\u4E1A\u677F\u5757"
-                  >
-                    <span data-icon="grid"></span>
-                  </button>
-                </div>
-                <div id="sector-rank"></div>
-                <div class="panel-footnote">
-                  \u884C\u4E1A\u5206\u7C7B\u53E3\u5F84\uFF0C\u4E0D\u7B49\u540C\u4E8E\u6982\u5FF5\u9898\u6750\u70ED\u5EA6
-                </div>
-              </section>
-              <section class="panel ladder-panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u8FDE\u677F\u68AF\u961F</h2>
-                    <p>\u89C2\u5BDF\u5E02\u573A\u9AD8\u5EA6\u4E0E\u63A5\u529B\u7ED3\u6784</p>
-                  </div>
-                  <span class="outline-tag">\u5F53\u65E5</span>
-                </div>
-                <div id="ladder-chart"></div>
-                <div id="ladder-insight" class="insight"></div>
-              </section>
-            </div>
-          </div>
-          <section id="sectors-view" class="panel" hidden>
-            <div class="panel-heading">
-              <div>
-                <h2>\u884C\u4E1A\u677F\u5757\u8BC4\u5206</h2>
-                <p>\u70B9\u51FB\u677F\u5757\uFF0C\u7B5B\u9009\u5B83\u7684\u6DA8\u505C\u4E2A\u80A1</p>
-              </div>
-              <span class="outline-tag">\u900F\u660E\u6743\u91CD</span>
-            </div>
-            <div class="sector-formula">
-              \u6DA8\u505C\u96C6\u805A 35% <span>+</span> \u8FDE\u677F\u9AD8\u5EA6 25% <span>+</span> \u5C01\u677F\u7A33\u5B9A
-              25% <span>+</span> \u65E9\u76D8\u8054\u52A8 15%
-            </div>
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>\u884C\u4E1A\u677F\u5757</th>
-                    <th>\u677F\u5757\u5F97\u5206</th>
-                    <th>\u6DA8\u505C\u5BB6\u6570</th>
-                    <th>\u6700\u9AD8\u8FDE\u677F</th>
-                    <th>\u5C01\u677F\u7A33\u5B9A</th>
-                    <th>\u65E9\u76D8\u8054\u52A8</th>
-                    <th>\u6DA8\u505C\u80A1\u6210\u4EA4\u989D</th>
-                  </tr>
-                </thead>
-                <tbody id="sector-rows"></tbody>
-              </table>
-            </div>
-          </section>
-          <section id="review-view" hidden>
-            <div class="review-intro">
-              <div>
-                <span class="outline-tag" id="review-date-label"
-                  >\u7B49\u5F85\u9996\u4E2A\u53CD\u9988\u65E5</span
-                >
-                <p id="review-status">
-                  \u5F53\u5929\u6536\u76D8\u540E\u4FDD\u5B58\u539F\u59CB\u8BC4\u5206\uFF0C\u4E0B\u4E00\u4E2A\u4EA4\u6613\u65E5\u6838\u9A8C\u5E02\u573A\u8868\u73B0\u3002
-                </p>
-              </div>
-              <button class="secondary" id="run-review">
-                <span data-icon="refresh"></span>\u66F4\u65B0\u53CD\u9988
-              </button>
-            </div>
-            <div id="review-metrics" class="metrics"></div>
-            <div class="review-grid">
-              <section class="panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u539F\u59CB\u8BC4\u5206\u4E0E\u5B9E\u9645\u8868\u73B0</h2>
-                    <p>\u56FA\u5B9A\u6628\u65E5\u6837\u672C\uFF0C\u68C0\u9A8C\u4ECA\u5929\u7684\u8868\u73B0\uFF0C\u907F\u514D\u4E8B\u540E\u6311\u9009\u8D62\u5BB6</p>
-                  </div>
-                  <span id="review-coverage" class="outline-tag">\u7B49\u5F85\u6837\u672C</span>
-                </div>
-                <div
-                  id="review-conclusion"
-                  class="review-conclusion"
-                  hidden
-                ></div>
-                <div class="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>\u6628\u65E5\u6DA8\u505C\u4E2A\u80A1</th>
-                        <th>\u539F\u59CB\u8BC4\u5206</th>
-                        <th>\u6B21\u65E5\u5F00\u76D8</th>
-                        <th>\u6B21\u65E5\u6536\u76D8</th>
-                        <th>\u76D8\u4E2D\u6700\u4F4E</th>
-                        <th>\u518D\u6B21\u6DA8\u505C</th>
-                      </tr>
-                    </thead>
-                    <tbody id="review-rows"></tbody>
-                  </table>
-                </div>
-                <div class="panel-footnote">
-                  \u6536\u76CA\u4EE5\u539F\u59CB\u6536\u76D8\u4EF7\u4E3A\u57FA\u51C6\uFF0C\u672A\u5047\u8BBE\u80FD\u5728\u6DA8\u505C\u4EF7\u6210\u4EA4\uFF1B\u4E0D\u7B49\u540C\u4E8E\u53EF\u5B9E\u73B0\u7B56\u7565\u6536\u76CA\u3002
-                </div>
-              </section>
-              <section class="panel ai-panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>AI \u7CFB\u7EDF\u8BC4\u4F30</h2>
-                    <p>\u7528\u5DF2\u6838\u9A8C\u7684\u5E02\u573A\u7ED3\u679C\uFF0C\u5BA1\u89C6\u8BC4\u5206\u8D28\u91CF</p>
-                  </div>
-                  <span class="outline-tag" id="ai-status-tag">\u68C0\u67E5\u8FDE\u63A5</span>
-                </div>
-                <div id="ai-content"></div>
-                <div class="ai-actions">
-                  <button class="primary" id="ai-grade-btn">\u751F\u6210 AI \u8BC4\u4EF7</button
-                  ><span id="ai-action-status" role="status"></span>
-                </div>
-              </section>
-            </div>
-            <section class="panel review-sector-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u677F\u5757\u5224\u65AD\u53CD\u9988</h2>
-                  <p>\u4F7F\u7528\u6628\u65E5\u56FA\u5B9A\u7684\u6DA8\u505C\u6210\u5458\uFF0C\u6BD4\u8F83\u6B21\u65E5\u5E73\u5747\u8868\u73B0</p>
-                </div>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u6628\u65E5\u884C\u4E1A\u677F\u5757</th>
-                      <th>\u539F\u59CB\u677F\u5757\u5206</th>
-                      <th>\u6709\u6548 / \u539F\u59CB\u6837\u672C</th>
-                      <th>\u6B21\u65E5\u5E73\u5747\u6536\u76CA</th>
-                      <th>\u518D\u6B21\u6DA8\u505C\u6BD4\u4F8B</th>
-                    </tr>
-                  </thead>
-                  <tbody id="review-sector-rows"></tbody>
-                </table>
-              </div>
-            </section>
-            <section class="panel history-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u53CD\u9988\u8BB0\u5F55</h2>
-                  <p>\u6301\u7EED\u79EF\u7D2F\u6837\u672C\uFF0C\u518D\u5224\u65AD\u6A21\u578B\u662F\u5426\u7A33\u5B9A\u6709\u6548</p>
-                </div>
-              </div>
-              <div id="review-history"></div>
-            </section>
-          </section>
-          <section id="model-view" hidden>
-            <div class="model-grid">
-              <section class="panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u4E2A\u80A1\u8BC4\u5206\u6743\u91CD</h2>
-                    <p>\u5373\u65F6\u91CD\u7B97\u5E76\u4FDD\u5B58\uFF1B\u5DF2\u5F52\u6863\u7684\u539F\u59CB\u8BC4\u5206\u4E0D\u4F1A\u88AB\u8986\u76D6</p>
-                  </div>
-                  <span id="weight-total" class="outline-tag">\u5408\u8BA1 100%</span>
-                </div>
-                <div class="preset-buttons">
-                  <button data-preset="balanced" class="active">\u7EFC\u5408\u590D\u76D8</button
-                  ><button data-preset="first">\u9996\u677F\u6316\u6398</button
-                  ><button data-preset="relay">\u77ED\u7EBF\u63A5\u529B</button>
-                </div>
-                <div id="weight-controls"></div>
-                <div class="model-actions">
-                  <button class="secondary" id="reset-model">
-                    \u6062\u590D\u7EFC\u5408\u590D\u76D8</button
-                  ><span id="model-status" role="status"
-                    >\u6743\u91CD\u76F8\u52A0\u540E\u5F52\u4E00\u5316\u8BA1\u7B97</span
-                  >
-                </div>
-              </section>
-              <section class="panel model-explain">
-                <div class="panel-heading"><h2>\u5206\u6570\u5982\u4F55\u4EA7\u751F</h2></div>
-                <div class="formula-box">
-                  \u7EFC\u5408\u5206 = \u6709\u6548\u6307\u6807\u52A0\u6743\u5747\u5206<br /><span
-                    >\u2212 \u98CE\u9669\u6263\u5206\uFF08\u6700\u591A 20 \u5206\uFF09</span
-                  >
-                </div>
-                <h3>\u6570\u636E\u4E0D\u5B8C\u6574\u65F6</h3>
-                <p>
-                  \u7F3A\u5931\u6307\u6807\u4E0D\u6309\u96F6\u5206\u8BA1\u5165\uFF0C\u5269\u4F59\u6743\u91CD\u91CD\u65B0\u5F52\u4E00\u5316\u3002\u6570\u636E\u8986\u76D6\u7387\u540C\u65F6\u663E\u793A\uFF0C\u8986\u76D6\u7387\u8F83\u4F4E\u7684\u5F97\u5206\u53EF\u6BD4\u6027\u8F83\u5F31\u3002
-                </p>
-                <h3>\u98CE\u9669\u6263\u5206</h3>
-                <dl>
-                  <div>
-                    <dt>5 \u677F\u53CA\u4EE5\u4E0A</dt>
-                    <dd>\u22128</dd>
-                  </div>
-                  <div>
-                    <dt>\u6362\u624B\u7387 > 40%</dt>
-                    <dd>\u22128</dd>
-                  </div>
-                  <div>
-                    <dt>\u70B8\u677F \u2265 3 \u6B21</dt>
-                    <dd>\u22125</dd>
-                  </div>
-                  <div>
-                    <dt>\u4F4E\u6362\u624B\u7ADE\u4EF7\u5C01\u677F\u7279\u5F81</dt>
-                    <dd>\u221210</dd>
-                  </div>
-                  <div>
-                    <dt>14:50 \u540E\u56DE\u5C01</dt>
-                    <dd>\u22124</dd>
-                  </div>
-                </dl>
-                <p class="model-limit">
-                  \u6B64\u6A21\u578B\u662F\u89C4\u5219\u8BC4\u5206\uFF0C\u5C1A\u672A\u8FDB\u884C\u5386\u53F2\u6536\u76CA\u6821\u51C6\u3002\u5206\u6570\u8861\u91CF\u89C2\u5BDF\u6307\u6807\uFF0C\u4E0D\u4EE3\u8868\u6B21\u65E5\u4E0A\u6DA8\u6982\u7387\u3002
-                </p>
-              </section>
-            </div>
-            <section class="panel model-connection">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u5927\u6A21\u578B\u8FDE\u63A5</h2>
-                  <p>DeepSeek\u3001OpenAI\u3001\u901A\u4E49\u517C\u5BB9\u63A5\u53E3</p>
-                </div>
-                <span class="outline-tag" id="model-ai-status">\u672A\u914D\u7F6E</span>
-              </div>
-              <p id="model-ai-detail">
-                \u670D\u52A1\u7AEF\u914D\u7F6E\u5BC6\u94A5\u3001\u63A5\u53E3\u5730\u5740\u548C\u6A21\u578B\u540E\uFF0CAI
-                \u4F1A\u6839\u636E\u51BB\u7ED3\u8BC4\u5206\u4E0E\u5DF2\u6838\u9A8C\u5E02\u573A\u7ED3\u679C\u751F\u6210\u8BC4\u4EF7\u3002\u5BC6\u94A5\u4E0D\u8FDB\u5165\u6D4F\u89C8\u5668\u3002
-              </p>
-              <p>
-                AI
-                \u7ED9\u51FA\u8BC1\u636E\u3001\u5224\u65AD\u5931\u8BEF\u4E0E\u53C2\u6570\u5019\u9009\uFF1B\u6A21\u62DF\u4EA4\u6613\u7B56\u7565\u4EC5\u5728\u72EC\u7ACB\u9A8C\u8BC1\u901A\u8FC7\u540E\u542F\u7528\uFF0C\u5386\u53F2\u8BB0\u5F55\u4FDD\u6301\u51BB\u7ED3\u3002
-              </p>
-            </section>
-          </section>
-          <section id="paper-view" hidden>
-            <div class="paper-toolbar">
-              <div>
-                <span id="paper-date" class="outline-tag">\u68C0\u67E5\u8D26\u6237</span
-                ><span id="paper-audit" class="outline-tag">\u68C0\u67E5\u8D26\u672C</span>
-              </div>
-              <div>
-                <a
-                  class="secondary"
-                  href="/api/paper/export?format=csv"
-                  download
-                  >\u6210\u4EA4 CSV</a
-                ><a class="secondary" href="/api/paper/export" download
-                  >\u5B8C\u6574\u8BB0\u5F55 JSON</a
-                ><button
-                  id="paper-verify"
-                  class="secondary"
-                  data-paper-operation
-                >
-                  \u6838\u9A8C\u6536\u76CA</button
-                ><button id="paper-run" class="primary" data-paper-operation>
-                  \u66F4\u65B0\u76D8\u540E\u8D26\u6237
-                </button>
-              </div>
-            </div>
-            <p class="paper-message" id="paper-message" role="status">
-              \u6A21\u62DF\u8D26\u6237\u6309\u4E8B\u524D\u8BA1\u5212\u6267\u884C\uFF0C\u771F\u5B9E\u6570\u636E\u5230\u8FBE\u540E\u66F4\u65B0\u6536\u76CA\u3002
-            </p>
-            <div id="paper-metrics" class="metrics"></div>
-            <section class="panel paper-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u81EA\u52A8\u6267\u884C\u72B6\u6001</h2>
-                  <p id="paper-live-summary">\u68C0\u67E5\u6267\u884C\u5668\u5FC3\u8DF3\u4E0E\u817E\u8BAF\u884C\u60C5</p>
-                </div>
-                <span class="outline-tag" id="paper-live-tag">\u672A\u8FDE\u63A5</span>
-              </div>
-              <p class="panel-footnote" id="paper-live-health"></p>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u4E2A\u80A1 / \u52A8\u4F5C</th>
-                      <th>\u6267\u884C\u72B6\u6001</th>
-                      <th>\u8FDB\u5EA6</th>
-                      <th>\u6700\u8FD1\u5904\u7406\u7ED3\u679C</th>
-                    </tr>
-                  </thead>
-                  <tbody id="paper-live-orders"></tbody>
-                </table>
-              </div>
-            </section>
-            <div class="paper-grid">
-              <section class="panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u8D26\u6237\u6536\u76CA\u8F68\u8FF9</h2>
-                    <p>\u6BCF\u65E5\u6743\u76CA\u3001\u6210\u4EA4\u6210\u672C\u4E0E\u6307\u6570\u57FA\u51C6\u5747\u53EF\u91CD\u653E\u9A8C\u8BC1</p>
-                  </div>
-                  <span class="outline-tag">\u51C0\u6536\u76CA</span>
-                </div>
-                <div id="paper-chart"></div>
-                <div class="panel-footnote" id="paper-risk"></div>
-              </section>
-              <section class="panel ai-panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>AI \u7B56\u7565\u6539\u8FDB</h2>
-                    <p>\u5728\u5C01\u5B58\u6570\u636E\u4E0A\u9A8C\u8BC1\uFF0C\u518D\u542F\u7528\u65B0\u7248\u672C</p>
-                  </div>
-                  <span class="outline-tag" id="paper-ai-tag">\u68C0\u67E5\u8FDE\u63A5</span>
-                </div>
-                <div id="paper-ai-content"></div>
-                <div class="ai-actions">
-                  <button
-                    class="secondary"
-                    id="paper-improve"
-                    data-paper-operation
-                  >
-                    \u68C0\u67E5\u6539\u8FDB\u6761\u4EF6
-                  </button>
-                </div>
-                <div id="paper-version-list"></div>
-              </section>
-            </div>
-            <section class="panel paper-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u5F53\u524D\u6301\u4ED3</h2>
-                  <p>
-                    \u542B\u4E70\u5165\u8D39\u7528\u7684\u6210\u672C\uFF0CFIFO \u6838\u7B97\u5DF2\u5B9E\u73B0\u76C8\u4E8F\uFF1B\u5F53\u65E5\u65B0\u4E70\u5165\u4EFD\u989D\u4E0D\u53EF\u5356
-                  </p>
-                </div>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u4E2A\u80A1</th>
-                      <th>\u6301\u80A1\u6570\u91CF</th>
-                      <th>\u6BCF\u80A1\u6210\u672C</th>
-                      <th>\u6700\u65B0\u4F30\u503C\u4EF7</th>
-                      <th>\u6301\u4ED3\u5E02\u503C</th>
-                      <th>\u6D6E\u52A8\u76C8\u4E8F</th>
-                      <th>\u6301\u4ED3\u65F6\u95F4</th>
-                    </tr>
-                  </thead>
-                  <tbody id="paper-position-rows"></tbody>
-                </table>
-              </div>
-            </section>
-            <section class="panel paper-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u4E0B\u4E00\u4EA4\u6613\u65E5\u8BA1\u5212</h2>
-                  <p id="paper-plan-meta">
-                    \u76D8\u540E\u51BB\u7ED3\u6570\u91CF\u4E0E\u4EF7\u683C\u6761\u4EF6\uFF0C\u4E0B\u4E00\u4EA4\u6613\u65E5\u6309\u5B9E\u65F6\u884C\u60C5\u81EA\u52A8\u6A21\u62DF\u6210\u4EA4
-                  </p>
-                </div>
-                <span class="outline-tag" id="paper-plan-date">\u7B49\u5F85\u8BC4\u5206</span>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u4E2A\u80A1 / \u677F\u5757</th>
-                      <th>\u52A8\u4F5C</th>
-                      <th>\u7B56\u7565\u8BC4\u5206</th>
-                      <th>\u8BA1\u5212\u6570\u91CF</th>
-                      <th>\u4E8B\u524D\u4EF7\u683C\u6761\u4EF6</th>
-                      <th>\u89C4\u5212\u4F9D\u636E</th>
-                    </tr>
-                  </thead>
-                  <tbody id="paper-plan-rows"></tbody>
-                </table>
-              </div>
-              <div id="paper-outcomes" class="paper-outcomes"></div>
-              <div class="panel-footnote">
-                \u5B9E\u65F6\u8F6E\u8BE2\u6309\u5DF2\u89C2\u5BDF\u5230\u7684\u62A5\u4EF7\u5148\u540E\u6267\u884C\u505A T\uFF1B14:50
-                \u8D77\u5C1D\u8BD5\u6062\u590D\u7B2C\u4E8C\u817F\uFF0C\u672A\u5B8C\u6210\u90E8\u5206\u4FDD\u7559\u4ED3\u4F4D\u5E76\u5EF6\u7EED\u5230\u4E0B\u4E00\u4EA4\u6613\u65E5\u3002\u4FDD\u62A4\u9000\u51FA\u9075\u5B88
-                T+1\uFF1B\u6DA8\u8DCC\u505C\u6216\u7F3A\u5C11\u884C\u60C5\u65F6\u53EF\u80FD\u65E0\u6CD5\u6210\u4EA4\u3002\u6240\u6709\u6301\u4ED3\u6301\u7EED\u83B7\u53D6\u884C\u60C5\uFF0C\u5373\u4F7F\u4E0D\u518D\u51FA\u73B0\u5728\u6DA8\u505C\u6C60\u4E2D\u3002
-              </div>
-            </section>
-            <section class="panel paper-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u9010\u7B14\u6210\u4EA4\u8D26\u672C</h2>
-                  <p>
-                    \u5C55\u793A\u6700\u8FD1 100
-                    \u7B14\uFF1B\u5B8C\u6574\u5BFC\u51FA\u5305\u542B\u5168\u90E8\u6210\u4EA4\u3001\u8BA1\u5212\u3001\u884C\u60C5\u3001\u8D39\u7528\u4E0E\u6821\u9A8C\u503C
-                  </p>
-                </div>
-                <span class="outline-tag">\u8D39\u7528\u4E0E\u6ED1\u70B9\u5DF2\u8BA1\u5165</span>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u65E5\u671F / \u65F6\u95F4</th>
-                      <th>\u4E2A\u80A1</th>
-                      <th>\u52A8\u4F5C / \u65B9\u5411</th>
-                      <th>\u80A1\u6570</th>
-                      <th>\u6210\u4EA4\u4EF7</th>
-                      <th>\u8D39\u7528</th>
-                      <th>\u73B0\u91D1\u53D8\u52A8</th>
-                      <th>\u6210\u4EA4\u6A21\u578B</th>
-                    </tr>
-                  </thead>
-                  <tbody id="paper-ledger-rows"></tbody>
-                </table>
-              </div>
-              <div class="panel-footnote">
-                \u5206\u949F\u91C7\u6837\u4EF7\u683C\u52A0\u5165 10 bps \u6ED1\u70B9\u30011%
-                \u5206\u949F\u6210\u4EA4\u91CF\u53C2\u4E0E\u7387\uFF1B\u7F3A\u5C11\u5206\u949F\u884C\u60C5\u65F6\u4EC5\u4F7F\u7528\u660E\u786E\u6807\u8BB0\u7684\u5F00\u76D8\u6210\u4EA4\u5047\u8BBE\u3002\u65E0\u6CD5\u8FD8\u539F\u9010\u7B14\u6392\u961F\uFF0C\u4E0D\u7B49\u540C\u4E8E\u5B9E\u76D8\u6210\u4EA4\u3002
-              </div>
-            </section>
-            <section class="panel paper-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u8D26\u6237\u8BBE\u7F6E</h2>
-                  <p id="paper-config-note">\u521D\u59CB\u8D44\u91D1\u4E0E\u6BCF\u9879\u8D39\u7528\u5747\u53EF\u81EA\u5B9A\u4E49</p>
-                </div>
-              </div>
-              <form id="paper-config-form" class="paper-config">
-                <label
-                  >\u521D\u59CB\u6A21\u62DF\u8D44\u91D1\uFF08\u5143\uFF09<input
-                    id="paper-initial-capital"
-                    type="number"
-                    min="10000"
-                    max="100000000"
-                    step="1000"
-                    value="1000000"
-                    required /></label
-                ><label
-                  >AI \u9A8C\u8BC1\u901A\u8FC7\u540E<select id="paper-improvement-mode">
-                    <option value="auto">\u81EA\u52A8\u542F\u7528\u65B0\u7B56\u7565</option>
-                    <option value="manual">\u4EBA\u5DE5\u9009\u62E9\u542F\u7528</option>
-                  </select></label
-                >
-                <fieldset class="paper-fee-settings">
-                  <legend>\u8D39\u7528\u6784\u6210\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>
-                  <div class="fee-settings-heading">
-                    <p>\u8D39\u7387\u6309\u4E07\u5206\u4E4B\u8F93\u5165\uFF0C\u5206\u9879\u76F8\u52A0\uFF1B\u6700\u4F4E\u4F63\u91D1\u4EC5\u9002\u7528\u4E8E\u4F63\u91D1\u9879\u3002</p>
-                    <span class="outline-tag" id="paper-fee-version"
-                      >\u8D39\u7528\u914D\u7F6E v1</span
-                    >
-                  </div>
-                  <div id="paper-fee-controls" class="paper-fee-controls"></div>
-                  <p id="paper-fee-summary" class="fee-settings-note"></p>
-                  <button
-                    type="button"
-                    id="paper-fee-defaults"
-                    class="text-button"
-                  >
-                    \u6062\u590D\u56FE\u4E2D\u9ED8\u8BA4\u8D39\u7528
-                  </button>
-                </fieldset>
-                <button class="secondary" type="submit" data-paper-operation>
-                  \u4FDD\u5B58\u8BBE\u7F6E
-                </button>
-              </form>
-            </section>
-          </section>
-          <section id="strategies-view" hidden>
-            <div class="paper-toolbar">
-              <div>
-                <span id="strategies-status-note" class="outline-tag"
-                  >\u540C\u4E00\u51BB\u7ED3\u6279\u6B21\u5185\u56FA\u5B9A\u5019\u9009\u5E76\u884C\u524D\u77BB\uFF1B\u6279\u6B21\u7ED3\u675F\u81F3\u591A\u542F\u7528\u4E00\u4E2A\u5019\u9009</span
-                >
-              </div>
-              <div>
-                <button id="strategies-reserve" class="primary">
-                  \u53D1\u8D77\u65B0\u6279\u6B21
-                </button>
-              </div>
-            </div>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u6279\u6B21\u4E0E\u653F\u7B56</h2>
-                  <p>\u7EDF\u4E00\u7814\u7A76\u7A97\u53E3\u9501\u3001\u751F\u6210\u9884\u7B97\u4E0E\u7EDF\u8BA1\u9884\u7B97\uFF1B\u5931\u8D25\u6279\u6B21\u540C\u6837\u53EF\u67E5</p>
-                </div>
-                <span class="outline-tag">\u53D7\u63A7\u664B\u7EA7</span>
-              </div>
-              <div id="strategies-status"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u6279\u6B21\u5217\u8868</h2>
-                  <p>\u70B9\u51FB\u6279\u6B21\u67E5\u770B\u56FA\u5B9A\u6210\u5458\u3001\u5339\u914D\u8D26\u6237\u51C0\u503C\u4E0E\u8D44\u683C</p>
-                </div>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u6279\u6B21</th>
-                      <th>\u9636\u6BB5</th>
-                      <th>\u7236\u7B56\u7565</th>
-                      <th>\u5019\u9009\u6570</th>
-                      <th>\u521B\u5EFA\u65F6\u95F4</th>
-                    </tr>
-                  </thead>
-                  <tbody id="strategies-cohort-rows"></tbody>
-                </table>
-              </div>
-            </section>
-            <section class="panel" id="strategies-detail"></section>
-          </section>
-          <section id="alerts-view" hidden>
-            <div class="paper-toolbar">
-              <div>
-                <span id="alerts-status-note" class="outline-tag"
-                  >\u68C0\u67E5\u544A\u8B66\u914D\u7F6E</span
-                >
-              </div>
-              <div>
-                <button id="alerts-test" class="secondary">\u53D1\u9001\u6D4B\u8BD5\u901A\u77E5</button>
-                <button id="alerts-maintenance" class="secondary">
-                  \u8BBE\u7F6E\u7EF4\u62A4\u7A97\u53E3
-                </button>
-                <button id="alerts-refresh" class="primary">\u5237\u65B0</button>
-              </div>
-            </div>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u901A\u9053\u4E0E\u5916\u90E8\u76D1\u6D4B</h2>
-                  <p>\u98DE\u4E66\u673A\u5668\u4EBA\u63A5\u6536\u4E1A\u52A1\u544A\u8B66\uFF1B\u5916\u90E8\u76D1\u6D4B\u53D1\u73B0\u6574\u673A\u79BB\u7EBF</p>
-                </div>
-                <span class="outline-tag" id="alerts-enabled-tag">\u672A\u542F\u7528</span>
-              </div>
-              <div
-                id="alerts-channel-list"
-                class="metrics panel-metrics alert-channel-metrics"
-              ></div>
-              <p class="panel-footnote">
-                \u5BC6\u94A5\uFF08FEISHU_WEBHOOK_URL / FEISHU_SECRET /
-                WATCHDOG_*_URL\uFF09\u53EA\u4FDD\u5B58\u5728\u670D\u52A1\u7AEF
-                .env\uFF0C\u9875\u9762\u53EA\u663E\u793A\u914D\u7F6E\u72B6\u6001\u3002\u65AD\u7535\u6216\u65AD\u7F51\u65F6\u672C\u673A\u65E0\u6CD5\u53D1\u6D88\u606F\uFF0C\u7531\u5916\u90E8\u76D1\u6D4B\u6309\u7F3A\u5931\u4FE1\u53F7\u544A\u8B66\u3002
-              </p>
-            </section>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u544A\u8B66\u4E8B\u4EF6</h2>
-                  <p>\u6309\u6301\u7EED\u65F6\u95F4\u53BB\u91CD\u4E0E\u5347\u7EA7\uFF1B\u786E\u8BA4\u53EA\u9759\u9ED8\u63D0\u9192\uFF0C\u4E0D\u63A9\u76D6\u672A\u6062\u590D</p>
-                </div>
-                <label class="text-button"
-                  ><input
-                    type="checkbox"
-                    id="alerts-active-only"
-                  />\u53EA\u770B\u672A\u6062\u590D</label
-                >
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u89C4\u5219</th>
-                      <th>\u7EA7\u522B</th>
-                      <th>\u72B6\u6001</th>
-                      <th>\u9996\u6B21\u53D1\u751F</th>
-                      <th>\u6700\u8FD1\u53D1\u751F</th>
-                      <th>\u64CD\u4F5C</th>
-                    </tr>
-                  </thead>
-                  <tbody id="alerts-incident-rows"></tbody>
-                </table>
-              </div>
-              <div class="table-footer">
-                <span id="alerts-list-status">\u6B63\u5728\u8BFB\u53D6\u2026</span>
-                <button class="text-button" id="alerts-more" hidden>
-                  \u52A0\u8F7D\u66F4\u591A
-                </button>
-              </div>
-            </section>
-          </section>
-          <footer class="page-footer">
-            <span>LIMIT LENS <i>\xB7</i> \u6BCF\u65E5\u6DA8\u505C\u7814\u7A76</span
-            ><span
-              >\u7814\u7A76\u8BC4\u5206\u7528\u4E8E\u8F85\u52A9\u590D\u76D8\uFF1B\u5B9E\u76D8\u5224\u65AD\u9700\u7ED3\u5408\u516C\u544A\u3001\u9898\u6750\u4E0E\u6B21\u65E5\u627F\u63A5\u3002</span
-            >
-          </footer>
-        </main>
-      </div>
-    </div>
-    <dialog id="stock-dialog" class="detail-dialog">
-      <div class="dialog-top">
-        <span class="eyebrow">STOCK DIAGNOSTICS</span
-        ><button class="icon-button close-dialog" aria-label="\u5173\u95ED\u4E2A\u80A1\u8BCA\u65AD">
-          <span data-icon="close"></span>
-        </button>
-      </div>
-      <div id="stock-detail"></div>
-    </dialog>
-    <dialog id="help-dialog" class="help-dialog">
-      <div class="dialog-top">
-        <h2>\u6570\u636E\u4E0E\u8BA1\u7B97\u53E3\u5F84</h2>
-        <button class="icon-button close-dialog" aria-label="\u5173\u95ED\u6570\u636E\u8BF4\u660E">
-          <span data-icon="close"></span>
-        </button>
-      </div>
-      <div class="help-content">
-        <p>
-          \u6DA8\u505C\u6C60\u4F18\u5148\u8BFB\u53D6\u4E1C\u65B9\u8D22\u5BCC\u516C\u5F00\u884C\u60C5\uFF1B\u6307\u6570\u8BFB\u53D6\u817E\u8BAF\u516C\u5F00\u884C\u60C5\u3002\u9875\u9762\u4F1A\u6807\u660E\u5B9E\u9645\u6765\u6E90\u3001\u8BF7\u6C42\u65F6\u95F4\u548C\u4EA4\u6613\u65E5\u671F\u3002\u516C\u5F00\u63A5\u53E3\u53EF\u80FD\u9650\u6D41\u3001\u5EF6\u8FDF\u6216\u505C\u6B62\u670D\u52A1\u3002
-        </p>
-        <p>
-          \u6DA8\u505C\u6C60\u4EE5\u6765\u6E90\u7684\u6CAA\u6DF1\u6536\u76D8\u5C01\u677F\u5217\u8868\u4E3A\u51C6\u3002ST
-          \u4E0E\u9000\u5E02\u6807\u8BC6\u80A1\u7968\u4ECE\u8BC4\u5206\u4E2D\u5254\u9664\uFF1B\u5F53\u524D\u6765\u6E90\u4E0D\u542B\u79D1\u521B\u677F\u3001\u5317\u4EA4\u6240\u53CA\u672A\u4E2D\u65AD\u8FDE\u7EED\u4E00\u5B57\u6DA8\u505C\u7684\u65B0\u80A1\u3002
-        </p>
-        <p>
-          \u5C01\u5355\u989D\u4F7F\u7528\u5F53\u524D\u5C01\u5355\u91D1\u989D\uFF0C\u5C01\u5355\u6BD4\u4E3A\u5C01\u5355\u989D \xF7
-          \u5F53\u65E5\u6210\u4EA4\u989D\uFF1B\u9996\u5C01\u548C\u6700\u540E\u5C01\u677F\u65F6\u95F4\u6765\u81EA\u884C\u60C5\u5B57\u6BB5\uFF0C\u4E24\u8005\u7684\u95F4\u9694\u4E0D\u80FD\u89E3\u91CA\u4E3A\u5B9E\u9645\u5F00\u677F\u65F6\u957F\u3002
-        </p>
-        <p>
-          \u677F\u5757\u4EC5\u6309\u884C\u60C5\u63D0\u4F9B\u7684\u884C\u4E1A\u5206\u7C7B\u805A\u5408\uFF0C\u4E0D\u63A8\u65AD\u65B0\u95FB\u9898\u6750\u3002\u677F\u5757\u6DA8\u505C\u6570\u91CF\u672A\u9664\u4EE5\u884C\u4E1A\u603B\u6210\u5206\u6570\uFF0C\u56E0\u6B64\u5206\u6570\u4F1A\u53D7\u884C\u4E1A\u89C4\u6A21\u5F71\u54CD\u3002
-        </p>
-        <p>
-          \u5C01\u677F\u7387 = \u6DA8\u505C\u6C60\u5BB6\u6570 \xF7\uFF08\u6DA8\u505C\u6C60\u5BB6\u6570 +
-          \u6536\u76D8\u672A\u5C01\u4F4F\u7684\u70B8\u677F\u6C60\u5BB6\u6570\uFF09\u3002\u60C5\u7EEA\u5F3A\u5EA6\u7531\u6DA8\u505C\u5BB6\u6570\uFF0840%\uFF09\u3001\u5C01\u677F\u7387\uFF0835%\uFF09\u3001\u5E02\u573A\u9AD8\u5EA6\uFF0825%\uFF09\u6784\u6210\uFF1B\u6570\u636E\u7F3A\u5931\u4F1A\u91CD\u65B0\u5F52\u4E00\u5316\u3002
-        </p>
-        <p>
-          \u664B\u7EA7\u7387\u9700\u8981\u4E0A\u4E00\u53EF\u7528\u4EA4\u6613\u65E5\u6DA8\u505C\u5217\u8868\uFF1B\u6628\u65E5\u6C60\u63A5\u53E3\u7528\u4E8E\u5F53\u65E5\u664B\u7EA7\u7EDF\u8BA1\uFF1B\u8DE8\u65E5\u53CD\u9988\u53E6\u7528\u6307\u6570\u65E5\u671F\u5E8F\u5217\u786E\u8BA4\u76F8\u90BB\u4EA4\u6613\u65E5\u3002\u83B7\u53D6\u4E0D\u5230\u5386\u53F2\u6570\u636E\u65F6\u663E\u793A\u201C\u2014\u201D\u3002
-        </p>
-        <p>
-          \u6A21\u62DF\u4EA4\u6613\u6309\u524D\u4E00\u4EA4\u6613\u65E5\u51BB\u7ED3\u7684\u6570\u91CF\u548C\u4EF7\u683C\u6761\u4EF6\uFF0C\u4EE5\u817E\u8BAF HTTP
-          \u5B9E\u65F6\u62A5\u4EF7\u81EA\u52A8\u6267\u884C\u5E76\u8BA1\u5165\u8D39\u7528\uFF1B\u6240\u6709\u6301\u4ED3\u6301\u7EED\u8DDF\u8E2A\uFF0C\u76D8\u540E\u6309\u5B9E\u9645\u6A21\u62DF\u6210\u4EA4\u66F4\u65B0\u6536\u76CA\u3002\u9010\u7B14\u6392\u961F\u3001\u9F99\u864E\u699C\u4E0E\u516C\u544A\u5C1A\u672A\u63A5\u5165\uFF1B\u7CFB\u7EDF\u53EA\u64CD\u4F5C\u6A21\u62DF\u8D26\u6237\u3002
-        </p>
-      </div>
-    </dialog>
-    <script type="module" src="/assets/app.js"><\/script>
-  </body>
-</html>
-`, "type": "text/html; charset=utf-8" }, "/assets/app.js": { "body": 'var lt=[{key:"quality",name:"\\u5C01\\u677F\\u8D28\\u91CF",weight:30,description:"100 \\u2212 \\u70B8\\u677F\\u6B21\\u6570 \\xD7 15\\uFF0C\\u6700\\u4F4E 10 \\u5206"},{key:"capital",name:"\\u5C01\\u5355\\u5F3A\\u5EA6",weight:20,description:"\\u5C01\\u5355\\u91D1\\u989D \\xF7 \\u6210\\u4EA4\\u989D \\xF7 10%\\uFF0C\\u4E0A\\u9650 100 \\u5206"},{key:"liquidity",name:"\\u6362\\u624B\\u7ED3\\u6784",weight:15,description:"4\\u201312%\\uFF1A95\\uFF1B12\\u201325%\\uFF1A80\\uFF1B1\\u20134%\\uFF1A65\\uFF1B25\\u201340%\\uFF1A50\\uFF1B\\u5176\\u4F59\\uFF1A30"},{key:"timing",name:"\\u9996\\u5C01\\u65F6\\u70B9",weight:15,description:"09:45 \\u524D 100\\uFF1B10:30 \\u524D 85\\uFF1B11:30 \\u524D 65\\uFF1B14:00 \\u524D 45\\uFF1B\\u5176\\u4F59 25"},{key:"sector",name:"\\u677F\\u5757\\u534F\\u540C",weight:15,description:"\\u4F7F\\u7528\\u540C\\u65E5\\u3001\\u540C\\u4E00\\u884C\\u4E1A\\u7684\\u677F\\u5757\\u8BC4\\u5206"},{key:"ladder",name:"\\u8FDE\\u677F\\u7ED3\\u6784",weight:5,description:"\\u9996\\u677F 75\\uFF1B2\\u20133 \\u677F 100\\uFF1B4 \\u677F 65\\uFF1B5 \\u677F\\u53CA\\u4EE5\\u4E0A 40"}],N={balanced:[30,20,15,15,15,5],first:[30,20,15,20,12,3],relay:[30,20,10,10,20,10]},I=(t,e=0,a=100)=>Math.max(e,Math.min(a,t)),L=t=>t==null||t===""||!Number.isFinite(Number(t))?null:Number(t);function Q(t){if(t==null)return"\\u2014";let e=String(t).padStart(6,"0");return/^\\d{6}$/.test(e)?`${e.slice(0,2)}:${e.slice(2,4)}`:"\\u2014"}function ct(t){return{code:String(t.c||""),name:String(t.n||""),sector:String(t.hybk||"\\u672A\\u5206\\u7C7B"),price:L(t.p)===null?null:Number(t.p)/1e3,change:L(t.zdp),amount:L(t.amount),floatCap:L(t.ltsz),seal:L(t.fund),turnover:L(t.hs),first:L(t.fbt),last:L(t.lbt),breaks:L(t.zbc),height:L(t.lbc),history:t.zttj?`${t.zttj.days} \\u5929 ${t.zttj.ct} \\u677F`:null}}function Ot(t,e){let a=t.map(i=>i[e]).filter(Number.isFinite);return a.length?a.reduce((i,s)=>i+s,0)/a.length:null}function _t(t){let e=new Map;return t.forEach(a=>{e.has(a.sector)||e.set(a.sector,[]),e.get(a.sector).push(a)}),[...e].map(([a,i])=>{let s=i.filter(l=>l.breaks!==null),d=s.length?Ot(s.map(l=>({...l,q:I(100-l.breaks*15,10)})),"q"):null,u=Math.max(0,...i.map(l=>l.height||0)),c=[{name:"\\u6DA8\\u505C\\u96C6\\u805A",weight:35,value:I(i.length/6*100)},{name:"\\u8FDE\\u677F\\u9AD8\\u5EA6",weight:25,value:I(u/5*100)},{name:"\\u5C01\\u677F\\u7A33\\u5B9A",weight:25,value:d},{name:"\\u65E9\\u76D8\\u8054\\u52A8",weight:15,value:i.filter(l=>l.first!==null).length?i.filter(l=>l.first!==null&&l.first<103e3).length/i.filter(l=>l.first!==null).length*100:null}],y=c.filter(l=>l.value!==null).reduce((l,o)=>l+o.weight,0),E=Math.round(c.reduce((l,o)=>l+(o.value===null?0:o.value*o.weight),0)/y);return{name:a,count:i.length,height:u,quality:d,score:E,coverage:y,components:c,amount:i.reduce((l,o)=>l+(o.amount||0),0),members:i.map(l=>l.code)}}).sort((a,i)=>i.score-a.score||i.count-a.count)}function qt(t,e,a=N.balanced){let i={quality:t.breaks===null?null:I(100-t.breaks*15,10),capital:t.seal===null||!t.amount?null:I(t.seal/t.amount/.1*100),liquidity:t.turnover===null?null:t.turnover>=4&&t.turnover<=12?95:t.turnover>12&&t.turnover<=25?80:t.turnover>=1&&t.turnover<4?65:t.turnover>25&&t.turnover<=40?50:30,timing:t.first===null?null:t.first<94500?100:t.first<103e3?85:t.first<113e3?65:t.first<14e4?45:25,sector:e??null,ladder:t.height===null?null:t.height===1?75:t.height<=3?100:t.height===4?65:40},s=[];t.height>=5&&s.push({text:"\\u9AD8\\u4F4D\\u8FDE\\u677F",penalty:8,detail:"5 \\u677F\\u53CA\\u4EE5\\u4E0A\\uFF0C\\u5206\\u6B67\\u4E0E\\u9000\\u6F6E\\u98CE\\u9669\\u4E0A\\u5347\\u3002"}),t.turnover>40&&s.push({text:"\\u9AD8\\u6362\\u624B",penalty:8,detail:"\\u6362\\u624B\\u7387\\u8D85\\u8FC7 40%\\uFF0C\\u7B79\\u7801\\u4EA4\\u6362\\u5267\\u70C8\\u3002"}),t.breaks>=3&&s.push({text:"\\u53CD\\u590D\\u70B8\\u677F",penalty:5,detail:"\\u76D8\\u4E2D\\u81F3\\u5C11 3 \\u6B21\\u5F00\\u677F\\uFF0C\\u5C01\\u677F\\u7A33\\u5B9A\\u6027\\u504F\\u5F31\\u3002"}),t.first===92500&&t.last===92500&&t.turnover!==null&&t.turnover<1&&s.push({text:"\\u4E00\\u5B57\\u7279\\u5F81",penalty:10,detail:"\\u7ADE\\u4EF7\\u5C01\\u677F\\u4E14\\u4F4E\\u6362\\u624B\\uFF0C\\u5B9E\\u9645\\u6210\\u4EA4\\u673A\\u4F1A\\u53EF\\u80FD\\u6709\\u9650\\u3002"}),t.last!==null&&t.last>=145e3&&s.push({text:"\\u5C3E\\u76D8\\u56DE\\u5C01",penalty:4,detail:"\\u6700\\u540E\\u5C01\\u677F\\u65F6\\u95F4\\u63A5\\u8FD1\\u6536\\u76D8\\uFF0C\\u9700\\u89C2\\u5BDF\\u6B21\\u65E5\\u627F\\u63A5\\u3002"});let d=lt.map((o,h)=>({...o,weight:a[h],value:i[o.key]})),u=d.filter(o=>o.value!==null),c=u.reduce((o,h)=>o+h.weight,0),y=a.reduce((o,h)=>o+h,0),E=c?u.reduce((o,h)=>o+h.value*h.weight,0)/c:null,l=Math.min(20,s.reduce((o,h)=>o+h.penalty,0));return{...t,score:E===null?null:Math.round(I(E-l)),rawScore:E,deduction:l,factors:d,risks:s,coverage:y?Math.round(c/y*100):0,sealRatio:t.seal!==null&&t.amount>0?t.seal/t.amount:null}}function vt(t,e=null,a=null,i=N.balanced){let s=t.filter(m=>m.code&&!/ST|\u9000/.test(m.name)),d=_t(s),u=new Map(d.map(m=>[m.name,m.score])),c=s.map(m=>qt(m,u.get(m.sector),i)).sort((m,T)=>(T.score??-1)-(m.score??-1)),y=e===null?null:t.length+e?t.length/(t.length+e)*100:null,E=Math.max(0,...s.map(m=>m.height||0)),l=s.filter(m=>m.height===1).length,o=s.filter(m=>m.height>1).length,h=[{weight:40,value:I(s.length/80*100)},{weight:35,value:y},{weight:25,value:I(E/7*100)}],k=h.filter(m=>m.value!==null).reduce((m,T)=>m+T.weight,0),R=s.length?Math.round(h.reduce((m,T)=>m+(T.value??0)*T.weight,0)/k):null,S=a?new Set(a.map(m=>m.code)):null,A=a?a.filter(m=>m.height!==null):null,Nt=A&&A.length?A.filter(m=>s.some(T=>T.code===m.code&&T.height!==null&&T.height>m.height)).length/A.length*100:null;return{stocks:c,sectors:d,count:s.length,excluded:t.length-s.length,first:l,relay:o,height:E,sealRate:y,emotion:R,emotionCoverage:k,promotion:Nt,previousCount:S?S.size:null}}var H=Object.freeze([{key:"commission_rate",label:"\\u4F63\\u91D1\\u7387",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"commission_min",label:"\\u6700\\u4F4E\\u4F63\\u91D1",unit:"\\u5143",direction:"\\u53CC\\u8FB9"},{key:"stamp_tax",label:"\\u5370\\u82B1\\u7A0E",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u4EC5\\u5356\\u51FA"},{key:"handling_fee",label:"\\u7ECF\\u624B\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"regulatory_fee",label:"\\u8BC1\\u7BA1\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"transfer_fee",label:"\\u8FC7\\u6237\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"}]),dt=Object.freeze({commission_rate:5e-5,commission_min:5,stamp_tax:5e-4,handling_fee:341e-7,regulatory_fee:2e-5,transfer_fee:1e-5}),oe=Object.freeze({commission_rate:25e-5,commission_min:5,stamp_tax:5e-4,handling_fee:0,regulatory_fee:0,transfer_fee:1e-5});var p=t=>document.getElementById(t),g=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),v=t=>(Number(t||0)/100).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2}),yt=t=>Math.abs(t||0)>=1e10?`${(t/1e10).toFixed(2)} \\u4EBF`:Math.abs(t||0)>=1e6?`${(t/1e6).toFixed(2)} \\u4E07`:v(t),x=t=>t==null?"\\u2014":`${t>0?"+":""}${(t*100).toFixed(2)}%`,X=t=>t>0?"up":t<0?"down":"",K={OPEN:"\\u5EFA\\u4ED3",ADD:"\\u52A0\\u4ED3",REDUCE:"\\u51CF\\u4ED3",EXIT:"\\u6E05\\u4ED3",T_FORWARD:"\\u6B63\\u5411 T",T_REVERSE:"\\u53CD\\u5411 T",HOLD:"\\u6301\\u6709"},wt={ACTIVE:"\\u4F7F\\u7528\\u4E2D",VALIDATED:"\\u9A8C\\u8BC1\\u901A\\u8FC7",LEGACY_VALIDATED:"\\u5386\\u53F2\\u901A\\u8FC7\\uFF08\\u65E0\\u542F\\u7528\\u8D44\\u683C\\uFF09",SHADOW_PENDING:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",AWAITING_SHADOW:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",REJECTED:"\\u672A\\u901A\\u8FC7",ERROR:"\\u8C03\\u7528\\u5931\\u8D25",PROPOSING:"\\u6B63\\u5728\\u9A8C\\u8BC1",RETIRED:"\\u5DF2\\u5F52\\u6863",COLLECTING:"\\u6570\\u636E\\u79EF\\u7D2F\\u4E2D",NOT_CONFIGURED:"\\u672A\\u914D\\u7F6E\\u5927\\u6A21\\u578B",BUSY:"\\u5DF2\\u6709\\u8FDB\\u884C\\u4E2D\\u7684\\u5B9E\\u9A8C",BUDGET_EXHAUSTED:"\\u672C\\u6708\\u63D0\\u6848\\u6B21\\u6570\\u5DF2\\u7528\\u5B8C",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u73AF\\u5883\\u53D8\\u5316\\u5DF2\\u5931\\u6548",APPROVED:"\\u5DF2\\u6279\\u51C6\\u5F85\\u6392\\u671F",SCHEDULED:"\\u5DF2\\u6392\\u671F",PROMOTED:"\\u5DF2\\u542F\\u7528"},bt={PENDING:"\\u7B49\\u5F85\\u89E6\\u53D1",BLOCKED:"\\u53D7\\u7EA6\\u675F\\uFF0C\\u91CD\\u8BD5\\u4E2D",PARTIAL:"\\u90E8\\u5206\\u6210\\u4EA4",FIRST_LEG:"\\u505A T \\u7B2C\\u4E00\\u817F",SECOND_LEG:"\\u6062\\u590D\\u7B2C\\u4E8C\\u817F",FILLED:"\\u5B8C\\u6210",CANCELLED:"\\u5DF2\\u53D6\\u6D88",EXPIRED:"\\u5F53\\u65E5\\u5230\\u671F",EXPIRED_PARTIAL:"\\u90E8\\u5206\\u5B8C\\u6210\\u540E\\u5230\\u671F",INCOMPLETE_T:"\\u7B2C\\u4E8C\\u817F\\u8F6C\\u4E0B\\u65E5",RUNNING:"\\u8F6E\\u8BE2\\u8FD0\\u884C\\u4E2D",STALE_QUOTES:"\\u62A5\\u4EF7\\u9648\\u65E7\\uFF0C\\u6682\\u505C\\u6210\\u4EA4",MARKET_CLOSED:"\\u7B49\\u5F85\\u4EA4\\u6613\\u65F6\\u6BB5",ERROR:"\\u5F02\\u5E38\\uFF0C\\u81EA\\u52A8\\u91CD\\u8BD5",NON_TRADING_DAY:"\\u975E\\u4EA4\\u6613\\u65E5",CONFLICT:"\\u5E76\\u53D1\\u7ED3\\u679C\\u5DF2\\u4E22\\u5F03",SETTLED:"\\u5DF2\\u7ED3\\u7B97"},b=null,tt=!1,q=!1;async function _(t,e){let a=await fetch(t,{...e===void 0?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)},signal:AbortSignal.timeout(13e4)}),i=await a.json();if(!a.ok)throw new Error(i.error||"\\u670D\\u52A1\\u6682\\u4E0D\\u53EF\\u7528");return i}function V(t){p("paper-message").textContent=t}var ut=(t,e)=>t==="commission_min"?e:Number((e*1e4).toFixed(5));function Et(t){for(let{key:e}of H)p(`fee-${e}`).value=ut(e,t[e])}function jt(t){return H.map(({key:e,label:a,unit:i})=>`${a} ${ut(e,t[e])}${i==="\\u5143"?" \\u5143":" / \\u4E07"}`).join(" \\xB7 ")}function Ct(t){return Object.entries({commission:"\\u4F63\\u91D1",stamp:"\\u5370\\u82B1\\u7A0E",handling:"\\u7ECF\\u624B\\u8D39",regulatory:"\\u8BC1\\u7BA1\\u8D39",transfer:"\\u8FC7\\u6237\\u8D39"}).map(([a,i])=>`${i} \\xA5 ${v(t.feeBreakdown[a]||0)}`).join("\\uFF1B")}function Pt(t){let e=`<span class="stock-code">\\u53C2\\u8003\\u4EF7 \\xA5 ${v(t.referenceCents)}</span>`,a=`<span class="stock-code">\\u6B62\\u635F \\u2264 \\xA5 ${v(t.stopCents)}<br>\\u5206\\u6279\\u6B62\\u76C8 \\u2265 \\xA5 ${v(t.takeProfitCents)}</span>`,i=t.side==="PAIR"?`\\u4F4E\\u5438 \\u2264 \\xA5 ${v(t.buyTriggerCents)}<br>\\u5151\\u73B0 \\u2265 \\xA5 ${v(t.sellTriggerCents)}<span class="stock-code">09:35 \\u8D77\\u89E6\\u53D1 \\xB7 14:50 \\u8D77\\u6062\\u590D\\u7B2C\\u4E8C\\u817F</span>`:t.side==="BUY"&&t.recovery?`\\u6062\\u590D\\u4E70\\u56DE \\xB7 \\u53C2\\u8003 \\xA5 ${v(t.referenceCents)}<span class="stock-code">\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u6309\\u5B9E\\u65F6\\u4EF7 + 0.1% \\u6ED1\\u70B9<br>\\u53D7\\u73B0\\u91D1\\u3001\\u4ED3\\u4F4D\\u4E0E\\u6DA8\\u505C\\u8FB9\\u754C\\u9650\\u5236</span>`:t.side==="BUY"?`\\u4E70\\u5165\\u4E0A\\u9650 \\xA5 ${v(t.maxPriceCents)}<span class="stock-code">\\u542B\\u6ED1\\u70B9 \\xB7 09:30\\u201309:35 \\u5185\\u6EE1\\u8DB3\\u65F6\\u6210\\u4EA4</span>`:t.side==="SELL"?`\\u53C2\\u8003\\u5356\\u4EF7 \\xA5 ${v(Math.round(t.referenceCents*.999))}<span class="stock-code">\\u5B9E\\u9645\\u5356\\u4EF7 = \\u5B9E\\u65F6\\u62A5\\u4EF7 \\u2212 0.1% \\u6ED1\\u70B9<br>\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u91CD\\u8BD5\\uFF0C\\u8DCC\\u505C\\u4E0D\\u5047\\u8BBE\\u6210\\u4EA4</span>`:"\\u6301\\u6709\\u5E76\\u76D1\\u63A7\\u4FDD\\u62A4\\u9608\\u503C";return e+i+a}function Ht(t){if(!t.length)return\'<div class="empty"><strong>\\u6536\\u76CA\\u66F2\\u7EBF\\u4ECE\\u9996\\u4E2A\\u7ED3\\u7B97\\u65E5\\u5F00\\u59CB</strong>\\u4FDD\\u5B58\\u771F\\u5B9E\\u8BA1\\u5212\\u5E76\\u6267\\u884C\\u540E\\uFF0C\\u9010\\u65E5\\u79EF\\u7D2F\\u51C0\\u503C\\u3002</div>\';let e=760,a=200,i=30,s=[0,...t.map(l=>l.totalReturn),...t.map(l=>l.benchmarkReturn).filter(l=>l!=null)],d=Math.min(...s)-.005,u=Math.max(...s)+.005,c=l=>i+l/Math.max(1,t.length-1)*(e-2*i),y=l=>a-i-(l-d)/(u-d)*(a-i*2),E=l=>t.map((o,h)=>o[l]===null||o[l]===void 0?null:`${c(h)},${y(o[l])}`).filter(Boolean).join(" ");return`<svg class="equity-chart" viewBox="0 0 ${e} ${a}" role="img" aria-label="\\u8D26\\u6237\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387\\u4E0E\\u4E0A\\u8BC1\\u6307\\u6570\\u6536\\u76CA\\u7387"><line x1="${i}" x2="${e-i}" y1="${y(0)}" y2="${y(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${i}" y="18" class="chart-axis">${x(u)}</text><text x="${i}" y="${a-7}" class="chart-axis">${x(d)}</text><polyline points="${E("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${E("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${t.map((l,o)=>`<circle cx="${c(o)}" cy="${y(l.totalReturn)}" r="3" fill="#13977e"><title>${g(l.date)}\\uFF1A\\u8D26\\u6237 ${x(l.totalReturn)}\\uFF1B\\u57FA\\u51C6 ${x(l.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>\\u6A21\\u62DF\\u8D26\\u6237</span><span><i class="benchmark"></i>\\u4E0A\\u8BC1\\u6307\\u6570</span><span>${g(t[0].date)} \\u2014 ${g(t.at(-1).date)} \\xB7 ${t.length} \\u4E2A\\u7ED3\\u7B97\\u65E5</span></div>${t.length===1?\'<p class="panel-footnote">\\u9996\\u6B21\\u7ED3\\u7B97\\u53EA\\u5EFA\\u7ACB\\u6536\\u76CA\\u57FA\\u51C6\\uFF1B\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8D77\\u6267\\u884C\\u4E8B\\u524D\\u8BA1\\u5212\\u3002</p>\':""}`}function Ft(){if(!b)return;let{book:t,equity:e,plan:a,run:i,versions:s}=b,d=b.realtime,u=d?.health;p("paper-live-tag").textContent=d?.running?"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5DF2\\u8FDE\\u63A5":"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u672A\\u8FDE\\u63A5",p("paper-live-summary").textContent=d?.session?`${d.session.date} \\xB7 ${d.session.sequence} \\u6B21\\u89C2\\u6D4B \\xB7 ${d.session.fillCount} \\u7B14\\u6210\\u4EA4`:"\\u5C1A\\u65E0\\u4ECA\\u65E5\\u5B9E\\u65F6\\u4EA4\\u6613\\u8BB0\\u5F55",p("paper-live-health").textContent=`${u?`${bt[u.status]||u.status} \\xB7 \\u6700\\u8FD1\\u5FC3\\u8DF3 ${new Date(u.checkedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\xB7 ${u.pollIntervalSeconds} \\u79D2\\u8F6E\\u8BE2\\u3002`:"\\u5C1A\\u672A\\u6536\\u5230\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5FC3\\u8DF3\\u3002"} ${d?.running?"\\u5173\\u95ED\\u7F51\\u9875\\u540E\\u670D\\u52A1\\u7EE7\\u7EED\\u6267\\u884C\\uFF1B\\u76D8\\u540E\\u6309\\u5DF2\\u8BB0\\u5F55\\u6210\\u4EA4\\u7ED3\\u7B97\\u3002":d?.requirement||""}`,p("paper-live-orders").innerHTML=d?.session?.orders.length?d.session.orders.map(o=>`<tr><td><strong>${g(o.name)} \\xB7 ${K[o.action]}</strong><span class="stock-code">${g(o.code)}</span></td><td>${bt[o.status]||g(o.status)}</td><td>${o.side==="PAIR"?`\\u7B2C\\u4E00\\u817F ${o.firstFilled} / \\u7B2C\\u4E8C\\u817F ${o.secondFilled}`:`${o.filledQuantity} / ${o.quantity}`} \\u80A1</td><td>${g(o.reason)}</td></tr>`).join(""):\'<tr><td colspan="4"><div class="empty compact">\\u7B49\\u5F85\\u5E38\\u9A7B\\u670D\\u52A1\\u5728\\u4EA4\\u6613\\u65F6\\u6BB5\\u6267\\u884C\\u51BB\\u7ED3\\u8BA1\\u5212\\u3002</div></td></tr>\';let c=t.positions.reduce((o,h)=>o+h.lots.reduce((k,R)=>k+R.quantity,0)*h.markCents,0),y=[["\\u8D26\\u6237\\u603B\\u6743\\u76CA",`\\xA5 ${yt(t.equityCents)}`,`\\u521D\\u59CB\\u8D44\\u91D1 \\xA5 ${v(t.initialCashCents)}`,""],["\\u5F53\\u65E5\\u76C8\\u4E8F",`\\xA5 ${yt(e?.dailyPnlCents)}`,`\\u5F53\\u65E5\\u6536\\u76CA ${x(e?.dailyReturn??0)}`,X(e?.dailyPnlCents)],["\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387",x(t.equityCents/t.initialCashCents-1),`\\u5DF2\\u6263\\u8D39\\u7528 \\xA5 ${v(t.feesCents)}`,X(t.equityCents-t.initialCashCents)],["\\u5F53\\u524D\\u6301\\u4ED3\\u6BD4\\u4F8B",x(c/t.equityCents),`\\u53EF\\u7528\\u73B0\\u91D1 \\xA5 ${v(t.cashCents)}`,""]];p("paper-metrics").innerHTML=y.map(([o,h,k,R])=>`<article class="metric"><div class="metric-head">${o}</div><div class="metric-value ${R}">${h}</div><div class="metric-caption">${k}</div></article>`).join(""),p("paper-date").textContent=t.lastDate?`\\u5DF2\\u7ED3\\u7B97\\u81F3 ${t.lastDate}`:"\\u7B49\\u5F85\\u9996\\u6B21\\u76D8\\u540E\\u7ED3\\u7B97",p("paper-audit").textContent=b.audit.passed?"\\u8D44\\u91D1\\u8D26\\u672C\\u4E00\\u81F4":"\\u8D26\\u672C\\u6838\\u5BF9\\u5F02\\u5E38",p("paper-audit").className=`outline-tag ${b.audit.passed?"verified":"down"}`,p("paper-chart").innerHTML=Ht(b.equities),p("paper-risk").textContent=`\\u5355\\u80A1\\u4E0A\\u9650 20% \\xB7 \\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650 60% \\xB7 \\u56DE\\u64A4 ${x(e?.drawdown??0)} / 10% \\xB7 \\u4E0D\\u900F\\u652F`,p("paper-position-rows").innerHTML=t.positions.length?t.positions.map(o=>{let h=o.lots.reduce((S,A)=>S+A.quantity,0),k=o.lots.reduce((S,A)=>S+A.costCents,0),R=o.lots.filter(S=>S.acquiredDate<(d?.session?.date||new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"}))).reduce((S,A)=>S+A.quantity,0);return`<tr><td><strong>${g(o.name)}</strong><span class="stock-code">${g(o.code)}</span></td><td>${h}<span class="stock-code">\\u5F53\\u65E5\\u53EF\\u5356 ${R}</span></td><td>${v(k/h)}</td><td>${v(o.markCents)}</td><td>\\xA5 ${v(h*o.markCents)}</td><td class="${X(h*o.markCents-k)}">\\xA5 ${v(h*o.markCents-k)}</td><td>${o.heldDays} \\u65E5</td></tr>`}).join(""):\'<tr><td colspan="7"><div class="empty compact">\\u5F53\\u524D\\u7A7A\\u4ED3\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6309\\u7167\\u51BB\\u7ED3\\u8BA1\\u5212\\u4E0E\\u5B9E\\u9645\\u6210\\u4EA4\\u6761\\u4EF6\\u6A21\\u62DF\\u6267\\u884C\\u3002</div></td></tr>\',p("paper-plan-date").textContent=a?`${a.signalDate} \\u76D8\\u540E\\u5236\\u5B9A \\u2192 \\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5`:"\\u5C1A\\u672A\\u751F\\u6210\\u8BA1\\u5212",p("paper-plan-meta").textContent=a?`\\u7B56\\u7565 ${a.strategyVersion} \\xB7 \\u8D39\\u7528 v${a.feeConfigVersion||0}${a.sourceSnapshotMissing?" \\xB7 \\u8BC4\\u5206\\u7F3A\\u5931\\uFF0C\\u4EC5\\u6267\\u884C\\u98CE\\u9669\\u4FDD\\u62A4":""} \\xB7 \\u76EE\\u6807\\u4ED3\\u4F4D ${x(a.targetExposure)} \\xB7 ${new Date(a.createdAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\u51BB\\u7ED3`:"\\u5F53\\u65E5\\u8BC4\\u5206\\u4FDD\\u5B58\\u540E\\uFF0C\\u751F\\u6210\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8BA1\\u5212\\u3002",p("paper-plan-rows").innerHTML=a?.orders.length?a.orders.map(o=>`<tr><td><strong>${g(o.name)}</strong><span class="stock-code">${g(o.code)} \\xB7 ${g(o.sector)}</span></td><td><span class="action-tag">${K[o.action]}</span></td><td>${o.score??"\\u2014"}<span class="stock-code">\\u539F\\u59CB ${o.originalScore??"\\u2014"}</span></td><td>${o.quantity||"\\u2014"} \\u80A1</td><td class="plan-price-conditions">${Pt(o)}</td><td class="plan-reason">${g(o.reason)}</td></tr>`).join(""):`<tr><td colspan="6"><div class="empty compact">${a?"\\u5F53\\u524D\\u6CA1\\u6709\\u6EE1\\u8DB3\\u5EFA\\u4ED3\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1\\uFF0C\\u4FDD\\u6301\\u7A7A\\u4ED3\\u3002":"\\u7B49\\u5F85\\u6709\\u6548\\u76D8\\u540E\\u8BC4\\u5206\\u3002"}</div></td></tr>`,p("paper-outcomes").innerHTML=i?.outcomes?.length?`<details><summary>\\u6700\\u8FD1\\u6267\\u884C\\u53CD\\u9988 \\xB7 ${g(i.date)}</summary><div class="execution-feedback">${i.outcomes.map(o=>`<p><strong>${g(o.name)} \\xB7 ${K[o.action]}</strong><span>${o.status==="FILLED"?"\\u5DF2\\u6210\\u4EA4":o.status==="PARTIAL"?"\\u90E8\\u5206\\u5B8C\\u6210":"\\u672A\\u6267\\u884C"} ${o.filledQuantity?`${o.filledQuantity} \\u80A1`:""} \\xB7 ${g(o.reason||"")}</span></p>`).join("")}</div></details>`:"",p("paper-ledger-rows").innerHTML=b.ledger.length?[...b.ledger].sort((o,h)=>h.date.localeCompare(o.date)||h.sequence-o.sequence).map(o=>`<tr><td>${g(o.date)}<span class="stock-code">${g(o.time)}</span></td><td><strong>${g(o.name)}</strong><span class="stock-code">${g(o.code)}</span></td><td>${K[o.action]} \\xB7 ${o.side==="BUY"?"\\u4E70":"\\u5356"}</td><td>${o.quantity}</td><td>${v(o.priceCents)}</td><td title="${g(Ct(o))}"><details class="fee-breakdown"><summary>\\xA5 ${v(o.feeCents)}</summary><span>${g(Ct(o))}</span></details><span class="stock-code">\\u8D39\\u7528 v${o.feeConfigVersion||0}</span></td><td class="${X(o.cashDeltaCents)}">${v(o.cashDeltaCents)}</td><td>${o.dataQuality==="realtime_poll"?"\\u5B9E\\u65F6 HTTP \\u8F6E\\u8BE2":o.dataQuality==="minute"?"\\u5386\\u53F2\\u5206\\u949F\\u91C7\\u6837":"\\u5F00\\u76D8\\u5047\\u8BBE"}</td></tr>`).join(""):\'<tr><td colspan="8"><div class="empty compact">\\u5C1A\\u65E0\\u6210\\u4EA4\\u8BB0\\u5F55\\u3002\\u672A\\u6EE1\\u8DB3\\u6210\\u4EA4\\u6761\\u4EF6\\u7684\\u8BA1\\u5212\\u4E0D\\u4F1A\\u8BB0\\u4E3A\\u6536\\u76CA\\u3002</div></td></tr>\';let l=i?.improvement?.days??Math.max(0,t.settlementCount-1);p("paper-ai-tag").textContent=b.ai.configured?"\\u5DF2\\u914D\\u7F6E\\u6A21\\u578B":"\\u6A21\\u578B\\u5F85\\u914D\\u7F6E",p("paper-ai-content").innerHTML=`<div class="strategy-active"><span>\\u5F53\\u524D\\u7B56\\u7565</span><strong>${g(t.activeStrategy)}</strong></div><p>${b.ai.configured?`\\u5DF2\\u79EF\\u7D2F ${l} \\u4E2A\\u53EF\\u9A8C\\u8BC1\\u4EA4\\u6613\\u65E5\\u3002\\u81F3\\u5C11 20 \\u65E5\\u8BAD\\u7EC3 + 10 \\u65E5\\u5C01\\u5B58\\u9A8C\\u8BC1\\u540E\\u63D0\\u51FA\\u65B0\\u5019\\u9009\\u3002`:"\\u5C1A\\u672A\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5927\\u6A21\\u578B\\u5BC6\\u94A5\\u3002\\u89C4\\u5219\\u7B56\\u7565\\u6B63\\u5E38\\u8FD0\\u884C\\uFF1B\\u914D\\u7F6E\\u540E\\u63A5\\u5165\\u771F\\u5B9E AI \\u63D0\\u6848\\u4E0E\\u9A8C\\u8BC1\\u3002"}</p><div class="ai-process">\\u771F\\u5B9E\\u6210\\u4EA4\\u4E0E\\u8D39\\u7528<span>\\u2193</span>AI \\u8BAD\\u7EC3\\u7A97\\u53E3\\u5EFA\\u8BAE<span>\\u2193</span>\\u72EC\\u7ACB\\u9A8C\\u8BC1 \\xB7 \\u6536\\u76CA\\u4E0E\\u56DE\\u64A4<span>\\u2193</span>\\u901A\\u8FC7\\u540E\\u542F\\u7528\\u65B0\\u7248\\u672C</div><p class="ai-note">\\u6BCF\\u4E2A\\u5C01\\u5B58\\u7A97\\u53E3\\u53EA\\u9A8C\\u8BC1\\u4E00\\u4E2A\\u5019\\u9009\\uFF1B\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u548C\\u5386\\u53F2\\u4EA4\\u6613\\u4FDD\\u7559\\u539F\\u7248\\u672C\\u3002</p>`,p("paper-version-list").innerHTML=s.filter(o=>o.id!=="baseline-v1").slice(0,6).map(o=>`<div class="version-row"><div><strong>${g(o.id)}</strong><span>${wt[o.status]||g(o.status)}</span></div><p>${g(o.evidence.rationale||o.evidence.error||"\\u7B49\\u5F85\\u9A8C\\u8BC1\\u7ED3\\u679C")}</p>${o.evidence.baseline?`<small>\\u5C01\\u5B58\\u9A8C\\u8BC1 ${g(o.evidence.validationStart)} \\u2014 ${g(o.evidence.validationEnd)}<br>\\u57FA\\u7EBF ${x(o.evidence.baseline.totalReturn)} \\u2192 \\u5019\\u9009 ${x(o.evidence.candidate.totalReturn)} \\xB7 \\u56DE\\u64A4 ${x(o.evidence.candidate.maxDrawdown)}</small>`:""}${o.status==="VALIDATED"?`<button class="secondary" data-activate="${g(o.id)}">\\u542F\\u7528\\u6B64\\u7248\\u672C</button>`:""}</div>`).join("")||\'<div class="small-muted">\\u5C1A\\u65E0 AI \\u5019\\u9009\\u7248\\u672C\\uFF0C\\u6301\\u7EED\\u79EF\\u7D2F\\u771F\\u5B9E\\u6570\\u636E\\u3002</div>\',q||(p("paper-initial-capital").value=t.initialCashCents/100),p("paper-initial-capital").disabled=!b.canEditCapital,q||Et(b.feeConfig),p("paper-fee-version").textContent=`\\u8D39\\u7528\\u914D\\u7F6E v${t.feeConfigVersion||0}`,p("paper-fee-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${a?.feeConfig?jt(a.feeConfig):"\\u65E7\\u7248\\u56FA\\u5B9A\\u8D39\\u7528"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,q||(p("paper-improvement-mode").value=t.improvementMode||"auto"),p("paper-config-note").textContent=b.canEditCapital?"\\u4EA4\\u6613\\u8BA1\\u5212\\u5F00\\u59CB\\u6267\\u884C\\u524D\\u53EF\\u81EA\\u5B9A\\u4E49\\u521D\\u59CB\\u8D44\\u91D1\\uFF1B\\u8D39\\u7528\\u968F\\u65F6\\u53EF\\u8C03\\u6574\\u3002":"\\u521D\\u59CB\\u8D44\\u91D1\\u4F5C\\u4E3A\\u6536\\u76CA\\u57FA\\u51C6\\u5DF2\\u51BB\\u7ED3\\uFF1B\\u8D39\\u7528\\u4ECD\\u53EF\\u81EA\\u5B9A\\u4E49\\uFF0C\\u9002\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212\\u3002",document.querySelectorAll("[data-activate]").forEach(o=>o.onclick=()=>z(async()=>(await _("/api/paper/activate",{id:o.dataset.activate})).activated?"\\u65B0\\u7248\\u672C\\u5DF2\\u542F\\u7528\\uFF0C\\u5C06\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212":"\\u8D26\\u6237\\u540C\\u65F6\\u66F4\\u65B0\\uFF0C\\u8BF7\\u91CD\\u8BD5"))}async function F(){try{b=await _("/api/paper"),Ft()}catch(t){V(t.message)}}async function z(t){if(!tt){tt=!0,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!0),V("\\u6B63\\u5728\\u5904\\u7406\\uFF0C\\u7ED3\\u679C\\u5C06\\u4FDD\\u5B58\\u5230\\u8D26\\u672C\\u2026");try{let e=await t();await F(),V(e)}catch(e){V(e.message)}finally{tt=!1,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!1)}}}function xt(){return p("paper-config-form").addEventListener("input",()=>{q=!0}),p("paper-fee-controls").innerHTML=H.map(({key:t,label:e,unit:a,direction:i})=>`<label for="fee-${t}">${e}\\uFF08${a}\\uFF09<input id="fee-${t}" type="number" min="0" max="${t==="commission_min"?1e4:100}" step="${t==="commission_min"?"0.01":"0.001"}" value="${ut(t,dt[t])}" required><span>${i}</span></label>`).join(""),p("paper-fee-defaults").onclick=()=>{Et(dt),q=!0,V("\\u5DF2\\u586B\\u5165\\u56FE\\u4E2D\\u9ED8\\u8BA4\\u8D39\\u7528\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},p("paper-run").onclick=()=>z(async()=>{let t=await _("/api/run-daily",{});return window.dispatchEvent(new Event("paper-updated")),t.paper?.reason||t.snapshot?.reason||"\\u5DF2\\u5B8C\\u6210\\u76D8\\u540E\\u66F4\\u65B0"}),p("paper-verify").onclick=()=>z(async()=>{let t=await _("/api/paper/verify");return t.passed?`\\u5B8C\\u6574\\u91CD\\u653E\\u901A\\u8FC7\\uFF1A${t.days} \\u4E2A\\u7ED3\\u7B97\\u65E5\\u3001${t.fills} \\u7B14\\u6210\\u4EA4\\uFF0C\\u8D44\\u91D1\\u3001\\u8D39\\u7528\\u4E0E\\u6536\\u76CA\\u5747\\u4E00\\u81F4\\u3002`:"\\u9A8C\\u8BC1\\u672A\\u901A\\u8FC7\\uFF0C\\u8BF7\\u68C0\\u67E5\\u5BFC\\u51FA\\u8BB0\\u5F55\\u4E0E\\u884C\\u60C5\\u5B8C\\u6574\\u5EA6\\u3002"}),p("paper-improve").onclick=()=>z(async()=>{let t=await _("/api/paper/improve",{});return t.reason||`AI \\u6539\\u8FDB\\u72B6\\u6001\\uFF1A${wt[t.status]||t.status}`}),p("paper-config-form").onsubmit=t=>{t.preventDefault(),z(async()=>(await _("/api/paper/settings",{...b?.canEditCapital?{initialCapital:Number(p("paper-initial-capital").value)}:{},improvementMode:p("paper-improvement-mode").value,fees:Object.fromEntries(H.map(({key:e})=>[e,e==="commission_min"?Number(p(`fee-${e}`).value):Number(p(`fee-${e}`).value)/1e4]))}),q=!1,"\\u8D44\\u91D1\\u4E0E\\u8D39\\u7528\\u8BBE\\u7F6E\\u5DF2\\u4FDD\\u5B58\\uFF1B\\u65B0\\u8BA1\\u5212\\u91C7\\u7528\\u65B0\\u914D\\u7F6E\\uFF0C\\u5DF2\\u6267\\u884C\\u8BB0\\u5F55\\u4FDD\\u7559\\u539F\\u914D\\u7F6E\\u3002"))},window.addEventListener("paper-updated",F),setInterval(()=>{!document.hidden&&!tt&&F()},15e3),F(),{refresh:F}}var O={status:null,detailId:null,initialized:!1};async function ht(t,e={}){let a=await fetch(t,{headers:{"Content-Type":"application/json"},...e}),i=await a.json().catch(()=>({}));if(!a.ok)throw new Error(i.error||"\\u8BF7\\u6C42\\u5931\\u8D25");return i}var kt=t=>t==null?"\\u2014":`${(t*100).toFixed(2)}%`,zt=t=>t==null?"\\u2014":(t/100).toLocaleString("zh-CN",{maximumFractionDigits:2}),et={RESERVED:"\\u5DF2\\u9884\\u7559",PROPOSING:"\\u5019\\u9009\\u751F\\u6210\\u4E2D",FROZEN:"\\u5019\\u9009\\u5DF2\\u51BB\\u7ED3",HISTORICAL_CHECK:"\\u5386\\u53F2\\u7B5B\\u67E5\\u4E2D",SCHEDULED:"\\u5DF2\\u6392\\u671F",RUNNING:"\\u524D\\u77BB\\u8FD0\\u884C\\u4E2D",EVALUATING:"\\u8BC4\\u4F30\\u4E2D",CLOSED:"\\u5DF2\\u7ED3\\u675F",ELIGIBLE:"\\u7B26\\u5408\\u664B\\u7EA7\\u6761\\u4EF6",PROMOTED:"\\u5DF2\\u542F\\u7528",REJECTED:"\\u5386\\u53F2\\u7B5B\\u67E5\\u672A\\u901A\\u8FC7",ERROR:"\\u51FA\\u9519",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u5DF2\\u5931\\u6548"};function D(t){return document.getElementById(t)}function Vt(){let{status:t}=O,e=D("strategies-status");if(!t){e.innerHTML="<p>\\u5C1A\\u672A\\u83B7\\u53D6\\u6279\\u6B21\\u72B6\\u6001\\u3002</p>";return}let a=t.activeCohort;e.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u6D3B\\u52A8\\u6279\\u6B21</span><strong>${a?`${a.id.slice(0,18)}\\u2026`:"\\u65E0"}</strong><small>${a?et[a.stage]??a.stage:"\\u53EF\\u53D1\\u8D77\\u65B0\\u6279\\u6B21"}</small></div>\n      <div><span class="mini-label">\\u5019\\u9009\\u4E0A\\u9650</span><strong>${t.policy.maxCandidates}</strong><small>\\u6BCF\\u6708\\u751F\\u6210\\u6279\\u6B21 ${t.policy.monthlyGenerationLimit} \\u6B21</small></div>\n      <div><span class="mini-label">\\u524D\\u77BB\\u7A97\\u53E3</span><strong>${t.policy.forwardDays} \\u4EA4\\u6613\\u65E5</strong><small>\\u5B8C\\u6574\\u8F6E\\u6B21\\u95E8\\u69DB ${t.policy.minimumCompletedRounds}</small></div>\n      <div><span class="mini-label">\\u5F53\\u524D\\u7B56\\u7565</span><strong>${a?.parentVersion??"baseline-v1"}</strong><small>${a?"\\u8D5B\\u9A6C\\u671F\\u95F4\\u4FDD\\u6301\\u7236\\u7B56\\u7565":"\\u7B49\\u5F85\\u6279\\u6B21\\u7ED3\\u8BBA"}</small></div>\n    </div>\n    <p class="panel-footnote">${t.note??""}</p>`}function Ut(){let{status:t,detailId:e}=O,a=(t?.cohorts??[]).map(i=>`\n      <tr data-cohort="${i.id}" class="${i.id===e?"active":""}">\n        <td>${i.id.slice(0,22)}\\u2026</td>\n        <td>${et[i.stage]??i.stage}</td>\n        <td>${i.parentVersion}</td>\n        <td>${i.maxCandidates}</td>\n        <td>${(i.createdAt??"").replace("T"," ").slice(0,16)}</td>\n      </tr>`).join("");D("strategies-cohort-rows").innerHTML=a||\'<tr><td colspan="5">\\u5C1A\\u65E0\\u6279\\u6B21\\u8BB0\\u5F55</td></tr>\',D("strategies-cohort-rows").querySelectorAll("tr[data-cohort]").forEach(i=>{i.onclick=()=>{O.detailId=i.dataset.cohort,pt()}})}async function Bt(){let t=D("strategies-detail"),{detailId:e}=O;if(!e){t.innerHTML="<p class=\'panel-footnote\'>\\u70B9\\u51FB\\u4E0A\\u65B9\\u6279\\u6B21\\u67E5\\u770B\\u56FA\\u5B9A\\u6210\\u5458\\u3001\\u51C0\\u503C\\u4E0E\\u8D44\\u683C\\u3002</p>";return}let a;try{a=await ht(`/api/strategies/cohorts/${e}`)}catch(c){t.innerHTML=`<p>${c.message}</p>`;return}let i=(a.members??[]).map(c=>`\n      <tr>\n        <td>${c.memberId}</td>\n        <td>${et[c.stage]??c.stage}</td>\n        <td>${c.k}</td>\n        <td>${c.strategyVersion?`${c.strategyVersion.slice(0,18)}\\u2026`:"\\u2014"}</td>\n        <td>${c.paramsDistance??"\\u2014"}</td>\n        <td>${c.failureReason??"\\u2014"}</td>\n      </tr>`).join(""),s=(a.accounts??[]).map(c=>`\n      <tr>\n        <td>${c.kind}</td>\n        <td>${c.memberId??"\\u2014"}</td>\n        <td>${zt(c.book?.equityCents)}</td>\n        <td>${c.cursor?.date??"\\u2014"} #${c.cursor?.sequence??0}</td>\n        <td>${c.book?.lastDate??"\\u2014"}</td>\n      </tr>`).join(""),d=a.evaluation,u=(d?.verdicts??[]).map(c=>`\n      <tr>\n        <td>${c.memberId}</td>\n        <td>${et[c.stage]??c.stage}</td>\n        <td>${kt(c.metrics?.netReturn)}</td>\n        <td>${kt(c.metrics?.windowDrawdown)}</td>\n        <td>${c.rounds?.rounds??"\\u2014"}</td>\n        <td>${c.checks?.statistics?"\\u901A\\u8FC7":c.checks?"\\u672A\\u901A\\u8FC7/\\u672A\\u8BC4\\u4F30":"\\u2014"}</td>\n      </tr>`).join("");t.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u51A0\\u519B</span><strong>${d?.champion?.memberId??"\\u65E0"}</strong><small>${d?.promotion?.promoted?`\\u5DF2\\u542F\\u7528\\uFF0C\\u751F\\u6548\\u65E5 ${d.promotion.effectiveTradeDate??"\\u5F85\\u5B9A"}`:"\\u4EC5\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528"}</small></div>\n      <div><span class="mini-label">\\u7A97\\u53E3</span><strong>${a.cohort.forwardManifest?.tradingDates?.length??0}/${a.cohort.forwardDays}</strong><small>\\u6355\\u83B7\\u65E5 ${a.cohort.forwardManifest?.captureDate??"\\u2014"}</small></div>\n      <div><span class="mini-label">\\u62A5\\u544A\\u6458\\u8981</span><strong>${a.evaluationDigest?"\\u5DF2\\u51BB\\u7ED3":"\\u7B49\\u5F85\\u8BC4\\u4F30"}</strong><small>\\u95F8\\u95E8\\u4E0E\\u7EDF\\u8BA1\\u53EF\\u91CD\\u653E</small></div>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u6210\\u5458</th><th>\\u72B6\\u6001</th><th>\\u5C1D\\u8BD5\\u5E8F\\u53F7 k</th><th>\\u7B56\\u7565\\u7248\\u672C</th><th>\\u53C2\\u6570\\u8DDD\\u79BB</th><th>\\u5931\\u8D25\\u539F\\u56E0</th></tr></thead>\n        <tbody>${i||"<tr><td colspan=\'6\'>\\u65E0\\u6210\\u5458</td></tr>"}</tbody>\n      </table>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u8D26\\u6237</th><th>\\u89D2\\u8272</th><th>\\u671F\\u672B\\u6743\\u76CA\\uFF08\\u5206\\uFF09</th><th>\\u6D88\\u8D39\\u6E38\\u6807</th><th>\\u5DF2\\u7ED3\\u7B97\\u65E5</th></tr></thead>\n        <tbody>${s||"<tr><td colspan=\'5\'>\\u5C1A\\u65E0\\u5339\\u914D\\u8D26\\u6237</td></tr>"}</tbody>\n      </table>\n    </div>\n    ${u?`<div class="table-scroll">\n        <table>\n          <thead><tr><th>\\u6210\\u5458</th><th>\\u7ED3\\u8BBA</th><th>\\u671F\\u95F4\\u51C0\\u6536\\u76CA</th><th>\\u7A97\\u53E3\\u56DE\\u64A4</th><th>\\u5B8C\\u6574\\u8F6E\\u6B21</th><th>\\u7EDF\\u8BA1\\u68C0\\u9A8C</th></tr></thead>\n          <tbody>${u}</tbody>\n        </table>\n      </div>`:""}\n    <p class="panel-footnote">\\u6536\\u76CA\\u4E0D\\u5728\\u72EC\\u7ACB\\u5019\\u9009\\u4E4B\\u95F4\\u6C42\\u548C\\uFF1B\\u7EB8\\u9762\\u9886\\u5148\\u4E0D\\u7B49\\u4E8E\\u53EF\\u542F\\u7528\\u8D44\\u683C\\u3002</p>\n    <a class="secondary" href="/api/strategies/cohorts/${e}/export" download>\\u5BFC\\u51FA\\u6279\\u6B21\\u68C0\\u67E5\\u70B9</a>`}async function pt(){try{O.status=await ht("/api/strategies/cohorts"),Vt(),Ut(),await Bt()}catch(t){D("strategies-status").innerHTML=`<p>${t.message}</p>`}}function St(){O.initialized||(O.initialized=!0,D("strategies-reserve").onclick=async()=>{let t=D("strategies-reserve");t.disabled=!0,D("strategies-status-note").textContent="\\u6B63\\u5728\\u9884\\u7559\\u6279\\u6B21\\u5E76\\u8C03\\u7528\\u6A21\\u578B\\u751F\\u6210\\u5019\\u9009\\u2026";try{let e=await ht("/api/strategies/cohorts",{method:"POST",body:"{}"});D("strategies-status-note").textContent=e.reason??e.status??"\\u6279\\u6B21\\u5DF2\\u9884\\u7559"}catch(e){D("strategies-status-note").textContent=e.message}finally{t.disabled=!1,await pt()}},pt())}var C={initialized:!1,cursor:0,status:null},f=t=>document.getElementById(t),U=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]);async function G(t,e={}){let a=await fetch(t,{headers:{"content-type":"application/json"},...e,body:e.body?JSON.stringify(e.body):void 0}),i=await a.json().catch(()=>({}));if(!a.ok)throw new Error(i.error||`\\u8BF7\\u6C42\\u5931\\u8D25\\uFF08${a.status}\\uFF09`);return i}function j(t){return t?t.replace("T"," ").slice(0,19):"\\u2014"}var Gt={RUNNER_STALLED:"\\u6267\\u884C\\u5FAA\\u73AF\\u505C\\u6EDE",LOOP_FAILED:"\\u5FAA\\u73AF\\u8FDE\\u7EED\\u5931\\u8D25",SESSION_BLOCKED:"\\u4F1A\\u8BDD\\u88AB\\u963B\\u585E",REQUIRED_QUOTE_STALE:"\\u5173\\u952E\\u62A5\\u4EF7\\u9648\\u65E7",DRAWDOWN_TRIPPED:"\\u56DE\\u64A4\\u89E6\\u53CA\\u786C\\u7EA6\\u675F",PROTECTIVE_EXIT_BLOCKED:"\\u4FDD\\u62A4\\u9000\\u51FA\\u65E0\\u6CD5\\u6210\\u4EA4",T_RECOVERY_INCOMPLETE:"\\u505A T \\u7B2C\\u4E8C\\u817F\\u672A\\u6062\\u590D",SETTLEMENT_LATE:"\\u76D8\\u540E\\u7ED3\\u7B97\\u8FDF\\u5EF6",LEDGER_INVARIANT_FAILED:"\\u8D26\\u672C\\u4E0D\\u53D8\\u5F0F\\u5F02\\u5E38",ALERT_PIPELINE_STALLED:"\\u544A\\u8B66\\u5206\\u53D1\\u505C\\u6EDE",AI_OR_RESEARCH_FAILED:"AI/\\u7814\\u7A76\\u4EFB\\u52A1\\u5931\\u8D25"};function Wt(){let{status:t}=C;if(!t)return;f("alerts-enabled-tag").textContent=t.enabled?"\\u5DF2\\u542F\\u7528":"\\u672A\\u542F\\u7528",f("alerts-status-note").textContent=t.note??"";let e=t.channels.map(i=>`<div><span class="outline-tag">${U(i.name)}</span><div class="panel-metric-value">${i.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E\\uFF08\\u670D\\u52A1\\u7AEF .env\\uFF09"}</div></div>`).join(""),a=t.watchdog??{};f("alerts-channel-list").innerHTML=e+`<div><span class="outline-tag">\\u5916\\u90E8\\u76D1\\u6D4B</span><div class="panel-metric-value"><span>${a.progressConfigured?`\\u8FDB\\u5EA6\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E${a.lastProgressAt?`\\uFF0C\\u6700\\u8FD1 ${j(a.lastProgressAt)}`:""}`:"\\u672A\\u914D\\u7F6E\\uFF08WATCHDOG_PROGRESS_URL\\uFF09"}</span><span>${a.pipelineConfigured?"\\u7BA1\\u9053\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E":"\\u7BA1\\u9053\\u4FE1\\u53F7\\u672A\\u914D\\u7F6E"}</span></div></div>\n    <div><span class="outline-tag">\\u53D1\\u9001\\u961F\\u5217</span><div class="panel-metric-value">\\u5F85\\u53D1\\u9001 ${t.outbox?.pending??0}\\uFF0C\\u903E\\u671F\\u672A\\u9886 ${t.outbox?.overdue??0}\\uFF0C\\u5DF2\\u53D1\\u9001 ${t.outbox?.sent??0}\\uFF0C\\u8FC7\\u671F ${t.outbox?.expired??0}</div></div>`}function Yt(t){let e=C.incidents??[];f("alerts-incident-rows").innerHTML=e.map(a=>`<tr>\n      <td>${U(Gt[a.ruleType]??a.ruleType)}<small class="small-muted"> ${U(a.fingerprint)}</small></td>\n      <td>${a.severity==="CRITICAL"?"\\u4E25\\u91CD":"\\u8B66\\u544A"}</td>\n      <td>${a.status==="RESOLVED"?`\\u5DF2\\u6062\\u590D ${j(a.resolvedAt)}`:a.status==="OPEN"?"\\u672A\\u6062\\u590D":U(a.status)}${a.ackUntil&&a.ackUntil>new Date().toISOString()?`\\uFF08\\u786E\\u8BA4\\u81F3 ${j(a.ackUntil)}\\uFF09`:""}</td>\n      <td>${j(a.firstSeen)}</td>\n      <td>${j(a.lastSeen)}</td>\n      <td>${a.status!=="RESOLVED"?`<button class="text-button" data-ack="${U(a.id)}">\\u786E\\u8BA4 2 \\u5C0F\\u65F6</button>`:""}</td>\n    </tr>`).join("");for(let a of f("alerts-incident-rows").querySelectorAll("[data-ack]"))a.onclick=async()=>{a.disabled=!0;try{await G(`/api/alerts/incidents/${a.dataset.ack}/ack`,{method:"POST",body:{hours:2}})}catch(i){f("alerts-list-status").textContent=i.message}await B(!0)};f("alerts-more").hidden=!C.nextCursor,f("alerts-list-status").textContent=t?`\\u5171 ${e.length} \\u6761${C.nextCursor?"\\uFF08\\u53EF\\u52A0\\u8F7D\\u66F4\\u591A\\uFF09":""}`:f("alerts-list-status").textContent}async function B(t=!1){try{C.status=await G("/api/alerts/status"),Wt(),t&&(C.cursor=0);let e=await G(`/api/alerts/incidents?cursor=${C.cursor}&active=${f("alerts-active-only").checked}`);C.incidents=t?e.incidents:[...C.incidents??[],...e.incidents],C.nextCursor=e.nextCursor,Yt(t)}catch(e){f("alerts-list-status").textContent=e.message}}function At(){C.initialized||(C.initialized=!0,f("alerts-refresh").onclick=()=>B(!0),f("alerts-active-only").onchange=()=>B(!0),f("alerts-more").onclick=()=>{C.cursor=C.nextCursor,B(!1)},f("alerts-test").onclick=async()=>{let t=f("alerts-test");t.disabled=!0,f("alerts-status-note").textContent="\\u6B63\\u5728\\u53D1\\u9001\\u6D4B\\u8BD5\\u901A\\u77E5\\u2026";try{await G("/api/alerts/test",{method:"POST",body:{}}),f("alerts-status-note").textContent="\\u6D4B\\u8BD5\\u901A\\u77E5\\u5DF2\\u53D1\\u9001\\uFF0C\\u8BF7\\u5728\\u98DE\\u4E66\\u67E5\\u6536"}catch(e){f("alerts-status-note").textContent=e.message}finally{t.disabled=!1}},f("alerts-maintenance").onclick=async()=>{let t=Number(prompt("\\u7EF4\\u62A4\\u7A97\\u53E3\\u5206\\u949F\\u6570\\uFF0815\\u20131440\\uFF09\\uFF1A","60"));if(!Number.isInteger(t))return;let e=prompt("\\u7EF4\\u62A4\\u539F\\u56E0\\uFF08\\u53EF\\u9009\\uFF09\\uFF1A","")??"";try{let a=await G("/api/alerts/maintenance",{method:"POST",body:{minutes:t,reason:e}});f("alerts-status-note").textContent=`\\u7EF4\\u62A4\\u7A97\\u53E3\\u81F3 ${j(a.until)}`}catch(a){f("alerts-status-note").textContent=a.message}},B(!0))}var r=t=>document.getElementById(t),$=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),Tt={dashboard:\'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>\',chart:\'<path d="M4 3v17h17M8 15l4-6 4 3 5-7"/>\',grid:\'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 11h18M11 4v16"/>\',sliders:\'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/>\',database:\'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/>\',calendar:\'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>\',refresh:\'<path d="M20 7a8 8 0 0 0-14-2L3 8m0-5v5h5M4 17a8 8 0 0 0 14 2l3-3m0 5v-5h-5"/>\',search:\'<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>\',info:\'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>\',close:\'<path d="m6 6 12 12M6 18 18 6"/>\',flame:\'<path d="M12 3c1 6 7 6 7 12a7 7 0 0 1-14 0c0-3 2-5 4-7 0 3 1 3 2 4 2-3 2-6 1-9Z"/>\',shield:\'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>\'};function W(t){return`<svg viewBox="0 0 24 24" aria-hidden="true">${Tt[t]||Tt.chart}</svg>`}document.querySelectorAll("[data-icon]").forEach(t=>t.innerHTML=W(t.dataset.icon));var n={view:"overview",height:"all",weights:[...N.balanced],payload:null,analysis:null,loading:!0,error:null,demo:!1,request:0,review:null,ai:null,aiConfig:{configured:!1},history:null,reviewBusy:!1,reviewMessage:"",storageAvailable:!1};try{let t=JSON.parse(localStorage.getItem("limitLensWeights"));Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)&&(n.weights=t)}catch{}var Y=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date);r("trade-date").value=Y;r("trade-date").max=Y;var Zt=xt(),at={paper:["\\u6A21\\u62DF\\u4EA4\\u6613","\\u8BA9\\u8BC4\\u5206\\u63A5\\u53D7\\u8D26\\u6237\\u68C0\\u9A8C","\\u5236\\u5B9A\\u8BA1\\u5212\\u3001\\u6A21\\u62DF\\u6267\\u884C\\u3001\\u6838\\u5BF9\\u6536\\u76CA\\uFF0C\\u7528\\u771F\\u5B9E\\u7ED3\\u679C\\u6539\\u8FDB\\u7B56\\u7565\\u3002"],overview:["\\u603B\\u89C8\\u590D\\u76D8","\\u6BCF\\u65E5\\u6DA8\\u505C\\u590D\\u76D8","\\u628A\\u6DA8\\u505C\\u62C6\\u6210\\u4FE1\\u53F7\\uFF0C\\u628A\\u5224\\u65AD\\u5EFA\\u7ACB\\u5728\\u6570\\u636E\\u4E0A\\u3002"],stocks:["\\u4E2A\\u80A1\\u5206\\u6790","\\u6DA8\\u505C\\u4E2A\\u80A1\\u5206\\u6790","\\u62C6\\u89E3\\u5C01\\u677F\\u8868\\u73B0\\uFF0C\\u6BD4\\u8F83\\u5F3A\\u5EA6\\u4E0E\\u98CE\\u9669\\u3002"],sectors:["\\u677F\\u5757\\u7814\\u7A76","\\u884C\\u4E1A\\u677F\\u5757\\u7814\\u7A76","\\u4ECE\\u6DA8\\u505C\\u96C6\\u805A\\u4E0E\\u8FDE\\u677F\\u68AF\\u961F\\uFF0C\\u89C2\\u5BDF\\u8D44\\u91D1\\u7684\\u5171\\u540C\\u65B9\\u5411\\u3002"],review:["\\u6628\\u65E5\\u53CD\\u9988","\\u8BA9\\u6628\\u65E5\\u5224\\u65AD\\u63A5\\u53D7\\u68C0\\u9A8C","\\u4FDD\\u5B58\\u5F53\\u65F6\\u7684\\u5224\\u65AD\\uFF0C\\u7528\\u5B9E\\u9645\\u8868\\u73B0\\u68C0\\u9A8C\\uFF0C\\u518D\\u7531 AI \\u5BA1\\u89C6\\u3002"],model:["\\u8BC4\\u5206\\u6A21\\u578B","\\u53EF\\u89E3\\u91CA\\u7684\\u8BC4\\u5206\\u6A21\\u578B","\\u6BCF\\u4E00\\u5206\\u90FD\\u6709\\u4F9D\\u636E\\uFF0C\\u6BCF\\u4E00\\u9879\\u6743\\u91CD\\u90FD\\u53EF\\u4EE5\\u8C03\\u6574\\u3002"],strategies:["\\u7B56\\u7565\\u8D5B\\u9A6C","\\u591A\\u7B56\\u7565\\u5E76\\u884C\\u8D5B\\u9A6C\\u4E0E\\u53D7\\u63A7\\u664B\\u7EA7","\\u540C\\u4E00\\u4EFD\\u884C\\u60C5\\u3001\\u540C\\u4E00\\u51BB\\u7ED3\\u8D77\\u70B9\\uFF0C\\u56FA\\u5B9A\\u7A97\\u53E3\\u5185\\u6BD4\\u8F83\\uFF0C\\u53EA\\u6709\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528\\u3002"],alerts:["\\u8FD0\\u7EF4\\u544A\\u8B66","\\u5E38\\u9A7B\\u6267\\u884C\\u4E0D\\u9759\\u9ED8\\u5931\\u8054","\\u6267\\u884C\\u9519\\u8BEF\\u3001\\u98CE\\u9669\\u5904\\u7F6E\\u4E0E\\u76D8\\u540E\\u5931\\u8D25\\u4E3B\\u52A8\\u901A\\u77E5\\uFF1B\\u6574\\u673A\\u79BB\\u7EBF\\u7531\\u5916\\u90E8\\u76D1\\u6D4B\\u53D1\\u73B0\\u3002"]};function ot(t){at[t]&&(n.view=t,document.querySelectorAll("[data-view]").forEach(e=>{e.classList.toggle("active",e.dataset.view===t),e.setAttribute("aria-current",e.dataset.view===t?"page":"false")}),r("crumb").textContent=at[t][0],r("page-title").textContent=at[t][1],r("page-subtitle").textContent=at[t][2],r("overview-content").hidden=!["overview","stocks"].includes(t),r("sectors-view").hidden=t!=="sectors",r("model-view").hidden=t!=="model",r("review-view").hidden=t!=="review",r("summary").hidden=["model","review","paper","strategies","alerts"].includes(t),r("paper-view").hidden=t!=="paper",r("strategies-view").hidden=t!=="strategies",r("alerts-view").hidden=t!=="alerts",document.querySelector(".heading-actions").hidden=t==="paper"||t==="strategies"||t==="alerts",document.querySelector(".data-strip").hidden=t==="paper"||t==="strategies"||t==="alerts",t==="paper"&&Zt.refresh(),t==="strategies"&&St(),t==="alerts"&&At(),document.querySelector(".right-column").hidden=t==="stocks",r("overview-content").style.gridTemplateColumns=t==="stocks"?"minmax(0,1fr)":"",P(),M())}document.querySelectorAll("[data-view]").forEach(t=>t.onclick=()=>ot(t.dataset.view));document.querySelector(".brand").onclick=t=>{t.preventDefault(),ot("overview")};function w(t,e=1){return t==null?"\\u2014":Number(t).toFixed(e)}function mt(t){return t==null?"\\u2014":t>=1e8?`${(t/1e8).toFixed(2)} \\u4EBF`:`${(t/1e4).toFixed(0)} \\u4E07`}function Jt(t){return t>=80?"":t>=60?"mid":"low"}function st(t){return`<div class="score-cell"><span class="score-number ${Jt(t)}">${t??"\\u2014"}</span><span class="score-track"><i style="width:${t??0}%"></i></span></div>`}function gt(){n.analysis=n.payload?.archived?structuredClone(n.payload.analysis):n.payload?vt(n.payload.rows.map(ct),n.payload.broken,n.payload.previous?.map(ct)||null,n.weights):null}function P(){let t=n.analysis,e=t!==null,a=n.loading,i=[{name:"\\u6DA8\\u505C\\u5BB6\\u6570",value:e?t.count:"\\u2014",unit:"\\u5BB6",caption:e?`\\u9996\\u677F ${t.first} \\u5BB6 \\xB7 \\u8FDE\\u677F ${t.relay} \\u5BB6`:"\\u9996\\u677F\\u4E0E\\u8FDE\\u677F\\u5206\\u5E03",icon:"flame",pct:e?Math.min(t.count/80*100,100):0},{name:"\\u5C01\\u677F\\u7387",value:e?w(t.sealRate):"\\u2014",unit:"%",caption:e?n.payload.broken===null?"\\u70B8\\u677F\\u6C60\\u6570\\u636E\\u6682\\u7F3A":`\\u70B8\\u677F ${n.payload.broken} \\u5BB6 \\xB7 \\u5F53\\u524D\\u672A\\u5C01\\u4F4F`:"\\u6DA8\\u505C /\\uFF08\\u6DA8\\u505C + \\u70B8\\u677F\\uFF09",icon:"shield",pct:e?t.sealRate??0:0},{name:"\\u6700\\u9AD8\\u8FDE\\u677F",value:e?t.height:"\\u2014",unit:"\\u677F",caption:e?`\\u8FDE\\u677F\\u80A1\\u5360\\u6BD4 ${t.count?w(t.relay/t.count*100):"\\u2014"}%`:"\\u8861\\u91CF\\u5F53\\u65E5\\u5E02\\u573A\\u9AD8\\u5EA6",icon:"chart",pct:e?Math.min(t.height/7*100,100):0,amber:!0},{name:"\\u60C5\\u7EEA\\u5F3A\\u5EA6",value:e?t.emotion??"\\u2014":"\\u2014",unit:"/ 100",caption:e?t.emotion===null?"\\u5F53\\u65E5\\u65E0\\u6709\\u6548\\u8BC4\\u5206\\u6837\\u672C":`${t.emotion>=75?"\\u5F3A\\u5EA6\\u8F83\\u9AD8":t.emotion>=45?"\\u5F3A\\u5EA6\\u4E2D\\u7B49":"\\u5F3A\\u5EA6\\u8F83\\u4F4E"} \\xB7 ${t.emotionCoverage==null?"\\u5DF2\\u5F52\\u6863\\u7684\\u6536\\u76D8\\u5224\\u65AD":`\\u6570\\u636E\\u8986\\u76D6 ${t.emotionCoverage}%`}`:"\\u6DA8\\u505C\\u89C4\\u6A21 \\xB7 \\u5C01\\u677F\\u7387 \\xB7 \\u9AD8\\u5EA6",icon:"dashboard",pct:e?t.emotion??0:0,accent:!0}];r("summary").innerHTML=i.map(s=>`<article class="metric ${a?"loading":""}"><div class="metric-head">${s.name}${W(s.icon)}</div><div class="metric-value ${s.accent?"accent":""}">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div><div class="metric-line ${s.amber?"amber":""}"><i style="width:${s.pct}%"></i></div></article>`).join(""),r("pool-count").textContent=e?t.count:"\\u2014",Z(),Xt(),Kt()}function Qt(){let t=n.analysis?.stocks||[],e=r("search").value.trim().toLowerCase(),a=r("sector-filter").value;t=t.filter(s=>(!e||s.name.toLowerCase().includes(e)||s.code.includes(e))&&(!a||s.sector===a)&&(n.height==="all"||(n.height==="first"?s.height===1:s.height>1)));let i=r("sort").value;return t.slice().sort(i==="height"?(s,d)=>(d.height??0)-(s.height??0):i==="seal"?(s,d)=>(d.seal??-1)-(s.seal??-1):i==="first"?(s,d)=>(s.first??999999)-(d.first??999999):(s,d)=>(d.score??-1)-(s.score??-1))}function Z(){let t=Qt(),e=n.analysis!==null,a=n.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u884C\\u60C5":e?"\\u6CA1\\u6709\\u7B26\\u5408\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1":"\\u6682\\u65E0\\u53EF\\u7528\\u884C\\u60C5",i=n.loading?"\\u6B63\\u5728\\u8BFB\\u53D6\\u516C\\u5F00\\u6DA8\\u505C\\u6C60\\u3001\\u70B8\\u677F\\u6C60\\u4E0E\\u6628\\u65E5\\u6DA8\\u505C\\u6C60\\u2026":e?"\\u5C1D\\u8BD5\\u8C03\\u6574\\u641C\\u7D22\\u3001\\u884C\\u4E1A\\u6216\\u8FDE\\u677F\\u7B5B\\u9009\\u3002":"\\u5207\\u6362\\u8FD1\\u671F\\u4EA4\\u6613\\u65E5\\u671F\\u6216\\u7A0D\\u540E\\u5237\\u65B0\\uFF0C\\u4E5F\\u53EF\\u4EE5\\u67E5\\u770B\\u660E\\u786E\\u6807\\u6CE8\\u7684\\u6F14\\u793A\\u3002";r("stock-rows").innerHTML=t.length?t.map(s=>`<tr><td><button class="stock-name" data-stock="${$(s.code)}">${$(s.name)}</button><span class="stock-code">${$(s.code)}</span></td><td>${st(s.score)}</td><td><span class="sector-tag">${$(s.sector)}</span></td><td><span class="height-tag ${s.height>=4?"high":""}">${s.height===1?"\\u9996\\u677F":s.height?`${s.height} \\u677F`:"\\u2014"}</span></td><td class="money">${Q(s.first)}</td><td class="money">${mt(s.seal)}</td><td class="money">${w(s.turnover)}%</td><td class="money">${s.breaks??"\\u2014"}</td></tr>`).join(""):`<tr><td colspan="8"><div class="empty"><strong>${a}</strong>${i}</div></td></tr>`,document.querySelectorAll("[data-stock]").forEach(s=>s.onclick=()=>te(s.dataset.stock)),r("table-status").textContent=e?`\\u663E\\u793A ${t.length} / ${n.analysis.count} \\u5BB6${n.analysis.excluded?` \\xB7 \\u5DF2\\u5254\\u9664 ${n.analysis.excluded} \\u5BB6 ST / \\u9000\\u5E02\\u6807\\u8BC6\\u4E2A\\u80A1`:""}`:n.loading?"\\u516C\\u5F00\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":"\\u7B49\\u5F85\\u6709\\u6548\\u6570\\u636E"}function Xt(){let t=n.analysis?.sectors||[];r("sector-rank").innerHTML=t.length?t.slice(0,5).map((e,a)=>`<button class="sector-row" data-sector="${$(e.name)}"><div class="sector-row-label"><div><span class="rank-index">0${a+1}</span>${$(e.name)}</div><span class="sector-score">${e.score}</span></div><div class="sector-bar"><i style="width:${e.score}%"></i></div><div class="sector-row-meta">${e.count} \\u5BB6\\u6DA8\\u505C \\xB7 \\u6700\\u9AD8 ${e.height} \\u677F</div></button>`).join(""):\'<div class="empty compact">\\u6709\\u6548\\u884C\\u60C5\\u5230\\u8FBE\\u540E\\uFF0C\\u663E\\u793A\\u884C\\u4E1A\\u5F3A\\u5EA6\\u6392\\u540D\\u3002</div>\',r("sector-rows").innerHTML=t.length?t.map(e=>`<tr><td><button class="stock-name" data-sector="${$(e.name)}">${$(e.name)}</button></td><td>${st(e.score)}</td><td>${e.count}</td><td>${e.height} \\u677F</td><td>${w(e.quality)} / 100</td><td>${w(e.components[3].value)}%</td><td>${mt(e.amount)}</td></tr>`).join(""):\'<tr><td colspan="7"><div class="empty"><strong>\\u6682\\u65E0\\u677F\\u5757\\u8BC4\\u5206</strong>\\u8BF7\\u5148\\u83B7\\u53D6\\u6709\\u6548\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3002</div></td></tr>\',document.querySelectorAll("[data-sector]").forEach(e=>e.onclick=()=>{r("sector-filter").value=e.dataset.sector,ot("stocks")})}function Kt(){let t=n.analysis,e=[{name:"5\\u677F+",count:t?t.stocks.filter(i=>i.height>=5).length:0},{name:"4\\u677F",count:t?t.stocks.filter(i=>i.height===4).length:0},{name:"3\\u677F",count:t?t.stocks.filter(i=>i.height===3).length:0},{name:"2\\u677F",count:t?t.stocks.filter(i=>i.height===2).length:0},{name:"\\u9996\\u677F",count:t?t.first:0}],a=Math.max(1,...e.map(i=>i.count));r("ladder-chart").innerHTML=e.map(i=>`<div class="ladder-row"><span class="label">${i.name}</span><div class="ladder-track"><i style="width:${i.count/a*100}%"></i></div><span class="ladder-count">${t?i.count:"\\u2014"}</span></div>`).join(""),r("ladder-insight").textContent=t?`\\u4E0A\\u4E00\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u80A1\\u664B\\u7EA7\\u7387\\uFF1A${w(t.promotion)}%${t.previousCount!==null?`\\uFF08\\u6837\\u672C ${t.previousCount} \\u5BB6\\uFF09`:"\\uFF0C\\u6628\\u65E5\\u6570\\u636E\\u6682\\u7F3A"}\\u3002\\u8FDE\\u677F\\u68AF\\u961F\\u4EC5\\u53CD\\u6620\\u5F53\\u65E5\\u7ED3\\u6784\\u3002`:"\\u7528\\u9996\\u677F\\u4F9B\\u7ED9\\u4E0E\\u8FDE\\u677F\\u9AD8\\u5EA6\\u5171\\u540C\\u89C2\\u5BDF\\u63A5\\u529B\\u7ED3\\u6784\\u3002"}function it(){let t=n.payload;r("source-tag").className=`source-tag ${n.demo?"demo":n.error?"unavailable":""}`,r("source-tag").textContent=n.loading?"\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":n.demo?"\\u6F14\\u793A\\u6570\\u636E":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863":"\\u516C\\u5F00\\u884C\\u60C5":"\\u6570\\u636E\\u6682\\u4E0D\\u53EF\\u7528",r("data-time").textContent=n.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u6240\\u9009\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u6C60":t?n.demo?"\\u865A\\u6784\\u6837\\u672C\\uFF0C\\u4EC5\\u7528\\u4E8E\\u4F53\\u9A8C\\u8BC4\\u5206\\u548C\\u4EA4\\u4E92":t.archived?`${t.date} \\xB7 ${t.source} \\xB7 \\u5F52\\u6863\\u4E8E ${new Date(t.archivedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09`:`${t.date} \\xB7 ${t.source} \\xB7 \\u83B7\\u53D6\\u4E8E ${new Date(t.fetchedAt).toLocaleTimeString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09${t.cached?" \\xB7 2 \\u5206\\u949F\\u7F13\\u5B58":""}`:"\\u672A\\u4F7F\\u7528\\u6F14\\u793A\\u6570\\u636E\\u66FF\\u4EE3\\u771F\\u5B9E\\u884C\\u60C5",r("sidebar-source").textContent=n.demo?"\\u6F14\\u793A\\u6A21\\u5F0F":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863 \\xB7 \\u5DF2\\u8BFB\\u53D6":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u5DF2\\u63A5\\u5165":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u7B49\\u5F85\\u6570\\u636E",r("demo-btn").textContent=n.demo?"\\u8FD4\\u56DE\\u516C\\u5F00\\u884C\\u60C5":"\\u67E5\\u770B\\u6F14\\u793A",r("notice").hidden=!n.error&&!n.demo&&!t?.warnings?.length,r("notice").textContent=n.error||(n.demo?"\\u5F53\\u524D\\u4E3A\\u865A\\u6784\\u6F14\\u793A\\u6837\\u672C\\uFF0C\\u6240\\u6709\\u4E2A\\u80A1\\u3001\\u65E5\\u671F\\u5173\\u8054\\u4E0E\\u5F97\\u5206\\u5747\\u4E0D\\u4EE3\\u8868\\u5B9E\\u9645\\u884C\\u60C5\\u3002":t?.warnings?.join(" "))||"",r("refresh-btn").disabled=n.loading,r("refresh-btn").innerHTML=`${W("refresh")}${n.loading?"\\u83B7\\u53D6\\u4E2D\\u2026":"\\u5237\\u65B0\\u884C\\u60C5"}`}async function J(){let t=++n.request,e=r("trade-date").value;n.demo=!1,n.loading=!0,n.error=null,n.payload=null,n.analysis=null,n.review=null,n.ai=null,n.reviewMessage="\\u6B63\\u5728\\u68C0\\u67E5\\u5386\\u53F2\\u53CD\\u9988",it(),P(),M();try{let a=await fetch(`/api/market?date=${encodeURIComponent(e)}`,{signal:AbortSignal.timeout(2e4)}),i=await a.json();if(t!==n.request)return;let s=i.archived===!0&&Array.isArray(i.analysis?.stocks)&&Array.isArray(i.analysis?.sectors);if(!a.ok||!Array.isArray(i.rows)&&!s)throw new Error(i.error||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25");if(i.date!==e)throw new Error("\\u8FD4\\u56DE\\u7684\\u6570\\u636E\\u65E5\\u671F\\u4E0E\\u6240\\u9009\\u65E5\\u671F\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u91CD\\u65B0\\u5237\\u65B0");n.payload=i,gt()}catch(a){if(t!==n.request)return;n.error=a.name==="TimeoutError"?"\\u884C\\u60C5\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u8BF7\\u7A0D\\u540E\\u5237\\u65B0\\u3002":a.message||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25"}finally{t===n.request&&(n.loading=!1,Dt(),it(),$t(),P(),n.payload?.date===Y&&!n.payload.archived&&n.storageAvailable?Rt(t):It(t))}}function Dt(){let t=r("sector-filter").value;r("sector-filter").innerHTML=\'<option value="">\\u5168\\u90E8\\u884C\\u4E1A</option>\'+(n.analysis?.sectors||[]).map(e=>`<option value="${$(e.name)}">${$(e.name)}</option>`).join(""),n.analysis?.sectors.some(e=>e.name===t)&&(r("sector-filter").value=t)}function te(t){let e=n.analysis?.stocks.find(u=>u.code===t);if(!e)return;let a=n.analysis.sectors.find(u=>u.name===e.sector),i=e.factors.filter(u=>u.value!==null).sort((u,c)=>c.value-u.value)[0],s=e.factors.filter(u=>u.value!==null).sort((u,c)=>u.value-c.value)[0],d=`${e.name}\\u4E3A${e.height===1?"\\u9996\\u677F":e.height?`${e.height}\\u8FDE\\u677F`:"\\u8FDE\\u677F\\u9AD8\\u5EA6\\u6682\\u7F3A"}\\uFF0C${Q(e.first)}\\u9996\\u6B21\\u5C01\\u677F${e.breaks!==null?`\\uFF0C\\u76D8\\u4E2D\\u70B8\\u677F ${e.breaks} \\u6B21`:""}\\u3002${i?`${i.name}\\u662F\\u5F53\\u524D\\u8F83\\u5F3A\\u6307\\u6807\\uFF08${Math.round(i.value)} \\u5206\\uFF09\\u3002`:""}${s&&s!==i?`${s.name}\\u76F8\\u5BF9\\u504F\\u5F31\\uFF08${Math.round(s.value)} \\u5206\\uFF09\\u3002`:""}\\u6240\\u5C5E\\u884C\\u4E1A ${a?.count||0} \\u5BB6\\u6DA8\\u505C\\uFF0C\\u677F\\u5757\\u5F97\\u5206 ${a?.score??"\\u2014"}\\u3002`;r("stock-detail").innerHTML=`<div class="detail-head"><div><h2>${$(e.name)}</h2><span class="stock-code">${$(e.code)}${n.demo?" \\xB7 \\u6F14\\u793A\\u6837\\u672C":""}</span><div class="detail-tags"><span class="sector-tag">${$(e.sector)}</span><span class="height-tag">${e.height===1?"\\u9996\\u677F":`${e.height??"\\u2014"} \\u677F`}</span></div></div><div class="detail-score">${e.score??"\\u2014"}<small>\\u7EFC\\u5408\\u8BC4\\u5206 / 100</small></div></div><div class="detail-facts"><div><label>\\u5C01\\u5355\\u91D1\\u989D</label><strong>${mt(e.seal)}</strong></div><div><label>\\u5C01\\u5355 / \\u6210\\u4EA4\\u989D</label><strong>${e.sealRatio===null?"\\u2014":w(e.sealRatio*100)}%</strong></div><div><label>\\u6362\\u624B\\u7387</label><strong>${w(e.turnover)}%</strong></div><div><label>\\u6700\\u540E\\u5C01\\u677F</label><strong>${Q(e.last)}</strong></div></div><div class="detail-section"><h3>\\u516D\\u7EF4\\u8BC4\\u5206\\u62C6\\u89E3</h3>${e.factors.map(u=>`<div class="factor-row"><span>${u.name}</span><span class="factor-track"><i style="width:${u.value??0}%"></i></span><strong>${u.value===null?"\\u2014":Math.round(u.value)}</strong><span class="weight">\\u6743\\u91CD ${u.weight}</span></div>`).join("")}<p class="detail-footnote">\\u6709\\u6548\\u6307\\u6807\\u5747\\u5206 ${w(e.rawScore)} \\u2212 \\u98CE\\u9669\\u6263\\u5206 ${e.deduction} = ${e.score??"\\u2014"} \\u5206 \\xB7 \\u8986\\u76D6\\u7387 ${e.coverage}%</p></div><div class="detail-section"><h3>\\u98CE\\u9669\\u89C2\\u5BDF</h3>${e.risks.length?e.risks.map(u=>`<div class="risk-row"><strong>${u.text} \\u2212${u.penalty}</strong><span>${u.detail}</span></div>`).join(""):\'<p class="detail-footnote">\\u5F53\\u524D\\u5B57\\u6BB5\\u672A\\u89E6\\u53D1\\u6A21\\u578B\\u98CE\\u9669\\u6263\\u5206\\u9879\\uFF1B\\u516C\\u544A\\u3001\\u57FA\\u672C\\u9762\\u4E0E\\u9898\\u6750\\u98CE\\u9669\\u4ECD\\u9700\\u5355\\u72EC\\u6838\\u5B9E\\u3002</p>\'}</div><div class="detail-section"><h3>\\u76D8\\u540E\\u8BCA\\u65AD</h3><p class="detail-text">${$(d)}</p></div><p class="detail-footnote">\\u6B21\\u65E5\\u89C2\\u5BDF\\uFF1A\\u7ADE\\u4EF7\\u662F\\u5426\\u6709\\u627F\\u63A5\\u3001\\u540C\\u677F\\u5757\\u662F\\u5426\\u5F62\\u6210\\u5408\\u529B\\u3001\\u5F00\\u677F\\u540E\\u80FD\\u5426\\u56DE\\u5C01\\u3002\\u5F53\\u524D\\u89C4\\u5219\\u5206\\u6570\\u5C1A\\u672A\\u7ECF\\u8FC7\\u5386\\u53F2\\u6536\\u76CA\\u6821\\u51C6\\uFF0C\\u4E0D\\u4EE3\\u8868\\u4E0A\\u6DA8\\u6982\\u7387\\u3002</p>`,r("stock-dialog").showModal()}document.querySelectorAll(".close-dialog").forEach(t=>t.onclick=()=>t.closest("dialog").close());document.querySelectorAll("dialog").forEach(t=>t.onclick=e=>{if(e.target===t){let a=t.getBoundingClientRect();(e.clientX<a.left||e.clientX>a.right||e.clientY<a.top||e.clientY>a.bottom)&&t.close()}});r("help-btn").onclick=()=>r("help-dialog").showModal();r("all-sectors").onclick=()=>ot("sectors");r("refresh-btn").onclick=J;r("trade-date").onchange=J;r("search").oninput=Z;r("sector-filter").onchange=Z;r("sort").onchange=Z;document.querySelectorAll("[data-height]").forEach(t=>t.onclick=()=>{n.height=t.dataset.height,document.querySelectorAll("[data-height]").forEach(e=>e.classList.toggle("active",e===t)),Z()});function rt(){r("weight-controls").innerHTML=lt.map((t,e)=>`<div class="weight-item"><div class="weight-heading"><label for="weight-${e}">${t.name}</label><output id="weight-output-${e}" for="weight-${e}">${n.weights[e]}%</output></div><input id="weight-${e}" data-weight="${e}" type="range" min="0" max="50" step="1" value="${n.weights[e]}" aria-describedby="weight-desc-${e}"><p id="weight-desc-${e}">${t.description}</p></div>`).join(""),document.querySelectorAll("[data-weight]").forEach(t=>t.oninput=()=>{let e=[...n.weights];if(e[Number(t.dataset.weight)]=Number(t.value),!e.some(a=>a>0)){t.value=n.weights[Number(t.dataset.weight)],r("model-status").textContent="\\u81F3\\u5C11\\u4FDD\\u7559\\u4E00\\u9879\\u6709\\u6548\\u6743\\u91CD";return}n.weights=e,r(`weight-output-${t.dataset.weight}`).textContent=`${t.value}%`,ft()}),$t()}function $t(){let t=n.weights.reduce((e,a)=>e+a,0);r("weight-total").textContent=`\\u5408\\u8BA1 ${t}%`,r("model-status").textContent=n.payload?.archived?"\\u5F53\\u524D\\u5C55\\u793A\\u5F53\\u5929\\u51BB\\u7ED3\\u8BC4\\u5206\\uFF1B\\u4FEE\\u6539\\u6743\\u91CD\\u4E0D\\u4F1A\\u91CD\\u7B97\\u5386\\u53F2\\u5F52\\u6863":t===100?"\\u5DF2\\u5373\\u65F6\\u91CD\\u7B97 \\xB7 \\u5373\\u65F6\\u91CD\\u7B97":`\\u5408\\u8BA1 ${t}%\\uFF0C\\u8BA1\\u7B97\\u65F6\\u81EA\\u52A8\\u5F52\\u4E00\\u5316`,document.querySelectorAll("[data-preset]").forEach(e=>e.classList.toggle("active",N[e.dataset.preset].every((a,i)=>a===n.weights[i])))}var Lt;function ft(){try{localStorage.setItem("limitLensWeights",JSON.stringify(n.weights))}catch{}$t(),gt(),P(),clearTimeout(Lt),Lt=setTimeout(async()=>{try{let t=await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({weights:n.weights})}),e=await t.json();if(!t.ok)throw new Error(e.error);r("model-status").textContent="\\u6743\\u91CD\\u5DF2\\u4FDD\\u5B58 \\xB7 \\u5DF2\\u5F52\\u6863\\u8BC4\\u5206\\u4FDD\\u6301\\u539F\\u6837"}catch{r("model-status").textContent="\\u670D\\u52A1\\u5668\\u4FDD\\u5B58\\u5931\\u8D25\\uFF0C\\u5F53\\u524D\\u8C03\\u6574\\u4ECD\\u53EF\\u4F7F\\u7528\\uFF0C\\u8BF7\\u7A0D\\u540E\\u91CD\\u8BD5\\u3002"}},500)}document.querySelectorAll("[data-preset]").forEach(t=>t.onclick=()=>{n.weights=[...N[t.dataset.preset]],ft(),rt()});r("reset-model").onclick=()=>{n.weights=[...N.balanced],ft(),rt()};function ee(){let t=["\\u793A\\u4F8B\\xB7\\u8F6F\\u4EF6\\u670D\\u52A1","\\u793A\\u4F8B\\xB7\\u7535\\u5B50\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u673A\\u68B0\\u5236\\u9020","\\u793A\\u4F8B\\xB7\\u7535\\u529B\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u533B\\u836F\\u5236\\u9020"];return Array.from({length:22},(e,a)=>({c:`DEMO${String(a+1).padStart(3,"0")}`,n:`\\u793A\\u4F8B\\u4E2A\\u80A1 ${String(a+1).padStart(2,"0")}`,hybk:t[Math.min(4,Math.floor(a/5))],p:(12+a)*1e3,zdp:a%4===0?20:10,amount:(2+a%6)*1e8,ltsz:(18+a)*1e8,fund:(.3+(21-a)/10)*1e8,hs:4+a%16,lbc:a===0?6:a===1?4:a<5?3:a<9?2:1,fbt:a%6===0?92500:93e3+a*700,lbt:a===0?145500:1e5+a*800,zbc:a%5===0?3:a%3===0?1:0,zttj:{days:3,ct:1}}))}r("demo-btn").onclick=()=>{if(n.demo){J();return}++n.request,n.loading=!1,n.demo=!0,n.error=null,n.review=null,n.ai=null,n.reviewMessage="\\u6F14\\u793A\\u6837\\u672C\\u4E0D\\u4F1A\\u4FDD\\u5B58\\u8BC4\\u5206\\u6216\\u751F\\u6210\\u5E02\\u573A\\u53CD\\u9988\\u3002",n.payload={date:"\\u6F14\\u793A",source:"\\u865A\\u6784\\u6837\\u672C",fetchedAt:new Date().toISOString(),rows:ee(),broken:6,previous:null,warnings:[]},gt(),Dt(),it(),P(),M()};function Mt(t){return t==null?"\\u2014":`${t>0?"+":""}${Number(t).toFixed(2)}%`}function nt(t){return`<span class="${t>0?"up":t<0?"down":""}">${Mt(t)}</span>`}function M(){let t=n.review,e=n.ai;r("review-date-label").textContent=t?`${t.snapshotDate} \\u8BC4\\u5206 \\u2192 ${t.date} \\u8868\\u73B0`:"\\u7B49\\u5F85\\u9996\\u4E2A\\u53CD\\u9988\\u65E5",r("review-status").textContent=n.reviewBusy?"\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C\\u6536\\u76D8\\u7ED3\\u679C\\u2026":n.reviewMessage||"\\u5F53\\u5929\\u6536\\u76D8\\u540E\\u4FDD\\u5B58\\u539F\\u59CB\\u8BC4\\u5206\\uFF0C\\u4E0B\\u4E00\\u4E2A\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5E02\\u573A\\u8868\\u73B0\\u3002",r("run-review").disabled=n.reviewBusy||n.demo,r("review-coverage").textContent=t?`${t.validCount} / ${t.total} \\u5BB6\\u6709\\u6548`:"\\u7B49\\u5F85\\u6837\\u672C";let a=[{name:"\\u7CFB\\u7EDF\\u5BA2\\u89C2\\u53CD\\u9988\\u5206",value:t?.systemScore??"\\u2014",unit:"/ 100",caption:"\\u5355\\u65E5\\u6392\\u5E8F\\u4E0E\\u76F8\\u5BF9\\u8868\\u73B0\\uFF0C\\u89C4\\u5219\\u8BA1\\u7B97"},{name:"\\u9AD8\\u5206\\u7EC4\\u6B21\\u65E5\\u6536\\u76CA",value:t?.topMean===null||!t?"\\u2014":w(t.topMean,2),unit:"%",caption:t?`\\u6709\\u6548 ${t.topValid} \\u5BB6 \\xB7 \\u8BC4\\u5206\\u524D 20%`:"\\u6309\\u6628\\u65E5\\u8BC4\\u5206\\u56FA\\u5B9A\\u89C2\\u5BDF\\u7EC4"},{name:"\\u76F8\\u5BF9\\u6837\\u672C\\u8D85\\u989D",value:t?.excess===null||!t?"\\u2014":w(t.excess,2),unit:"\\u767E\\u5206\\u70B9",caption:t?`\\u5168\\u6837\\u672C\\u5747\\u503C ${Mt(t.allMean)}`:"\\u9AD8\\u5206\\u7EC4\\u5747\\u503C \\u2212 \\u5168\\u6837\\u672C\\u5747\\u503C"},{name:"\\u8BC4\\u5206\\u4E0E\\u8868\\u73B0\\u76F8\\u5173",value:t?.rho===null||!t?"\\u2014":w(t.rho,2),unit:"\\u03C1",caption:"Spearman \\u79E9\\u76F8\\u5173\\uFF0C\\u8303\\u56F4 \\u22121 \\u81F3 1"}];r("review-metrics").innerHTML=a.map(s=>`<article class="metric"><div class="metric-head">${s.name}${W("shield")}</div><div class="metric-value">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div></article>`).join(""),r("review-conclusion").hidden=!t,r("review-conclusion").textContent=t?.conclusion||"",r("review-rows").innerHTML=t?t.rows.map((s,d)=>`<tr><td><strong class="review-stock">${$(s.name)}${d<t.topSize?\'<span class="top-group">\\u9AD8\\u5206\\u7EC4</span>\':""}</strong><span class="stock-code">${$(s.code)}</span></td><td>${st(s.score)}</td><td>${s.available?nt(s.openReturn):"\\u2014"}</td><td>${s.available?nt(s.closeReturn):"\\u2014"}</td><td>${s.available?nt(s.lowReturn):"\\u2014"}</td><td>${s.available?s.continued?\'<span class="height-tag high">\\u662F</span>\':"\\u5426":`<span class="small-muted" title="${$(s.reason)}">\\u4E0D\\u53EF\\u6BD4</span>`}</td></tr>`).join(""):\'<tr><td colspan="6"><div class="empty"><strong>\\u5148\\u4FDD\\u5B58\\u5224\\u65AD\\uFF0C\\u518D\\u68C0\\u9A8C\\u7ED3\\u679C</strong>\\u6536\\u76D8\\u540E\\u8BBF\\u95EE\\u5DE5\\u4F5C\\u53F0\\u4F1A\\u81EA\\u52A8\\u4FDD\\u5B58\\u5F53\\u65E5\\u8BC4\\u5206\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u7684\\u771F\\u5B9E\\u53CD\\u9988\\u5230\\u8FBE\\u524D\\uFF0C\\u6B64\\u5904\\u4FDD\\u6301\\u7A7A\\u767D\\u3002</div></td></tr>\',r("review-sector-rows").innerHTML=t?t.sectors.map(s=>`<tr><td>${$(s.name)}</td><td>${st(s.score)}</td><td>${s.available} / ${s.count}</td><td>${nt(s.averageReturn)}</td><td>${s.continuationRate===null?"\\u2014":w(s.continuationRate*100)}%</td></tr>`).join(""):\'<tr><td colspan="5"><div class="empty compact">\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5DF2\\u4FDD\\u5B58\\u7684\\u677F\\u5757\\u8BC4\\u5206\\u3002</div></td></tr>\',r("ai-status-tag").textContent=n.aiConfig.configured?"\\u5DF2\\u8FDE\\u63A5":"\\u5F85\\u914D\\u7F6E",r("model-ai-status").textContent=n.aiConfig.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E",r("model-ai-detail").textContent=n.aiConfig.configured?`\\u5DF2\\u914D\\u7F6E ${n.aiConfig.model}\\u3002\\u53EA\\u5411\\u6A21\\u578B\\u53D1\\u9001\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u6838\\u9A8C\\u7ED3\\u679C\\uFF0C\\u8BC4\\u4EF7\\u4F1A\\u4E0E\\u539F\\u59CB\\u6570\\u636E\\u4E00\\u5E76\\u4FDD\\u5B58\\u3002`:"\\u670D\\u52A1\\u7AEF\\u914D\\u7F6E\\u5BC6\\u94A5\\u3001\\u63A5\\u53E3\\u5730\\u5740\\u548C\\u6A21\\u578B\\u540E\\uFF0CAI \\u4F1A\\u6839\\u636E\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5DF2\\u6838\\u9A8C\\u5E02\\u573A\\u7ED3\\u679C\\u751F\\u6210\\u8BC4\\u4EF7\\u3002\\u5BC6\\u94A5\\u4E0D\\u8FDB\\u5165\\u6D4F\\u89C8\\u5668\\u3002",r("ai-content").innerHTML=e?`<div class="ai-score"><strong>${e.score}</strong><span>AI \\u4E3B\\u89C2\\u8BC4\\u4EF7 / 100<small>${$(e.model)} \\xB7 ${e.confidence==="high"?"\\u8F83\\u9AD8":e.confidence==="medium"?"\\u4E2D\\u7B49":"\\u8F83\\u4F4E"}\\u7F6E\\u4FE1\\u5EA6</small></span></div><p class="ai-summary">${$(e.summary)}</p><h3>\\u8BC4\\u4EF7\\u4F9D\\u636E</h3><ul>${e.evidence.map(s=>`<li>${$(s)}</li>`).join("")}</ul>${e.failures.length?`<h3>\\u5224\\u65AD\\u4E0D\\u8DB3</h3><ul>${e.failures.map(s=>`<li>${$(s)}</li>`).join("")}</ul>`:""}${e.suggestions.length?`<h3>\\u6539\\u8FDB\\u5EFA\\u8BAE</h3><ul>${e.suggestions.map(s=>`<li>${$(s)}</li>`).join("")}</ul>`:""}<p class="ai-note">AI \\u8BC4\\u4EF7\\u4E0E\\u89C4\\u5219\\u53CD\\u9988\\u5206\\u5206\\u522B\\u4FDD\\u7559\\u3002\\u5EFA\\u8BAE\\u4E0D\\u4F1A\\u81EA\\u52A8\\u6539\\u5199\\u6A21\\u578B\\u3002</p>`:`<div class="ai-empty"><span class="ai-symbol">${W("sliders")}</span><h3>${n.aiConfig.configured?"\\u7B49\\u5F85\\u5DF2\\u6838\\u9A8C\\u7ED3\\u679C":"\\u5927\\u6A21\\u578B\\u5C1A\\u672A\\u914D\\u7F6E"}</h3><p>${n.aiConfig.configured?"\\u79EF\\u7D2F\\u4E8B\\u524D\\u5FEB\\u7167\\u5E76\\u53D6\\u5F97\\u6B21\\u65E5\\u6536\\u76D8\\u7ED3\\u679C\\u540E\\uFF0CAI \\u624D\\u5BF9\\u7CFB\\u7EDF\\u8BC4\\u4EF7\\u3002":"\\u5DF2\\u9884\\u7559 DeepSeek\\u3001OpenAI\\u3001\\u901A\\u4E49\\u517C\\u5BB9\\u63A5\\u53E3\\u3002\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5BC6\\u94A5\\u540E\\u542F\\u7528\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6A21\\u62DF AI \\u7ED3\\u8BBA\\u66FF\\u4EE3\\u771F\\u5B9E\\u8C03\\u7528\\u3002"}</p><div class="ai-process">\\u51BB\\u7ED3\\u6628\\u65E5\\u8BC4\\u5206<span>\\u2193</span>\\u6838\\u9A8C\\u4ECA\\u65E5\\u5E02\\u573A\\u7ED3\\u679C<span>\\u2193</span>AI \\u8BC4\\u5206\\u3001\\u8BC1\\u636E\\u4E0E\\u6539\\u8FDB\\u5EFA\\u8BAE</div></div>`,r("ai-grade-btn").disabled=n.demo||n.reviewBusy||!n.aiConfig.configured||!t||!!e,r("ai-grade-btn").textContent=e?"\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58":"\\u751F\\u6210 AI \\u8BC4\\u4EF7";let i=n.history?.reviews||[];r("review-history").innerHTML=i.length?`<div class="history-list">${i.map(s=>`<button data-history="${$(s.date)}"><span>${$(s.snapshotDate)} \\u2192 ${$(s.date)}</span><span>\\u5BA2\\u89C2 ${s.systemScore??"\\u2014"} \\u5206 \\xB7 AI ${s.aiScore??"\\u2014"} \\u5206</span></button>`).join("")}</div>`:\'<div class="empty compact">\\u5C1A\\u65E0\\u53CD\\u9988\\u8BB0\\u5F55\\u3002\\u5FEB\\u7167\\u4E0E\\u53CD\\u9988\\u4F1A\\u4FDD\\u5B58\\u5230\\u670D\\u52A1\\u7AEF\\uFF0C\\u8DE8\\u8BBE\\u5907\\u53EF\\u67E5\\u770B\\u3002</div>\',document.querySelectorAll("[data-history]").forEach(s=>s.onclick=()=>{r("trade-date").value=s.dataset.history,J()})}async function It(t=n.request){try{let[e,a]=await Promise.all([fetch(`/api/review?date=${encodeURIComponent(r("trade-date").value)}`),fetch("/api/history")]),i=await e.json(),s=await a.json();if(t!==n.request||n.demo)return;if(!e.ok)throw new Error(i.error);n.review=i.review,n.ai=i.ai,n.aiConfig=i.aiStatus||n.aiConfig,n.history=a.ok?s:n.history,n.reviewMessage=i.reason||"\\u5DF2\\u52A0\\u8F7D\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5B9E\\u9645\\u7ED3\\u679C\\u3002"}catch(e){t===n.request&&(n.reviewMessage=e.message||"\\u5386\\u53F2\\u53CD\\u9988\\u6682\\u65F6\\u4E0D\\u53EF\\u7528")}t===n.request&&M()}async function Rt(t=n.request){if(!(n.demo||n.reviewBusy)){n.reviewBusy=!0,n.reviewMessage="\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C",M();try{let e=await fetch("/api/run-daily",{method:"POST",signal:AbortSignal.timeout(13e4)}),a=await e.json();if(t!==n.request||n.demo)return;if(!e.ok)throw new Error(a.error);n.review=a.review,n.ai=a.ai||null,n.aiConfig=a.aiStatus||n.aiConfig,n.history=a.history||n.history,n.reviewMessage=a.aiError||a.reason||(a.review?"\\u5DF2\\u5B8C\\u6210\\u6628\\u65E5\\u5224\\u65AD\\u6838\\u9A8C\\uFF1B\\u539F\\u59CB\\u8BC4\\u5206\\u4E0E\\u7ED3\\u679C\\u5747\\u5DF2\\u4FDD\\u5B58\\u3002":"\\u4ECA\\u65E5\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863\\uFF0C\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u751F\\u6210\\u53CD\\u9988\\u3002"),r("snapshot-status").textContent=a.snapshot?.saved?`${a.snapshot.date} \\u539F\\u59CB\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863`:a.snapshot?.reason||"\\u7B49\\u5F85\\u6536\\u76D8\\u540E\\u4FDD\\u5B58"}catch(e){t===n.request&&(n.reviewMessage=e.name==="TimeoutError"?"\\u53CD\\u9988\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u53EF\\u5237\\u65B0\\u8BFB\\u53D6\\u5DF2\\u4FDD\\u5B58\\u7684\\u8FDB\\u5EA6\\u3002":e.message,r("snapshot-status").textContent="\\u5F52\\u6863\\u6682\\u4E0D\\u53EF\\u7528\\uFF0C\\u53EF\\u7A0D\\u540E\\u91CD\\u8BD5")}finally{n.reviewBusy=!1,M(),window.dispatchEvent(new Event("paper-updated"))}}}r("run-review").onclick=()=>{r("trade-date").value===Y?Rt():It()};r("ai-grade-btn").onclick=async()=>{if(!n.review)return;let t=n.review.date;n.reviewBusy=!0,M(),r("ai-action-status").textContent="\\u6A21\\u578B\\u6B63\\u5728\\u8BC4\\u4EF7\\u2026";try{let e=await fetch("/api/ai-grade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:t}),signal:AbortSignal.timeout(55e3)}),a=await e.json();if(!e.ok)throw new Error(a.error);n.review?.date===t&&(n.ai=a.ai),r("ai-action-status").textContent="\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58"}catch(e){r("ai-action-status").textContent=e.message||"AI \\u8C03\\u7528\\u5931\\u8D25"}finally{n.reviewBusy=!1,M()}};async function ae(){try{let t=await fetch("/api/market/latest-date",{signal:AbortSignal.timeout(6e3)}),e=await t.json();t.ok&&/^\\d{4}-\\d{2}-\\d{2}$/.test(e.date)&&e.date<=Y&&(r("trade-date").value=e.date)}catch{}}async function ne(){let t=fetch("/api/settings",{signal:AbortSignal.timeout(5e3)}).then(async a=>a.ok?a.json():null).catch(()=>null),[e]=await Promise.all([t,ae()]);e&&(n.storageAvailable=!0,se(e.weights)&&(n.weights=e.weights),n.aiConfig=e.ai,rt()),await J()}function se(t){return Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)}rt();it();P();M();ne();if(document.modelContext?.registerTool){let t=new AbortController;try{Promise.resolve(document.modelContext.registerTool({name:"read_limit_up_analysis",title:"\\u8BFB\\u53D6\\u6DA8\\u505C\\u5206\\u6790",description:"\\u8BFB\\u53D6\\u5F53\\u524D\\u4EA4\\u6613\\u65E5\\u7684\\u4E2A\\u80A1\\u4E0E\\u884C\\u4E1A\\u8BC4\\u5206\\uFF0C\\u5E76\\u660E\\u786E\\u8FD4\\u56DE\\u771F\\u5B9E\\u6216\\u6F14\\u793A\\u6570\\u636E\\u72B6\\u6001\\u3002",inputSchema:{type:"object",properties:{},additionalProperties:!1},annotations:{readOnlyHint:!0,untrustedContentHint:!0},execute(e){if(e===null||typeof e!="object"||Array.isArray(e)||Object.keys(e).length)throw new Error("\\u8F93\\u5165\\u5FC5\\u987B\\u662F\\u7A7A\\u5BF9\\u8C61");return{date:n.payload?.date??null,mode:n.demo?"demo":"public",loading:n.loading,error:n.error,stocks:n.analysis?.stocks.map(a=>({code:a.code,name:a.name,sector:a.sector,score:a.score,coverage:a.coverage,risks:a.risks.map(i=>i.text)}))||[],sectors:n.analysis?.sectors.map(a=>({name:a.name,score:a.score,count:a.count}))||[]}}},{signal:t.signal})).catch(()=>{}),window.addEventListener("pagehide",()=>t.abort(),{once:!0})}catch{}}\n', "type": "text/javascript; charset=utf-8" }, "/assets/styles.css": { "body": '* {\n  box-sizing: border-box;\n}\n:root {\n  --navy: #101e2e;\n  --ink: #1b2c3f;\n  --muted: #7c8795;\n  --line: #e7ebf0;\n  --bg: #f4f6f9;\n  --teal: #148775;\n  --red: #db5a55;\n  --green: #309477;\n  --amber: #c18a31;\n}\nbody {\n  margin: 0;\n  background: var(--bg);\n  color: var(--ink);\n  font:\n    14px/1.55 -apple-system,\n    BlinkMacSystemFont,\n    "Segoe UI",\n    "PingFang SC",\n    "Microsoft YaHei",\n    sans-serif;\n}\nbutton,\ninput,\nselect {\n  font: inherit;\n}\nbutton,\na,\ninput,\nselect {\n  touch-action: manipulation;\n}\nbutton {\n  cursor: pointer;\n}\nbutton {\n  border: 0;\n}\nbutton:focus-visible,\na:focus-visible,\ninput:focus-visible,\nselect:focus-visible {\n  outline: 3px solid #66c5ba;\n  outline-offset: 3px;\n}\nbutton:disabled {\n  opacity: 0.65;\n  cursor: wait;\n}\na {\n  text-decoration: none;\n  color: inherit;\n}\n[hidden] {\n  display: none !important;\n}\nh1,\nh2,\nh3,\np {\n  margin: 0;\n}\nh2 {\n  font-size: 16px;\n  font-weight: 650;\n}\nh3 {\n  font-size: 14px;\n}\nsvg {\n  width: 19px;\n  height: 19px;\n  display: block;\n  fill: none;\n  stroke: currentColor;\n  stroke-width: 1.6;\n  stroke-linecap: round;\n  stroke-linejoin: round;\n}\n.shell {\n  display: flex;\n  min-height: 100vh;\n}\n.sidebar {\n  width: 222px;\n  position: fixed;\n  inset: 0 auto 0 0;\n  background: var(--navy);\n  color: #b4c0cd;\n  padding: 32px 18px;\n  display: flex;\n  flex-direction: column;\n}\n.brand {\n  display: flex;\n  gap: 12px;\n  align-items: center;\n  color: #fff;\n  font-size: 19px;\n  font-weight: 650;\n  padding: 0 10px;\n}\n.brand small {\n  display: block;\n  font-size: 10px;\n  letter-spacing: 2.8px;\n  font-weight: 450;\n  color: #7e93aa;\n  margin-top: 3px;\n}\n.brand-mark {\n  display: flex;\n  gap: 4px;\n  align-items: flex-end;\n  width: 29px;\n  height: 29px;\n}\n.brand-mark i {\n  display: block;\n  background: #55c9b0;\n  width: 6px;\n  border-radius: 2px;\n}\n.brand-mark i:nth-child(1) {\n  height: 12px;\n}\n.brand-mark i:nth-child(2) {\n  height: 20px;\n}\n.brand-mark i:nth-child(3) {\n  height: 29px;\n}\n.nav-label {\n  font-size: 12px;\n  color: #718398;\n  letter-spacing: 1px;\n  margin: 46px 16px 13px;\n}\n.nav-item {\n  background: transparent;\n  color: #91a4b8;\n  display: flex;\n  gap: 13px;\n  align-items: center;\n  padding: 13px 16px;\n  width: 100%;\n  text-align: left;\n  margin-bottom: 7px;\n  border-radius: 7px;\n  font-size: 14px;\n}\n.nav-item.active {\n  background: #223847;\n  color: #70d6c2;\n}\n.nav-item:hover {\n  background: #1d3042;\n}\n.sidebar-note {\n  margin-top: auto;\n  background: #152738;\n  border: 1px solid #293b4e;\n  padding: 19px 15px;\n  border-radius: 8px;\n}\n.mini-label {\n  display: block;\n  color: #6d8b9d;\n  font-size: 12px;\n  margin-bottom: 9px;\n}\n.sidebar-note strong {\n  font-size: 14px;\n  color: #d5dee7;\n  font-weight: 500;\n}\n.sidebar-note p {\n  font-size: 12px;\n  color: #8a9bae;\n  margin: 9px 0 15px;\n  line-height: 1.8;\n}\n.note-line {\n  height: 1px;\n  background: #2b3b4d;\n  margin-bottom: 12px;\n}\n.sidebar-note > span:last-child {\n  font-size: 12px;\n  color: #90a3b7;\n}\n.sidebar-footer {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  margin: 22px 12px 0;\n  font-size: 12px;\n}\n.sidebar-footer small {\n  display: block;\n  color: #60768c;\n  font-size: 12px;\n}\n.workspace {\n  margin-left: 222px;\n  width: calc(100% - 222px);\n}\n.topbar {\n  height: 68px;\n  background: #fff;\n  border-bottom: 1px solid var(--line);\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 0 35px;\n}\n.breadcrumb {\n  font-size: 13px;\n  color: #8a95a2;\n  display: flex;\n  gap: 14px;\n}\n.breadcrumb strong {\n  color: #526073;\n  font-weight: 500;\n}\n.topbar-right {\n  display: flex;\n  align-items: center;\n  gap: 24px;\n}\n.session-label {\n  font-size: 13px;\n  color: #7d8897;\n}\n.icon-button {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  background: transparent;\n  width: 32px;\n  height: 32px;\n  color: #8b98a6;\n  border-radius: 5px;\n}\n.icon-button:hover {\n  background: #eef4f4;\n  color: var(--teal);\n}\nmain {\n  max-width: 1680px;\n  margin: auto;\n  padding: 31px 35px 20px;\n}\n.page-heading {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 20px;\n  margin-bottom: 25px;\n}\n.eyebrow {\n  font-size: 11px;\n  letter-spacing: 1.9px;\n  color: #8290a0;\n  font-weight: 650;\n}\n.page-heading h1 {\n  font-size: 28px;\n  letter-spacing: -0.7px;\n  font-weight: 650;\n  margin-top: 5px;\n}\n.page-heading p {\n  font-size: 14px;\n  color: #86909d;\n  margin-top: 6px;\n}\n.heading-actions {\n  display: flex;\n  gap: 12px;\n  align-items: center;\n}\n.date-control {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  background: #fff;\n  border: 1px solid #e0e5ec;\n  padding: 9px 12px;\n  border-radius: 6px;\n  color: #8391a0;\n}\n.date-control input {\n  border: 0;\n  outline: 0;\n  color: #536276;\n  width: 130px;\n  background: transparent;\n}\n.primary,\n.secondary {\n  padding: 10px 16px;\n  border-radius: 6px;\n  font-weight: 550;\n  display: flex;\n  align-items: center;\n  gap: 9px;\n  white-space: nowrap;\n}\n.primary {\n  background: var(--teal);\n  color: #fff;\n}\n.primary:hover {\n  background: #106f62;\n}\n.secondary {\n  background: #f3f5f8;\n  color: #4f6275;\n  border: 1px solid var(--line);\n}\n.data-strip {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 21px;\n  gap: 12px;\n  color: #8a96a3;\n  font-size: 12px;\n}\n.data-strip > div {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  flex-wrap: wrap;\n}\n.source-tag {\n  display: inline-flex;\n  background: #e5f1ed;\n  color: #3b8b7b;\n  font-size: 12px;\n  border-radius: 4px;\n  padding: 3px 8px;\n}\n.source-tag.unavailable {\n  background: #fff1df;\n  color: #a27428;\n}\n.source-tag.demo {\n  background: #edf0f7;\n  color: #6e7ba1;\n}\n.text-button {\n  background: transparent;\n  color: #74839b;\n  font-size: 12px;\n  white-space: nowrap;\n  padding: 4px;\n}\n.text-button:hover {\n  color: var(--teal);\n}\n.notice {\n  padding: 13px 17px;\n  background: #fff8ed;\n  border: 1px solid #eedfc6;\n  color: #91703b;\n  border-radius: 6px;\n  margin-bottom: 19px;\n  font-size: 14px;\n}\n.metrics {\n  display: grid;\n  grid-template-columns: repeat(4, minmax(0, 1fr));\n  gap: 17px;\n  margin-bottom: 24px;\n}\n.metric {\n  background: white;\n  border: 1px solid var(--line);\n  border-radius: 8px;\n  padding: 20px 21px;\n  position: relative;\n  overflow: hidden;\n}\n.metric-head {\n  color: #7c8999;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  font-size: 13px;\n}\n.metric-head svg {\n  width: 17px;\n  height: 17px;\n  color: #aab4c1;\n}\n.metric-value {\n  font-size: 36px;\n  font-family: ui-sans-serif, system-ui, sans-serif;\n  font-weight: 600;\n  letter-spacing: -1.7px;\n  margin-top: 8px;\n  line-height: 1.25;\n}\n.metric-value small {\n  font-size: 14px;\n  color: #94a0ae;\n  font-weight: 400;\n  letter-spacing: 0;\n  margin-left: 5px;\n}\n.metric-caption {\n  font-size: 12px;\n  color: #8a96a4;\n  margin-top: 10px;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n}\n.metric-line {\n  height: 3px;\n  background: #edf2f3;\n  border-radius: 3px;\n  margin-top: 15px;\n}\n.metric-line i {\n  display: block;\n  height: 100%;\n  border-radius: 3px;\n  background: #80bfad;\n}\n.metric-line.amber i {\n  background: #e0b065;\n}\n.metric-value.accent {\n  color: var(--teal);\n}\n.overview-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) 300px;\n  gap: 22px;\n  align-items: start;\n}\n.panel {\n  --panel-inline-padding: 22px;\n  background: #fff;\n  border: 1px solid var(--line);\n  border-radius: 8px;\n  overflow: hidden;\n}\n.panel-heading {\n  padding: 21px var(--panel-inline-padding) 17px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n}\n.panel-heading h2 {\n  display: flex;\n  align-items: center;\n  gap: 9px;\n}\n.panel-heading p {\n  font-size: 12px;\n  color: #929ca9;\n  margin-top: 5px;\n}\n.count-chip {\n  font-size: 11px;\n  font-weight: 500;\n  background: #eef3f6;\n  padding: 0 7px;\n  line-height: 20px;\n  border-radius: 4px;\n  color: #7990a2;\n}\n.small-muted {\n  font-size: 12px;\n  color: #9ca6b0;\n  white-space: nowrap;\n}\n.filters {\n  display: flex;\n  gap: 12px;\n  padding: 0 22px 17px;\n}\n.search-control {\n  display: flex;\n  gap: 9px;\n  align-items: center;\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  padding: 8px 10px;\n  flex: 1;\n  min-width: 100px;\n  color: #9ca8b5;\n  background: #fcfdfe;\n}\n.search-control svg {\n  width: 15px;\n  height: 15px;\n}\n.search-control input {\n  border: 0;\n  background: transparent;\n  outline: 0;\n  width: 100%;\n  min-width: 0;\n  font-size: 13px;\n  color: var(--ink);\n}\ninput::placeholder {\n  color: #a1aab6;\n}\nselect {\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  color: #6b798b;\n  padding: 7px 9px;\n  background: #fff;\n  max-width: 180px;\n  font-size: 13px;\n}\n.table-subnav {\n  padding: 0 22px 13px;\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n  align-items: center;\n}\n.segments {\n  display: flex;\n  gap: 6px;\n}\n.segments button {\n  background: transparent;\n  color: #8c97a4;\n  padding: 5px 12px;\n  font-size: 13px;\n  border-radius: 4px;\n}\n.segments button.active {\n  background: #e8f3ef;\n  color: var(--teal);\n  font-weight: 550;\n}\n.sort-control {\n  display: flex;\n  gap: 8px;\n  align-items: center;\n  font-size: 12px;\n  color: #9aa4af;\n}\n.sort-control select {\n  border: 0;\n  padding: 4px;\n  font-size: 12px;\n}\n.table-scroll {\n  overflow-x: auto;\n}\ntable {\n  border-collapse: collapse;\n  width: 100%;\n  white-space: nowrap;\n  font-size: 13px;\n  text-align: left;\n}\nth {\n  padding: 11px 16px;\n  background: #f8fafc;\n  font-size: 12px;\n  font-weight: 500;\n  color: #8b97a5;\n  border-block: 1px solid #edf0f3;\n}\ntd {\n  padding: 17px 16px;\n  border-bottom: 1px solid #eef1f5;\n  vertical-align: middle;\n}\ntd:first-child,\nth:first-child {\n  padding-left: 22px;\n}\ntd:last-child,\nth:last-child {\n  padding-right: 22px;\n}\ntbody tr:hover {\n  background: #f8fbfa;\n}\n.stock-name {\n  background: transparent;\n  text-align: left;\n  display: block;\n  padding: 0;\n  color: #253a4d;\n  font-size: 14px;\n  font-weight: 550;\n  max-width: 145px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n.stock-name:hover {\n  color: var(--teal);\n}\n.stock-code {\n  font-size: 11px;\n  color: #9ba5b0;\n  display: block;\n  margin-top: 3px;\n  font-variant-numeric: tabular-nums;\n  letter-spacing: 0.3px;\n}\n.score-cell {\n  display: flex;\n  align-items: center;\n  gap: 7px;\n}\n.score-number {\n  font-size: 18px;\n  font-weight: 650;\n  color: var(--teal);\n  font-variant-numeric: tabular-nums;\n}\n.score-number.mid {\n  color: #b18745;\n}\n.score-number.low {\n  color: #8695a5;\n}\n.score-track {\n  height: 3px;\n  background: #eaf1ee;\n  width: 36px;\n  border-radius: 2px;\n}\n.score-track i {\n  height: 100%;\n  display: block;\n  background: #78bda9;\n  border-radius: 2px;\n}\n.sector-tag {\n  background: #f4f6f9;\n  color: #7b8da0;\n  padding: 4px 7px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n.height-tag {\n  color: #61758a;\n  background: #edf2f8;\n  padding: 3px 7px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n.height-tag.high {\n  color: #b38742;\n  background: #fbf1df;\n}\n.money {\n  font-variant-numeric: tabular-nums;\n  color: #556a7d;\n}\n.table-footer {\n  font-size: 12px;\n  color: #9aa4b0;\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n  padding: 15px 22px;\n}\n.right-column {\n  display: flex;\n  flex-direction: column;\n  gap: 20px;\n}\n.sector-row {\n  display: block;\n  background: transparent;\n  width: 100%;\n  padding: 10px 22px;\n  text-align: left;\n}\n.sector-row:hover {\n  background: #f6faf8;\n}\n.sector-row-label {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  font-size: 14px;\n  color: #4e6478;\n}\n.sector-row-label > div {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.rank-index {\n  color: #a8b3bf;\n  font:\n    12px/1 ui-monospace,\n    monospace;\n}\n.sector-score {\n  color: #3d8474;\n  font-weight: 650;\n  font-size: 17px;\n}\n.sector-bar {\n  height: 5px;\n  border-radius: 2px;\n  background: #f1f4f7;\n  margin: 9px 0 4px 25px;\n}\n.sector-bar i {\n  height: 100%;\n  display: block;\n  border-radius: 2px;\n  background: #71b7a3;\n}\n.sector-row:nth-child(2) .sector-bar i {\n  background: #8fc4b5;\n}\n.sector-row:nth-child(n + 3) .sector-bar i {\n  background: #b3d6cc;\n}\n.sector-row-meta {\n  font-size: 11px;\n  color: #a0aab5;\n  margin-left: 25px;\n}\n.panel-footnote {\n  font-size: 11px;\n  color: #9da7b1;\n  border-top: 1px solid #f0f2f5;\n  margin-top: 15px;\n  padding: 12px var(--panel-inline-padding);\n  overflow-wrap: anywhere;\n}\n.outline-tag {\n  font-size: 11px;\n  color: #8e9dac;\n  border: 1px solid #e5eaf0;\n  border-radius: 4px;\n  padding: 2px 7px;\n  white-space: nowrap;\n}\n#ladder-chart {\n  padding: 0 22px 10px;\n}\n.ladder-row {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  padding: 8px 0;\n  font-size: 12px;\n  color: #8b99a8;\n}\n.ladder-row .label {\n  width: 38px;\n}\n.ladder-track {\n  background: #f3f5f8;\n  height: 18px;\n  flex: 1;\n  border-radius: 3px;\n  overflow: hidden;\n}\n.ladder-track i {\n  display: block;\n  height: 100%;\n  background: #b8c9d7;\n  border-radius: 3px;\n  min-width: 0;\n}\n.ladder-row:first-child .ladder-track i {\n  background: #dbb879;\n}\n.ladder-row:last-child .ladder-track i {\n  background: #81bba9;\n}\n.ladder-count {\n  width: 21px;\n  text-align: right;\n  color: #61778c;\n}\n.insight {\n  margin: 8px 22px 19px;\n  padding: 12px;\n  background: #f5f8fa;\n  border-radius: 5px;\n  color: #7a8a9a;\n  font-size: 12px;\n  line-height: 1.8;\n}\n.empty {\n  padding: 60px 24px;\n  text-align: center;\n  color: #8b9baa;\n  font-size: 14px;\n  white-space: normal;\n}\n.empty strong {\n  display: block;\n  font-size: 16px;\n  font-weight: 500;\n  color: #596d80;\n  margin-bottom: 8px;\n}\n.empty.compact {\n  padding: 27px 20px;\n  font-size: 12px;\n}\n.page-footer {\n  display: flex;\n  justify-content: space-between;\n  gap: 20px;\n  font-size: 11px;\n  color: #a0aab5;\n  margin-top: 25px;\n}\n.page-footer > span:first-child {\n  white-space: nowrap;\n  letter-spacing: 0.5px;\n}\n.page-footer i {\n  margin: 0 5px;\n  font-style: normal;\n}\n.sector-formula {\n  padding: 13px 22px;\n  background: #f5faf8;\n  color: #6b8d80;\n  font-size: 13px;\n}\n.sector-formula span {\n  margin: 0 9px;\n  color: #b2c6bd;\n}\n.model-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);\n  gap: 22px;\n}\n.preset-buttons {\n  display: flex;\n  gap: 9px;\n  padding: 0 22px 22px;\n}\n.preset-buttons button {\n  font-size: 13px;\n  padding: 8px 13px;\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  background: #fff;\n  color: #8897a5;\n}\n.preset-buttons button.active {\n  background: #edf6f2;\n  color: var(--teal);\n  border-color: #c9e3d9;\n}\n.weight-item {\n  padding: 17px 22px;\n  border-top: 1px solid #eff2f5;\n}\n.weight-heading {\n  display: flex;\n  justify-content: space-between;\n  font-size: 14px;\n  margin-bottom: 10px;\n}\n.weight-heading output {\n  font-weight: 600;\n  color: var(--teal);\n}\n.weight-item input {\n  width: 100%;\n  accent-color: var(--teal);\n  height: 5px;\n}\n.weight-item p {\n  color: #96a2ae;\n  font-size: 12px;\n  margin-top: 10px;\n}\n.model-actions {\n  padding: 18px 22px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  border-top: 1px solid var(--line);\n}\n.model-actions span {\n  color: #8b9aa7;\n  font-size: 12px;\n}\n.model-explain {\n  padding-bottom: 22px;\n}\n.formula-box {\n  padding: 20px 22px;\n  background: #f1f7f4;\n  margin: 0 22px 22px;\n  color: #4d8e79;\n  font-size: 16px;\n  font-weight: 550;\n  line-height: 1.9;\n  border-radius: 6px;\n}\n.formula-box span {\n  font-size: 13px;\n  font-weight: 400;\n}\n.model-explain h3 {\n  margin: 18px 22px 9px;\n}\n.model-explain p {\n  margin: 0 22px;\n  color: #8898a6;\n  line-height: 1.8;\n}\n.model-explain dl {\n  margin: 0 22px;\n}\n.model-explain dl div {\n  display: flex;\n  justify-content: space-between;\n  padding: 8px 0;\n  color: #6d7d8d;\n  font-size: 13px;\n  border-bottom: 1px solid #f1f3f6;\n}\n.model-explain dd {\n  color: var(--amber);\n}\n.model-explain .model-limit {\n  margin-top: 22px;\n  font-size: 12px;\n}\n.detail-dialog,\n.help-dialog {\n  border: 1px solid var(--line);\n  border-radius: 12px;\n  box-shadow: 0 20px 80px #10213540;\n  width: min(720px, calc(100vw - 32px));\n  padding: 25px 29px;\n  max-height: 90vh;\n  color: var(--ink);\n}\ndialog::backdrop {\n  background: #10213580;\n  backdrop-filter: blur(3px);\n}\n.dialog-top {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  margin-bottom: 20px;\n}\n.detail-head {\n  display: flex;\n  justify-content: space-between;\n  gap: 20px;\n  align-items: center;\n}\n.detail-head h2 {\n  font-size: 26px;\n}\n.detail-head .stock-code {\n  font-size: 13px;\n  margin-top: 6px;\n}\n.detail-score {\n  font-size: 54px;\n  line-height: 1;\n  color: var(--teal);\n  font-weight: 600;\n  letter-spacing: -2px;\n}\n.detail-score small {\n  display: block;\n  font-size: 12px;\n  letter-spacing: 0;\n  font-weight: 400;\n  color: #94a4b0;\n  text-align: right;\n  margin-top: 8px;\n}\n.detail-tags {\n  display: flex;\n  gap: 8px;\n  margin-top: 15px;\n}\n.detail-facts {\n  display: grid;\n  grid-template-columns: repeat(4, 1fr);\n  gap: 15px;\n  background: #f6f8fa;\n  padding: 18px;\n  margin: 22px 0;\n  border-radius: 6px;\n}\n.detail-facts label {\n  display: block;\n  color: #91a0ae;\n  font-size: 12px;\n  margin-bottom: 5px;\n}\n.detail-facts strong {\n  font-size: 16px;\n  font-weight: 550;\n}\n.factor-row {\n  display: grid;\n  grid-template-columns: 90px 1fr 40px 56px;\n  gap: 12px;\n  align-items: center;\n  margin: 14px 0;\n  font-size: 13px;\n}\n.factor-row .factor-track {\n  height: 7px;\n  background: #edf2f4;\n  border-radius: 4px;\n}\n.factor-track i {\n  display: block;\n  height: 100%;\n  border-radius: 4px;\n  background: #7dbda9;\n}\n.factor-row .weight {\n  font-size: 12px;\n  color: #97a6b3;\n  text-align: right;\n}\n.detail-section h3 {\n  font-size: 15px;\n  margin: 23px 0 13px;\n}\n.risk-row {\n  display: flex;\n  gap: 10px;\n  align-items: flex-start;\n  font-size: 13px;\n  line-height: 1.8;\n  margin: 10px 0;\n  color: #8593a0;\n}\n.risk-row strong {\n  color: #b18442;\n  font-size: 12px;\n  white-space: nowrap;\n  background: #fbf2e4;\n  padding: 2px 6px;\n  border-radius: 4px;\n}\n.detail-text {\n  padding: 15px 18px;\n  background: #f4f8f7;\n  color: #6e8a81;\n  font-size: 14px;\n  line-height: 1.9;\n  border-radius: 6px;\n}\n.detail-footnote {\n  font-size: 12px;\n  color: #97a5b2;\n  margin-top: 18px;\n  line-height: 1.8;\n}\n.help-content p {\n  margin: 15px 0;\n  font-size: 14px;\n  line-height: 1.9;\n  color: #6c7f90;\n}\n.loading {\n  animation: pulse 1.5s ease-in-out infinite;\n}\n@keyframes pulse {\n  50% {\n    opacity: 0.4;\n  }\n}\n@media (min-width: 1500px) {\n  .overview-grid {\n    grid-template-columns: minmax(0, 1fr) 330px;\n  }\n  td {\n    padding: 19px 18px;\n  }\n  main {\n    padding: 38px 42px;\n  }\n  .metric {\n    padding: 23px 26px;\n  }\n}\n@media (max-width: 1200px) {\n  .sidebar {\n    width: 190px;\n    padding-inline: 12px;\n  }\n  .workspace {\n    margin-left: 190px;\n    width: calc(100% - 190px);\n  }\n  main {\n    padding: 25px 24px;\n  }\n  .topbar {\n    padding-inline: 24px;\n  }\n  .overview-grid {\n    grid-template-columns: minmax(0, 1fr) 270px;\n    gap: 17px;\n  }\n  .metric {\n    padding: 17px;\n  }\n  .metric-value {\n    font-size: 31px;\n  }\n  .brand {\n    font-size: 17px;\n    padding: 0 5px;\n  }\n  .brand small {\n    font-size: 9px;\n  }\n  .metric-caption {\n    font-size: 11px;\n  }\n  .heading-actions {\n    gap: 8px;\n  }\n  .primary {\n    padding-inline: 13px;\n  }\n  .page-footer {\n    font-size: 10px;\n  }\n}\n@media (max-width: 1000px) {\n  .overview-grid {\n    grid-template-columns: 1fr;\n  }\n  .right-column {\n    display: grid;\n    grid-template-columns: 1fr 1fr;\n  }\n  .model-grid {\n    grid-template-columns: 1fr;\n  }\n  .sidebar {\n    width: 175px;\n  }\n  .workspace {\n    margin-left: 175px;\n    width: calc(100% - 175px);\n  }\n  .page-heading {\n    align-items: flex-start;\n    flex-wrap: wrap;\n  }\n  .metric-caption {\n    flex-direction: column;\n    align-items: flex-start;\n    gap: 2px;\n  }\n  .metric-head {\n    font-size: 12px;\n  }\n  .metric-value {\n    font-size: 28px;\n  }\n  .page-footer {\n    flex-direction: column;\n    gap: 6px;\n  }\n}\n@media (max-width: 720px) {\n  .shell {\n    display: block;\n  }\n  .sidebar {\n    position: static;\n    width: 100%;\n    padding: 18px 20px 0;\n  }\n  .brand {\n    font-size: 18px;\n  }\n  .brand small {\n    font-size: 9px;\n  }\n  .brand-mark {\n    height: 25px;\n  }\n  .brand-mark i:nth-child(3) {\n    height: 25px;\n  }\n  .nav-label,\n  .sidebar-note,\n  .sidebar-footer {\n    display: none;\n  }\n  .sidebar nav {\n    display: flex;\n    margin-top: 17px;\n    gap: 6px;\n  }\n  .nav-item {\n    padding: 11px 8px;\n    font-size: 13px;\n    justify-content: center;\n    gap: 7px;\n    margin: 0;\n    border-radius: 6px 6px 0 0;\n  }\n  .nav-item svg {\n    width: 15px;\n    height: 15px;\n  }\n  .workspace {\n    width: 100%;\n    margin: 0;\n  }\n  .topbar {\n    height: 48px;\n    padding-inline: 20px;\n  }\n  .session-label {\n    font-size: 11px;\n  }\n  .topbar-right {\n    gap: 10px;\n  }\n  .breadcrumb {\n    font-size: 12px;\n    gap: 10px;\n  }\n  main {\n    padding: 23px 18px 18px;\n  }\n  .page-heading {\n    gap: 17px;\n    margin-bottom: 20px;\n  }\n  .page-heading h1 {\n    font-size: 25px;\n  }\n  .page-heading p {\n    font-size: 13px;\n  }\n  .eyebrow {\n    font-size: 10px;\n  }\n  .heading-actions {\n    width: 100%;\n    justify-content: space-between;\n  }\n  .date-control {\n    flex: 1;\n    max-width: 225px;\n  }\n  .date-control input {\n    width: 100%;\n  }\n  .data-strip {\n    font-size: 11px;\n    align-items: flex-start;\n  }\n  .data-strip > div {\n    gap: 6px;\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  .metrics {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 12px;\n    margin-bottom: 17px;\n  }\n  .metric {\n    padding: 16px;\n  }\n  .metric-head {\n    font-size: 13px;\n  }\n  .metric-value {\n    font-size: 32px;\n  }\n  .metric-caption {\n    font-size: 12px;\n  }\n  .right-column {\n    grid-template-columns: 1fr;\n  }\n  .panel {\n    --panel-inline-padding: 17px;\n  }\n  .panel-heading {\n    padding: 19px var(--panel-inline-padding) 15px;\n  }\n  .filters {\n    padding-inline: 17px;\n    gap: 8px;\n  }\n  .filters select {\n    max-width: 130px;\n  }\n  .table-subnav {\n    padding-inline: 17px;\n  }\n  .table-footer {\n    padding-inline: 17px;\n  }\n  .table-footer span:last-child {\n    display: none;\n  }\n  .small-muted {\n    font-size: 11px;\n  }\n  .detail-dialog,\n  .help-dialog {\n    padding: 20px;\n  }\n  .detail-facts {\n    grid-template-columns: 1fr 1fr;\n  }\n  .detail-head h2 {\n    font-size: 22px;\n  }\n  .detail-score {\n    font-size: 45px;\n  }\n  .factor-row {\n    grid-template-columns: 76px 1fr 26px 42px;\n    gap: 8px;\n    font-size: 12px;\n  }\n  .sector-formula {\n    line-height: 2;\n  }\n  .model-actions {\n    flex-wrap: wrap;\n  }\n  .preset-buttons {\n    padding-inline: 17px;\n    gap: 6px;\n  }\n  .preset-buttons button {\n    padding-inline: 11px;\n  }\n  .detail-facts strong {\n    font-size: 16px;\n  }\n  .page-footer {\n    font-size: 11px;\n  }\n  .sidebar .brand small {\n    font-size: 10px;\n  }\n}\n@media (prefers-reduced-motion: reduce) {\n  * {\n    animation: none !important;\n    scroll-behavior: auto !important;\n  }\n}\n.review-intro {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 22px;\n  gap: 20px;\n}\n.review-intro p {\n  font-size: 14px;\n  color: #8395a3;\n  margin-top: 9px;\n}\n.review-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);\n  gap: 22px;\n  align-items: start;\n}\n.review-conclusion {\n  background: #eff7f3;\n  color: #628b79;\n  padding: 12px 22px;\n  font-size: 13px;\n}\n.review-stock {\n  font-weight: 500;\n  font-size: 14px;\n}\n.top-group {\n  color: #b58d48;\n  background: #fbf3e5;\n  font-size: 10px;\n  padding: 2px 5px;\n  margin-left: 7px;\n  border-radius: 3px;\n}\n.up {\n  color: var(--red);\n  font-variant-numeric: tabular-nums;\n}\n.down {\n  color: var(--green);\n  font-variant-numeric: tabular-nums;\n}\n.ai-content {\n  padding: 0 22px;\n}\n.ai-empty {\n  text-align: center;\n  padding: 17px 25px 20px;\n  color: #8b9aa8;\n}\n.ai-symbol {\n  display: flex;\n  justify-content: center;\n  width: 45px;\n  height: 45px;\n  align-items: center;\n  background: #eef5f2;\n  color: #69a991;\n  border-radius: 12px;\n  margin: 0 auto 15px;\n}\n.ai-symbol svg {\n  width: 25px;\n  height: 25px;\n}\n.ai-empty h3 {\n  font-size: 16px;\n  color: #617587;\n  font-weight: 500;\n  margin-bottom: 9px;\n}\n.ai-empty p {\n  font-size: 13px;\n  line-height: 1.9;\n}\n.ai-process {\n  font-size: 12px;\n  background: #f7f9fb;\n  padding: 16px;\n  margin-top: 23px;\n  color: #9aabba;\n}\n.ai-process span {\n  display: block;\n  color: #c0ccd5;\n  line-height: 1.8;\n}\n.ai-actions {\n  padding: 17px 22px;\n  border-top: 1px solid var(--line);\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 13px;\n}\n.ai-actions button {\n  font-size: 13px;\n}\n.ai-actions > span {\n  font-size: 12px;\n  color: #9b8a6b;\n}\n.ai-score {\n  display: flex;\n  align-items: center;\n  gap: 14px;\n  padding: 8px 22px 16px;\n}\n.ai-score strong {\n  font-size: 48px;\n  color: #588b79;\n  line-height: 1.1;\n}\n.ai-score > span {\n  font-size: 13px;\n  color: #789285;\n}\n.ai-score small {\n  display: block;\n  font-size: 11px;\n  color: #9aa9a1;\n  margin-top: 4px;\n}\n.ai-summary {\n  padding: 0 22px;\n  font-size: 14px;\n  line-height: 1.9;\n  color: #637889;\n}\n.ai-panel h3 {\n  margin: 20px 22px 10px;\n  font-size: 14px;\n}\n.ai-panel ul {\n  padding: 0 22px 0 38px;\n  color: #8192a1;\n  font-size: 13px;\n  line-height: 1.9;\n}\n.ai-panel li {\n  margin-bottom: 8px;\n}\n.ai-note {\n  padding: 10px 22px 20px;\n  font-size: 12px;\n  color: #9ba8b2;\n}\n.review-sector-panel,\n.history-panel,\n.model-connection {\n  margin-top: 22px;\n}\n.history-list {\n  padding: 0 22px 18px;\n}\n.history-list button {\n  display: flex;\n  justify-content: space-between;\n  gap: 14px;\n  padding: 12px;\n  width: 100%;\n  background: #f8fafb;\n  color: #718699;\n  border-bottom: 1px solid #e8eef1;\n  text-align: left;\n  font-size: 13px;\n}\n.history-list button:hover {\n  background: #eef6f1;\n}\n.model-connection > p {\n  font-size: 14px;\n  line-height: 1.9;\n  color: #81929f;\n  margin: 0 22px 14px;\n}\n.model-connection > p:last-child {\n  font-size: 12px;\n  margin-bottom: 22px;\n}\n@media (max-width: 1200px) {\n  .review-grid {\n    grid-template-columns: 1fr;\n  }\n  .ai-panel {\n    max-width: none;\n  }\n}\n@media (max-width: 720px) {\n  .sidebar nav {\n    overflow-x: auto;\n  }\n  .nav-item {\n    min-width: 83px;\n    flex-shrink: 0;\n  }\n  .review-intro {\n    flex-wrap: wrap;\n    gap: 12px;\n  }\n  .history-list button {\n    flex-direction: column;\n    gap: 4px;\n  }\n  .top-group {\n    display: none;\n  }\n  .review-intro p {\n    font-size: 13px;\n  }\n  .review-grid {\n    gap: 17px;\n  }\n}\n.pool-panel .table-scroll {\n  max-height: 650px;\n}\n.pool-panel th {\n  position: sticky;\n  top: 0;\n  z-index: 1;\n}\n.stock-code,\n.sector-row-meta,\n.panel-footnote,\n.outline-tag,\n.page-footer,\n.sidebar-note p,\n.sidebar-footer small {\n  font-size: 12px;\n}\ntable {\n  font-size: 14px;\n}\n.sector-tag,\n.height-tag {\n  font-size: 12px;\n}\n.page-footer {\n  line-height: 1.7;\n}\n@media (max-width: 720px) {\n  .pool-panel .table-scroll {\n    max-height: 560px;\n  }\n}\n\n/* Paper account uses the same research workspace visual language. */\n.paper-toolbar {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 14px;\n  flex-wrap: wrap;\n}\n.paper-toolbar > div {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  flex-wrap: wrap;\n}\n.paper-toolbar a {\n  text-decoration: none;\n  font-size: 12px;\n  display: inline-flex;\n  align-items: center;\n}\n.paper-message {\n  font-size: 12px;\n  color: var(--muted);\n  min-height: 18px;\n  margin: 12px 0 20px;\n}\n.paper-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);\n  gap: 20px;\n  align-items: start;\n}\n.paper-panel {\n  margin-top: 20px;\n}\n.equity-chart {\n  display: block;\n  width: 100%;\n  height: auto;\n  padding: 4px 18px 0;\n}\n.chart-axis {\n  font-size: 11px;\n  fill: #758396;\n}\n.chart-legend {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 14px;\n  padding: 0 24px 18px;\n  font-size: 11px;\n  color: #758396;\n}\n.chart-legend i {\n  display: inline-block;\n  width: 12px;\n  height: 3px;\n  vertical-align: middle;\n  background: #13977e;\n  margin-right: 6px;\n}\n.chart-legend i.benchmark {\n  background: #acb6c4;\n}\n.verified {\n  color: #14846f;\n  border-color: #bfe5d9;\n  background: #f0faf6;\n}\n.action-tag {\n  background: #edf4f8;\n  color: #405c73;\n  border-radius: 5px;\n  padding: 5px 8px;\n  font-size: 11px;\n  white-space: nowrap;\n}\n.plan-reason {\n  min-width: 220px;\n  max-width: 330px;\n  white-space: normal !important;\n  line-height: 1.7;\n}\n.paper-config {\n  display: flex;\n  align-items: end;\n  gap: 20px;\n  flex-wrap: wrap;\n  padding: 0 24px 24px;\n}\n.paper-config label {\n  display: grid;\n  gap: 9px;\n  font-size: 12px;\n  color: #758396;\n}\n.paper-config input,\n.paper-config select {\n  border: 1px solid #dce3eb;\n  border-radius: 6px;\n  background: #fff;\n  padding: 10px 12px;\n  color: #21384b;\n  min-width: 220px;\n}\n.paper-config input:disabled {\n  background: #f2f5f8;\n  color: #8896a6;\n}\n.paper-outcomes {\n  padding: 0 24px;\n}\n.paper-outcomes summary {\n  cursor: pointer;\n  padding: 16px 0;\n  font-size: 12px;\n  color: #526b80;\n}\n.execution-feedback p {\n  display: flex;\n  gap: 14px;\n  justify-content: space-between;\n  border-top: 1px solid #edf1f5;\n  padding: 12px 0;\n  margin: 0;\n  font-size: 12px;\n}\n.execution-feedback span {\n  color: #758396;\n}\n.strategy-active {\n  display: grid;\n  gap: 8px;\n  padding: 0 24px 16px;\n}\n.strategy-active span {\n  font-size: 11px;\n  color: #758396;\n}\n.strategy-active strong {\n  font-size: 18px;\n  letter-spacing: 0.2px;\n}\n/* In-panel metrics share heading/footer gutters and stack labels above values. */\n.panel-metrics {\n  padding-inline: var(--panel-inline-padding);\n}\n.panel-metrics > div {\n  display: grid;\n  align-content: start;\n  gap: 6px;\n  min-width: 0;\n  overflow-wrap: anywhere;\n}\n.panel-metrics .mini-label {\n  margin-bottom: 0;\n}\n.panel-metrics .outline-tag {\n  justify-self: start;\n  max-width: 100%;\n  white-space: normal;\n}\n.panel-metric-value {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);\n  gap: 4px;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  font-size: 14px;\n  line-height: 1.7;\n  line-break: anywhere;\n}\n.alert-channel-metrics {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n}\n.strategy-metrics strong {\n  font-size: 16px;\n  overflow-wrap: anywhere;\n}\n.strategy-metrics small {\n  font-size: 12px;\n  color: var(--muted);\n  overflow-wrap: anywhere;\n}\n#strategies-status .strategy-metrics {\n  margin-bottom: 0;\n}\n@media (max-width: 720px) {\n  .alert-channel-metrics {\n    grid-template-columns: minmax(0, 1fr);\n  }\n}\n.version-row {\n  margin: 16px 24px;\n  padding: 14px 0;\n  border-top: 1px solid #edf1f5;\n  font-size: 12px;\n}\n.version-row > div {\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n}\n.version-row p {\n  line-height: 1.7;\n  color: #758396;\n}\n.version-row small {\n  line-height: 1.8;\n  color: #758396;\n}\n.version-row button {\n  margin-top: 12px;\n}\n.paper-grid .ai-panel > div > p {\n  padding: 0 24px;\n  color: #758396;\n  font-size: 12px;\n  line-height: 1.8;\n}\n.paper-grid .ai-panel .small-muted {\n  padding: 0 24px 24px;\n}\n.paper-grid .ai-process {\n  margin: 0 24px;\n}\n.paper-grid .ai-note {\n  margin: 14px 0;\n}\n.paper-grid .panel-footnote {\n  line-height: 1.8;\n}\n.paper-panel .panel-footnote {\n  line-height: 1.8;\n}\n.paper-panel td {\n  vertical-align: top;\n}\n.paper-message:empty {\n  display: none;\n}\n@media (max-width: 1100px) {\n  .paper-grid {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .paper-toolbar {\n    align-items: start;\n  }\n  .paper-config {\n    gap: 14px;\n  }\n}\n@media (max-width: 650px) {\n  .paper-toolbar .secondary,\n  .paper-toolbar .primary {\n    font-size: 11px;\n    padding: 9px 10px;\n  }\n  .paper-toolbar > div {\n    gap: 6px;\n  }\n  .paper-config {\n    padding: 0 16px 20px;\n  }\n  .paper-config label,\n  .paper-config input,\n  .paper-config select {\n    width: 100%;\n    min-width: 0;\n  }\n  .execution-feedback p {\n    display: block;\n  }\n  .execution-feedback span {\n    display: block;\n    margin-top: 6px;\n  }\n  .chart-legend {\n    padding: 0 16px 16px;\n    gap: 9px;\n  }\n  .paper-grid {\n    gap: 16px;\n  }\n}\n\n.paper-fee-settings {\n  border: 1px solid #dce3eb;\n  border-radius: 8px;\n  width: 100%;\n  padding: 18px 20px;\n  margin: 0;\n  min-width: 0;\n}\n.paper-fee-settings legend {\n  font-size: 14px;\n  font-weight: 600;\n  color: #21384b;\n  padding: 0 8px;\n}\n.fee-settings-heading {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  flex-wrap: wrap;\n  margin-bottom: 16px;\n}\n.fee-settings-heading p,\n.fee-settings-note {\n  font-size: 12px;\n  color: #758396;\n  line-height: 1.8;\n  margin: 0;\n}\n.paper-fee-controls {\n  display: grid;\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 18px 24px;\n}\n.paper-config .paper-fee-controls input {\n  min-width: 0;\n  width: 100%;\n  font-size: 14px;\n}\n.paper-fee-controls span {\n  font-size: 12px;\n  color: #8896a6;\n}\n.fee-settings-note {\n  margin-top: 18px;\n}\n.paper-fee-settings .text-button {\n  margin-top: 8px;\n}\n.fee-breakdown {\n  max-width: 200px;\n  white-space: normal;\n  line-height: 1.7;\n}\n.fee-breakdown summary {\n  cursor: pointer;\n  white-space: nowrap;\n}\n.fee-breakdown > span {\n  display: block;\n  color: #758396;\n  font-size: 12px;\n  margin-top: 8px;\n  min-width: 160px;\n}\n@media (max-width: 650px) {\n  .paper-fee-settings {\n    padding: 16px 12px;\n  }\n  .paper-fee-controls {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 16px 12px;\n  }\n  .paper-config .paper-fee-controls label {\n    font-size: 12px;\n  }\n  .fee-settings-heading p {\n    max-width: 100%;\n  }\n}\n\n#paper-metrics .metric-value {\n  font-size: clamp(22px, 2.2vw, 32px);\n}\n.plan-price-conditions {\n  min-width: 220px;\n  line-height: 1.65;\n}\n', "type": "text/css; charset=utf-8" } };
+var ASSETS = { "/": { "body": `<!doctype html>\r
+<html lang="zh-CN">\r
+  <head>\r
+    <meta charset="UTF-8" />\r
+    <meta name="viewport" content="width=device-width, initial-scale=1" />\r
+    <meta name="theme-color" content="#101e2e" />\r
+    <title>\u6DA8\u505C\u7814\u7A76\u53F0 \xB7 A \u80A1\u590D\u76D8\u4E0E\u8BC4\u5206</title>\r
+    <meta\r
+      name="description"\r
+      content="\u6BCF\u65E5 A \u80A1\u6DA8\u505C\u590D\u76D8\uFF0C\u67E5\u770B\u53EF\u89E3\u91CA\u7684\u4E2A\u80A1\u8BC4\u5206\u3001\u884C\u4E1A\u677F\u5757\u5F3A\u5EA6\u548C\u5E02\u573A\u60C5\u7EEA\u3002"\r
+    />\r
+    <link\r
+      rel="icon"\r
+      type="image/svg+xml"\r
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101e2e'/%3E%3Cpath d='M7 24V17h4v7m3 0V12h4v12m3 0V7h4v17' stroke='%2356d3b5' stroke-width='3'/%3E%3C/svg%3E"\r
+    />\r
+    <link rel="stylesheet" href="/assets/styles.css" />\r
+  </head>\r
+  <body>\r
+    <div class="shell">\r
+      <aside class="sidebar">\r
+        <a class="brand" href="#overview" aria-label="\u6DA8\u505C\u7814\u7A76\u53F0\u9996\u9875"\r
+          ><span class="brand-mark"><i></i><i></i><i></i></span\r
+          ><span>\u6DA8\u505C\u7814\u7A76\u53F0<small>LIMIT LENS</small></span></a\r
+        >\r
+        <div class="nav-label">\u7814\u7A76\u5DE5\u4F5C\u53F0</div>\r
+        <nav aria-label="\u4E3B\u5BFC\u822A">\r
+          <button data-view="overview" class="nav-item active">\r
+            <span data-icon="dashboard"></span>\u603B\u89C8\u590D\u76D8\r
+          </button>\r
+          <button data-view="stocks" class="nav-item">\r
+            <span data-icon="chart"></span>\u4E2A\u80A1\u5206\u6790\r
+          </button>\r
+          <button data-view="sectors" class="nav-item">\r
+            <span data-icon="grid"></span>\u677F\u5757\u7814\u7A76\r
+          </button>\r
+          <button data-view="review" class="nav-item">\r
+            <span data-icon="shield"></span>\u6628\u65E5\u53CD\u9988\r
+          </button>\r
+          <button data-view="paper" class="nav-item">\r
+            <span data-icon="chart"></span>\u6A21\u62DF\u4EA4\u6613\r
+          </button>\r
+          <button data-view="strategies" class="nav-item">\r
+            <span data-icon="sliders"></span>\u7B56\u7565\u8D5B\u9A6C\r
+          </button>\r
+          <button data-view="alerts" class="nav-item">\r
+            <span data-icon="shield"></span>\u8FD0\u7EF4\u544A\u8B66\r
+          </button>\r
+          <button data-view="model" class="nav-item">\r
+            <span data-icon="sliders"></span>\u8BC4\u5206\u6A21\u578B\r
+          </button>\r
+        </nav>\r
+        <div class="sidebar-note">\r
+          <span class="mini-label">\u590D\u76D8\u95ED\u73AF</span\r
+          ><strong>\u8BC4\u5206 \xB7 \u68C0\u9A8C \xB7 \u6539\u8FDB</strong>\r
+          <p>\u4FDD\u5B58\u5F53\u65F6\u7684\u5224\u65AD\uFF0C\u518D\u7528\u4E0B\u4E00\u4EA4\u6613\u65E5\u7684\u7ED3\u679C\u68C0\u9A8C\u3002</p>\r
+          <div class="note-line"></div>\r
+          <span id="snapshot-status">\u6536\u76D8\u540E\u81EA\u52A8\u4FDD\u5B58\u8BC4\u5206\u5FEB\u7167</span>\r
+        </div>\r
+        <div class="sidebar-footer">\r
+          <span data-icon="database"></span>\r
+          <div>\r
+            \u516C\u5F00\u884C\u60C5\u63A5\u5165<small id="sidebar-source">\u6B63\u5728\u68C0\u67E5\u6570\u636E\u6E90</small>\r
+          </div>\r
+        </div>\r
+      </aside>\r
+      <div class="workspace">\r
+        <header class="topbar">\r
+          <div class="breadcrumb">\r
+            \u7814\u7A76\u5DE5\u4F5C\u53F0 <span>/</span> <strong id="crumb">\u603B\u89C8\u590D\u76D8</strong>\r
+          </div>\r
+          <div class="topbar-right">\r
+            <span class="session-label">A \u80A1 \xB7 \u6CAA\u6DF1\u5E02\u573A</span\r
+            ><button\r
+              class="icon-button"\r
+              id="help-btn"\r
+              aria-label="\u67E5\u770B\u6570\u636E\u53E3\u5F84"\r
+            >\r
+              <span data-icon="info"></span>\r
+            </button>\r
+          </div>\r
+        </header>\r
+        <main>\r
+          <div class="page-heading">\r
+            <div>\r
+              <div class="eyebrow">DAILY MARKET REVIEW</div>\r
+              <h1 id="page-title">\u6BCF\u65E5\u6DA8\u505C\u590D\u76D8</h1>\r
+              <p id="page-subtitle">\u628A\u6DA8\u505C\u62C6\u6210\u4FE1\u53F7\uFF0C\u628A\u5224\u65AD\u5EFA\u7ACB\u5728\u6570\u636E\u4E0A\u3002</p>\r
+            </div>\r
+            <div class="heading-actions">\r
+              <label class="date-control"\r
+                ><span data-icon="calendar"></span\r
+                ><input\r
+                  type="date"\r
+                  id="trade-date"\r
+                  aria-label="\u4EA4\u6613\u65E5\u671F" /></label\r
+              ><button class="primary" id="refresh-btn">\r
+                <span data-icon="refresh"></span>\u5237\u65B0\u884C\u60C5\r
+              </button>\r
+            </div>\r
+          </div>\r
+          <div class="data-strip">\r
+            <div>\r
+              <span class="source-tag" id="source-tag">\u884C\u60C5\u52A0\u8F7D\u4E2D</span\r
+              ><span id="data-time">\u6B63\u5728\u83B7\u53D6\u6240\u9009\u4EA4\u6613\u65E5\u6DA8\u505C\u6C60</span>\r
+            </div>\r
+            <button class="text-button" id="demo-btn">\u67E5\u770B\u6F14\u793A</button>\r
+          </div>\r
+          <div class="notice" id="notice" role="status" hidden></div>\r
+          <section id="summary" class="metrics" aria-label="\u5E02\u573A\u6982\u51B5"></section>\r
+          <div id="overview-content" class="overview-grid">\r
+            <section class="panel pool-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\r
+                    \u6DA8\u505C\u4E2A\u80A1 <span class="count-chip" id="pool-count">\u2014</span>\r
+                  </h2>\r
+                  <p>\u6309\u7EFC\u5408\u8BC4\u5206\u6392\u5E8F\uFF0C\u70B9\u51FB\u4E2A\u80A1\u67E5\u770B\u5B8C\u6574\u8BCA\u65AD</p>\r
+                </div>\r
+                <span class="small-muted" id="coverage-label">\u516D\u7EF4\u8BC4\u5206</span>\r
+              </div>\r
+              <div class="filters">\r
+                <div class="search-control">\r
+                  <span data-icon="search"></span\r
+                  ><input\r
+                    id="search"\r
+                    placeholder="\u641C\u7D22\u540D\u79F0 / \u4EE3\u7801"\r
+                    aria-label="\u641C\u7D22\u6DA8\u505C\u4E2A\u80A1"\r
+                  />\r
+                </div>\r
+                <select id="sector-filter" aria-label="\u7B5B\u9009\u884C\u4E1A\u677F\u5757">\r
+                  <option value="">\u5168\u90E8\u884C\u4E1A</option>\r
+                </select>\r
+              </div>\r
+              <div class="table-subnav">\r
+                <div class="segments" role="group" aria-label="\u8FDE\u677F\u7B5B\u9009">\r
+                  <button data-height="all" class="active">\u5168\u90E8</button\r
+                  ><button data-height="first">\u9996\u677F</button\r
+                  ><button data-height="relay">\u8FDE\u677F</button>\r
+                </div>\r
+                <div class="sort-control">\r
+                  <label for="sort">\u6392\u5E8F</label\r
+                  ><select id="sort">\r
+                    <option value="score">\u7EFC\u5408\u8BC4\u5206</option>\r
+                    <option value="height">\u8FDE\u677F\u9AD8\u5EA6</option>\r
+                    <option value="seal">\u5C01\u5355\u91D1\u989D</option>\r
+                    <option value="first">\u9996\u5C01\u65F6\u95F4</option>\r
+                  </select>\r
+                </div>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u4E2A\u80A1 / \u4EE3\u7801</th>\r
+                      <th>\u7EFC\u5408\u8BC4\u5206</th>\r
+                      <th>\u884C\u4E1A\u677F\u5757</th>\r
+                      <th>\u8FDE\u677F</th>\r
+                      <th>\u9996\u5C01\u65F6\u95F4</th>\r
+                      <th>\u5C01\u5355\u91D1\u989D</th>\r
+                      <th>\u6362\u624B\u7387</th>\r
+                      <th>\u70B8\u677F</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="stock-rows"></tbody>\r
+                </table>\r
+              </div>\r
+              <div class="table-footer">\r
+                <span id="table-status">\u6B63\u5728\u8BFB\u53D6\u516C\u5F00\u884C\u60C5\u2026</span\r
+                ><span>\u8BC4\u5206\u533A\u95F4 0\u2013100</span>\r
+              </div>\r
+            </section>\r
+            <div class="right-column">\r
+              <section class="panel sector-panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u677F\u5757\u5F3A\u5EA6</h2>\r
+                    <p>\u6DA8\u505C\u96C6\u805A \xD7 \u8FDE\u677F\u9AD8\u5EA6 \xD7 \u5C01\u677F\u8868\u73B0</p>\r
+                  </div>\r
+                  <button\r
+                    class="icon-button"\r
+                    id="all-sectors"\r
+                    aria-label="\u67E5\u770B\u5168\u90E8\u884C\u4E1A\u677F\u5757"\r
+                  >\r
+                    <span data-icon="grid"></span>\r
+                  </button>\r
+                </div>\r
+                <div id="sector-rank"></div>\r
+                <div class="panel-footnote">\r
+                  \u884C\u4E1A\u5206\u7C7B\u53E3\u5F84\uFF0C\u4E0D\u7B49\u540C\u4E8E\u6982\u5FF5\u9898\u6750\u70ED\u5EA6\r
+                </div>\r
+              </section>\r
+              <section class="panel ladder-panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u8FDE\u677F\u68AF\u961F</h2>\r
+                    <p>\u89C2\u5BDF\u5E02\u573A\u9AD8\u5EA6\u4E0E\u63A5\u529B\u7ED3\u6784</p>\r
+                  </div>\r
+                  <span class="outline-tag">\u5F53\u65E5</span>\r
+                </div>\r
+                <div id="ladder-chart"></div>\r
+                <div id="ladder-insight" class="insight"></div>\r
+              </section>\r
+            </div>\r
+          </div>\r
+          <section id="sectors-view" class="panel" hidden>\r
+            <div class="panel-heading">\r
+              <div>\r
+                <h2>\u884C\u4E1A\u677F\u5757\u8BC4\u5206</h2>\r
+                <p>\u70B9\u51FB\u677F\u5757\uFF0C\u7B5B\u9009\u5B83\u7684\u6DA8\u505C\u4E2A\u80A1</p>\r
+              </div>\r
+              <span class="outline-tag">\u900F\u660E\u6743\u91CD</span>\r
+            </div>\r
+            <div class="sector-formula">\r
+              \u6DA8\u505C\u96C6\u805A 35% <span>+</span> \u8FDE\u677F\u9AD8\u5EA6 25% <span>+</span> \u5C01\u677F\u7A33\u5B9A\r
+              25% <span>+</span> \u65E9\u76D8\u8054\u52A8 15%\r
+            </div>\r
+            <div class="table-scroll">\r
+              <table>\r
+                <thead>\r
+                  <tr>\r
+                    <th>\u884C\u4E1A\u677F\u5757</th>\r
+                    <th>\u677F\u5757\u5F97\u5206</th>\r
+                    <th>\u6DA8\u505C\u5BB6\u6570</th>\r
+                    <th>\u6700\u9AD8\u8FDE\u677F</th>\r
+                    <th>\u5C01\u677F\u7A33\u5B9A</th>\r
+                    <th>\u65E9\u76D8\u8054\u52A8</th>\r
+                    <th>\u6DA8\u505C\u80A1\u6210\u4EA4\u989D</th>\r
+                  </tr>\r
+                </thead>\r
+                <tbody id="sector-rows"></tbody>\r
+              </table>\r
+            </div>\r
+          </section>\r
+          <section id="review-view" hidden>\r
+            <div class="review-intro">\r
+              <div>\r
+                <span class="outline-tag" id="review-date-label"\r
+                  >\u7B49\u5F85\u9996\u4E2A\u53CD\u9988\u65E5</span\r
+                >\r
+                <p id="review-status">\r
+                  \u5F53\u5929\u6536\u76D8\u540E\u4FDD\u5B58\u539F\u59CB\u8BC4\u5206\uFF0C\u4E0B\u4E00\u4E2A\u4EA4\u6613\u65E5\u6838\u9A8C\u5E02\u573A\u8868\u73B0\u3002\r
+                </p>\r
+              </div>\r
+              <button class="secondary" id="run-review">\r
+                <span data-icon="refresh"></span>\u66F4\u65B0\u53CD\u9988\r
+              </button>\r
+            </div>\r
+            <div id="review-metrics" class="metrics"></div>\r
+            <div class="review-grid">\r
+              <section class="panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u539F\u59CB\u8BC4\u5206\u4E0E\u5B9E\u9645\u8868\u73B0</h2>\r
+                    <p>\u56FA\u5B9A\u6628\u65E5\u6837\u672C\uFF0C\u68C0\u9A8C\u4ECA\u5929\u7684\u8868\u73B0\uFF0C\u907F\u514D\u4E8B\u540E\u6311\u9009\u8D62\u5BB6</p>\r
+                  </div>\r
+                  <span id="review-coverage" class="outline-tag">\u7B49\u5F85\u6837\u672C</span>\r
+                </div>\r
+                <div\r
+                  id="review-conclusion"\r
+                  class="review-conclusion"\r
+                  hidden\r
+                ></div>\r
+                <div class="table-scroll">\r
+                  <table>\r
+                    <thead>\r
+                      <tr>\r
+                        <th>\u6628\u65E5\u6DA8\u505C\u4E2A\u80A1</th>\r
+                        <th>\u539F\u59CB\u8BC4\u5206</th>\r
+                        <th>\u6B21\u65E5\u5F00\u76D8</th>\r
+                        <th>\u6B21\u65E5\u6536\u76D8</th>\r
+                        <th>\u76D8\u4E2D\u6700\u4F4E</th>\r
+                        <th>\u518D\u6B21\u6DA8\u505C</th>\r
+                      </tr>\r
+                    </thead>\r
+                    <tbody id="review-rows"></tbody>\r
+                  </table>\r
+                </div>\r
+                <div class="panel-footnote">\r
+                  \u6536\u76CA\u4EE5\u539F\u59CB\u6536\u76D8\u4EF7\u4E3A\u57FA\u51C6\uFF0C\u672A\u5047\u8BBE\u80FD\u5728\u6DA8\u505C\u4EF7\u6210\u4EA4\uFF1B\u4E0D\u7B49\u540C\u4E8E\u53EF\u5B9E\u73B0\u7B56\u7565\u6536\u76CA\u3002\r
+                </div>\r
+              </section>\r
+              <section class="panel ai-panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>AI \u7CFB\u7EDF\u8BC4\u4F30</h2>\r
+                    <p>\u7528\u5DF2\u6838\u9A8C\u7684\u5E02\u573A\u7ED3\u679C\uFF0C\u5BA1\u89C6\u8BC4\u5206\u8D28\u91CF</p>\r
+                  </div>\r
+                  <span class="outline-tag" id="ai-status-tag">\u68C0\u67E5\u8FDE\u63A5</span>\r
+                </div>\r
+                <div id="ai-content"></div>\r
+                <div class="ai-actions">\r
+                  <button class="primary" id="ai-grade-btn">\u751F\u6210 AI \u8BC4\u4EF7</button\r
+                  ><span id="ai-action-status" role="status"></span>\r
+                </div>\r
+              </section>\r
+            </div>\r
+            <section class="panel review-sector-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u677F\u5757\u5224\u65AD\u53CD\u9988</h2>\r
+                  <p>\u4F7F\u7528\u6628\u65E5\u56FA\u5B9A\u7684\u6DA8\u505C\u6210\u5458\uFF0C\u6BD4\u8F83\u6B21\u65E5\u5E73\u5747\u8868\u73B0</p>\r
+                </div>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u6628\u65E5\u884C\u4E1A\u677F\u5757</th>\r
+                      <th>\u539F\u59CB\u677F\u5757\u5206</th>\r
+                      <th>\u6709\u6548 / \u539F\u59CB\u6837\u672C</th>\r
+                      <th>\u6B21\u65E5\u5E73\u5747\u6536\u76CA</th>\r
+                      <th>\u518D\u6B21\u6DA8\u505C\u6BD4\u4F8B</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="review-sector-rows"></tbody>\r
+                </table>\r
+              </div>\r
+            </section>\r
+            <section class="panel history-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u53CD\u9988\u8BB0\u5F55</h2>\r
+                  <p>\u6301\u7EED\u79EF\u7D2F\u6837\u672C\uFF0C\u518D\u5224\u65AD\u6A21\u578B\u662F\u5426\u7A33\u5B9A\u6709\u6548</p>\r
+                </div>\r
+              </div>\r
+              <div id="review-history"></div>\r
+            </section>\r
+          </section>\r
+          <section id="model-view" hidden>\r
+            <div class="model-grid">\r
+              <section class="panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u4E2A\u80A1\u8BC4\u5206\u6743\u91CD</h2>\r
+                    <p>\u5373\u65F6\u91CD\u7B97\u5E76\u4FDD\u5B58\uFF1B\u5DF2\u5F52\u6863\u7684\u539F\u59CB\u8BC4\u5206\u4E0D\u4F1A\u88AB\u8986\u76D6</p>\r
+                  </div>\r
+                  <span id="weight-total" class="outline-tag">\u5408\u8BA1 100%</span>\r
+                </div>\r
+                <div class="preset-buttons">\r
+                  <button data-preset="balanced" class="active">\u7EFC\u5408\u590D\u76D8</button\r
+                  ><button data-preset="first">\u9996\u677F\u6316\u6398</button\r
+                  ><button data-preset="relay">\u77ED\u7EBF\u63A5\u529B</button>\r
+                </div>\r
+                <div id="weight-controls"></div>\r
+                <div class="model-actions">\r
+                  <button class="secondary" id="reset-model">\r
+                    \u6062\u590D\u7EFC\u5408\u590D\u76D8</button\r
+                  ><span id="model-status" role="status"\r
+                    >\u6743\u91CD\u76F8\u52A0\u540E\u5F52\u4E00\u5316\u8BA1\u7B97</span\r
+                  >\r
+                </div>\r
+              </section>\r
+              <section class="panel model-explain">\r
+                <div class="panel-heading"><h2>\u5206\u6570\u5982\u4F55\u4EA7\u751F</h2></div>\r
+                <div class="formula-box">\r
+                  \u7EFC\u5408\u5206 = \u6709\u6548\u6307\u6807\u52A0\u6743\u5747\u5206<br /><span\r
+                    >\u2212 \u98CE\u9669\u6263\u5206\uFF08\u6700\u591A 20 \u5206\uFF09</span\r
+                  >\r
+                </div>\r
+                <h3>\u6570\u636E\u4E0D\u5B8C\u6574\u65F6</h3>\r
+                <p>\r
+                  \u7F3A\u5931\u6307\u6807\u4E0D\u6309\u96F6\u5206\u8BA1\u5165\uFF0C\u5269\u4F59\u6743\u91CD\u91CD\u65B0\u5F52\u4E00\u5316\u3002\u6570\u636E\u8986\u76D6\u7387\u540C\u65F6\u663E\u793A\uFF0C\u8986\u76D6\u7387\u8F83\u4F4E\u7684\u5F97\u5206\u53EF\u6BD4\u6027\u8F83\u5F31\u3002\r
+                </p>\r
+                <h3>\u98CE\u9669\u6263\u5206</h3>\r
+                <dl>\r
+                  <div>\r
+                    <dt>5 \u677F\u53CA\u4EE5\u4E0A</dt>\r
+                    <dd>\u22128</dd>\r
+                  </div>\r
+                  <div>\r
+                    <dt>\u6362\u624B\u7387 > 40%</dt>\r
+                    <dd>\u22128</dd>\r
+                  </div>\r
+                  <div>\r
+                    <dt>\u70B8\u677F \u2265 3 \u6B21</dt>\r
+                    <dd>\u22125</dd>\r
+                  </div>\r
+                  <div>\r
+                    <dt>\u4F4E\u6362\u624B\u7ADE\u4EF7\u5C01\u677F\u7279\u5F81</dt>\r
+                    <dd>\u221210</dd>\r
+                  </div>\r
+                  <div>\r
+                    <dt>14:50 \u540E\u56DE\u5C01</dt>\r
+                    <dd>\u22124</dd>\r
+                  </div>\r
+                </dl>\r
+                <p class="model-limit">\r
+                  \u6B64\u6A21\u578B\u662F\u89C4\u5219\u8BC4\u5206\uFF0C\u5C1A\u672A\u8FDB\u884C\u5386\u53F2\u6536\u76CA\u6821\u51C6\u3002\u5206\u6570\u8861\u91CF\u89C2\u5BDF\u6307\u6807\uFF0C\u4E0D\u4EE3\u8868\u6B21\u65E5\u4E0A\u6DA8\u6982\u7387\u3002\r
+                </p>\r
+              </section>\r
+            </div>\r
+            <section class="panel model-connection">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u5927\u6A21\u578B\u8FDE\u63A5</h2>\r
+                  <p>DeepSeek\u3001OpenAI\u3001\u901A\u4E49\u517C\u5BB9\u63A5\u53E3</p>\r
+                </div>\r
+                <span class="outline-tag" id="model-ai-status">\u672A\u914D\u7F6E</span>\r
+              </div>\r
+              <p id="model-ai-detail">\r
+                \u670D\u52A1\u7AEF\u914D\u7F6E\u5BC6\u94A5\u3001\u63A5\u53E3\u5730\u5740\u548C\u6A21\u578B\u540E\uFF0CAI\r
+                \u4F1A\u6839\u636E\u51BB\u7ED3\u8BC4\u5206\u4E0E\u5DF2\u6838\u9A8C\u5E02\u573A\u7ED3\u679C\u751F\u6210\u8BC4\u4EF7\u3002\u5BC6\u94A5\u4E0D\u8FDB\u5165\u6D4F\u89C8\u5668\u3002\r
+              </p>\r
+              <p>\r
+                AI\r
+                \u7ED9\u51FA\u8BC1\u636E\u3001\u5224\u65AD\u5931\u8BEF\u4E0E\u53C2\u6570\u5019\u9009\uFF1B\u6A21\u62DF\u4EA4\u6613\u7B56\u7565\u4EC5\u5728\u72EC\u7ACB\u9A8C\u8BC1\u901A\u8FC7\u540E\u542F\u7528\uFF0C\u5386\u53F2\u8BB0\u5F55\u4FDD\u6301\u51BB\u7ED3\u3002\r
+              </p>\r
+            </section>\r
+          </section>\r
+          <section id="paper-view" hidden>\r
+            <div class="paper-toolbar">\r
+              <div>\r
+                <span id="paper-date" class="outline-tag">\u68C0\u67E5\u8D26\u6237</span\r
+                ><span id="paper-audit" class="outline-tag">\u68C0\u67E5\u8D26\u672C</span>\r
+              </div>\r
+              <div>\r
+                <a\r
+                  class="secondary"\r
+                  href="/api/paper/export?format=csv"\r
+                  download\r
+                  >\u6210\u4EA4 CSV</a\r
+                ><a class="secondary" href="/api/paper/export" download\r
+                  >\u5B8C\u6574\u8BB0\u5F55 JSON</a\r
+                ><button\r
+                  id="paper-verify"\r
+                  class="secondary"\r
+                  data-paper-operation\r
+                >\r
+                  \u6838\u9A8C\u6536\u76CA</button\r
+                ><button id="paper-run" class="primary" data-paper-operation>\r
+                  \u66F4\u65B0\u76D8\u540E\u8D26\u6237\r
+                </button>\r
+              </div>\r
+            </div>\r
+            <p class="paper-message" id="paper-message" role="status">\r
+              \u6A21\u62DF\u8D26\u6237\u6309\u4E8B\u524D\u8BA1\u5212\u6267\u884C\uFF0C\u771F\u5B9E\u6570\u636E\u5230\u8FBE\u540E\u66F4\u65B0\u6536\u76CA\u3002\r
+            </p>\r
+            <div id="paper-metrics" class="metrics"></div>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u81EA\u52A8\u6267\u884C\u72B6\u6001</h2>\r
+                  <p id="paper-live-summary">\u68C0\u67E5\u6267\u884C\u5668\u5FC3\u8DF3\u4E0E\u817E\u8BAF\u884C\u60C5</p>\r
+                </div>\r
+                <span class="outline-tag" id="paper-live-tag">\u672A\u8FDE\u63A5</span>\r
+              </div>\r
+              <p class="panel-footnote" id="paper-live-health"></p>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u4E2A\u80A1 / \u52A8\u4F5C</th>\r
+                      <th>\u6267\u884C\u72B6\u6001</th>\r
+                      <th>\u8FDB\u5EA6</th>\r
+                      <th>\u6700\u8FD1\u5904\u7406\u7ED3\u679C</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="paper-live-orders"></tbody>\r
+                </table>\r
+              </div>\r
+            </section>\r
+            <div class="paper-grid">\r
+              <section class="panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u8D26\u6237\u6536\u76CA\u8F68\u8FF9</h2>\r
+                    <p>\u6BCF\u65E5\u6743\u76CA\u3001\u6210\u4EA4\u6210\u672C\u4E0E\u6307\u6570\u57FA\u51C6\u5747\u53EF\u91CD\u653E\u9A8C\u8BC1</p>\r
+                  </div>\r
+                  <span class="outline-tag">\u51C0\u6536\u76CA</span>\r
+                </div>\r
+                <div id="paper-chart"></div>\r
+                <div class="panel-footnote" id="paper-risk"></div>\r
+              </section>\r
+              <section class="panel ai-panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>AI \u7B56\u7565\u6539\u8FDB</h2>\r
+                    <p>\u5728\u5C01\u5B58\u6570\u636E\u4E0A\u9A8C\u8BC1\uFF0C\u518D\u542F\u7528\u65B0\u7248\u672C</p>\r
+                  </div>\r
+                  <span class="outline-tag" id="paper-ai-tag">\u68C0\u67E5\u8FDE\u63A5</span>\r
+                </div>\r
+                <div id="paper-ai-content"></div>\r
+                <div class="ai-actions">\r
+                  <button\r
+                    class="secondary"\r
+                    id="paper-improve"\r
+                    data-paper-operation\r
+                  >\r
+                    \u68C0\u67E5\u6539\u8FDB\u6761\u4EF6\r
+                  </button>\r
+                </div>\r
+                <div id="paper-version-list"></div>\r
+              </section>\r
+            </div>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u5F53\u524D\u6301\u4ED3</h2>\r
+                  <p>\r
+                    \u542B\u4E70\u5165\u8D39\u7528\u7684\u6210\u672C\uFF0CFIFO \u6838\u7B97\u5DF2\u5B9E\u73B0\u76C8\u4E8F\uFF1B\u5F53\u65E5\u65B0\u4E70\u5165\u4EFD\u989D\u4E0D\u53EF\u5356\r
+                  </p>\r
+                </div>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u4E2A\u80A1</th>\r
+                      <th>\u6301\u80A1\u6570\u91CF</th>\r
+                      <th>\u6BCF\u80A1\u6210\u672C</th>\r
+                      <th>\u6700\u65B0\u4F30\u503C\u4EF7</th>\r
+                      <th>\u6301\u4ED3\u5E02\u503C</th>\r
+                      <th>\u6D6E\u52A8\u76C8\u4E8F</th>\r
+                      <th>\u6301\u4ED3\u65F6\u95F4</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="paper-position-rows"></tbody>\r
+                </table>\r
+              </div>\r
+            </section>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u4E0B\u4E00\u4EA4\u6613\u65E5\u8BA1\u5212</h2>\r
+                  <p id="paper-plan-meta">\r
+                    \u76D8\u540E\u51BB\u7ED3\u6570\u91CF\u4E0E\u4EF7\u683C\u6761\u4EF6\uFF0C\u4E0B\u4E00\u4EA4\u6613\u65E5\u6309\u5B9E\u65F6\u884C\u60C5\u81EA\u52A8\u6A21\u62DF\u6210\u4EA4\r
+                  </p>\r
+                </div>\r
+                <span class="outline-tag" id="paper-plan-date">\u7B49\u5F85\u8BC4\u5206</span>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u4E2A\u80A1 / \u677F\u5757</th>\r
+                      <th>\u52A8\u4F5C</th>\r
+                      <th>\u7B56\u7565\u8BC4\u5206</th>\r
+                      <th>\u8BA1\u5212\u6570\u91CF</th>\r
+                      <th>\u4E8B\u524D\u4EF7\u683C\u6761\u4EF6</th>\r
+                      <th>\u89C4\u5212\u4F9D\u636E</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="paper-plan-rows"></tbody>\r
+                </table>\r
+              </div>\r
+              <div id="paper-outcomes" class="paper-outcomes"></div>\r
+              <div class="panel-footnote">\r
+                \u5B9E\u65F6\u8F6E\u8BE2\u6309\u5DF2\u89C2\u5BDF\u5230\u7684\u62A5\u4EF7\u5148\u540E\u6267\u884C\u505A T\uFF1B14:50\r
+                \u8D77\u5C1D\u8BD5\u6062\u590D\u7B2C\u4E8C\u817F\uFF0C\u672A\u5B8C\u6210\u90E8\u5206\u4FDD\u7559\u4ED3\u4F4D\u5E76\u5EF6\u7EED\u5230\u4E0B\u4E00\u4EA4\u6613\u65E5\u3002\u4FDD\u62A4\u9000\u51FA\u9075\u5B88\r
+                T+1\uFF1B\u6DA8\u8DCC\u505C\u6216\u7F3A\u5C11\u884C\u60C5\u65F6\u53EF\u80FD\u65E0\u6CD5\u6210\u4EA4\u3002\u6240\u6709\u6301\u4ED3\u6301\u7EED\u83B7\u53D6\u884C\u60C5\uFF0C\u5373\u4F7F\u4E0D\u518D\u51FA\u73B0\u5728\u6DA8\u505C\u6C60\u4E2D\u3002\r
+              </div>\r
+            </section>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u9010\u7B14\u6210\u4EA4\u8D26\u672C</h2>\r
+                  <p>\r
+                    \u5C55\u793A\u6700\u8FD1 100\r
+                    \u7B14\uFF1B\u5B8C\u6574\u5BFC\u51FA\u5305\u542B\u5168\u90E8\u6210\u4EA4\u3001\u8BA1\u5212\u3001\u884C\u60C5\u3001\u8D39\u7528\u4E0E\u6821\u9A8C\u503C\r
+                  </p>\r
+                </div>\r
+                <span class="outline-tag">\u8D39\u7528\u4E0E\u6ED1\u70B9\u5DF2\u8BA1\u5165</span>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u65E5\u671F / \u65F6\u95F4</th>\r
+                      <th>\u4E2A\u80A1</th>\r
+                      <th>\u52A8\u4F5C / \u65B9\u5411</th>\r
+                      <th>\u80A1\u6570</th>\r
+                      <th>\u6210\u4EA4\u4EF7</th>\r
+                      <th>\u8D39\u7528</th>\r
+                      <th>\u73B0\u91D1\u53D8\u52A8</th>\r
+                      <th>\u6210\u4EA4\u6A21\u578B</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="paper-ledger-rows"></tbody>\r
+                </table>\r
+              </div>\r
+              <div class="panel-footnote">\r
+                \u5206\u949F\u91C7\u6837\u4EF7\u683C\u52A0\u5165 10 bps \u6ED1\u70B9\u30011%\r
+                \u5206\u949F\u6210\u4EA4\u91CF\u53C2\u4E0E\u7387\uFF1B\u7F3A\u5C11\u5206\u949F\u884C\u60C5\u65F6\u4EC5\u4F7F\u7528\u660E\u786E\u6807\u8BB0\u7684\u5F00\u76D8\u6210\u4EA4\u5047\u8BBE\u3002\u65E0\u6CD5\u8FD8\u539F\u9010\u7B14\u6392\u961F\uFF0C\u4E0D\u7B49\u540C\u4E8E\u5B9E\u76D8\u6210\u4EA4\u3002\r
+              </div>\r
+            </section>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u8D26\u6237\u8BBE\u7F6E</h2>\r
+                  <p id="paper-config-note">\u521D\u59CB\u8D44\u91D1\u4E0E\u6BCF\u9879\u8D39\u7528\u5747\u53EF\u81EA\u5B9A\u4E49</p>\r
+                </div>\r
+              </div>\r
+              <form id="paper-config-form" class="paper-config">\r
+                <label\r
+                  >\u521D\u59CB\u6A21\u62DF\u8D44\u91D1\uFF08\u5143\uFF09<input\r
+                    id="paper-initial-capital"\r
+                    type="number"\r
+                    min="10000"\r
+                    max="100000000"\r
+                    step="1000"\r
+                    value="1000000"\r
+                    required /></label\r
+                ><label\r
+                  >AI \u9A8C\u8BC1\u901A\u8FC7\u540E<select id="paper-improvement-mode">\r
+                    <option value="auto">\u81EA\u52A8\u542F\u7528\u65B0\u7B56\u7565</option>\r
+                    <option value="manual">\u4EBA\u5DE5\u9009\u62E9\u542F\u7528</option>\r
+                  </select></label\r
+                >\r
+                <fieldset class="paper-fee-settings">\r
+                  <legend>\u8D39\u7528\u6784\u6210\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>\r
+                  <div class="fee-settings-heading">\r
+                    <p>\u8D39\u7387\u6309\u4E07\u5206\u4E4B\u8F93\u5165\uFF0C\u5206\u9879\u76F8\u52A0\uFF1B\u6700\u4F4E\u4F63\u91D1\u4EC5\u9002\u7528\u4E8E\u4F63\u91D1\u9879\u3002</p>\r
+                    <span class="outline-tag" id="paper-fee-version"\r
+                      >\u8D39\u7528\u914D\u7F6E v1</span\r
+                    >\r
+                  </div>\r
+                  <div id="paper-fee-controls" class="paper-fee-controls"></div>\r
+                  <p id="paper-fee-summary" class="fee-settings-note"></p>\r
+                  <button\r
+                    type="button"\r
+                    id="paper-fee-defaults"\r
+                    class="text-button"\r
+                  >\r
+                    \u6062\u590D\u56FE\u4E2D\u9ED8\u8BA4\u8D39\u7528\r
+                  </button>\r
+                </fieldset>\r
+                <button class="secondary" type="submit" data-paper-operation>\r
+                  \u4FDD\u5B58\u8BBE\u7F6E\r
+                </button>\r
+              </form>\r
+            </section>\r
+          </section>\r
+          <section id="strategies-view" hidden>\r
+            <div class="paper-toolbar">\r
+              <div>\r
+                <span id="strategies-status-note" class="outline-tag"\r
+                  >\u540C\u4E00\u51BB\u7ED3\u6279\u6B21\u5185\u56FA\u5B9A\u5019\u9009\u5E76\u884C\u524D\u77BB\uFF1B\u6279\u6B21\u7ED3\u675F\u81F3\u591A\u542F\u7528\u4E00\u4E2A\u5019\u9009</span\r
+                >\r
+              </div>\r
+              <div>\r
+                <button id="strategies-reserve" class="primary">\r
+                  \u53D1\u8D77\u65B0\u6279\u6B21\r
+                </button>\r
+              </div>\r
+            </div>\r
+            <section class="panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u6279\u6B21\u4E0E\u653F\u7B56</h2>\r
+                  <p>\u7EDF\u4E00\u7814\u7A76\u7A97\u53E3\u9501\u3001\u751F\u6210\u9884\u7B97\u4E0E\u7EDF\u8BA1\u9884\u7B97\uFF1B\u5931\u8D25\u6279\u6B21\u540C\u6837\u53EF\u67E5</p>\r
+                </div>\r
+                <span class="outline-tag">\u53D7\u63A7\u664B\u7EA7</span>\r
+              </div>\r
+              <div id="strategies-status"></div>\r
+            </section>\r
+            <section class="panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u6279\u6B21\u5217\u8868</h2>\r
+                  <p>\u70B9\u51FB\u6279\u6B21\u67E5\u770B\u56FA\u5B9A\u6210\u5458\u3001\u5339\u914D\u8D26\u6237\u51C0\u503C\u4E0E\u8D44\u683C</p>\r
+                </div>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u6279\u6B21</th>\r
+                      <th>\u9636\u6BB5</th>\r
+                      <th>\u7236\u7B56\u7565</th>\r
+                      <th>\u5019\u9009\u6570</th>\r
+                      <th>\u521B\u5EFA\u65F6\u95F4</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="strategies-cohort-rows"></tbody>\r
+                </table>\r
+              </div>\r
+            </section>\r
+            <section class="panel" id="strategies-detail"></section>\r
+          </section>\r
+          <section id="alerts-view" hidden>\r
+            <div class="paper-toolbar">\r
+              <div>\r
+                <span id="alerts-status-note" class="outline-tag"\r
+                  >\u68C0\u67E5\u544A\u8B66\u914D\u7F6E</span\r
+                >\r
+              </div>\r
+              <div>\r
+                <button id="alerts-test" class="secondary">\u53D1\u9001\u6D4B\u8BD5\u901A\u77E5</button>\r
+                <button id="alerts-maintenance" class="secondary">\r
+                  \u8BBE\u7F6E\u7EF4\u62A4\u7A97\u53E3\r
+                </button>\r
+                <button id="alerts-refresh" class="primary">\u5237\u65B0</button>\r
+              </div>\r
+            </div>\r
+            <section class="panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u901A\u9053\u4E0E\u5916\u90E8\u76D1\u6D4B</h2>\r
+                  <p>\u98DE\u4E66\u673A\u5668\u4EBA\u63A5\u6536\u4E1A\u52A1\u544A\u8B66\uFF1B\u5916\u90E8\u76D1\u6D4B\u53D1\u73B0\u6574\u673A\u79BB\u7EBF</p>\r
+                </div>\r
+                <span class="outline-tag" id="alerts-enabled-tag">\u672A\u542F\u7528</span>\r
+              </div>\r
+              <div\r
+                id="alerts-channel-list"\r
+                class="metrics panel-metrics alert-channel-metrics"\r
+              ></div>\r
+              <p class="panel-footnote">\r
+                \u5BC6\u94A5\uFF08FEISHU_WEBHOOK_URL / FEISHU_SECRET /\r
+                WATCHDOG_*_URL\uFF09\u53EA\u4FDD\u5B58\u5728\u670D\u52A1\u7AEF\r
+                .env\uFF0C\u9875\u9762\u53EA\u663E\u793A\u914D\u7F6E\u72B6\u6001\u3002\u65AD\u7535\u6216\u65AD\u7F51\u65F6\u672C\u673A\u65E0\u6CD5\u53D1\u6D88\u606F\uFF0C\u7531\u5916\u90E8\u76D1\u6D4B\u6309\u7F3A\u5931\u4FE1\u53F7\u544A\u8B66\u3002\r
+              </p>\r
+            </section>\r
+            <section class="panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u544A\u8B66\u4E8B\u4EF6</h2>\r
+                  <p>\u6309\u6301\u7EED\u65F6\u95F4\u53BB\u91CD\u4E0E\u5347\u7EA7\uFF1B\u786E\u8BA4\u53EA\u9759\u9ED8\u63D0\u9192\uFF0C\u4E0D\u63A9\u76D6\u672A\u6062\u590D</p>\r
+                </div>\r
+                <label class="text-button"\r
+                  ><input\r
+                    type="checkbox"\r
+                    id="alerts-active-only"\r
+                  />\u53EA\u770B\u672A\u6062\u590D</label\r
+                >\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u89C4\u5219</th>\r
+                      <th>\u7EA7\u522B</th>\r
+                      <th>\u72B6\u6001</th>\r
+                      <th>\u9996\u6B21\u53D1\u751F</th>\r
+                      <th>\u6700\u8FD1\u53D1\u751F</th>\r
+                      <th>\u64CD\u4F5C</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="alerts-incident-rows"></tbody>\r
+                </table>\r
+              </div>\r
+              <div class="table-footer">\r
+                <span id="alerts-list-status">\u6B63\u5728\u8BFB\u53D6\u2026</span>\r
+                <button class="text-button" id="alerts-more" hidden>\r
+                  \u52A0\u8F7D\u66F4\u591A\r
+                </button>\r
+              </div>\r
+            </section>\r
+          </section>\r
+          <footer class="page-footer">\r
+            <span>LIMIT LENS <i>\xB7</i> \u6BCF\u65E5\u6DA8\u505C\u7814\u7A76</span\r
+            ><span\r
+              >\u7814\u7A76\u8BC4\u5206\u7528\u4E8E\u8F85\u52A9\u590D\u76D8\uFF1B\u5B9E\u76D8\u5224\u65AD\u9700\u7ED3\u5408\u516C\u544A\u3001\u9898\u6750\u4E0E\u6B21\u65E5\u627F\u63A5\u3002</span\r
+            >\r
+          </footer>\r
+        </main>\r
+      </div>\r
+    </div>\r
+    <dialog id="stock-dialog" class="detail-dialog">\r
+      <div class="dialog-top">\r
+        <span class="eyebrow">STOCK DIAGNOSTICS</span\r
+        ><button class="icon-button close-dialog" aria-label="\u5173\u95ED\u4E2A\u80A1\u8BCA\u65AD">\r
+          <span data-icon="close"></span>\r
+        </button>\r
+      </div>\r
+      <div id="stock-detail"></div>\r
+    </dialog>\r
+    <dialog id="help-dialog" class="help-dialog">\r
+      <div class="dialog-top">\r
+        <h2>\u6570\u636E\u4E0E\u8BA1\u7B97\u53E3\u5F84</h2>\r
+        <button class="icon-button close-dialog" aria-label="\u5173\u95ED\u6570\u636E\u8BF4\u660E">\r
+          <span data-icon="close"></span>\r
+        </button>\r
+      </div>\r
+      <div class="help-content">\r
+        <p>\r
+          \u6DA8\u505C\u6C60\u4F18\u5148\u8BFB\u53D6\u4E1C\u65B9\u8D22\u5BCC\u516C\u5F00\u884C\u60C5\uFF1B\u6307\u6570\u8BFB\u53D6\u817E\u8BAF\u516C\u5F00\u884C\u60C5\u3002\u9875\u9762\u4F1A\u6807\u660E\u5B9E\u9645\u6765\u6E90\u3001\u8BF7\u6C42\u65F6\u95F4\u548C\u4EA4\u6613\u65E5\u671F\u3002\u516C\u5F00\u63A5\u53E3\u53EF\u80FD\u9650\u6D41\u3001\u5EF6\u8FDF\u6216\u505C\u6B62\u670D\u52A1\u3002\r
+        </p>\r
+        <p>\r
+          \u6DA8\u505C\u6C60\u4EE5\u6765\u6E90\u7684\u6CAA\u6DF1\u6536\u76D8\u5C01\u677F\u5217\u8868\u4E3A\u51C6\u3002ST\r
+          \u4E0E\u9000\u5E02\u6807\u8BC6\u80A1\u7968\u4ECE\u8BC4\u5206\u4E2D\u5254\u9664\uFF1B\u5F53\u524D\u6765\u6E90\u4E0D\u542B\u79D1\u521B\u677F\u3001\u5317\u4EA4\u6240\u53CA\u672A\u4E2D\u65AD\u8FDE\u7EED\u4E00\u5B57\u6DA8\u505C\u7684\u65B0\u80A1\u3002\r
+        </p>\r
+        <p>\r
+          \u5C01\u5355\u989D\u4F7F\u7528\u5F53\u524D\u5C01\u5355\u91D1\u989D\uFF0C\u5C01\u5355\u6BD4\u4E3A\u5C01\u5355\u989D \xF7\r
+          \u5F53\u65E5\u6210\u4EA4\u989D\uFF1B\u9996\u5C01\u548C\u6700\u540E\u5C01\u677F\u65F6\u95F4\u6765\u81EA\u884C\u60C5\u5B57\u6BB5\uFF0C\u4E24\u8005\u7684\u95F4\u9694\u4E0D\u80FD\u89E3\u91CA\u4E3A\u5B9E\u9645\u5F00\u677F\u65F6\u957F\u3002\r
+        </p>\r
+        <p>\r
+          \u677F\u5757\u4EC5\u6309\u884C\u60C5\u63D0\u4F9B\u7684\u884C\u4E1A\u5206\u7C7B\u805A\u5408\uFF0C\u4E0D\u63A8\u65AD\u65B0\u95FB\u9898\u6750\u3002\u677F\u5757\u6DA8\u505C\u6570\u91CF\u672A\u9664\u4EE5\u884C\u4E1A\u603B\u6210\u5206\u6570\uFF0C\u56E0\u6B64\u5206\u6570\u4F1A\u53D7\u884C\u4E1A\u89C4\u6A21\u5F71\u54CD\u3002\r
+        </p>\r
+        <p>\r
+          \u5C01\u677F\u7387 = \u6DA8\u505C\u6C60\u5BB6\u6570 \xF7\uFF08\u6DA8\u505C\u6C60\u5BB6\u6570 +\r
+          \u6536\u76D8\u672A\u5C01\u4F4F\u7684\u70B8\u677F\u6C60\u5BB6\u6570\uFF09\u3002\u60C5\u7EEA\u5F3A\u5EA6\u7531\u6DA8\u505C\u5BB6\u6570\uFF0840%\uFF09\u3001\u5C01\u677F\u7387\uFF0835%\uFF09\u3001\u5E02\u573A\u9AD8\u5EA6\uFF0825%\uFF09\u6784\u6210\uFF1B\u6570\u636E\u7F3A\u5931\u4F1A\u91CD\u65B0\u5F52\u4E00\u5316\u3002\r
+        </p>\r
+        <p>\r
+          \u664B\u7EA7\u7387\u9700\u8981\u4E0A\u4E00\u53EF\u7528\u4EA4\u6613\u65E5\u6DA8\u505C\u5217\u8868\uFF1B\u6628\u65E5\u6C60\u63A5\u53E3\u7528\u4E8E\u5F53\u65E5\u664B\u7EA7\u7EDF\u8BA1\uFF1B\u8DE8\u65E5\u53CD\u9988\u53E6\u7528\u6307\u6570\u65E5\u671F\u5E8F\u5217\u786E\u8BA4\u76F8\u90BB\u4EA4\u6613\u65E5\u3002\u83B7\u53D6\u4E0D\u5230\u5386\u53F2\u6570\u636E\u65F6\u663E\u793A\u201C\u2014\u201D\u3002\r
+        </p>\r
+        <p>\r
+          \u6A21\u62DF\u4EA4\u6613\u6309\u524D\u4E00\u4EA4\u6613\u65E5\u51BB\u7ED3\u7684\u6570\u91CF\u548C\u4EF7\u683C\u6761\u4EF6\uFF0C\u4EE5\u817E\u8BAF HTTP\r
+          \u5B9E\u65F6\u62A5\u4EF7\u81EA\u52A8\u6267\u884C\u5E76\u8BA1\u5165\u8D39\u7528\uFF1B\u6240\u6709\u6301\u4ED3\u6301\u7EED\u8DDF\u8E2A\uFF0C\u76D8\u540E\u6309\u5B9E\u9645\u6A21\u62DF\u6210\u4EA4\u66F4\u65B0\u6536\u76CA\u3002\u9010\u7B14\u6392\u961F\u3001\u9F99\u864E\u699C\u4E0E\u516C\u544A\u5C1A\u672A\u63A5\u5165\uFF1B\u7CFB\u7EDF\u53EA\u64CD\u4F5C\u6A21\u62DF\u8D26\u6237\u3002\r
+        </p>\r
+      </div>\r
+    </dialog>\r
+    <script type="module" src="/assets/app.js"><\/script>\r
+  </body>\r
+</html>\r
+`, "type": "text/html; charset=utf-8" }, "/assets/app.js": { "body": 'var lt=[{key:"quality",name:"\\u5C01\\u677F\\u8D28\\u91CF",weight:30,description:"100 \\u2212 \\u70B8\\u677F\\u6B21\\u6570 \\xD7 15\\uFF0C\\u6700\\u4F4E 10 \\u5206"},{key:"capital",name:"\\u5C01\\u5355\\u5F3A\\u5EA6",weight:20,description:"\\u5C01\\u5355\\u91D1\\u989D \\xF7 \\u6210\\u4EA4\\u989D \\xF7 10%\\uFF0C\\u4E0A\\u9650 100 \\u5206"},{key:"liquidity",name:"\\u6362\\u624B\\u7ED3\\u6784",weight:15,description:"4\\u201312%\\uFF1A95\\uFF1B12\\u201325%\\uFF1A80\\uFF1B1\\u20134%\\uFF1A65\\uFF1B25\\u201340%\\uFF1A50\\uFF1B\\u5176\\u4F59\\uFF1A30"},{key:"timing",name:"\\u9996\\u5C01\\u65F6\\u70B9",weight:15,description:"09:45 \\u524D 100\\uFF1B10:30 \\u524D 85\\uFF1B11:30 \\u524D 65\\uFF1B14:00 \\u524D 45\\uFF1B\\u5176\\u4F59 25"},{key:"sector",name:"\\u677F\\u5757\\u534F\\u540C",weight:15,description:"\\u4F7F\\u7528\\u540C\\u65E5\\u3001\\u540C\\u4E00\\u884C\\u4E1A\\u7684\\u677F\\u5757\\u8BC4\\u5206"},{key:"ladder",name:"\\u8FDE\\u677F\\u7ED3\\u6784",weight:5,description:"\\u9996\\u677F 75\\uFF1B2\\u20133 \\u677F 100\\uFF1B4 \\u677F 65\\uFF1B5 \\u677F\\u53CA\\u4EE5\\u4E0A 40"}],N={balanced:[30,20,15,15,15,5],first:[30,20,15,20,12,3],relay:[30,20,10,10,20,10]},I=(t,e=0,a=100)=>Math.max(e,Math.min(a,t)),L=t=>t==null||t===""||!Number.isFinite(Number(t))?null:Number(t);function Q(t){if(t==null)return"\\u2014";let e=String(t).padStart(6,"0");return/^\\d{6}$/.test(e)?`${e.slice(0,2)}:${e.slice(2,4)}`:"\\u2014"}function ct(t){return{code:String(t.c||""),name:String(t.n||""),sector:String(t.hybk||"\\u672A\\u5206\\u7C7B"),price:L(t.p)===null?null:Number(t.p)/1e3,change:L(t.zdp),amount:L(t.amount),floatCap:L(t.ltsz),seal:L(t.fund),turnover:L(t.hs),first:L(t.fbt),last:L(t.lbt),breaks:L(t.zbc),height:L(t.lbc),history:t.zttj?`${t.zttj.days} \\u5929 ${t.zttj.ct} \\u677F`:null}}function Ot(t,e){let a=t.map(i=>i[e]).filter(Number.isFinite);return a.length?a.reduce((i,s)=>i+s,0)/a.length:null}function _t(t){let e=new Map;return t.forEach(a=>{e.has(a.sector)||e.set(a.sector,[]),e.get(a.sector).push(a)}),[...e].map(([a,i])=>{let s=i.filter(l=>l.breaks!==null),d=s.length?Ot(s.map(l=>({...l,q:I(100-l.breaks*15,10)})),"q"):null,u=Math.max(0,...i.map(l=>l.height||0)),c=[{name:"\\u6DA8\\u505C\\u96C6\\u805A",weight:35,value:I(i.length/6*100)},{name:"\\u8FDE\\u677F\\u9AD8\\u5EA6",weight:25,value:I(u/5*100)},{name:"\\u5C01\\u677F\\u7A33\\u5B9A",weight:25,value:d},{name:"\\u65E9\\u76D8\\u8054\\u52A8",weight:15,value:i.filter(l=>l.first!==null).length?i.filter(l=>l.first!==null&&l.first<103e3).length/i.filter(l=>l.first!==null).length*100:null}],y=c.filter(l=>l.value!==null).reduce((l,o)=>l+o.weight,0),E=Math.round(c.reduce((l,o)=>l+(o.value===null?0:o.value*o.weight),0)/y);return{name:a,count:i.length,height:u,quality:d,score:E,coverage:y,components:c,amount:i.reduce((l,o)=>l+(o.amount||0),0),members:i.map(l=>l.code)}}).sort((a,i)=>i.score-a.score||i.count-a.count)}function qt(t,e,a=N.balanced){let i={quality:t.breaks===null?null:I(100-t.breaks*15,10),capital:t.seal===null||!t.amount?null:I(t.seal/t.amount/.1*100),liquidity:t.turnover===null?null:t.turnover>=4&&t.turnover<=12?95:t.turnover>12&&t.turnover<=25?80:t.turnover>=1&&t.turnover<4?65:t.turnover>25&&t.turnover<=40?50:30,timing:t.first===null?null:t.first<94500?100:t.first<103e3?85:t.first<113e3?65:t.first<14e4?45:25,sector:e??null,ladder:t.height===null?null:t.height===1?75:t.height<=3?100:t.height===4?65:40},s=[];t.height>=5&&s.push({text:"\\u9AD8\\u4F4D\\u8FDE\\u677F",penalty:8,detail:"5 \\u677F\\u53CA\\u4EE5\\u4E0A\\uFF0C\\u5206\\u6B67\\u4E0E\\u9000\\u6F6E\\u98CE\\u9669\\u4E0A\\u5347\\u3002"}),t.turnover>40&&s.push({text:"\\u9AD8\\u6362\\u624B",penalty:8,detail:"\\u6362\\u624B\\u7387\\u8D85\\u8FC7 40%\\uFF0C\\u7B79\\u7801\\u4EA4\\u6362\\u5267\\u70C8\\u3002"}),t.breaks>=3&&s.push({text:"\\u53CD\\u590D\\u70B8\\u677F",penalty:5,detail:"\\u76D8\\u4E2D\\u81F3\\u5C11 3 \\u6B21\\u5F00\\u677F\\uFF0C\\u5C01\\u677F\\u7A33\\u5B9A\\u6027\\u504F\\u5F31\\u3002"}),t.first===92500&&t.last===92500&&t.turnover!==null&&t.turnover<1&&s.push({text:"\\u4E00\\u5B57\\u7279\\u5F81",penalty:10,detail:"\\u7ADE\\u4EF7\\u5C01\\u677F\\u4E14\\u4F4E\\u6362\\u624B\\uFF0C\\u5B9E\\u9645\\u6210\\u4EA4\\u673A\\u4F1A\\u53EF\\u80FD\\u6709\\u9650\\u3002"}),t.last!==null&&t.last>=145e3&&s.push({text:"\\u5C3E\\u76D8\\u56DE\\u5C01",penalty:4,detail:"\\u6700\\u540E\\u5C01\\u677F\\u65F6\\u95F4\\u63A5\\u8FD1\\u6536\\u76D8\\uFF0C\\u9700\\u89C2\\u5BDF\\u6B21\\u65E5\\u627F\\u63A5\\u3002"});let d=lt.map((o,h)=>({...o,weight:a[h],value:i[o.key]})),u=d.filter(o=>o.value!==null),c=u.reduce((o,h)=>o+h.weight,0),y=a.reduce((o,h)=>o+h,0),E=c?u.reduce((o,h)=>o+h.value*h.weight,0)/c:null,l=Math.min(20,s.reduce((o,h)=>o+h.penalty,0));return{...t,score:E===null?null:Math.round(I(E-l)),rawScore:E,deduction:l,factors:d,risks:s,coverage:y?Math.round(c/y*100):0,sealRatio:t.seal!==null&&t.amount>0?t.seal/t.amount:null}}function vt(t,e=null,a=null,i=N.balanced){let s=t.filter(m=>m.code&&!/ST|\u9000/.test(m.name)),d=_t(s),u=new Map(d.map(m=>[m.name,m.score])),c=s.map(m=>qt(m,u.get(m.sector),i)).sort((m,T)=>(T.score??-1)-(m.score??-1)),y=e===null?null:t.length+e?t.length/(t.length+e)*100:null,E=Math.max(0,...s.map(m=>m.height||0)),l=s.filter(m=>m.height===1).length,o=s.filter(m=>m.height>1).length,h=[{weight:40,value:I(s.length/80*100)},{weight:35,value:y},{weight:25,value:I(E/7*100)}],k=h.filter(m=>m.value!==null).reduce((m,T)=>m+T.weight,0),R=s.length?Math.round(h.reduce((m,T)=>m+(T.value??0)*T.weight,0)/k):null,S=a?new Set(a.map(m=>m.code)):null,A=a?a.filter(m=>m.height!==null):null,Nt=A&&A.length?A.filter(m=>s.some(T=>T.code===m.code&&T.height!==null&&T.height>m.height)).length/A.length*100:null;return{stocks:c,sectors:d,count:s.length,excluded:t.length-s.length,first:l,relay:o,height:E,sealRate:y,emotion:R,emotionCoverage:k,promotion:Nt,previousCount:S?S.size:null}}var H=Object.freeze([{key:"commission_rate",label:"\\u4F63\\u91D1\\u7387",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"commission_min",label:"\\u6700\\u4F4E\\u4F63\\u91D1",unit:"\\u5143",direction:"\\u53CC\\u8FB9"},{key:"stamp_tax",label:"\\u5370\\u82B1\\u7A0E",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u4EC5\\u5356\\u51FA"},{key:"handling_fee",label:"\\u7ECF\\u624B\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"regulatory_fee",label:"\\u8BC1\\u7BA1\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"transfer_fee",label:"\\u8FC7\\u6237\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"}]),dt=Object.freeze({commission_rate:5e-5,commission_min:5,stamp_tax:5e-4,handling_fee:341e-7,regulatory_fee:2e-5,transfer_fee:1e-5}),oe=Object.freeze({commission_rate:25e-5,commission_min:5,stamp_tax:5e-4,handling_fee:0,regulatory_fee:0,transfer_fee:1e-5});var p=t=>document.getElementById(t),g=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),v=t=>(Number(t||0)/100).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2}),yt=t=>Math.abs(t||0)>=1e10?`${(t/1e10).toFixed(2)} \\u4EBF`:Math.abs(t||0)>=1e6?`${(t/1e6).toFixed(2)} \\u4E07`:v(t),x=t=>t==null?"\\u2014":`${t>0?"+":""}${(t*100).toFixed(2)}%`,X=t=>t>0?"up":t<0?"down":"",K={OPEN:"\\u5EFA\\u4ED3",ADD:"\\u52A0\\u4ED3",REDUCE:"\\u51CF\\u4ED3",EXIT:"\\u6E05\\u4ED3",T_FORWARD:"\\u6B63\\u5411 T",T_REVERSE:"\\u53CD\\u5411 T",HOLD:"\\u6301\\u6709"},wt={ACTIVE:"\\u4F7F\\u7528\\u4E2D",VALIDATED:"\\u9A8C\\u8BC1\\u901A\\u8FC7",LEGACY_VALIDATED:"\\u5386\\u53F2\\u901A\\u8FC7\\uFF08\\u65E0\\u542F\\u7528\\u8D44\\u683C\\uFF09",SHADOW_PENDING:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",AWAITING_SHADOW:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",REJECTED:"\\u672A\\u901A\\u8FC7",ERROR:"\\u8C03\\u7528\\u5931\\u8D25",PROPOSING:"\\u6B63\\u5728\\u9A8C\\u8BC1",RETIRED:"\\u5DF2\\u5F52\\u6863",COLLECTING:"\\u6570\\u636E\\u79EF\\u7D2F\\u4E2D",NOT_CONFIGURED:"\\u672A\\u914D\\u7F6E\\u5927\\u6A21\\u578B",BUSY:"\\u5DF2\\u6709\\u8FDB\\u884C\\u4E2D\\u7684\\u5B9E\\u9A8C",BUDGET_EXHAUSTED:"\\u672C\\u6708\\u63D0\\u6848\\u6B21\\u6570\\u5DF2\\u7528\\u5B8C",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u73AF\\u5883\\u53D8\\u5316\\u5DF2\\u5931\\u6548",APPROVED:"\\u5DF2\\u6279\\u51C6\\u5F85\\u6392\\u671F",SCHEDULED:"\\u5DF2\\u6392\\u671F",PROMOTED:"\\u5DF2\\u542F\\u7528"},bt={PENDING:"\\u7B49\\u5F85\\u89E6\\u53D1",BLOCKED:"\\u53D7\\u7EA6\\u675F\\uFF0C\\u91CD\\u8BD5\\u4E2D",PARTIAL:"\\u90E8\\u5206\\u6210\\u4EA4",FIRST_LEG:"\\u505A T \\u7B2C\\u4E00\\u817F",SECOND_LEG:"\\u6062\\u590D\\u7B2C\\u4E8C\\u817F",FILLED:"\\u5B8C\\u6210",CANCELLED:"\\u5DF2\\u53D6\\u6D88",EXPIRED:"\\u5F53\\u65E5\\u5230\\u671F",EXPIRED_PARTIAL:"\\u90E8\\u5206\\u5B8C\\u6210\\u540E\\u5230\\u671F",INCOMPLETE_T:"\\u7B2C\\u4E8C\\u817F\\u8F6C\\u4E0B\\u65E5",RUNNING:"\\u8F6E\\u8BE2\\u8FD0\\u884C\\u4E2D",STALE_QUOTES:"\\u62A5\\u4EF7\\u9648\\u65E7\\uFF0C\\u6682\\u505C\\u6210\\u4EA4",MARKET_CLOSED:"\\u7B49\\u5F85\\u4EA4\\u6613\\u65F6\\u6BB5",ERROR:"\\u5F02\\u5E38\\uFF0C\\u81EA\\u52A8\\u91CD\\u8BD5",NON_TRADING_DAY:"\\u975E\\u4EA4\\u6613\\u65E5",CONFLICT:"\\u5E76\\u53D1\\u7ED3\\u679C\\u5DF2\\u4E22\\u5F03",SETTLED:"\\u5DF2\\u7ED3\\u7B97"},b=null,tt=!1,q=!1;async function _(t,e){let a=await fetch(t,{...e===void 0?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)},signal:AbortSignal.timeout(13e4)}),i=await a.json();if(!a.ok)throw new Error(i.error||"\\u670D\\u52A1\\u6682\\u4E0D\\u53EF\\u7528");return i}function V(t){p("paper-message").textContent=t}var ut=(t,e)=>t==="commission_min"?e:Number((e*1e4).toFixed(5));function Et(t){for(let{key:e}of H)p(`fee-${e}`).value=ut(e,t[e])}function jt(t){return H.map(({key:e,label:a,unit:i})=>`${a} ${ut(e,t[e])}${i==="\\u5143"?" \\u5143":" / \\u4E07"}`).join(" \\xB7 ")}function Ct(t){return Object.entries({commission:"\\u4F63\\u91D1",stamp:"\\u5370\\u82B1\\u7A0E",handling:"\\u7ECF\\u624B\\u8D39",regulatory:"\\u8BC1\\u7BA1\\u8D39",transfer:"\\u8FC7\\u6237\\u8D39"}).map(([a,i])=>`${i} \\xA5 ${v(t.feeBreakdown[a]||0)}`).join("\\uFF1B")}function Pt(t){let e=`<span class="stock-code">\\u53C2\\u8003\\u4EF7 \\xA5 ${v(t.referenceCents)}</span>`,a=`<span class="stock-code">\\u6B62\\u635F \\u2264 \\xA5 ${v(t.stopCents)}<br>\\u5206\\u6279\\u6B62\\u76C8 \\u2265 \\xA5 ${v(t.takeProfitCents)}</span>`,i=t.side==="PAIR"?`\\u4F4E\\u5438 \\u2264 \\xA5 ${v(t.buyTriggerCents)}<br>\\u5151\\u73B0 \\u2265 \\xA5 ${v(t.sellTriggerCents)}<span class="stock-code">09:35 \\u8D77\\u89E6\\u53D1 \\xB7 14:50 \\u8D77\\u6062\\u590D\\u7B2C\\u4E8C\\u817F</span>`:t.side==="BUY"&&t.recovery?`\\u6062\\u590D\\u4E70\\u56DE \\xB7 \\u53C2\\u8003 \\xA5 ${v(t.referenceCents)}<span class="stock-code">\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u6309\\u5B9E\\u65F6\\u4EF7 + 0.1% \\u6ED1\\u70B9<br>\\u53D7\\u73B0\\u91D1\\u3001\\u4ED3\\u4F4D\\u4E0E\\u6DA8\\u505C\\u8FB9\\u754C\\u9650\\u5236</span>`:t.side==="BUY"?`\\u4E70\\u5165\\u4E0A\\u9650 \\xA5 ${v(t.maxPriceCents)}<span class="stock-code">\\u542B\\u6ED1\\u70B9 \\xB7 09:30\\u201309:35 \\u5185\\u6EE1\\u8DB3\\u65F6\\u6210\\u4EA4</span>`:t.side==="SELL"?`\\u53C2\\u8003\\u5356\\u4EF7 \\xA5 ${v(Math.round(t.referenceCents*.999))}<span class="stock-code">\\u5B9E\\u9645\\u5356\\u4EF7 = \\u5B9E\\u65F6\\u62A5\\u4EF7 \\u2212 0.1% \\u6ED1\\u70B9<br>\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u91CD\\u8BD5\\uFF0C\\u8DCC\\u505C\\u4E0D\\u5047\\u8BBE\\u6210\\u4EA4</span>`:"\\u6301\\u6709\\u5E76\\u76D1\\u63A7\\u4FDD\\u62A4\\u9608\\u503C";return e+i+a}function Ht(t){if(!t.length)return\'<div class="empty"><strong>\\u6536\\u76CA\\u66F2\\u7EBF\\u4ECE\\u9996\\u4E2A\\u7ED3\\u7B97\\u65E5\\u5F00\\u59CB</strong>\\u4FDD\\u5B58\\u771F\\u5B9E\\u8BA1\\u5212\\u5E76\\u6267\\u884C\\u540E\\uFF0C\\u9010\\u65E5\\u79EF\\u7D2F\\u51C0\\u503C\\u3002</div>\';let e=760,a=200,i=30,s=[0,...t.map(l=>l.totalReturn),...t.map(l=>l.benchmarkReturn).filter(l=>l!=null)],d=Math.min(...s)-.005,u=Math.max(...s)+.005,c=l=>i+l/Math.max(1,t.length-1)*(e-2*i),y=l=>a-i-(l-d)/(u-d)*(a-i*2),E=l=>t.map((o,h)=>o[l]===null||o[l]===void 0?null:`${c(h)},${y(o[l])}`).filter(Boolean).join(" ");return`<svg class="equity-chart" viewBox="0 0 ${e} ${a}" role="img" aria-label="\\u8D26\\u6237\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387\\u4E0E\\u4E0A\\u8BC1\\u6307\\u6570\\u6536\\u76CA\\u7387"><line x1="${i}" x2="${e-i}" y1="${y(0)}" y2="${y(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${i}" y="18" class="chart-axis">${x(u)}</text><text x="${i}" y="${a-7}" class="chart-axis">${x(d)}</text><polyline points="${E("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${E("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${t.map((l,o)=>`<circle cx="${c(o)}" cy="${y(l.totalReturn)}" r="3" fill="#13977e"><title>${g(l.date)}\\uFF1A\\u8D26\\u6237 ${x(l.totalReturn)}\\uFF1B\\u57FA\\u51C6 ${x(l.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>\\u6A21\\u62DF\\u8D26\\u6237</span><span><i class="benchmark"></i>\\u4E0A\\u8BC1\\u6307\\u6570</span><span>${g(t[0].date)} \\u2014 ${g(t.at(-1).date)} \\xB7 ${t.length} \\u4E2A\\u7ED3\\u7B97\\u65E5</span></div>${t.length===1?\'<p class="panel-footnote">\\u9996\\u6B21\\u7ED3\\u7B97\\u53EA\\u5EFA\\u7ACB\\u6536\\u76CA\\u57FA\\u51C6\\uFF1B\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8D77\\u6267\\u884C\\u4E8B\\u524D\\u8BA1\\u5212\\u3002</p>\':""}`}function Ft(){if(!b)return;let{book:t,equity:e,plan:a,run:i,versions:s}=b,d=b.realtime,u=d?.health;p("paper-live-tag").textContent=d?.running?"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5DF2\\u8FDE\\u63A5":"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u672A\\u8FDE\\u63A5",p("paper-live-summary").textContent=d?.session?`${d.session.date} \\xB7 ${d.session.sequence} \\u6B21\\u89C2\\u6D4B \\xB7 ${d.session.fillCount} \\u7B14\\u6210\\u4EA4`:"\\u5C1A\\u65E0\\u4ECA\\u65E5\\u5B9E\\u65F6\\u4EA4\\u6613\\u8BB0\\u5F55",p("paper-live-health").textContent=`${u?`${bt[u.status]||u.status} \\xB7 \\u6700\\u8FD1\\u5FC3\\u8DF3 ${new Date(u.checkedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\xB7 ${u.pollIntervalSeconds} \\u79D2\\u8F6E\\u8BE2\\u3002`:"\\u5C1A\\u672A\\u6536\\u5230\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5FC3\\u8DF3\\u3002"} ${d?.running?"\\u5173\\u95ED\\u7F51\\u9875\\u540E\\u670D\\u52A1\\u7EE7\\u7EED\\u6267\\u884C\\uFF1B\\u76D8\\u540E\\u6309\\u5DF2\\u8BB0\\u5F55\\u6210\\u4EA4\\u7ED3\\u7B97\\u3002":d?.requirement||""}`,p("paper-live-orders").innerHTML=d?.session?.orders.length?d.session.orders.map(o=>`<tr><td><strong>${g(o.name)} \\xB7 ${K[o.action]}</strong><span class="stock-code">${g(o.code)}</span></td><td>${bt[o.status]||g(o.status)}</td><td>${o.side==="PAIR"?`\\u7B2C\\u4E00\\u817F ${o.firstFilled} / \\u7B2C\\u4E8C\\u817F ${o.secondFilled}`:`${o.filledQuantity} / ${o.quantity}`} \\u80A1</td><td>${g(o.reason)}</td></tr>`).join(""):\'<tr><td colspan="4"><div class="empty compact">\\u7B49\\u5F85\\u5E38\\u9A7B\\u670D\\u52A1\\u5728\\u4EA4\\u6613\\u65F6\\u6BB5\\u6267\\u884C\\u51BB\\u7ED3\\u8BA1\\u5212\\u3002</div></td></tr>\';let c=t.positions.reduce((o,h)=>o+h.lots.reduce((k,R)=>k+R.quantity,0)*h.markCents,0),y=[["\\u8D26\\u6237\\u603B\\u6743\\u76CA",`\\xA5 ${yt(t.equityCents)}`,`\\u521D\\u59CB\\u8D44\\u91D1 \\xA5 ${v(t.initialCashCents)}`,""],["\\u5F53\\u65E5\\u76C8\\u4E8F",`\\xA5 ${yt(e?.dailyPnlCents)}`,`\\u5F53\\u65E5\\u6536\\u76CA ${x(e?.dailyReturn??0)}`,X(e?.dailyPnlCents)],["\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387",x(t.equityCents/t.initialCashCents-1),`\\u5DF2\\u6263\\u8D39\\u7528 \\xA5 ${v(t.feesCents)}`,X(t.equityCents-t.initialCashCents)],["\\u5F53\\u524D\\u6301\\u4ED3\\u6BD4\\u4F8B",x(c/t.equityCents),`\\u53EF\\u7528\\u73B0\\u91D1 \\xA5 ${v(t.cashCents)}`,""]];p("paper-metrics").innerHTML=y.map(([o,h,k,R])=>`<article class="metric"><div class="metric-head">${o}</div><div class="metric-value ${R}">${h}</div><div class="metric-caption">${k}</div></article>`).join(""),p("paper-date").textContent=t.lastDate?`\\u5DF2\\u7ED3\\u7B97\\u81F3 ${t.lastDate}`:"\\u7B49\\u5F85\\u9996\\u6B21\\u76D8\\u540E\\u7ED3\\u7B97",p("paper-audit").textContent=b.audit.passed?"\\u8D44\\u91D1\\u8D26\\u672C\\u4E00\\u81F4":"\\u8D26\\u672C\\u6838\\u5BF9\\u5F02\\u5E38",p("paper-audit").className=`outline-tag ${b.audit.passed?"verified":"down"}`,p("paper-chart").innerHTML=Ht(b.equities),p("paper-risk").textContent=`\\u5355\\u80A1\\u4E0A\\u9650 20% \\xB7 \\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650 60% \\xB7 \\u56DE\\u64A4 ${x(e?.drawdown??0)} / 10% \\xB7 \\u4E0D\\u900F\\u652F`,p("paper-position-rows").innerHTML=t.positions.length?t.positions.map(o=>{let h=o.lots.reduce((S,A)=>S+A.quantity,0),k=o.lots.reduce((S,A)=>S+A.costCents,0),R=o.lots.filter(S=>S.acquiredDate<(d?.session?.date||new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"}))).reduce((S,A)=>S+A.quantity,0);return`<tr><td><strong>${g(o.name)}</strong><span class="stock-code">${g(o.code)}</span></td><td>${h}<span class="stock-code">\\u5F53\\u65E5\\u53EF\\u5356 ${R}</span></td><td>${v(k/h)}</td><td>${v(o.markCents)}</td><td>\\xA5 ${v(h*o.markCents)}</td><td class="${X(h*o.markCents-k)}">\\xA5 ${v(h*o.markCents-k)}</td><td>${o.heldDays} \\u65E5</td></tr>`}).join(""):\'<tr><td colspan="7"><div class="empty compact">\\u5F53\\u524D\\u7A7A\\u4ED3\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6309\\u7167\\u51BB\\u7ED3\\u8BA1\\u5212\\u4E0E\\u5B9E\\u9645\\u6210\\u4EA4\\u6761\\u4EF6\\u6A21\\u62DF\\u6267\\u884C\\u3002</div></td></tr>\',p("paper-plan-date").textContent=a?`${a.signalDate} \\u76D8\\u540E\\u5236\\u5B9A \\u2192 \\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5`:"\\u5C1A\\u672A\\u751F\\u6210\\u8BA1\\u5212",p("paper-plan-meta").textContent=a?`\\u7B56\\u7565 ${a.strategyVersion} \\xB7 \\u8D39\\u7528 v${a.feeConfigVersion||0} \\xB7 \\u6210\\u672C ${a.executionCostPolicy?`${a.executionCostPolicy.modelVersion} v${a.executionCostPolicy.version||0}`:"\\u65E7\\u7248\\u56FA\\u5B9A 10bps"}${a.sourceSnapshotMissing?" \\xB7 \\u8BC4\\u5206\\u7F3A\\u5931\\uFF0C\\u4EC5\\u6267\\u884C\\u98CE\\u9669\\u4FDD\\u62A4":""} \\xB7 \\u76EE\\u6807\\u4ED3\\u4F4D ${x(a.targetExposure)} \\xB7 ${new Date(a.createdAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\u51BB\\u7ED3`:"\\u5F53\\u65E5\\u8BC4\\u5206\\u4FDD\\u5B58\\u540E\\uFF0C\\u751F\\u6210\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8BA1\\u5212\\u3002",p("paper-plan-rows").innerHTML=a?.orders.length?a.orders.map(o=>`<tr><td><strong>${g(o.name)}</strong><span class="stock-code">${g(o.code)} \\xB7 ${g(o.sector)}</span></td><td><span class="action-tag">${K[o.action]}</span></td><td>${o.score??"\\u2014"}<span class="stock-code">\\u539F\\u59CB ${o.originalScore??"\\u2014"}</span></td><td>${o.quantity||"\\u2014"} \\u80A1</td><td class="plan-price-conditions">${Pt(o)}</td><td class="plan-reason">${g(o.reason)}</td></tr>`).join(""):`<tr><td colspan="6"><div class="empty compact">${a?"\\u5F53\\u524D\\u6CA1\\u6709\\u6EE1\\u8DB3\\u5EFA\\u4ED3\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1\\uFF0C\\u4FDD\\u6301\\u7A7A\\u4ED3\\u3002":"\\u7B49\\u5F85\\u6709\\u6548\\u76D8\\u540E\\u8BC4\\u5206\\u3002"}</div></td></tr>`,p("paper-outcomes").innerHTML=i?.outcomes?.length?`<details><summary>\\u6700\\u8FD1\\u6267\\u884C\\u53CD\\u9988 \\xB7 ${g(i.date)}</summary><div class="execution-feedback">${i.outcomes.map(o=>`<p><strong>${g(o.name)} \\xB7 ${K[o.action]}</strong><span>${o.status==="FILLED"?"\\u5DF2\\u6210\\u4EA4":o.status==="PARTIAL"?"\\u90E8\\u5206\\u5B8C\\u6210":"\\u672A\\u6267\\u884C"} ${o.filledQuantity?`${o.filledQuantity} \\u80A1`:""} \\xB7 ${g(o.reason||"")}</span></p>`).join("")}</div></details>`:"",p("paper-ledger-rows").innerHTML=b.ledger.length?[...b.ledger].sort((o,h)=>h.date.localeCompare(o.date)||h.sequence-o.sequence).map(o=>`<tr><td>${g(o.date)}<span class="stock-code">${g(o.time)}</span></td><td><strong>${g(o.name)}</strong><span class="stock-code">${g(o.code)}</span></td><td>${K[o.action]} \\xB7 ${o.side==="BUY"?"\\u4E70":"\\u5356"}</td><td>${o.quantity}</td><td>${v(o.priceCents)}</td><td title="${g(Ct(o))}"><details class="fee-breakdown"><summary>\\xA5 ${v(o.feeCents)}</summary><span>${g(Ct(o))}</span></details><span class="stock-code">\\u8D39\\u7528 v${o.feeConfigVersion||0}</span></td><td class="${X(o.cashDeltaCents)}">${v(o.cashDeltaCents)}</td><td>${o.dataQuality==="realtime_poll"?"\\u5B9E\\u65F6 HTTP \\u8F6E\\u8BE2":o.dataQuality==="minute"?"\\u5386\\u53F2\\u5206\\u949F\\u91C7\\u6837":"\\u5F00\\u76D8\\u5047\\u8BBE"}${o.executionCost?`<span class="stock-code">\\u6ED1\\u70B9 ${o.executionCost.totalBps}bps \\xB7 ${o.executionCost.spreadSource==="BOOK"?"\\u76D8\\u53E3\\u4EF7\\u5DEE":"\\u56DE\\u9000\\u4EF7\\u5DEE"}</span>`:""}</td></tr>`).join(""):\'<tr><td colspan="8"><div class="empty compact">\\u5C1A\\u65E0\\u6210\\u4EA4\\u8BB0\\u5F55\\u3002\\u672A\\u6EE1\\u8DB3\\u6210\\u4EA4\\u6761\\u4EF6\\u7684\\u8BA1\\u5212\\u4E0D\\u4F1A\\u8BB0\\u4E3A\\u6536\\u76CA\\u3002</div></td></tr>\';let l=i?.improvement?.days??Math.max(0,t.settlementCount-1);p("paper-ai-tag").textContent=b.ai.configured?"\\u5DF2\\u914D\\u7F6E\\u6A21\\u578B":"\\u6A21\\u578B\\u5F85\\u914D\\u7F6E",p("paper-ai-content").innerHTML=`<div class="strategy-active"><span>\\u5F53\\u524D\\u7B56\\u7565</span><strong>${g(t.activeStrategy)}</strong></div><p>${b.ai.configured?`\\u5DF2\\u79EF\\u7D2F ${l} \\u4E2A\\u53EF\\u9A8C\\u8BC1\\u4EA4\\u6613\\u65E5\\u3002\\u81F3\\u5C11 20 \\u65E5\\u8BAD\\u7EC3 + 10 \\u65E5\\u5C01\\u5B58\\u9A8C\\u8BC1\\u540E\\u63D0\\u51FA\\u65B0\\u5019\\u9009\\u3002`:"\\u5C1A\\u672A\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5927\\u6A21\\u578B\\u5BC6\\u94A5\\u3002\\u89C4\\u5219\\u7B56\\u7565\\u6B63\\u5E38\\u8FD0\\u884C\\uFF1B\\u914D\\u7F6E\\u540E\\u63A5\\u5165\\u771F\\u5B9E AI \\u63D0\\u6848\\u4E0E\\u9A8C\\u8BC1\\u3002"}</p><div class="ai-process">\\u771F\\u5B9E\\u6210\\u4EA4\\u4E0E\\u8D39\\u7528<span>\\u2193</span>AI \\u8BAD\\u7EC3\\u7A97\\u53E3\\u5EFA\\u8BAE<span>\\u2193</span>\\u72EC\\u7ACB\\u9A8C\\u8BC1 \\xB7 \\u6536\\u76CA\\u4E0E\\u56DE\\u64A4<span>\\u2193</span>\\u901A\\u8FC7\\u540E\\u542F\\u7528\\u65B0\\u7248\\u672C</div><p class="ai-note">\\u6BCF\\u4E2A\\u5C01\\u5B58\\u7A97\\u53E3\\u53EA\\u9A8C\\u8BC1\\u4E00\\u4E2A\\u5019\\u9009\\uFF1B\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u548C\\u5386\\u53F2\\u4EA4\\u6613\\u4FDD\\u7559\\u539F\\u7248\\u672C\\u3002</p>`,p("paper-version-list").innerHTML=s.filter(o=>o.id!=="baseline-v1").slice(0,6).map(o=>`<div class="version-row"><div><strong>${g(o.id)}</strong><span>${wt[o.status]||g(o.status)}</span></div><p>${g(o.evidence.rationale||o.evidence.error||"\\u7B49\\u5F85\\u9A8C\\u8BC1\\u7ED3\\u679C")}</p>${o.evidence.baseline?`<small>\\u5C01\\u5B58\\u9A8C\\u8BC1 ${g(o.evidence.validationStart)} \\u2014 ${g(o.evidence.validationEnd)}<br>\\u57FA\\u7EBF ${x(o.evidence.baseline.totalReturn)} \\u2192 \\u5019\\u9009 ${x(o.evidence.candidate.totalReturn)} \\xB7 \\u56DE\\u64A4 ${x(o.evidence.candidate.maxDrawdown)}</small>`:""}${o.status==="VALIDATED"?`<button class="secondary" data-activate="${g(o.id)}">\\u542F\\u7528\\u6B64\\u7248\\u672C</button>`:""}</div>`).join("")||\'<div class="small-muted">\\u5C1A\\u65E0 AI \\u5019\\u9009\\u7248\\u672C\\uFF0C\\u6301\\u7EED\\u79EF\\u7D2F\\u771F\\u5B9E\\u6570\\u636E\\u3002</div>\',q||(p("paper-initial-capital").value=t.initialCashCents/100),p("paper-initial-capital").disabled=!b.canEditCapital,q||Et(b.feeConfig),p("paper-fee-version").textContent=`\\u8D39\\u7528\\u914D\\u7F6E v${t.feeConfigVersion||0}`,p("paper-fee-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${a?.feeConfig?jt(a.feeConfig):"\\u65E7\\u7248\\u56FA\\u5B9A\\u8D39\\u7528"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,q||(p("paper-improvement-mode").value=t.improvementMode||"auto"),p("paper-config-note").textContent=b.canEditCapital?"\\u4EA4\\u6613\\u8BA1\\u5212\\u5F00\\u59CB\\u6267\\u884C\\u524D\\u53EF\\u81EA\\u5B9A\\u4E49\\u521D\\u59CB\\u8D44\\u91D1\\uFF1B\\u8D39\\u7528\\u968F\\u65F6\\u53EF\\u8C03\\u6574\\u3002":"\\u521D\\u59CB\\u8D44\\u91D1\\u4F5C\\u4E3A\\u6536\\u76CA\\u57FA\\u51C6\\u5DF2\\u51BB\\u7ED3\\uFF1B\\u8D39\\u7528\\u4ECD\\u53EF\\u81EA\\u5B9A\\u4E49\\uFF0C\\u9002\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212\\u3002",document.querySelectorAll("[data-activate]").forEach(o=>o.onclick=()=>z(async()=>(await _("/api/paper/activate",{id:o.dataset.activate})).activated?"\\u65B0\\u7248\\u672C\\u5DF2\\u542F\\u7528\\uFF0C\\u5C06\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212":"\\u8D26\\u6237\\u540C\\u65F6\\u66F4\\u65B0\\uFF0C\\u8BF7\\u91CD\\u8BD5"))}async function F(){try{b=await _("/api/paper"),Ft()}catch(t){V(t.message)}}async function z(t){if(!tt){tt=!0,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!0),V("\\u6B63\\u5728\\u5904\\u7406\\uFF0C\\u7ED3\\u679C\\u5C06\\u4FDD\\u5B58\\u5230\\u8D26\\u672C\\u2026");try{let e=await t();await F(),V(e)}catch(e){V(e.message)}finally{tt=!1,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!1)}}}function xt(){return p("paper-config-form").addEventListener("input",()=>{q=!0}),p("paper-fee-controls").innerHTML=H.map(({key:t,label:e,unit:a,direction:i})=>`<label for="fee-${t}">${e}\\uFF08${a}\\uFF09<input id="fee-${t}" type="number" min="0" max="${t==="commission_min"?1e4:100}" step="${t==="commission_min"?"0.01":"0.001"}" value="${ut(t,dt[t])}" required><span>${i}</span></label>`).join(""),p("paper-fee-defaults").onclick=()=>{Et(dt),q=!0,V("\\u5DF2\\u586B\\u5165\\u56FE\\u4E2D\\u9ED8\\u8BA4\\u8D39\\u7528\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},p("paper-run").onclick=()=>z(async()=>{let t=await _("/api/run-daily",{});return window.dispatchEvent(new Event("paper-updated")),t.paper?.reason||t.snapshot?.reason||"\\u5DF2\\u5B8C\\u6210\\u76D8\\u540E\\u66F4\\u65B0"}),p("paper-verify").onclick=()=>z(async()=>{let t=await _("/api/paper/verify");return t.passed?`\\u5B8C\\u6574\\u91CD\\u653E\\u901A\\u8FC7\\uFF1A${t.days} \\u4E2A\\u7ED3\\u7B97\\u65E5\\u3001${t.fills} \\u7B14\\u6210\\u4EA4\\uFF0C\\u8D44\\u91D1\\u3001\\u8D39\\u7528\\u4E0E\\u6536\\u76CA\\u5747\\u4E00\\u81F4\\u3002`:"\\u9A8C\\u8BC1\\u672A\\u901A\\u8FC7\\uFF0C\\u8BF7\\u68C0\\u67E5\\u5BFC\\u51FA\\u8BB0\\u5F55\\u4E0E\\u884C\\u60C5\\u5B8C\\u6574\\u5EA6\\u3002"}),p("paper-improve").onclick=()=>z(async()=>{let t=await _("/api/paper/improve",{});return t.reason||`AI \\u6539\\u8FDB\\u72B6\\u6001\\uFF1A${wt[t.status]||t.status}`}),p("paper-config-form").onsubmit=t=>{t.preventDefault(),z(async()=>(await _("/api/paper/settings",{...b?.canEditCapital?{initialCapital:Number(p("paper-initial-capital").value)}:{},improvementMode:p("paper-improvement-mode").value,fees:Object.fromEntries(H.map(({key:e})=>[e,e==="commission_min"?Number(p(`fee-${e}`).value):Number(p(`fee-${e}`).value)/1e4]))}),q=!1,"\\u8D44\\u91D1\\u4E0E\\u8D39\\u7528\\u8BBE\\u7F6E\\u5DF2\\u4FDD\\u5B58\\uFF1B\\u65B0\\u8BA1\\u5212\\u91C7\\u7528\\u65B0\\u914D\\u7F6E\\uFF0C\\u5DF2\\u6267\\u884C\\u8BB0\\u5F55\\u4FDD\\u7559\\u539F\\u914D\\u7F6E\\u3002"))},window.addEventListener("paper-updated",F),setInterval(()=>{!document.hidden&&!tt&&F()},15e3),F(),{refresh:F}}var O={status:null,detailId:null,initialized:!1};async function ht(t,e={}){let a=await fetch(t,{headers:{"Content-Type":"application/json"},...e}),i=await a.json().catch(()=>({}));if(!a.ok)throw new Error(i.error||"\\u8BF7\\u6C42\\u5931\\u8D25");return i}var kt=t=>t==null?"\\u2014":`${(t*100).toFixed(2)}%`,zt=t=>t==null?"\\u2014":(t/100).toLocaleString("zh-CN",{maximumFractionDigits:2}),et={RESERVED:"\\u5DF2\\u9884\\u7559",PROPOSING:"\\u5019\\u9009\\u751F\\u6210\\u4E2D",FROZEN:"\\u5019\\u9009\\u5DF2\\u51BB\\u7ED3",HISTORICAL_CHECK:"\\u5386\\u53F2\\u7B5B\\u67E5\\u4E2D",SCHEDULED:"\\u5DF2\\u6392\\u671F",RUNNING:"\\u524D\\u77BB\\u8FD0\\u884C\\u4E2D",EVALUATING:"\\u8BC4\\u4F30\\u4E2D",CLOSED:"\\u5DF2\\u7ED3\\u675F",ELIGIBLE:"\\u7B26\\u5408\\u664B\\u7EA7\\u6761\\u4EF6",PROMOTED:"\\u5DF2\\u542F\\u7528",REJECTED:"\\u5386\\u53F2\\u7B5B\\u67E5\\u672A\\u901A\\u8FC7",ERROR:"\\u51FA\\u9519",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u5DF2\\u5931\\u6548"};function D(t){return document.getElementById(t)}function Vt(){let{status:t}=O,e=D("strategies-status");if(!t){e.innerHTML="<p>\\u5C1A\\u672A\\u83B7\\u53D6\\u6279\\u6B21\\u72B6\\u6001\\u3002</p>";return}let a=t.activeCohort;e.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u6D3B\\u52A8\\u6279\\u6B21</span><strong>${a?`${a.id.slice(0,18)}\\u2026`:"\\u65E0"}</strong><small>${a?et[a.stage]??a.stage:"\\u53EF\\u53D1\\u8D77\\u65B0\\u6279\\u6B21"}</small></div>\n      <div><span class="mini-label">\\u5019\\u9009\\u4E0A\\u9650</span><strong>${t.policy.maxCandidates}</strong><small>\\u6BCF\\u6708\\u751F\\u6210\\u6279\\u6B21 ${t.policy.monthlyGenerationLimit} \\u6B21</small></div>\n      <div><span class="mini-label">\\u524D\\u77BB\\u7A97\\u53E3</span><strong>${t.policy.forwardDays} \\u4EA4\\u6613\\u65E5</strong><small>\\u5B8C\\u6574\\u8F6E\\u6B21\\u95E8\\u69DB ${t.policy.minimumCompletedRounds}</small></div>\n      <div><span class="mini-label">\\u5F53\\u524D\\u7B56\\u7565</span><strong>${a?.parentVersion??"baseline-v1"}</strong><small>${a?"\\u8D5B\\u9A6C\\u671F\\u95F4\\u4FDD\\u6301\\u7236\\u7B56\\u7565":"\\u7B49\\u5F85\\u6279\\u6B21\\u7ED3\\u8BBA"}</small></div>\n    </div>\n    <p class="panel-footnote">${t.note??""}</p>`}function Bt(){let{status:t,detailId:e}=O,a=(t?.cohorts??[]).map(i=>`\n      <tr data-cohort="${i.id}" class="${i.id===e?"active":""}">\n        <td>${i.id.slice(0,22)}\\u2026</td>\n        <td>${et[i.stage]??i.stage}</td>\n        <td>${i.parentVersion}</td>\n        <td>${i.maxCandidates}</td>\n        <td>${(i.createdAt??"").replace("T"," ").slice(0,16)}</td>\n      </tr>`).join("");D("strategies-cohort-rows").innerHTML=a||\'<tr><td colspan="5">\\u5C1A\\u65E0\\u6279\\u6B21\\u8BB0\\u5F55</td></tr>\',D("strategies-cohort-rows").querySelectorAll("tr[data-cohort]").forEach(i=>{i.onclick=()=>{O.detailId=i.dataset.cohort,pt()}})}async function Ut(){let t=D("strategies-detail"),{detailId:e}=O;if(!e){t.innerHTML="<p class=\'panel-footnote\'>\\u70B9\\u51FB\\u4E0A\\u65B9\\u6279\\u6B21\\u67E5\\u770B\\u56FA\\u5B9A\\u6210\\u5458\\u3001\\u51C0\\u503C\\u4E0E\\u8D44\\u683C\\u3002</p>";return}let a;try{a=await ht(`/api/strategies/cohorts/${e}`)}catch(c){t.innerHTML=`<p>${c.message}</p>`;return}let i=(a.members??[]).map(c=>`\n      <tr>\n        <td>${c.memberId}</td>\n        <td>${et[c.stage]??c.stage}</td>\n        <td>${c.k}</td>\n        <td>${c.strategyVersion?`${c.strategyVersion.slice(0,18)}\\u2026`:"\\u2014"}</td>\n        <td>${c.paramsDistance??"\\u2014"}</td>\n        <td>${c.failureReason??"\\u2014"}</td>\n      </tr>`).join(""),s=(a.accounts??[]).map(c=>`\n      <tr>\n        <td>${c.kind}</td>\n        <td>${c.memberId??"\\u2014"}</td>\n        <td>${zt(c.book?.equityCents)}</td>\n        <td>${c.cursor?.date??"\\u2014"} #${c.cursor?.sequence??0}</td>\n        <td>${c.book?.lastDate??"\\u2014"}</td>\n      </tr>`).join(""),d=a.evaluation,u=(d?.verdicts??[]).map(c=>`\n      <tr>\n        <td>${c.memberId}</td>\n        <td>${et[c.stage]??c.stage}</td>\n        <td>${kt(c.metrics?.netReturn)}</td>\n        <td>${kt(c.metrics?.windowDrawdown)}</td>\n        <td>${c.rounds?.rounds??"\\u2014"}</td>\n        <td>${c.checks?.statistics?"\\u901A\\u8FC7":c.checks?"\\u672A\\u901A\\u8FC7/\\u672A\\u8BC4\\u4F30":"\\u2014"}</td>\n      </tr>`).join("");t.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u51A0\\u519B</span><strong>${d?.champion?.memberId??"\\u65E0"}</strong><small>${d?.promotion?.promoted?`\\u5DF2\\u542F\\u7528\\uFF0C\\u751F\\u6548\\u65E5 ${d.promotion.effectiveTradeDate??"\\u5F85\\u5B9A"}`:"\\u4EC5\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528"}</small></div>\n      <div><span class="mini-label">\\u7A97\\u53E3</span><strong>${a.cohort.forwardManifest?.tradingDates?.length??0}/${a.cohort.forwardDays}</strong><small>\\u6355\\u83B7\\u65E5 ${a.cohort.forwardManifest?.captureDate??"\\u2014"}</small></div>\n      <div><span class="mini-label">\\u62A5\\u544A\\u6458\\u8981</span><strong>${a.evaluationDigest?"\\u5DF2\\u51BB\\u7ED3":"\\u7B49\\u5F85\\u8BC4\\u4F30"}</strong><small>\\u95F8\\u95E8\\u4E0E\\u7EDF\\u8BA1\\u53EF\\u91CD\\u653E</small></div>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u6210\\u5458</th><th>\\u72B6\\u6001</th><th>\\u5C1D\\u8BD5\\u5E8F\\u53F7 k</th><th>\\u7B56\\u7565\\u7248\\u672C</th><th>\\u53C2\\u6570\\u8DDD\\u79BB</th><th>\\u5931\\u8D25\\u539F\\u56E0</th></tr></thead>\n        <tbody>${i||"<tr><td colspan=\'6\'>\\u65E0\\u6210\\u5458</td></tr>"}</tbody>\n      </table>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u8D26\\u6237</th><th>\\u89D2\\u8272</th><th>\\u671F\\u672B\\u6743\\u76CA\\uFF08\\u5206\\uFF09</th><th>\\u6D88\\u8D39\\u6E38\\u6807</th><th>\\u5DF2\\u7ED3\\u7B97\\u65E5</th></tr></thead>\n        <tbody>${s||"<tr><td colspan=\'5\'>\\u5C1A\\u65E0\\u5339\\u914D\\u8D26\\u6237</td></tr>"}</tbody>\n      </table>\n    </div>\n    ${u?`<div class="table-scroll">\n        <table>\n          <thead><tr><th>\\u6210\\u5458</th><th>\\u7ED3\\u8BBA</th><th>\\u671F\\u95F4\\u51C0\\u6536\\u76CA</th><th>\\u7A97\\u53E3\\u56DE\\u64A4</th><th>\\u5B8C\\u6574\\u8F6E\\u6B21</th><th>\\u7EDF\\u8BA1\\u68C0\\u9A8C</th></tr></thead>\n          <tbody>${u}</tbody>\n        </table>\n      </div>`:""}\n    <p class="panel-footnote">\\u6536\\u76CA\\u4E0D\\u5728\\u72EC\\u7ACB\\u5019\\u9009\\u4E4B\\u95F4\\u6C42\\u548C\\uFF1B\\u7EB8\\u9762\\u9886\\u5148\\u4E0D\\u7B49\\u4E8E\\u53EF\\u542F\\u7528\\u8D44\\u683C\\u3002</p>\n    <a class="secondary" href="/api/strategies/cohorts/${e}/export" download>\\u5BFC\\u51FA\\u6279\\u6B21\\u68C0\\u67E5\\u70B9</a>`}async function pt(){try{O.status=await ht("/api/strategies/cohorts"),Vt(),Bt(),await Ut()}catch(t){D("strategies-status").innerHTML=`<p>${t.message}</p>`}}function St(){O.initialized||(O.initialized=!0,D("strategies-reserve").onclick=async()=>{let t=D("strategies-reserve");t.disabled=!0,D("strategies-status-note").textContent="\\u6B63\\u5728\\u9884\\u7559\\u6279\\u6B21\\u5E76\\u8C03\\u7528\\u6A21\\u578B\\u751F\\u6210\\u5019\\u9009\\u2026";try{let e=await ht("/api/strategies/cohorts",{method:"POST",body:"{}"});D("strategies-status-note").textContent=e.reason??e.status??"\\u6279\\u6B21\\u5DF2\\u9884\\u7559"}catch(e){D("strategies-status-note").textContent=e.message}finally{t.disabled=!1,await pt()}},pt())}var C={initialized:!1,cursor:0,status:null},f=t=>document.getElementById(t),B=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]);async function G(t,e={}){let a=await fetch(t,{headers:{"content-type":"application/json"},...e,body:e.body?JSON.stringify(e.body):void 0}),i=await a.json().catch(()=>({}));if(!a.ok)throw new Error(i.error||`\\u8BF7\\u6C42\\u5931\\u8D25\\uFF08${a.status}\\uFF09`);return i}function j(t){return t?t.replace("T"," ").slice(0,19):"\\u2014"}var Gt={RUNNER_STALLED:"\\u6267\\u884C\\u5FAA\\u73AF\\u505C\\u6EDE",LOOP_FAILED:"\\u5FAA\\u73AF\\u8FDE\\u7EED\\u5931\\u8D25",SESSION_BLOCKED:"\\u4F1A\\u8BDD\\u88AB\\u963B\\u585E",REQUIRED_QUOTE_STALE:"\\u5173\\u952E\\u62A5\\u4EF7\\u9648\\u65E7",DRAWDOWN_TRIPPED:"\\u56DE\\u64A4\\u89E6\\u53CA\\u786C\\u7EA6\\u675F",PROTECTIVE_EXIT_BLOCKED:"\\u4FDD\\u62A4\\u9000\\u51FA\\u65E0\\u6CD5\\u6210\\u4EA4",T_RECOVERY_INCOMPLETE:"\\u505A T \\u7B2C\\u4E8C\\u817F\\u672A\\u6062\\u590D",SETTLEMENT_LATE:"\\u76D8\\u540E\\u7ED3\\u7B97\\u8FDF\\u5EF6",LEDGER_INVARIANT_FAILED:"\\u8D26\\u672C\\u4E0D\\u53D8\\u5F0F\\u5F02\\u5E38",ALERT_PIPELINE_STALLED:"\\u544A\\u8B66\\u5206\\u53D1\\u505C\\u6EDE",AI_OR_RESEARCH_FAILED:"AI/\\u7814\\u7A76\\u4EFB\\u52A1\\u5931\\u8D25"};function Wt(){let{status:t}=C;if(!t)return;f("alerts-enabled-tag").textContent=t.enabled?"\\u5DF2\\u542F\\u7528":"\\u672A\\u542F\\u7528",f("alerts-status-note").textContent=t.note??"";let e=t.channels.map(i=>`<div><span class="outline-tag">${B(i.name)}</span><div class="panel-metric-value">${i.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E\\uFF08\\u670D\\u52A1\\u7AEF .env\\uFF09"}</div></div>`).join(""),a=t.watchdog??{};f("alerts-channel-list").innerHTML=e+`<div><span class="outline-tag">\\u5916\\u90E8\\u76D1\\u6D4B</span><div class="panel-metric-value"><span>${a.progressConfigured?`\\u8FDB\\u5EA6\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E${a.lastProgressAt?`\\uFF0C\\u6700\\u8FD1 ${j(a.lastProgressAt)}`:""}`:"\\u672A\\u914D\\u7F6E\\uFF08WATCHDOG_PROGRESS_URL\\uFF09"}</span><span>${a.pipelineConfigured?"\\u7BA1\\u9053\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E":"\\u7BA1\\u9053\\u4FE1\\u53F7\\u672A\\u914D\\u7F6E"}</span></div></div>\n    <div><span class="outline-tag">\\u53D1\\u9001\\u961F\\u5217</span><div class="panel-metric-value">\\u5F85\\u53D1\\u9001 ${t.outbox?.pending??0}\\uFF0C\\u903E\\u671F\\u672A\\u9886 ${t.outbox?.overdue??0}\\uFF0C\\u5DF2\\u53D1\\u9001 ${t.outbox?.sent??0}\\uFF0C\\u8FC7\\u671F ${t.outbox?.expired??0}</div></div>`}function Yt(t){let e=C.incidents??[];f("alerts-incident-rows").innerHTML=e.map(a=>`<tr>\n      <td>${B(Gt[a.ruleType]??a.ruleType)}<small class="small-muted"> ${B(a.fingerprint)}</small></td>\n      <td>${a.severity==="CRITICAL"?"\\u4E25\\u91CD":"\\u8B66\\u544A"}</td>\n      <td>${a.status==="RESOLVED"?`\\u5DF2\\u6062\\u590D ${j(a.resolvedAt)}`:a.status==="OPEN"?"\\u672A\\u6062\\u590D":B(a.status)}${a.ackUntil&&a.ackUntil>new Date().toISOString()?`\\uFF08\\u786E\\u8BA4\\u81F3 ${j(a.ackUntil)}\\uFF09`:""}</td>\n      <td>${j(a.firstSeen)}</td>\n      <td>${j(a.lastSeen)}</td>\n      <td>${a.status!=="RESOLVED"?`<button class="text-button" data-ack="${B(a.id)}">\\u786E\\u8BA4 2 \\u5C0F\\u65F6</button>`:""}</td>\n    </tr>`).join("");for(let a of f("alerts-incident-rows").querySelectorAll("[data-ack]"))a.onclick=async()=>{a.disabled=!0;try{await G(`/api/alerts/incidents/${a.dataset.ack}/ack`,{method:"POST",body:{hours:2}})}catch(i){f("alerts-list-status").textContent=i.message}await U(!0)};f("alerts-more").hidden=!C.nextCursor,f("alerts-list-status").textContent=t?`\\u5171 ${e.length} \\u6761${C.nextCursor?"\\uFF08\\u53EF\\u52A0\\u8F7D\\u66F4\\u591A\\uFF09":""}`:f("alerts-list-status").textContent}async function U(t=!1){try{C.status=await G("/api/alerts/status"),Wt(),t&&(C.cursor=0);let e=await G(`/api/alerts/incidents?cursor=${C.cursor}&active=${f("alerts-active-only").checked}`);C.incidents=t?e.incidents:[...C.incidents??[],...e.incidents],C.nextCursor=e.nextCursor,Yt(t)}catch(e){f("alerts-list-status").textContent=e.message}}function At(){C.initialized||(C.initialized=!0,f("alerts-refresh").onclick=()=>U(!0),f("alerts-active-only").onchange=()=>U(!0),f("alerts-more").onclick=()=>{C.cursor=C.nextCursor,U(!1)},f("alerts-test").onclick=async()=>{let t=f("alerts-test");t.disabled=!0,f("alerts-status-note").textContent="\\u6B63\\u5728\\u53D1\\u9001\\u6D4B\\u8BD5\\u901A\\u77E5\\u2026";try{await G("/api/alerts/test",{method:"POST",body:{}}),f("alerts-status-note").textContent="\\u6D4B\\u8BD5\\u901A\\u77E5\\u5DF2\\u53D1\\u9001\\uFF0C\\u8BF7\\u5728\\u98DE\\u4E66\\u67E5\\u6536"}catch(e){f("alerts-status-note").textContent=e.message}finally{t.disabled=!1}},f("alerts-maintenance").onclick=async()=>{let t=Number(prompt("\\u7EF4\\u62A4\\u7A97\\u53E3\\u5206\\u949F\\u6570\\uFF0815\\u20131440\\uFF09\\uFF1A","60"));if(!Number.isInteger(t))return;let e=prompt("\\u7EF4\\u62A4\\u539F\\u56E0\\uFF08\\u53EF\\u9009\\uFF09\\uFF1A","")??"";try{let a=await G("/api/alerts/maintenance",{method:"POST",body:{minutes:t,reason:e}});f("alerts-status-note").textContent=`\\u7EF4\\u62A4\\u7A97\\u53E3\\u81F3 ${j(a.until)}`}catch(a){f("alerts-status-note").textContent=a.message}},U(!0))}var r=t=>document.getElementById(t),$=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),Tt={dashboard:\'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>\',chart:\'<path d="M4 3v17h17M8 15l4-6 4 3 5-7"/>\',grid:\'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 11h18M11 4v16"/>\',sliders:\'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/>\',database:\'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/>\',calendar:\'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>\',refresh:\'<path d="M20 7a8 8 0 0 0-14-2L3 8m0-5v5h5M4 17a8 8 0 0 0 14 2l3-3m0 5v-5h-5"/>\',search:\'<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>\',info:\'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>\',close:\'<path d="m6 6 12 12M6 18 18 6"/>\',flame:\'<path d="M12 3c1 6 7 6 7 12a7 7 0 0 1-14 0c0-3 2-5 4-7 0 3 1 3 2 4 2-3 2-6 1-9Z"/>\',shield:\'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>\'};function W(t){return`<svg viewBox="0 0 24 24" aria-hidden="true">${Tt[t]||Tt.chart}</svg>`}document.querySelectorAll("[data-icon]").forEach(t=>t.innerHTML=W(t.dataset.icon));var n={view:"overview",height:"all",weights:[...N.balanced],payload:null,analysis:null,loading:!0,error:null,demo:!1,request:0,review:null,ai:null,aiConfig:{configured:!1},history:null,reviewBusy:!1,reviewMessage:"",storageAvailable:!1};try{let t=JSON.parse(localStorage.getItem("limitLensWeights"));Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)&&(n.weights=t)}catch{}var Y=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date);r("trade-date").value=Y;r("trade-date").max=Y;var Zt=xt(),at={paper:["\\u6A21\\u62DF\\u4EA4\\u6613","\\u8BA9\\u8BC4\\u5206\\u63A5\\u53D7\\u8D26\\u6237\\u68C0\\u9A8C","\\u5236\\u5B9A\\u8BA1\\u5212\\u3001\\u6A21\\u62DF\\u6267\\u884C\\u3001\\u6838\\u5BF9\\u6536\\u76CA\\uFF0C\\u7528\\u771F\\u5B9E\\u7ED3\\u679C\\u6539\\u8FDB\\u7B56\\u7565\\u3002"],overview:["\\u603B\\u89C8\\u590D\\u76D8","\\u6BCF\\u65E5\\u6DA8\\u505C\\u590D\\u76D8","\\u628A\\u6DA8\\u505C\\u62C6\\u6210\\u4FE1\\u53F7\\uFF0C\\u628A\\u5224\\u65AD\\u5EFA\\u7ACB\\u5728\\u6570\\u636E\\u4E0A\\u3002"],stocks:["\\u4E2A\\u80A1\\u5206\\u6790","\\u6DA8\\u505C\\u4E2A\\u80A1\\u5206\\u6790","\\u62C6\\u89E3\\u5C01\\u677F\\u8868\\u73B0\\uFF0C\\u6BD4\\u8F83\\u5F3A\\u5EA6\\u4E0E\\u98CE\\u9669\\u3002"],sectors:["\\u677F\\u5757\\u7814\\u7A76","\\u884C\\u4E1A\\u677F\\u5757\\u7814\\u7A76","\\u4ECE\\u6DA8\\u505C\\u96C6\\u805A\\u4E0E\\u8FDE\\u677F\\u68AF\\u961F\\uFF0C\\u89C2\\u5BDF\\u8D44\\u91D1\\u7684\\u5171\\u540C\\u65B9\\u5411\\u3002"],review:["\\u6628\\u65E5\\u53CD\\u9988","\\u8BA9\\u6628\\u65E5\\u5224\\u65AD\\u63A5\\u53D7\\u68C0\\u9A8C","\\u4FDD\\u5B58\\u5F53\\u65F6\\u7684\\u5224\\u65AD\\uFF0C\\u7528\\u5B9E\\u9645\\u8868\\u73B0\\u68C0\\u9A8C\\uFF0C\\u518D\\u7531 AI \\u5BA1\\u89C6\\u3002"],model:["\\u8BC4\\u5206\\u6A21\\u578B","\\u53EF\\u89E3\\u91CA\\u7684\\u8BC4\\u5206\\u6A21\\u578B","\\u6BCF\\u4E00\\u5206\\u90FD\\u6709\\u4F9D\\u636E\\uFF0C\\u6BCF\\u4E00\\u9879\\u6743\\u91CD\\u90FD\\u53EF\\u4EE5\\u8C03\\u6574\\u3002"],strategies:["\\u7B56\\u7565\\u8D5B\\u9A6C","\\u591A\\u7B56\\u7565\\u5E76\\u884C\\u8D5B\\u9A6C\\u4E0E\\u53D7\\u63A7\\u664B\\u7EA7","\\u540C\\u4E00\\u4EFD\\u884C\\u60C5\\u3001\\u540C\\u4E00\\u51BB\\u7ED3\\u8D77\\u70B9\\uFF0C\\u56FA\\u5B9A\\u7A97\\u53E3\\u5185\\u6BD4\\u8F83\\uFF0C\\u53EA\\u6709\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528\\u3002"],alerts:["\\u8FD0\\u7EF4\\u544A\\u8B66","\\u5E38\\u9A7B\\u6267\\u884C\\u4E0D\\u9759\\u9ED8\\u5931\\u8054","\\u6267\\u884C\\u9519\\u8BEF\\u3001\\u98CE\\u9669\\u5904\\u7F6E\\u4E0E\\u76D8\\u540E\\u5931\\u8D25\\u4E3B\\u52A8\\u901A\\u77E5\\uFF1B\\u6574\\u673A\\u79BB\\u7EBF\\u7531\\u5916\\u90E8\\u76D1\\u6D4B\\u53D1\\u73B0\\u3002"]};function ot(t){at[t]&&(n.view=t,document.querySelectorAll("[data-view]").forEach(e=>{e.classList.toggle("active",e.dataset.view===t),e.setAttribute("aria-current",e.dataset.view===t?"page":"false")}),r("crumb").textContent=at[t][0],r("page-title").textContent=at[t][1],r("page-subtitle").textContent=at[t][2],r("overview-content").hidden=!["overview","stocks"].includes(t),r("sectors-view").hidden=t!=="sectors",r("model-view").hidden=t!=="model",r("review-view").hidden=t!=="review",r("summary").hidden=["model","review","paper","strategies","alerts"].includes(t),r("paper-view").hidden=t!=="paper",r("strategies-view").hidden=t!=="strategies",r("alerts-view").hidden=t!=="alerts",document.querySelector(".heading-actions").hidden=t==="paper"||t==="strategies"||t==="alerts",document.querySelector(".data-strip").hidden=t==="paper"||t==="strategies"||t==="alerts",t==="paper"&&Zt.refresh(),t==="strategies"&&St(),t==="alerts"&&At(),document.querySelector(".right-column").hidden=t==="stocks",r("overview-content").style.gridTemplateColumns=t==="stocks"?"minmax(0,1fr)":"",P(),M())}document.querySelectorAll("[data-view]").forEach(t=>t.onclick=()=>ot(t.dataset.view));document.querySelector(".brand").onclick=t=>{t.preventDefault(),ot("overview")};function w(t,e=1){return t==null?"\\u2014":Number(t).toFixed(e)}function mt(t){return t==null?"\\u2014":t>=1e8?`${(t/1e8).toFixed(2)} \\u4EBF`:`${(t/1e4).toFixed(0)} \\u4E07`}function Jt(t){return t>=80?"":t>=60?"mid":"low"}function st(t){return`<div class="score-cell"><span class="score-number ${Jt(t)}">${t??"\\u2014"}</span><span class="score-track"><i style="width:${t??0}%"></i></span></div>`}function gt(){n.analysis=n.payload?.archived?structuredClone(n.payload.analysis):n.payload?vt(n.payload.rows.map(ct),n.payload.broken,n.payload.previous?.map(ct)||null,n.weights):null}function P(){let t=n.analysis,e=t!==null,a=n.loading,i=[{name:"\\u6DA8\\u505C\\u5BB6\\u6570",value:e?t.count:"\\u2014",unit:"\\u5BB6",caption:e?`\\u9996\\u677F ${t.first} \\u5BB6 \\xB7 \\u8FDE\\u677F ${t.relay} \\u5BB6`:"\\u9996\\u677F\\u4E0E\\u8FDE\\u677F\\u5206\\u5E03",icon:"flame",pct:e?Math.min(t.count/80*100,100):0},{name:"\\u5C01\\u677F\\u7387",value:e?w(t.sealRate):"\\u2014",unit:"%",caption:e?n.payload.broken===null?"\\u70B8\\u677F\\u6C60\\u6570\\u636E\\u6682\\u7F3A":`\\u70B8\\u677F ${n.payload.broken} \\u5BB6 \\xB7 \\u5F53\\u524D\\u672A\\u5C01\\u4F4F`:"\\u6DA8\\u505C /\\uFF08\\u6DA8\\u505C + \\u70B8\\u677F\\uFF09",icon:"shield",pct:e?t.sealRate??0:0},{name:"\\u6700\\u9AD8\\u8FDE\\u677F",value:e?t.height:"\\u2014",unit:"\\u677F",caption:e?`\\u8FDE\\u677F\\u80A1\\u5360\\u6BD4 ${t.count?w(t.relay/t.count*100):"\\u2014"}%`:"\\u8861\\u91CF\\u5F53\\u65E5\\u5E02\\u573A\\u9AD8\\u5EA6",icon:"chart",pct:e?Math.min(t.height/7*100,100):0,amber:!0},{name:"\\u60C5\\u7EEA\\u5F3A\\u5EA6",value:e?t.emotion??"\\u2014":"\\u2014",unit:"/ 100",caption:e?t.emotion===null?"\\u5F53\\u65E5\\u65E0\\u6709\\u6548\\u8BC4\\u5206\\u6837\\u672C":`${t.emotion>=75?"\\u5F3A\\u5EA6\\u8F83\\u9AD8":t.emotion>=45?"\\u5F3A\\u5EA6\\u4E2D\\u7B49":"\\u5F3A\\u5EA6\\u8F83\\u4F4E"} \\xB7 ${t.emotionCoverage==null?"\\u5DF2\\u5F52\\u6863\\u7684\\u6536\\u76D8\\u5224\\u65AD":`\\u6570\\u636E\\u8986\\u76D6 ${t.emotionCoverage}%`}`:"\\u6DA8\\u505C\\u89C4\\u6A21 \\xB7 \\u5C01\\u677F\\u7387 \\xB7 \\u9AD8\\u5EA6",icon:"dashboard",pct:e?t.emotion??0:0,accent:!0}];r("summary").innerHTML=i.map(s=>`<article class="metric ${a?"loading":""}"><div class="metric-head">${s.name}${W(s.icon)}</div><div class="metric-value ${s.accent?"accent":""}">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div><div class="metric-line ${s.amber?"amber":""}"><i style="width:${s.pct}%"></i></div></article>`).join(""),r("pool-count").textContent=e?t.count:"\\u2014",Z(),Xt(),Kt()}function Qt(){let t=n.analysis?.stocks||[],e=r("search").value.trim().toLowerCase(),a=r("sector-filter").value;t=t.filter(s=>(!e||s.name.toLowerCase().includes(e)||s.code.includes(e))&&(!a||s.sector===a)&&(n.height==="all"||(n.height==="first"?s.height===1:s.height>1)));let i=r("sort").value;return t.slice().sort(i==="height"?(s,d)=>(d.height??0)-(s.height??0):i==="seal"?(s,d)=>(d.seal??-1)-(s.seal??-1):i==="first"?(s,d)=>(s.first??999999)-(d.first??999999):(s,d)=>(d.score??-1)-(s.score??-1))}function Z(){let t=Qt(),e=n.analysis!==null,a=n.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u884C\\u60C5":e?"\\u6CA1\\u6709\\u7B26\\u5408\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1":"\\u6682\\u65E0\\u53EF\\u7528\\u884C\\u60C5",i=n.loading?"\\u6B63\\u5728\\u8BFB\\u53D6\\u516C\\u5F00\\u6DA8\\u505C\\u6C60\\u3001\\u70B8\\u677F\\u6C60\\u4E0E\\u6628\\u65E5\\u6DA8\\u505C\\u6C60\\u2026":e?"\\u5C1D\\u8BD5\\u8C03\\u6574\\u641C\\u7D22\\u3001\\u884C\\u4E1A\\u6216\\u8FDE\\u677F\\u7B5B\\u9009\\u3002":"\\u5207\\u6362\\u8FD1\\u671F\\u4EA4\\u6613\\u65E5\\u671F\\u6216\\u7A0D\\u540E\\u5237\\u65B0\\uFF0C\\u4E5F\\u53EF\\u4EE5\\u67E5\\u770B\\u660E\\u786E\\u6807\\u6CE8\\u7684\\u6F14\\u793A\\u3002";r("stock-rows").innerHTML=t.length?t.map(s=>`<tr><td><button class="stock-name" data-stock="${$(s.code)}">${$(s.name)}</button><span class="stock-code">${$(s.code)}</span></td><td>${st(s.score)}</td><td><span class="sector-tag">${$(s.sector)}</span></td><td><span class="height-tag ${s.height>=4?"high":""}">${s.height===1?"\\u9996\\u677F":s.height?`${s.height} \\u677F`:"\\u2014"}</span></td><td class="money">${Q(s.first)}</td><td class="money">${mt(s.seal)}</td><td class="money">${w(s.turnover)}%</td><td class="money">${s.breaks??"\\u2014"}</td></tr>`).join(""):`<tr><td colspan="8"><div class="empty"><strong>${a}</strong>${i}</div></td></tr>`,document.querySelectorAll("[data-stock]").forEach(s=>s.onclick=()=>te(s.dataset.stock)),r("table-status").textContent=e?`\\u663E\\u793A ${t.length} / ${n.analysis.count} \\u5BB6${n.analysis.excluded?` \\xB7 \\u5DF2\\u5254\\u9664 ${n.analysis.excluded} \\u5BB6 ST / \\u9000\\u5E02\\u6807\\u8BC6\\u4E2A\\u80A1`:""}`:n.loading?"\\u516C\\u5F00\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":"\\u7B49\\u5F85\\u6709\\u6548\\u6570\\u636E"}function Xt(){let t=n.analysis?.sectors||[];r("sector-rank").innerHTML=t.length?t.slice(0,5).map((e,a)=>`<button class="sector-row" data-sector="${$(e.name)}"><div class="sector-row-label"><div><span class="rank-index">0${a+1}</span>${$(e.name)}</div><span class="sector-score">${e.score}</span></div><div class="sector-bar"><i style="width:${e.score}%"></i></div><div class="sector-row-meta">${e.count} \\u5BB6\\u6DA8\\u505C \\xB7 \\u6700\\u9AD8 ${e.height} \\u677F</div></button>`).join(""):\'<div class="empty compact">\\u6709\\u6548\\u884C\\u60C5\\u5230\\u8FBE\\u540E\\uFF0C\\u663E\\u793A\\u884C\\u4E1A\\u5F3A\\u5EA6\\u6392\\u540D\\u3002</div>\',r("sector-rows").innerHTML=t.length?t.map(e=>`<tr><td><button class="stock-name" data-sector="${$(e.name)}">${$(e.name)}</button></td><td>${st(e.score)}</td><td>${e.count}</td><td>${e.height} \\u677F</td><td>${w(e.quality)} / 100</td><td>${w(e.components[3].value)}%</td><td>${mt(e.amount)}</td></tr>`).join(""):\'<tr><td colspan="7"><div class="empty"><strong>\\u6682\\u65E0\\u677F\\u5757\\u8BC4\\u5206</strong>\\u8BF7\\u5148\\u83B7\\u53D6\\u6709\\u6548\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3002</div></td></tr>\',document.querySelectorAll("[data-sector]").forEach(e=>e.onclick=()=>{r("sector-filter").value=e.dataset.sector,ot("stocks")})}function Kt(){let t=n.analysis,e=[{name:"5\\u677F+",count:t?t.stocks.filter(i=>i.height>=5).length:0},{name:"4\\u677F",count:t?t.stocks.filter(i=>i.height===4).length:0},{name:"3\\u677F",count:t?t.stocks.filter(i=>i.height===3).length:0},{name:"2\\u677F",count:t?t.stocks.filter(i=>i.height===2).length:0},{name:"\\u9996\\u677F",count:t?t.first:0}],a=Math.max(1,...e.map(i=>i.count));r("ladder-chart").innerHTML=e.map(i=>`<div class="ladder-row"><span class="label">${i.name}</span><div class="ladder-track"><i style="width:${i.count/a*100}%"></i></div><span class="ladder-count">${t?i.count:"\\u2014"}</span></div>`).join(""),r("ladder-insight").textContent=t?`\\u4E0A\\u4E00\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u80A1\\u664B\\u7EA7\\u7387\\uFF1A${w(t.promotion)}%${t.previousCount!==null?`\\uFF08\\u6837\\u672C ${t.previousCount} \\u5BB6\\uFF09`:"\\uFF0C\\u6628\\u65E5\\u6570\\u636E\\u6682\\u7F3A"}\\u3002\\u8FDE\\u677F\\u68AF\\u961F\\u4EC5\\u53CD\\u6620\\u5F53\\u65E5\\u7ED3\\u6784\\u3002`:"\\u7528\\u9996\\u677F\\u4F9B\\u7ED9\\u4E0E\\u8FDE\\u677F\\u9AD8\\u5EA6\\u5171\\u540C\\u89C2\\u5BDF\\u63A5\\u529B\\u7ED3\\u6784\\u3002"}function it(){let t=n.payload;r("source-tag").className=`source-tag ${n.demo?"demo":n.error?"unavailable":""}`,r("source-tag").textContent=n.loading?"\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":n.demo?"\\u6F14\\u793A\\u6570\\u636E":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863":"\\u516C\\u5F00\\u884C\\u60C5":"\\u6570\\u636E\\u6682\\u4E0D\\u53EF\\u7528",r("data-time").textContent=n.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u6240\\u9009\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u6C60":t?n.demo?"\\u865A\\u6784\\u6837\\u672C\\uFF0C\\u4EC5\\u7528\\u4E8E\\u4F53\\u9A8C\\u8BC4\\u5206\\u548C\\u4EA4\\u4E92":t.archived?`${t.date} \\xB7 ${t.source} \\xB7 \\u5F52\\u6863\\u4E8E ${new Date(t.archivedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09`:`${t.date} \\xB7 ${t.source} \\xB7 \\u83B7\\u53D6\\u4E8E ${new Date(t.fetchedAt).toLocaleTimeString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09${t.cached?" \\xB7 2 \\u5206\\u949F\\u7F13\\u5B58":""}`:"\\u672A\\u4F7F\\u7528\\u6F14\\u793A\\u6570\\u636E\\u66FF\\u4EE3\\u771F\\u5B9E\\u884C\\u60C5",r("sidebar-source").textContent=n.demo?"\\u6F14\\u793A\\u6A21\\u5F0F":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863 \\xB7 \\u5DF2\\u8BFB\\u53D6":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u5DF2\\u63A5\\u5165":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u7B49\\u5F85\\u6570\\u636E",r("demo-btn").textContent=n.demo?"\\u8FD4\\u56DE\\u516C\\u5F00\\u884C\\u60C5":"\\u67E5\\u770B\\u6F14\\u793A",r("notice").hidden=!n.error&&!n.demo&&!t?.warnings?.length,r("notice").textContent=n.error||(n.demo?"\\u5F53\\u524D\\u4E3A\\u865A\\u6784\\u6F14\\u793A\\u6837\\u672C\\uFF0C\\u6240\\u6709\\u4E2A\\u80A1\\u3001\\u65E5\\u671F\\u5173\\u8054\\u4E0E\\u5F97\\u5206\\u5747\\u4E0D\\u4EE3\\u8868\\u5B9E\\u9645\\u884C\\u60C5\\u3002":t?.warnings?.join(" "))||"",r("refresh-btn").disabled=n.loading,r("refresh-btn").innerHTML=`${W("refresh")}${n.loading?"\\u83B7\\u53D6\\u4E2D\\u2026":"\\u5237\\u65B0\\u884C\\u60C5"}`}async function J(){let t=++n.request,e=r("trade-date").value;n.demo=!1,n.loading=!0,n.error=null,n.payload=null,n.analysis=null,n.review=null,n.ai=null,n.reviewMessage="\\u6B63\\u5728\\u68C0\\u67E5\\u5386\\u53F2\\u53CD\\u9988",it(),P(),M();try{let a=await fetch(`/api/market?date=${encodeURIComponent(e)}`,{signal:AbortSignal.timeout(2e4)}),i=await a.json();if(t!==n.request)return;let s=i.archived===!0&&Array.isArray(i.analysis?.stocks)&&Array.isArray(i.analysis?.sectors);if(!a.ok||!Array.isArray(i.rows)&&!s)throw new Error(i.error||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25");if(i.date!==e)throw new Error("\\u8FD4\\u56DE\\u7684\\u6570\\u636E\\u65E5\\u671F\\u4E0E\\u6240\\u9009\\u65E5\\u671F\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u91CD\\u65B0\\u5237\\u65B0");n.payload=i,gt()}catch(a){if(t!==n.request)return;n.error=a.name==="TimeoutError"?"\\u884C\\u60C5\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u8BF7\\u7A0D\\u540E\\u5237\\u65B0\\u3002":a.message||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25"}finally{t===n.request&&(n.loading=!1,Dt(),it(),$t(),P(),n.payload?.date===Y&&!n.payload.archived&&n.storageAvailable?Rt(t):It(t))}}function Dt(){let t=r("sector-filter").value;r("sector-filter").innerHTML=\'<option value="">\\u5168\\u90E8\\u884C\\u4E1A</option>\'+(n.analysis?.sectors||[]).map(e=>`<option value="${$(e.name)}">${$(e.name)}</option>`).join(""),n.analysis?.sectors.some(e=>e.name===t)&&(r("sector-filter").value=t)}function te(t){let e=n.analysis?.stocks.find(u=>u.code===t);if(!e)return;let a=n.analysis.sectors.find(u=>u.name===e.sector),i=e.factors.filter(u=>u.value!==null).sort((u,c)=>c.value-u.value)[0],s=e.factors.filter(u=>u.value!==null).sort((u,c)=>u.value-c.value)[0],d=`${e.name}\\u4E3A${e.height===1?"\\u9996\\u677F":e.height?`${e.height}\\u8FDE\\u677F`:"\\u8FDE\\u677F\\u9AD8\\u5EA6\\u6682\\u7F3A"}\\uFF0C${Q(e.first)}\\u9996\\u6B21\\u5C01\\u677F${e.breaks!==null?`\\uFF0C\\u76D8\\u4E2D\\u70B8\\u677F ${e.breaks} \\u6B21`:""}\\u3002${i?`${i.name}\\u662F\\u5F53\\u524D\\u8F83\\u5F3A\\u6307\\u6807\\uFF08${Math.round(i.value)} \\u5206\\uFF09\\u3002`:""}${s&&s!==i?`${s.name}\\u76F8\\u5BF9\\u504F\\u5F31\\uFF08${Math.round(s.value)} \\u5206\\uFF09\\u3002`:""}\\u6240\\u5C5E\\u884C\\u4E1A ${a?.count||0} \\u5BB6\\u6DA8\\u505C\\uFF0C\\u677F\\u5757\\u5F97\\u5206 ${a?.score??"\\u2014"}\\u3002`;r("stock-detail").innerHTML=`<div class="detail-head"><div><h2>${$(e.name)}</h2><span class="stock-code">${$(e.code)}${n.demo?" \\xB7 \\u6F14\\u793A\\u6837\\u672C":""}</span><div class="detail-tags"><span class="sector-tag">${$(e.sector)}</span><span class="height-tag">${e.height===1?"\\u9996\\u677F":`${e.height??"\\u2014"} \\u677F`}</span></div></div><div class="detail-score">${e.score??"\\u2014"}<small>\\u7EFC\\u5408\\u8BC4\\u5206 / 100</small></div></div><div class="detail-facts"><div><label>\\u5C01\\u5355\\u91D1\\u989D</label><strong>${mt(e.seal)}</strong></div><div><label>\\u5C01\\u5355 / \\u6210\\u4EA4\\u989D</label><strong>${e.sealRatio===null?"\\u2014":w(e.sealRatio*100)}%</strong></div><div><label>\\u6362\\u624B\\u7387</label><strong>${w(e.turnover)}%</strong></div><div><label>\\u6700\\u540E\\u5C01\\u677F</label><strong>${Q(e.last)}</strong></div></div><div class="detail-section"><h3>\\u516D\\u7EF4\\u8BC4\\u5206\\u62C6\\u89E3</h3>${e.factors.map(u=>`<div class="factor-row"><span>${u.name}</span><span class="factor-track"><i style="width:${u.value??0}%"></i></span><strong>${u.value===null?"\\u2014":Math.round(u.value)}</strong><span class="weight">\\u6743\\u91CD ${u.weight}</span></div>`).join("")}<p class="detail-footnote">\\u6709\\u6548\\u6307\\u6807\\u5747\\u5206 ${w(e.rawScore)} \\u2212 \\u98CE\\u9669\\u6263\\u5206 ${e.deduction} = ${e.score??"\\u2014"} \\u5206 \\xB7 \\u8986\\u76D6\\u7387 ${e.coverage}%</p></div><div class="detail-section"><h3>\\u98CE\\u9669\\u89C2\\u5BDF</h3>${e.risks.length?e.risks.map(u=>`<div class="risk-row"><strong>${u.text} \\u2212${u.penalty}</strong><span>${u.detail}</span></div>`).join(""):\'<p class="detail-footnote">\\u5F53\\u524D\\u5B57\\u6BB5\\u672A\\u89E6\\u53D1\\u6A21\\u578B\\u98CE\\u9669\\u6263\\u5206\\u9879\\uFF1B\\u516C\\u544A\\u3001\\u57FA\\u672C\\u9762\\u4E0E\\u9898\\u6750\\u98CE\\u9669\\u4ECD\\u9700\\u5355\\u72EC\\u6838\\u5B9E\\u3002</p>\'}</div><div class="detail-section"><h3>\\u76D8\\u540E\\u8BCA\\u65AD</h3><p class="detail-text">${$(d)}</p></div><p class="detail-footnote">\\u6B21\\u65E5\\u89C2\\u5BDF\\uFF1A\\u7ADE\\u4EF7\\u662F\\u5426\\u6709\\u627F\\u63A5\\u3001\\u540C\\u677F\\u5757\\u662F\\u5426\\u5F62\\u6210\\u5408\\u529B\\u3001\\u5F00\\u677F\\u540E\\u80FD\\u5426\\u56DE\\u5C01\\u3002\\u5F53\\u524D\\u89C4\\u5219\\u5206\\u6570\\u5C1A\\u672A\\u7ECF\\u8FC7\\u5386\\u53F2\\u6536\\u76CA\\u6821\\u51C6\\uFF0C\\u4E0D\\u4EE3\\u8868\\u4E0A\\u6DA8\\u6982\\u7387\\u3002</p>`,r("stock-dialog").showModal()}document.querySelectorAll(".close-dialog").forEach(t=>t.onclick=()=>t.closest("dialog").close());document.querySelectorAll("dialog").forEach(t=>t.onclick=e=>{if(e.target===t){let a=t.getBoundingClientRect();(e.clientX<a.left||e.clientX>a.right||e.clientY<a.top||e.clientY>a.bottom)&&t.close()}});r("help-btn").onclick=()=>r("help-dialog").showModal();r("all-sectors").onclick=()=>ot("sectors");r("refresh-btn").onclick=J;r("trade-date").onchange=J;r("search").oninput=Z;r("sector-filter").onchange=Z;r("sort").onchange=Z;document.querySelectorAll("[data-height]").forEach(t=>t.onclick=()=>{n.height=t.dataset.height,document.querySelectorAll("[data-height]").forEach(e=>e.classList.toggle("active",e===t)),Z()});function rt(){r("weight-controls").innerHTML=lt.map((t,e)=>`<div class="weight-item"><div class="weight-heading"><label for="weight-${e}">${t.name}</label><output id="weight-output-${e}" for="weight-${e}">${n.weights[e]}%</output></div><input id="weight-${e}" data-weight="${e}" type="range" min="0" max="50" step="1" value="${n.weights[e]}" aria-describedby="weight-desc-${e}"><p id="weight-desc-${e}">${t.description}</p></div>`).join(""),document.querySelectorAll("[data-weight]").forEach(t=>t.oninput=()=>{let e=[...n.weights];if(e[Number(t.dataset.weight)]=Number(t.value),!e.some(a=>a>0)){t.value=n.weights[Number(t.dataset.weight)],r("model-status").textContent="\\u81F3\\u5C11\\u4FDD\\u7559\\u4E00\\u9879\\u6709\\u6548\\u6743\\u91CD";return}n.weights=e,r(`weight-output-${t.dataset.weight}`).textContent=`${t.value}%`,ft()}),$t()}function $t(){let t=n.weights.reduce((e,a)=>e+a,0);r("weight-total").textContent=`\\u5408\\u8BA1 ${t}%`,r("model-status").textContent=n.payload?.archived?"\\u5F53\\u524D\\u5C55\\u793A\\u5F53\\u5929\\u51BB\\u7ED3\\u8BC4\\u5206\\uFF1B\\u4FEE\\u6539\\u6743\\u91CD\\u4E0D\\u4F1A\\u91CD\\u7B97\\u5386\\u53F2\\u5F52\\u6863":t===100?"\\u5DF2\\u5373\\u65F6\\u91CD\\u7B97 \\xB7 \\u5373\\u65F6\\u91CD\\u7B97":`\\u5408\\u8BA1 ${t}%\\uFF0C\\u8BA1\\u7B97\\u65F6\\u81EA\\u52A8\\u5F52\\u4E00\\u5316`,document.querySelectorAll("[data-preset]").forEach(e=>e.classList.toggle("active",N[e.dataset.preset].every((a,i)=>a===n.weights[i])))}var Lt;function ft(){try{localStorage.setItem("limitLensWeights",JSON.stringify(n.weights))}catch{}$t(),gt(),P(),clearTimeout(Lt),Lt=setTimeout(async()=>{try{let t=await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({weights:n.weights})}),e=await t.json();if(!t.ok)throw new Error(e.error);r("model-status").textContent="\\u6743\\u91CD\\u5DF2\\u4FDD\\u5B58 \\xB7 \\u5DF2\\u5F52\\u6863\\u8BC4\\u5206\\u4FDD\\u6301\\u539F\\u6837"}catch{r("model-status").textContent="\\u670D\\u52A1\\u5668\\u4FDD\\u5B58\\u5931\\u8D25\\uFF0C\\u5F53\\u524D\\u8C03\\u6574\\u4ECD\\u53EF\\u4F7F\\u7528\\uFF0C\\u8BF7\\u7A0D\\u540E\\u91CD\\u8BD5\\u3002"}},500)}document.querySelectorAll("[data-preset]").forEach(t=>t.onclick=()=>{n.weights=[...N[t.dataset.preset]],ft(),rt()});r("reset-model").onclick=()=>{n.weights=[...N.balanced],ft(),rt()};function ee(){let t=["\\u793A\\u4F8B\\xB7\\u8F6F\\u4EF6\\u670D\\u52A1","\\u793A\\u4F8B\\xB7\\u7535\\u5B50\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u673A\\u68B0\\u5236\\u9020","\\u793A\\u4F8B\\xB7\\u7535\\u529B\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u533B\\u836F\\u5236\\u9020"];return Array.from({length:22},(e,a)=>({c:`DEMO${String(a+1).padStart(3,"0")}`,n:`\\u793A\\u4F8B\\u4E2A\\u80A1 ${String(a+1).padStart(2,"0")}`,hybk:t[Math.min(4,Math.floor(a/5))],p:(12+a)*1e3,zdp:a%4===0?20:10,amount:(2+a%6)*1e8,ltsz:(18+a)*1e8,fund:(.3+(21-a)/10)*1e8,hs:4+a%16,lbc:a===0?6:a===1?4:a<5?3:a<9?2:1,fbt:a%6===0?92500:93e3+a*700,lbt:a===0?145500:1e5+a*800,zbc:a%5===0?3:a%3===0?1:0,zttj:{days:3,ct:1}}))}r("demo-btn").onclick=()=>{if(n.demo){J();return}++n.request,n.loading=!1,n.demo=!0,n.error=null,n.review=null,n.ai=null,n.reviewMessage="\\u6F14\\u793A\\u6837\\u672C\\u4E0D\\u4F1A\\u4FDD\\u5B58\\u8BC4\\u5206\\u6216\\u751F\\u6210\\u5E02\\u573A\\u53CD\\u9988\\u3002",n.payload={date:"\\u6F14\\u793A",source:"\\u865A\\u6784\\u6837\\u672C",fetchedAt:new Date().toISOString(),rows:ee(),broken:6,previous:null,warnings:[]},gt(),Dt(),it(),P(),M()};function Mt(t){return t==null?"\\u2014":`${t>0?"+":""}${Number(t).toFixed(2)}%`}function nt(t){return`<span class="${t>0?"up":t<0?"down":""}">${Mt(t)}</span>`}function M(){let t=n.review,e=n.ai;r("review-date-label").textContent=t?`${t.snapshotDate} \\u8BC4\\u5206 \\u2192 ${t.date} \\u8868\\u73B0`:"\\u7B49\\u5F85\\u9996\\u4E2A\\u53CD\\u9988\\u65E5",r("review-status").textContent=n.reviewBusy?"\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C\\u6536\\u76D8\\u7ED3\\u679C\\u2026":n.reviewMessage||"\\u5F53\\u5929\\u6536\\u76D8\\u540E\\u4FDD\\u5B58\\u539F\\u59CB\\u8BC4\\u5206\\uFF0C\\u4E0B\\u4E00\\u4E2A\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5E02\\u573A\\u8868\\u73B0\\u3002",r("run-review").disabled=n.reviewBusy||n.demo,r("review-coverage").textContent=t?`${t.validCount} / ${t.total} \\u5BB6\\u6709\\u6548`:"\\u7B49\\u5F85\\u6837\\u672C";let a=[{name:"\\u7CFB\\u7EDF\\u5BA2\\u89C2\\u53CD\\u9988\\u5206",value:t?.systemScore??"\\u2014",unit:"/ 100",caption:"\\u5355\\u65E5\\u6392\\u5E8F\\u4E0E\\u76F8\\u5BF9\\u8868\\u73B0\\uFF0C\\u89C4\\u5219\\u8BA1\\u7B97"},{name:"\\u9AD8\\u5206\\u7EC4\\u6B21\\u65E5\\u6536\\u76CA",value:t?.topMean===null||!t?"\\u2014":w(t.topMean,2),unit:"%",caption:t?`\\u6709\\u6548 ${t.topValid} \\u5BB6 \\xB7 \\u8BC4\\u5206\\u524D 20%`:"\\u6309\\u6628\\u65E5\\u8BC4\\u5206\\u56FA\\u5B9A\\u89C2\\u5BDF\\u7EC4"},{name:"\\u76F8\\u5BF9\\u6837\\u672C\\u8D85\\u989D",value:t?.excess===null||!t?"\\u2014":w(t.excess,2),unit:"\\u767E\\u5206\\u70B9",caption:t?`\\u5168\\u6837\\u672C\\u5747\\u503C ${Mt(t.allMean)}`:"\\u9AD8\\u5206\\u7EC4\\u5747\\u503C \\u2212 \\u5168\\u6837\\u672C\\u5747\\u503C"},{name:"\\u8BC4\\u5206\\u4E0E\\u8868\\u73B0\\u76F8\\u5173",value:t?.rho===null||!t?"\\u2014":w(t.rho,2),unit:"\\u03C1",caption:"Spearman \\u79E9\\u76F8\\u5173\\uFF0C\\u8303\\u56F4 \\u22121 \\u81F3 1"}];r("review-metrics").innerHTML=a.map(s=>`<article class="metric"><div class="metric-head">${s.name}${W("shield")}</div><div class="metric-value">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div></article>`).join(""),r("review-conclusion").hidden=!t,r("review-conclusion").textContent=t?.conclusion||"",r("review-rows").innerHTML=t?t.rows.map((s,d)=>`<tr><td><strong class="review-stock">${$(s.name)}${d<t.topSize?\'<span class="top-group">\\u9AD8\\u5206\\u7EC4</span>\':""}</strong><span class="stock-code">${$(s.code)}</span></td><td>${st(s.score)}</td><td>${s.available?nt(s.openReturn):"\\u2014"}</td><td>${s.available?nt(s.closeReturn):"\\u2014"}</td><td>${s.available?nt(s.lowReturn):"\\u2014"}</td><td>${s.available?s.continued?\'<span class="height-tag high">\\u662F</span>\':"\\u5426":`<span class="small-muted" title="${$(s.reason)}">\\u4E0D\\u53EF\\u6BD4</span>`}</td></tr>`).join(""):\'<tr><td colspan="6"><div class="empty"><strong>\\u5148\\u4FDD\\u5B58\\u5224\\u65AD\\uFF0C\\u518D\\u68C0\\u9A8C\\u7ED3\\u679C</strong>\\u6536\\u76D8\\u540E\\u8BBF\\u95EE\\u5DE5\\u4F5C\\u53F0\\u4F1A\\u81EA\\u52A8\\u4FDD\\u5B58\\u5F53\\u65E5\\u8BC4\\u5206\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u7684\\u771F\\u5B9E\\u53CD\\u9988\\u5230\\u8FBE\\u524D\\uFF0C\\u6B64\\u5904\\u4FDD\\u6301\\u7A7A\\u767D\\u3002</div></td></tr>\',r("review-sector-rows").innerHTML=t?t.sectors.map(s=>`<tr><td>${$(s.name)}</td><td>${st(s.score)}</td><td>${s.available} / ${s.count}</td><td>${nt(s.averageReturn)}</td><td>${s.continuationRate===null?"\\u2014":w(s.continuationRate*100)}%</td></tr>`).join(""):\'<tr><td colspan="5"><div class="empty compact">\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5DF2\\u4FDD\\u5B58\\u7684\\u677F\\u5757\\u8BC4\\u5206\\u3002</div></td></tr>\',r("ai-status-tag").textContent=n.aiConfig.configured?"\\u5DF2\\u8FDE\\u63A5":"\\u5F85\\u914D\\u7F6E",r("model-ai-status").textContent=n.aiConfig.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E",r("model-ai-detail").textContent=n.aiConfig.configured?`\\u5DF2\\u914D\\u7F6E ${n.aiConfig.model}\\u3002\\u53EA\\u5411\\u6A21\\u578B\\u53D1\\u9001\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u6838\\u9A8C\\u7ED3\\u679C\\uFF0C\\u8BC4\\u4EF7\\u4F1A\\u4E0E\\u539F\\u59CB\\u6570\\u636E\\u4E00\\u5E76\\u4FDD\\u5B58\\u3002`:"\\u670D\\u52A1\\u7AEF\\u914D\\u7F6E\\u5BC6\\u94A5\\u3001\\u63A5\\u53E3\\u5730\\u5740\\u548C\\u6A21\\u578B\\u540E\\uFF0CAI \\u4F1A\\u6839\\u636E\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5DF2\\u6838\\u9A8C\\u5E02\\u573A\\u7ED3\\u679C\\u751F\\u6210\\u8BC4\\u4EF7\\u3002\\u5BC6\\u94A5\\u4E0D\\u8FDB\\u5165\\u6D4F\\u89C8\\u5668\\u3002",r("ai-content").innerHTML=e?`<div class="ai-score"><strong>${e.score}</strong><span>AI \\u4E3B\\u89C2\\u8BC4\\u4EF7 / 100<small>${$(e.model)} \\xB7 ${e.confidence==="high"?"\\u8F83\\u9AD8":e.confidence==="medium"?"\\u4E2D\\u7B49":"\\u8F83\\u4F4E"}\\u7F6E\\u4FE1\\u5EA6</small></span></div><p class="ai-summary">${$(e.summary)}</p><h3>\\u8BC4\\u4EF7\\u4F9D\\u636E</h3><ul>${e.evidence.map(s=>`<li>${$(s)}</li>`).join("")}</ul>${e.failures.length?`<h3>\\u5224\\u65AD\\u4E0D\\u8DB3</h3><ul>${e.failures.map(s=>`<li>${$(s)}</li>`).join("")}</ul>`:""}${e.suggestions.length?`<h3>\\u6539\\u8FDB\\u5EFA\\u8BAE</h3><ul>${e.suggestions.map(s=>`<li>${$(s)}</li>`).join("")}</ul>`:""}<p class="ai-note">AI \\u8BC4\\u4EF7\\u4E0E\\u89C4\\u5219\\u53CD\\u9988\\u5206\\u5206\\u522B\\u4FDD\\u7559\\u3002\\u5EFA\\u8BAE\\u4E0D\\u4F1A\\u81EA\\u52A8\\u6539\\u5199\\u6A21\\u578B\\u3002</p>`:`<div class="ai-empty"><span class="ai-symbol">${W("sliders")}</span><h3>${n.aiConfig.configured?"\\u7B49\\u5F85\\u5DF2\\u6838\\u9A8C\\u7ED3\\u679C":"\\u5927\\u6A21\\u578B\\u5C1A\\u672A\\u914D\\u7F6E"}</h3><p>${n.aiConfig.configured?"\\u79EF\\u7D2F\\u4E8B\\u524D\\u5FEB\\u7167\\u5E76\\u53D6\\u5F97\\u6B21\\u65E5\\u6536\\u76D8\\u7ED3\\u679C\\u540E\\uFF0CAI \\u624D\\u5BF9\\u7CFB\\u7EDF\\u8BC4\\u4EF7\\u3002":"\\u5DF2\\u9884\\u7559 DeepSeek\\u3001OpenAI\\u3001\\u901A\\u4E49\\u517C\\u5BB9\\u63A5\\u53E3\\u3002\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5BC6\\u94A5\\u540E\\u542F\\u7528\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6A21\\u62DF AI \\u7ED3\\u8BBA\\u66FF\\u4EE3\\u771F\\u5B9E\\u8C03\\u7528\\u3002"}</p><div class="ai-process">\\u51BB\\u7ED3\\u6628\\u65E5\\u8BC4\\u5206<span>\\u2193</span>\\u6838\\u9A8C\\u4ECA\\u65E5\\u5E02\\u573A\\u7ED3\\u679C<span>\\u2193</span>AI \\u8BC4\\u5206\\u3001\\u8BC1\\u636E\\u4E0E\\u6539\\u8FDB\\u5EFA\\u8BAE</div></div>`,r("ai-grade-btn").disabled=n.demo||n.reviewBusy||!n.aiConfig.configured||!t||!!e,r("ai-grade-btn").textContent=e?"\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58":"\\u751F\\u6210 AI \\u8BC4\\u4EF7";let i=n.history?.reviews||[];r("review-history").innerHTML=i.length?`<div class="history-list">${i.map(s=>`<button data-history="${$(s.date)}"><span>${$(s.snapshotDate)} \\u2192 ${$(s.date)}</span><span>\\u5BA2\\u89C2 ${s.systemScore??"\\u2014"} \\u5206 \\xB7 AI ${s.aiScore??"\\u2014"} \\u5206</span></button>`).join("")}</div>`:\'<div class="empty compact">\\u5C1A\\u65E0\\u53CD\\u9988\\u8BB0\\u5F55\\u3002\\u5FEB\\u7167\\u4E0E\\u53CD\\u9988\\u4F1A\\u4FDD\\u5B58\\u5230\\u670D\\u52A1\\u7AEF\\uFF0C\\u8DE8\\u8BBE\\u5907\\u53EF\\u67E5\\u770B\\u3002</div>\',document.querySelectorAll("[data-history]").forEach(s=>s.onclick=()=>{r("trade-date").value=s.dataset.history,J()})}async function It(t=n.request){try{let[e,a]=await Promise.all([fetch(`/api/review?date=${encodeURIComponent(r("trade-date").value)}`),fetch("/api/history")]),i=await e.json(),s=await a.json();if(t!==n.request||n.demo)return;if(!e.ok)throw new Error(i.error);n.review=i.review,n.ai=i.ai,n.aiConfig=i.aiStatus||n.aiConfig,n.history=a.ok?s:n.history,n.reviewMessage=i.reason||"\\u5DF2\\u52A0\\u8F7D\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5B9E\\u9645\\u7ED3\\u679C\\u3002"}catch(e){t===n.request&&(n.reviewMessage=e.message||"\\u5386\\u53F2\\u53CD\\u9988\\u6682\\u65F6\\u4E0D\\u53EF\\u7528")}t===n.request&&M()}async function Rt(t=n.request){if(!(n.demo||n.reviewBusy)){n.reviewBusy=!0,n.reviewMessage="\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C",M();try{let e=await fetch("/api/run-daily",{method:"POST",signal:AbortSignal.timeout(13e4)}),a=await e.json();if(t!==n.request||n.demo)return;if(!e.ok)throw new Error(a.error);n.review=a.review,n.ai=a.ai||null,n.aiConfig=a.aiStatus||n.aiConfig,n.history=a.history||n.history,n.reviewMessage=a.aiError||a.reason||(a.review?"\\u5DF2\\u5B8C\\u6210\\u6628\\u65E5\\u5224\\u65AD\\u6838\\u9A8C\\uFF1B\\u539F\\u59CB\\u8BC4\\u5206\\u4E0E\\u7ED3\\u679C\\u5747\\u5DF2\\u4FDD\\u5B58\\u3002":"\\u4ECA\\u65E5\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863\\uFF0C\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u751F\\u6210\\u53CD\\u9988\\u3002"),r("snapshot-status").textContent=a.snapshot?.saved?`${a.snapshot.date} \\u539F\\u59CB\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863`:a.snapshot?.reason||"\\u7B49\\u5F85\\u6536\\u76D8\\u540E\\u4FDD\\u5B58"}catch(e){t===n.request&&(n.reviewMessage=e.name==="TimeoutError"?"\\u53CD\\u9988\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u53EF\\u5237\\u65B0\\u8BFB\\u53D6\\u5DF2\\u4FDD\\u5B58\\u7684\\u8FDB\\u5EA6\\u3002":e.message,r("snapshot-status").textContent="\\u5F52\\u6863\\u6682\\u4E0D\\u53EF\\u7528\\uFF0C\\u53EF\\u7A0D\\u540E\\u91CD\\u8BD5")}finally{n.reviewBusy=!1,M(),window.dispatchEvent(new Event("paper-updated"))}}}r("run-review").onclick=()=>{r("trade-date").value===Y?Rt():It()};r("ai-grade-btn").onclick=async()=>{if(!n.review)return;let t=n.review.date;n.reviewBusy=!0,M(),r("ai-action-status").textContent="\\u6A21\\u578B\\u6B63\\u5728\\u8BC4\\u4EF7\\u2026";try{let e=await fetch("/api/ai-grade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:t}),signal:AbortSignal.timeout(55e3)}),a=await e.json();if(!e.ok)throw new Error(a.error);n.review?.date===t&&(n.ai=a.ai),r("ai-action-status").textContent="\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58"}catch(e){r("ai-action-status").textContent=e.message||"AI \\u8C03\\u7528\\u5931\\u8D25"}finally{n.reviewBusy=!1,M()}};async function ae(){try{let t=await fetch("/api/market/latest-date",{signal:AbortSignal.timeout(6e3)}),e=await t.json();t.ok&&/^\\d{4}-\\d{2}-\\d{2}$/.test(e.date)&&e.date<=Y&&(r("trade-date").value=e.date)}catch{}}async function ne(){let t=fetch("/api/settings",{signal:AbortSignal.timeout(5e3)}).then(async a=>a.ok?a.json():null).catch(()=>null),[e]=await Promise.all([t,ae()]);e&&(n.storageAvailable=!0,se(e.weights)&&(n.weights=e.weights),n.aiConfig=e.ai,rt()),await J()}function se(t){return Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)}rt();it();P();M();ne();if(document.modelContext?.registerTool){let t=new AbortController;try{Promise.resolve(document.modelContext.registerTool({name:"read_limit_up_analysis",title:"\\u8BFB\\u53D6\\u6DA8\\u505C\\u5206\\u6790",description:"\\u8BFB\\u53D6\\u5F53\\u524D\\u4EA4\\u6613\\u65E5\\u7684\\u4E2A\\u80A1\\u4E0E\\u884C\\u4E1A\\u8BC4\\u5206\\uFF0C\\u5E76\\u660E\\u786E\\u8FD4\\u56DE\\u771F\\u5B9E\\u6216\\u6F14\\u793A\\u6570\\u636E\\u72B6\\u6001\\u3002",inputSchema:{type:"object",properties:{},additionalProperties:!1},annotations:{readOnlyHint:!0,untrustedContentHint:!0},execute(e){if(e===null||typeof e!="object"||Array.isArray(e)||Object.keys(e).length)throw new Error("\\u8F93\\u5165\\u5FC5\\u987B\\u662F\\u7A7A\\u5BF9\\u8C61");return{date:n.payload?.date??null,mode:n.demo?"demo":"public",loading:n.loading,error:n.error,stocks:n.analysis?.stocks.map(a=>({code:a.code,name:a.name,sector:a.sector,score:a.score,coverage:a.coverage,risks:a.risks.map(i=>i.text)}))||[],sectors:n.analysis?.sectors.map(a=>({name:a.name,score:a.score,count:a.count}))||[]}}},{signal:t.signal})).catch(()=>{}),window.addEventListener("pagehide",()=>t.abort(),{once:!0})}catch{}}\n', "type": "text/javascript; charset=utf-8" }, "/assets/styles.css": { "body": '* {\r\n  box-sizing: border-box;\r\n}\r\n:root {\r\n  --navy: #101e2e;\r\n  --ink: #1b2c3f;\r\n  --muted: #7c8795;\r\n  --line: #e7ebf0;\r\n  --bg: #f4f6f9;\r\n  --teal: #148775;\r\n  --red: #db5a55;\r\n  --green: #309477;\r\n  --amber: #c18a31;\r\n}\r\nbody {\r\n  margin: 0;\r\n  background: var(--bg);\r\n  color: var(--ink);\r\n  font:\r\n    14px/1.55 -apple-system,\r\n    BlinkMacSystemFont,\r\n    "Segoe UI",\r\n    "PingFang SC",\r\n    "Microsoft YaHei",\r\n    sans-serif;\r\n}\r\nbutton,\r\ninput,\r\nselect {\r\n  font: inherit;\r\n}\r\nbutton,\r\na,\r\ninput,\r\nselect {\r\n  touch-action: manipulation;\r\n}\r\nbutton {\r\n  cursor: pointer;\r\n}\r\nbutton {\r\n  border: 0;\r\n}\r\nbutton:focus-visible,\r\na:focus-visible,\r\ninput:focus-visible,\r\nselect:focus-visible {\r\n  outline: 3px solid #66c5ba;\r\n  outline-offset: 3px;\r\n}\r\nbutton:disabled {\r\n  opacity: 0.65;\r\n  cursor: wait;\r\n}\r\na {\r\n  text-decoration: none;\r\n  color: inherit;\r\n}\r\n[hidden] {\r\n  display: none !important;\r\n}\r\nh1,\r\nh2,\r\nh3,\r\np {\r\n  margin: 0;\r\n}\r\nh2 {\r\n  font-size: 16px;\r\n  font-weight: 650;\r\n}\r\nh3 {\r\n  font-size: 14px;\r\n}\r\nsvg {\r\n  width: 19px;\r\n  height: 19px;\r\n  display: block;\r\n  fill: none;\r\n  stroke: currentColor;\r\n  stroke-width: 1.6;\r\n  stroke-linecap: round;\r\n  stroke-linejoin: round;\r\n}\r\n.shell {\r\n  display: flex;\r\n  min-height: 100vh;\r\n}\r\n.sidebar {\r\n  width: 222px;\r\n  position: fixed;\r\n  inset: 0 auto 0 0;\r\n  background: var(--navy);\r\n  color: #b4c0cd;\r\n  padding: 32px 18px;\r\n  display: flex;\r\n  flex-direction: column;\r\n}\r\n.brand {\r\n  display: flex;\r\n  gap: 12px;\r\n  align-items: center;\r\n  color: #fff;\r\n  font-size: 19px;\r\n  font-weight: 650;\r\n  padding: 0 10px;\r\n}\r\n.brand small {\r\n  display: block;\r\n  font-size: 10px;\r\n  letter-spacing: 2.8px;\r\n  font-weight: 450;\r\n  color: #7e93aa;\r\n  margin-top: 3px;\r\n}\r\n.brand-mark {\r\n  display: flex;\r\n  gap: 4px;\r\n  align-items: flex-end;\r\n  width: 29px;\r\n  height: 29px;\r\n}\r\n.brand-mark i {\r\n  display: block;\r\n  background: #55c9b0;\r\n  width: 6px;\r\n  border-radius: 2px;\r\n}\r\n.brand-mark i:nth-child(1) {\r\n  height: 12px;\r\n}\r\n.brand-mark i:nth-child(2) {\r\n  height: 20px;\r\n}\r\n.brand-mark i:nth-child(3) {\r\n  height: 29px;\r\n}\r\n.nav-label {\r\n  font-size: 12px;\r\n  color: #718398;\r\n  letter-spacing: 1px;\r\n  margin: 46px 16px 13px;\r\n}\r\n.nav-item {\r\n  background: transparent;\r\n  color: #91a4b8;\r\n  display: flex;\r\n  gap: 13px;\r\n  align-items: center;\r\n  padding: 13px 16px;\r\n  width: 100%;\r\n  text-align: left;\r\n  margin-bottom: 7px;\r\n  border-radius: 7px;\r\n  font-size: 14px;\r\n}\r\n.nav-item.active {\r\n  background: #223847;\r\n  color: #70d6c2;\r\n}\r\n.nav-item:hover {\r\n  background: #1d3042;\r\n}\r\n.sidebar-note {\r\n  margin-top: auto;\r\n  background: #152738;\r\n  border: 1px solid #293b4e;\r\n  padding: 19px 15px;\r\n  border-radius: 8px;\r\n}\r\n.mini-label {\r\n  display: block;\r\n  color: #6d8b9d;\r\n  font-size: 12px;\r\n  margin-bottom: 9px;\r\n}\r\n.sidebar-note strong {\r\n  font-size: 14px;\r\n  color: #d5dee7;\r\n  font-weight: 500;\r\n}\r\n.sidebar-note p {\r\n  font-size: 12px;\r\n  color: #8a9bae;\r\n  margin: 9px 0 15px;\r\n  line-height: 1.8;\r\n}\r\n.note-line {\r\n  height: 1px;\r\n  background: #2b3b4d;\r\n  margin-bottom: 12px;\r\n}\r\n.sidebar-note > span:last-child {\r\n  font-size: 12px;\r\n  color: #90a3b7;\r\n}\r\n.sidebar-footer {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: center;\r\n  margin: 22px 12px 0;\r\n  font-size: 12px;\r\n}\r\n.sidebar-footer small {\r\n  display: block;\r\n  color: #60768c;\r\n  font-size: 12px;\r\n}\r\n.workspace {\r\n  margin-left: 222px;\r\n  width: calc(100% - 222px);\r\n}\r\n.topbar {\r\n  height: 68px;\r\n  background: #fff;\r\n  border-bottom: 1px solid var(--line);\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  padding: 0 35px;\r\n}\r\n.breadcrumb {\r\n  font-size: 13px;\r\n  color: #8a95a2;\r\n  display: flex;\r\n  gap: 14px;\r\n}\r\n.breadcrumb strong {\r\n  color: #526073;\r\n  font-weight: 500;\r\n}\r\n.topbar-right {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 24px;\r\n}\r\n.session-label {\r\n  font-size: 13px;\r\n  color: #7d8897;\r\n}\r\n.icon-button {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  background: transparent;\r\n  width: 32px;\r\n  height: 32px;\r\n  color: #8b98a6;\r\n  border-radius: 5px;\r\n}\r\n.icon-button:hover {\r\n  background: #eef4f4;\r\n  color: var(--teal);\r\n}\r\nmain {\r\n  max-width: 1680px;\r\n  margin: auto;\r\n  padding: 31px 35px 20px;\r\n}\r\n.page-heading {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  margin-bottom: 25px;\r\n}\r\n.eyebrow {\r\n  font-size: 11px;\r\n  letter-spacing: 1.9px;\r\n  color: #8290a0;\r\n  font-weight: 650;\r\n}\r\n.page-heading h1 {\r\n  font-size: 28px;\r\n  letter-spacing: -0.7px;\r\n  font-weight: 650;\r\n  margin-top: 5px;\r\n}\r\n.page-heading p {\r\n  font-size: 14px;\r\n  color: #86909d;\r\n  margin-top: 6px;\r\n}\r\n.heading-actions {\r\n  display: flex;\r\n  gap: 12px;\r\n  align-items: center;\r\n}\r\n.date-control {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  background: #fff;\r\n  border: 1px solid #e0e5ec;\r\n  padding: 9px 12px;\r\n  border-radius: 6px;\r\n  color: #8391a0;\r\n}\r\n.date-control input {\r\n  border: 0;\r\n  outline: 0;\r\n  color: #536276;\r\n  width: 130px;\r\n  background: transparent;\r\n}\r\n.primary,\r\n.secondary {\r\n  padding: 10px 16px;\r\n  border-radius: 6px;\r\n  font-weight: 550;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 9px;\r\n  white-space: nowrap;\r\n}\r\n.primary {\r\n  background: var(--teal);\r\n  color: #fff;\r\n}\r\n.primary:hover {\r\n  background: #106f62;\r\n}\r\n.secondary {\r\n  background: #f3f5f8;\r\n  color: #4f6275;\r\n  border: 1px solid var(--line);\r\n}\r\n.data-strip {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  margin-bottom: 21px;\r\n  gap: 12px;\r\n  color: #8a96a3;\r\n  font-size: 12px;\r\n}\r\n.data-strip > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 12px;\r\n  flex-wrap: wrap;\r\n}\r\n.source-tag {\r\n  display: inline-flex;\r\n  background: #e5f1ed;\r\n  color: #3b8b7b;\r\n  font-size: 12px;\r\n  border-radius: 4px;\r\n  padding: 3px 8px;\r\n}\r\n.source-tag.unavailable {\r\n  background: #fff1df;\r\n  color: #a27428;\r\n}\r\n.source-tag.demo {\r\n  background: #edf0f7;\r\n  color: #6e7ba1;\r\n}\r\n.text-button {\r\n  background: transparent;\r\n  color: #74839b;\r\n  font-size: 12px;\r\n  white-space: nowrap;\r\n  padding: 4px;\r\n}\r\n.text-button:hover {\r\n  color: var(--teal);\r\n}\r\n.notice {\r\n  padding: 13px 17px;\r\n  background: #fff8ed;\r\n  border: 1px solid #eedfc6;\r\n  color: #91703b;\r\n  border-radius: 6px;\r\n  margin-bottom: 19px;\r\n  font-size: 14px;\r\n}\r\n.metrics {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, minmax(0, 1fr));\r\n  gap: 17px;\r\n  margin-bottom: 24px;\r\n}\r\n.metric {\r\n  background: white;\r\n  border: 1px solid var(--line);\r\n  border-radius: 8px;\r\n  padding: 20px 21px;\r\n  position: relative;\r\n  overflow: hidden;\r\n}\r\n.metric-head {\r\n  color: #7c8999;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  font-size: 13px;\r\n}\r\n.metric-head svg {\r\n  width: 17px;\r\n  height: 17px;\r\n  color: #aab4c1;\r\n}\r\n.metric-value {\r\n  font-size: 36px;\r\n  font-family: ui-sans-serif, system-ui, sans-serif;\r\n  font-weight: 600;\r\n  letter-spacing: -1.7px;\r\n  margin-top: 8px;\r\n  line-height: 1.25;\r\n}\r\n.metric-value small {\r\n  font-size: 14px;\r\n  color: #94a0ae;\r\n  font-weight: 400;\r\n  letter-spacing: 0;\r\n  margin-left: 5px;\r\n}\r\n.metric-caption {\r\n  font-size: 12px;\r\n  color: #8a96a4;\r\n  margin-top: 10px;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n}\r\n.metric-line {\r\n  height: 3px;\r\n  background: #edf2f3;\r\n  border-radius: 3px;\r\n  margin-top: 15px;\r\n}\r\n.metric-line i {\r\n  display: block;\r\n  height: 100%;\r\n  border-radius: 3px;\r\n  background: #80bfad;\r\n}\r\n.metric-line.amber i {\r\n  background: #e0b065;\r\n}\r\n.metric-value.accent {\r\n  color: var(--teal);\r\n}\r\n.overview-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1fr) 300px;\r\n  gap: 22px;\r\n  align-items: start;\r\n}\r\n.panel {\r\n  --panel-inline-padding: 22px;\r\n  background: #fff;\r\n  border: 1px solid var(--line);\r\n  border-radius: 8px;\r\n  overflow: hidden;\r\n}\r\n.panel-heading {\r\n  padding: 21px var(--panel-inline-padding) 17px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  gap: 12px;\r\n}\r\n.panel-heading h2 {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 9px;\r\n}\r\n.panel-heading p {\r\n  font-size: 12px;\r\n  color: #929ca9;\r\n  margin-top: 5px;\r\n}\r\n.count-chip {\r\n  font-size: 11px;\r\n  font-weight: 500;\r\n  background: #eef3f6;\r\n  padding: 0 7px;\r\n  line-height: 20px;\r\n  border-radius: 4px;\r\n  color: #7990a2;\r\n}\r\n.small-muted {\r\n  font-size: 12px;\r\n  color: #9ca6b0;\r\n  white-space: nowrap;\r\n}\r\n.filters {\r\n  display: flex;\r\n  gap: 12px;\r\n  padding: 0 22px 17px;\r\n}\r\n.search-control {\r\n  display: flex;\r\n  gap: 9px;\r\n  align-items: center;\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  padding: 8px 10px;\r\n  flex: 1;\r\n  min-width: 100px;\r\n  color: #9ca8b5;\r\n  background: #fcfdfe;\r\n}\r\n.search-control svg {\r\n  width: 15px;\r\n  height: 15px;\r\n}\r\n.search-control input {\r\n  border: 0;\r\n  background: transparent;\r\n  outline: 0;\r\n  width: 100%;\r\n  min-width: 0;\r\n  font-size: 13px;\r\n  color: var(--ink);\r\n}\r\ninput::placeholder {\r\n  color: #a1aab6;\r\n}\r\nselect {\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  color: #6b798b;\r\n  padding: 7px 9px;\r\n  background: #fff;\r\n  max-width: 180px;\r\n  font-size: 13px;\r\n}\r\n.table-subnav {\r\n  padding: 0 22px 13px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  align-items: center;\r\n}\r\n.segments {\r\n  display: flex;\r\n  gap: 6px;\r\n}\r\n.segments button {\r\n  background: transparent;\r\n  color: #8c97a4;\r\n  padding: 5px 12px;\r\n  font-size: 13px;\r\n  border-radius: 4px;\r\n}\r\n.segments button.active {\r\n  background: #e8f3ef;\r\n  color: var(--teal);\r\n  font-weight: 550;\r\n}\r\n.sort-control {\r\n  display: flex;\r\n  gap: 8px;\r\n  align-items: center;\r\n  font-size: 12px;\r\n  color: #9aa4af;\r\n}\r\n.sort-control select {\r\n  border: 0;\r\n  padding: 4px;\r\n  font-size: 12px;\r\n}\r\n.table-scroll {\r\n  overflow-x: auto;\r\n}\r\ntable {\r\n  border-collapse: collapse;\r\n  width: 100%;\r\n  white-space: nowrap;\r\n  font-size: 13px;\r\n  text-align: left;\r\n}\r\nth {\r\n  padding: 11px 16px;\r\n  background: #f8fafc;\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n  color: #8b97a5;\r\n  border-block: 1px solid #edf0f3;\r\n}\r\ntd {\r\n  padding: 17px 16px;\r\n  border-bottom: 1px solid #eef1f5;\r\n  vertical-align: middle;\r\n}\r\ntd:first-child,\r\nth:first-child {\r\n  padding-left: 22px;\r\n}\r\ntd:last-child,\r\nth:last-child {\r\n  padding-right: 22px;\r\n}\r\ntbody tr:hover {\r\n  background: #f8fbfa;\r\n}\r\n.stock-name {\r\n  background: transparent;\r\n  text-align: left;\r\n  display: block;\r\n  padding: 0;\r\n  color: #253a4d;\r\n  font-size: 14px;\r\n  font-weight: 550;\r\n  max-width: 145px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n.stock-name:hover {\r\n  color: var(--teal);\r\n}\r\n.stock-code {\r\n  font-size: 11px;\r\n  color: #9ba5b0;\r\n  display: block;\r\n  margin-top: 3px;\r\n  font-variant-numeric: tabular-nums;\r\n  letter-spacing: 0.3px;\r\n}\r\n.score-cell {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 7px;\r\n}\r\n.score-number {\r\n  font-size: 18px;\r\n  font-weight: 650;\r\n  color: var(--teal);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.score-number.mid {\r\n  color: #b18745;\r\n}\r\n.score-number.low {\r\n  color: #8695a5;\r\n}\r\n.score-track {\r\n  height: 3px;\r\n  background: #eaf1ee;\r\n  width: 36px;\r\n  border-radius: 2px;\r\n}\r\n.score-track i {\r\n  height: 100%;\r\n  display: block;\r\n  background: #78bda9;\r\n  border-radius: 2px;\r\n}\r\n.sector-tag {\r\n  background: #f4f6f9;\r\n  color: #7b8da0;\r\n  padding: 4px 7px;\r\n  border-radius: 4px;\r\n  font-size: 12px;\r\n}\r\n.height-tag {\r\n  color: #61758a;\r\n  background: #edf2f8;\r\n  padding: 3px 7px;\r\n  border-radius: 4px;\r\n  font-size: 12px;\r\n}\r\n.height-tag.high {\r\n  color: #b38742;\r\n  background: #fbf1df;\r\n}\r\n.money {\r\n  font-variant-numeric: tabular-nums;\r\n  color: #556a7d;\r\n}\r\n.table-footer {\r\n  font-size: 12px;\r\n  color: #9aa4b0;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  padding: 15px 22px;\r\n}\r\n.right-column {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 20px;\r\n}\r\n.sector-row {\r\n  display: block;\r\n  background: transparent;\r\n  width: 100%;\r\n  padding: 10px 22px;\r\n  text-align: left;\r\n}\r\n.sector-row:hover {\r\n  background: #f6faf8;\r\n}\r\n.sector-row-label {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  font-size: 14px;\r\n  color: #4e6478;\r\n}\r\n.sector-row-label > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 10px;\r\n}\r\n.rank-index {\r\n  color: #a8b3bf;\r\n  font:\r\n    12px/1 ui-monospace,\r\n    monospace;\r\n}\r\n.sector-score {\r\n  color: #3d8474;\r\n  font-weight: 650;\r\n  font-size: 17px;\r\n}\r\n.sector-bar {\r\n  height: 5px;\r\n  border-radius: 2px;\r\n  background: #f1f4f7;\r\n  margin: 9px 0 4px 25px;\r\n}\r\n.sector-bar i {\r\n  height: 100%;\r\n  display: block;\r\n  border-radius: 2px;\r\n  background: #71b7a3;\r\n}\r\n.sector-row:nth-child(2) .sector-bar i {\r\n  background: #8fc4b5;\r\n}\r\n.sector-row:nth-child(n + 3) .sector-bar i {\r\n  background: #b3d6cc;\r\n}\r\n.sector-row-meta {\r\n  font-size: 11px;\r\n  color: #a0aab5;\r\n  margin-left: 25px;\r\n}\r\n.panel-footnote {\r\n  font-size: 11px;\r\n  color: #9da7b1;\r\n  border-top: 1px solid #f0f2f5;\r\n  margin-top: 15px;\r\n  padding: 12px var(--panel-inline-padding);\r\n  overflow-wrap: anywhere;\r\n}\r\n.outline-tag {\r\n  font-size: 11px;\r\n  color: #8e9dac;\r\n  border: 1px solid #e5eaf0;\r\n  border-radius: 4px;\r\n  padding: 2px 7px;\r\n  white-space: nowrap;\r\n}\r\n#ladder-chart {\r\n  padding: 0 22px 10px;\r\n}\r\n.ladder-row {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: center;\r\n  padding: 8px 0;\r\n  font-size: 12px;\r\n  color: #8b99a8;\r\n}\r\n.ladder-row .label {\r\n  width: 38px;\r\n}\r\n.ladder-track {\r\n  background: #f3f5f8;\r\n  height: 18px;\r\n  flex: 1;\r\n  border-radius: 3px;\r\n  overflow: hidden;\r\n}\r\n.ladder-track i {\r\n  display: block;\r\n  height: 100%;\r\n  background: #b8c9d7;\r\n  border-radius: 3px;\r\n  min-width: 0;\r\n}\r\n.ladder-row:first-child .ladder-track i {\r\n  background: #dbb879;\r\n}\r\n.ladder-row:last-child .ladder-track i {\r\n  background: #81bba9;\r\n}\r\n.ladder-count {\r\n  width: 21px;\r\n  text-align: right;\r\n  color: #61778c;\r\n}\r\n.insight {\r\n  margin: 8px 22px 19px;\r\n  padding: 12px;\r\n  background: #f5f8fa;\r\n  border-radius: 5px;\r\n  color: #7a8a9a;\r\n  font-size: 12px;\r\n  line-height: 1.8;\r\n}\r\n.empty {\r\n  padding: 60px 24px;\r\n  text-align: center;\r\n  color: #8b9baa;\r\n  font-size: 14px;\r\n  white-space: normal;\r\n}\r\n.empty strong {\r\n  display: block;\r\n  font-size: 16px;\r\n  font-weight: 500;\r\n  color: #596d80;\r\n  margin-bottom: 8px;\r\n}\r\n.empty.compact {\r\n  padding: 27px 20px;\r\n  font-size: 12px;\r\n}\r\n.page-footer {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  font-size: 11px;\r\n  color: #a0aab5;\r\n  margin-top: 25px;\r\n}\r\n.page-footer > span:first-child {\r\n  white-space: nowrap;\r\n  letter-spacing: 0.5px;\r\n}\r\n.page-footer i {\r\n  margin: 0 5px;\r\n  font-style: normal;\r\n}\r\n.sector-formula {\r\n  padding: 13px 22px;\r\n  background: #f5faf8;\r\n  color: #6b8d80;\r\n  font-size: 13px;\r\n}\r\n.sector-formula span {\r\n  margin: 0 9px;\r\n  color: #b2c6bd;\r\n}\r\n.model-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);\r\n  gap: 22px;\r\n}\r\n.preset-buttons {\r\n  display: flex;\r\n  gap: 9px;\r\n  padding: 0 22px 22px;\r\n}\r\n.preset-buttons button {\r\n  font-size: 13px;\r\n  padding: 8px 13px;\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  background: #fff;\r\n  color: #8897a5;\r\n}\r\n.preset-buttons button.active {\r\n  background: #edf6f2;\r\n  color: var(--teal);\r\n  border-color: #c9e3d9;\r\n}\r\n.weight-item {\r\n  padding: 17px 22px;\r\n  border-top: 1px solid #eff2f5;\r\n}\r\n.weight-heading {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  font-size: 14px;\r\n  margin-bottom: 10px;\r\n}\r\n.weight-heading output {\r\n  font-weight: 600;\r\n  color: var(--teal);\r\n}\r\n.weight-item input {\r\n  width: 100%;\r\n  accent-color: var(--teal);\r\n  height: 5px;\r\n}\r\n.weight-item p {\r\n  color: #96a2ae;\r\n  font-size: 12px;\r\n  margin-top: 10px;\r\n}\r\n.model-actions {\r\n  padding: 18px 22px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  gap: 12px;\r\n  border-top: 1px solid var(--line);\r\n}\r\n.model-actions span {\r\n  color: #8b9aa7;\r\n  font-size: 12px;\r\n}\r\n.model-explain {\r\n  padding-bottom: 22px;\r\n}\r\n.formula-box {\r\n  padding: 20px 22px;\r\n  background: #f1f7f4;\r\n  margin: 0 22px 22px;\r\n  color: #4d8e79;\r\n  font-size: 16px;\r\n  font-weight: 550;\r\n  line-height: 1.9;\r\n  border-radius: 6px;\r\n}\r\n.formula-box span {\r\n  font-size: 13px;\r\n  font-weight: 400;\r\n}\r\n.model-explain h3 {\r\n  margin: 18px 22px 9px;\r\n}\r\n.model-explain p {\r\n  margin: 0 22px;\r\n  color: #8898a6;\r\n  line-height: 1.8;\r\n}\r\n.model-explain dl {\r\n  margin: 0 22px;\r\n}\r\n.model-explain dl div {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  padding: 8px 0;\r\n  color: #6d7d8d;\r\n  font-size: 13px;\r\n  border-bottom: 1px solid #f1f3f6;\r\n}\r\n.model-explain dd {\r\n  color: var(--amber);\r\n}\r\n.model-explain .model-limit {\r\n  margin-top: 22px;\r\n  font-size: 12px;\r\n}\r\n.detail-dialog,\r\n.help-dialog {\r\n  border: 1px solid var(--line);\r\n  border-radius: 12px;\r\n  box-shadow: 0 20px 80px #10213540;\r\n  width: min(720px, calc(100vw - 32px));\r\n  padding: 25px 29px;\r\n  max-height: 90vh;\r\n  color: var(--ink);\r\n}\r\ndialog::backdrop {\r\n  background: #10213580;\r\n  backdrop-filter: blur(3px);\r\n}\r\n.dialog-top {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  margin-bottom: 20px;\r\n}\r\n.detail-head {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  align-items: center;\r\n}\r\n.detail-head h2 {\r\n  font-size: 26px;\r\n}\r\n.detail-head .stock-code {\r\n  font-size: 13px;\r\n  margin-top: 6px;\r\n}\r\n.detail-score {\r\n  font-size: 54px;\r\n  line-height: 1;\r\n  color: var(--teal);\r\n  font-weight: 600;\r\n  letter-spacing: -2px;\r\n}\r\n.detail-score small {\r\n  display: block;\r\n  font-size: 12px;\r\n  letter-spacing: 0;\r\n  font-weight: 400;\r\n  color: #94a4b0;\r\n  text-align: right;\r\n  margin-top: 8px;\r\n}\r\n.detail-tags {\r\n  display: flex;\r\n  gap: 8px;\r\n  margin-top: 15px;\r\n}\r\n.detail-facts {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, 1fr);\r\n  gap: 15px;\r\n  background: #f6f8fa;\r\n  padding: 18px;\r\n  margin: 22px 0;\r\n  border-radius: 6px;\r\n}\r\n.detail-facts label {\r\n  display: block;\r\n  color: #91a0ae;\r\n  font-size: 12px;\r\n  margin-bottom: 5px;\r\n}\r\n.detail-facts strong {\r\n  font-size: 16px;\r\n  font-weight: 550;\r\n}\r\n.factor-row {\r\n  display: grid;\r\n  grid-template-columns: 90px 1fr 40px 56px;\r\n  gap: 12px;\r\n  align-items: center;\r\n  margin: 14px 0;\r\n  font-size: 13px;\r\n}\r\n.factor-row .factor-track {\r\n  height: 7px;\r\n  background: #edf2f4;\r\n  border-radius: 4px;\r\n}\r\n.factor-track i {\r\n  display: block;\r\n  height: 100%;\r\n  border-radius: 4px;\r\n  background: #7dbda9;\r\n}\r\n.factor-row .weight {\r\n  font-size: 12px;\r\n  color: #97a6b3;\r\n  text-align: right;\r\n}\r\n.detail-section h3 {\r\n  font-size: 15px;\r\n  margin: 23px 0 13px;\r\n}\r\n.risk-row {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: flex-start;\r\n  font-size: 13px;\r\n  line-height: 1.8;\r\n  margin: 10px 0;\r\n  color: #8593a0;\r\n}\r\n.risk-row strong {\r\n  color: #b18442;\r\n  font-size: 12px;\r\n  white-space: nowrap;\r\n  background: #fbf2e4;\r\n  padding: 2px 6px;\r\n  border-radius: 4px;\r\n}\r\n.detail-text {\r\n  padding: 15px 18px;\r\n  background: #f4f8f7;\r\n  color: #6e8a81;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  border-radius: 6px;\r\n}\r\n.detail-footnote {\r\n  font-size: 12px;\r\n  color: #97a5b2;\r\n  margin-top: 18px;\r\n  line-height: 1.8;\r\n}\r\n.help-content p {\r\n  margin: 15px 0;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #6c7f90;\r\n}\r\n.loading {\r\n  animation: pulse 1.5s ease-in-out infinite;\r\n}\r\n@keyframes pulse {\r\n  50% {\r\n    opacity: 0.4;\r\n  }\r\n}\r\n@media (min-width: 1500px) {\r\n  .overview-grid {\r\n    grid-template-columns: minmax(0, 1fr) 330px;\r\n  }\r\n  td {\r\n    padding: 19px 18px;\r\n  }\r\n  main {\r\n    padding: 38px 42px;\r\n  }\r\n  .metric {\r\n    padding: 23px 26px;\r\n  }\r\n}\r\n@media (max-width: 1200px) {\r\n  .sidebar {\r\n    width: 190px;\r\n    padding-inline: 12px;\r\n  }\r\n  .workspace {\r\n    margin-left: 190px;\r\n    width: calc(100% - 190px);\r\n  }\r\n  main {\r\n    padding: 25px 24px;\r\n  }\r\n  .topbar {\r\n    padding-inline: 24px;\r\n  }\r\n  .overview-grid {\r\n    grid-template-columns: minmax(0, 1fr) 270px;\r\n    gap: 17px;\r\n  }\r\n  .metric {\r\n    padding: 17px;\r\n  }\r\n  .metric-value {\r\n    font-size: 31px;\r\n  }\r\n  .brand {\r\n    font-size: 17px;\r\n    padding: 0 5px;\r\n  }\r\n  .brand small {\r\n    font-size: 9px;\r\n  }\r\n  .metric-caption {\r\n    font-size: 11px;\r\n  }\r\n  .heading-actions {\r\n    gap: 8px;\r\n  }\r\n  .primary {\r\n    padding-inline: 13px;\r\n  }\r\n  .page-footer {\r\n    font-size: 10px;\r\n  }\r\n}\r\n@media (max-width: 1000px) {\r\n  .overview-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .right-column {\r\n    display: grid;\r\n    grid-template-columns: 1fr 1fr;\r\n  }\r\n  .model-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .sidebar {\r\n    width: 175px;\r\n  }\r\n  .workspace {\r\n    margin-left: 175px;\r\n    width: calc(100% - 175px);\r\n  }\r\n  .page-heading {\r\n    align-items: flex-start;\r\n    flex-wrap: wrap;\r\n  }\r\n  .metric-caption {\r\n    flex-direction: column;\r\n    align-items: flex-start;\r\n    gap: 2px;\r\n  }\r\n  .metric-head {\r\n    font-size: 12px;\r\n  }\r\n  .metric-value {\r\n    font-size: 28px;\r\n  }\r\n  .page-footer {\r\n    flex-direction: column;\r\n    gap: 6px;\r\n  }\r\n}\r\n@media (max-width: 720px) {\r\n  .shell {\r\n    display: block;\r\n  }\r\n  .sidebar {\r\n    position: static;\r\n    width: 100%;\r\n    padding: 18px 20px 0;\r\n  }\r\n  .brand {\r\n    font-size: 18px;\r\n  }\r\n  .brand small {\r\n    font-size: 9px;\r\n  }\r\n  .brand-mark {\r\n    height: 25px;\r\n  }\r\n  .brand-mark i:nth-child(3) {\r\n    height: 25px;\r\n  }\r\n  .nav-label,\r\n  .sidebar-note,\r\n  .sidebar-footer {\r\n    display: none;\r\n  }\r\n  .sidebar nav {\r\n    display: flex;\r\n    margin-top: 17px;\r\n    gap: 6px;\r\n  }\r\n  .nav-item {\r\n    padding: 11px 8px;\r\n    font-size: 13px;\r\n    justify-content: center;\r\n    gap: 7px;\r\n    margin: 0;\r\n    border-radius: 6px 6px 0 0;\r\n  }\r\n  .nav-item svg {\r\n    width: 15px;\r\n    height: 15px;\r\n  }\r\n  .workspace {\r\n    width: 100%;\r\n    margin: 0;\r\n  }\r\n  .topbar {\r\n    height: 48px;\r\n    padding-inline: 20px;\r\n  }\r\n  .session-label {\r\n    font-size: 11px;\r\n  }\r\n  .topbar-right {\r\n    gap: 10px;\r\n  }\r\n  .breadcrumb {\r\n    font-size: 12px;\r\n    gap: 10px;\r\n  }\r\n  main {\r\n    padding: 23px 18px 18px;\r\n  }\r\n  .page-heading {\r\n    gap: 17px;\r\n    margin-bottom: 20px;\r\n  }\r\n  .page-heading h1 {\r\n    font-size: 25px;\r\n  }\r\n  .page-heading p {\r\n    font-size: 13px;\r\n  }\r\n  .eyebrow {\r\n    font-size: 10px;\r\n  }\r\n  .heading-actions {\r\n    width: 100%;\r\n    justify-content: space-between;\r\n  }\r\n  .date-control {\r\n    flex: 1;\r\n    max-width: 225px;\r\n  }\r\n  .date-control input {\r\n    width: 100%;\r\n  }\r\n  .data-strip {\r\n    font-size: 11px;\r\n    align-items: flex-start;\r\n  }\r\n  .data-strip > div {\r\n    gap: 6px;\r\n    align-items: flex-start;\r\n    flex-direction: column;\r\n  }\r\n  .metrics {\r\n    grid-template-columns: repeat(2, minmax(0, 1fr));\r\n    gap: 12px;\r\n    margin-bottom: 17px;\r\n  }\r\n  .metric {\r\n    padding: 16px;\r\n  }\r\n  .metric-head {\r\n    font-size: 13px;\r\n  }\r\n  .metric-value {\r\n    font-size: 32px;\r\n  }\r\n  .metric-caption {\r\n    font-size: 12px;\r\n  }\r\n  .right-column {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .panel {\r\n    --panel-inline-padding: 17px;\r\n  }\r\n  .panel-heading {\r\n    padding: 19px var(--panel-inline-padding) 15px;\r\n  }\r\n  .filters {\r\n    padding-inline: 17px;\r\n    gap: 8px;\r\n  }\r\n  .filters select {\r\n    max-width: 130px;\r\n  }\r\n  .table-subnav {\r\n    padding-inline: 17px;\r\n  }\r\n  .table-footer {\r\n    padding-inline: 17px;\r\n  }\r\n  .table-footer span:last-child {\r\n    display: none;\r\n  }\r\n  .small-muted {\r\n    font-size: 11px;\r\n  }\r\n  .detail-dialog,\r\n  .help-dialog {\r\n    padding: 20px;\r\n  }\r\n  .detail-facts {\r\n    grid-template-columns: 1fr 1fr;\r\n  }\r\n  .detail-head h2 {\r\n    font-size: 22px;\r\n  }\r\n  .detail-score {\r\n    font-size: 45px;\r\n  }\r\n  .factor-row {\r\n    grid-template-columns: 76px 1fr 26px 42px;\r\n    gap: 8px;\r\n    font-size: 12px;\r\n  }\r\n  .sector-formula {\r\n    line-height: 2;\r\n  }\r\n  .model-actions {\r\n    flex-wrap: wrap;\r\n  }\r\n  .preset-buttons {\r\n    padding-inline: 17px;\r\n    gap: 6px;\r\n  }\r\n  .preset-buttons button {\r\n    padding-inline: 11px;\r\n  }\r\n  .detail-facts strong {\r\n    font-size: 16px;\r\n  }\r\n  .page-footer {\r\n    font-size: 11px;\r\n  }\r\n  .sidebar .brand small {\r\n    font-size: 10px;\r\n  }\r\n}\r\n@media (prefers-reduced-motion: reduce) {\r\n  * {\r\n    animation: none !important;\r\n    scroll-behavior: auto !important;\r\n  }\r\n}\r\n.review-intro {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  margin-bottom: 22px;\r\n  gap: 20px;\r\n}\r\n.review-intro p {\r\n  font-size: 14px;\r\n  color: #8395a3;\r\n  margin-top: 9px;\r\n}\r\n.review-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);\r\n  gap: 22px;\r\n  align-items: start;\r\n}\r\n.review-conclusion {\r\n  background: #eff7f3;\r\n  color: #628b79;\r\n  padding: 12px 22px;\r\n  font-size: 13px;\r\n}\r\n.review-stock {\r\n  font-weight: 500;\r\n  font-size: 14px;\r\n}\r\n.top-group {\r\n  color: #b58d48;\r\n  background: #fbf3e5;\r\n  font-size: 10px;\r\n  padding: 2px 5px;\r\n  margin-left: 7px;\r\n  border-radius: 3px;\r\n}\r\n.up {\r\n  color: var(--red);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.down {\r\n  color: var(--green);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.ai-content {\r\n  padding: 0 22px;\r\n}\r\n.ai-empty {\r\n  text-align: center;\r\n  padding: 17px 25px 20px;\r\n  color: #8b9aa8;\r\n}\r\n.ai-symbol {\r\n  display: flex;\r\n  justify-content: center;\r\n  width: 45px;\r\n  height: 45px;\r\n  align-items: center;\r\n  background: #eef5f2;\r\n  color: #69a991;\r\n  border-radius: 12px;\r\n  margin: 0 auto 15px;\r\n}\r\n.ai-symbol svg {\r\n  width: 25px;\r\n  height: 25px;\r\n}\r\n.ai-empty h3 {\r\n  font-size: 16px;\r\n  color: #617587;\r\n  font-weight: 500;\r\n  margin-bottom: 9px;\r\n}\r\n.ai-empty p {\r\n  font-size: 13px;\r\n  line-height: 1.9;\r\n}\r\n.ai-process {\r\n  font-size: 12px;\r\n  background: #f7f9fb;\r\n  padding: 16px;\r\n  margin-top: 23px;\r\n  color: #9aabba;\r\n}\r\n.ai-process span {\r\n  display: block;\r\n  color: #c0ccd5;\r\n  line-height: 1.8;\r\n}\r\n.ai-actions {\r\n  padding: 17px 22px;\r\n  border-top: 1px solid var(--line);\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 13px;\r\n}\r\n.ai-actions button {\r\n  font-size: 13px;\r\n}\r\n.ai-actions > span {\r\n  font-size: 12px;\r\n  color: #9b8a6b;\r\n}\r\n.ai-score {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 14px;\r\n  padding: 8px 22px 16px;\r\n}\r\n.ai-score strong {\r\n  font-size: 48px;\r\n  color: #588b79;\r\n  line-height: 1.1;\r\n}\r\n.ai-score > span {\r\n  font-size: 13px;\r\n  color: #789285;\r\n}\r\n.ai-score small {\r\n  display: block;\r\n  font-size: 11px;\r\n  color: #9aa9a1;\r\n  margin-top: 4px;\r\n}\r\n.ai-summary {\r\n  padding: 0 22px;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #637889;\r\n}\r\n.ai-panel h3 {\r\n  margin: 20px 22px 10px;\r\n  font-size: 14px;\r\n}\r\n.ai-panel ul {\r\n  padding: 0 22px 0 38px;\r\n  color: #8192a1;\r\n  font-size: 13px;\r\n  line-height: 1.9;\r\n}\r\n.ai-panel li {\r\n  margin-bottom: 8px;\r\n}\r\n.ai-note {\r\n  padding: 10px 22px 20px;\r\n  font-size: 12px;\r\n  color: #9ba8b2;\r\n}\r\n.review-sector-panel,\r\n.history-panel,\r\n.model-connection {\r\n  margin-top: 22px;\r\n}\r\n.history-list {\r\n  padding: 0 22px 18px;\r\n}\r\n.history-list button {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 14px;\r\n  padding: 12px;\r\n  width: 100%;\r\n  background: #f8fafb;\r\n  color: #718699;\r\n  border-bottom: 1px solid #e8eef1;\r\n  text-align: left;\r\n  font-size: 13px;\r\n}\r\n.history-list button:hover {\r\n  background: #eef6f1;\r\n}\r\n.model-connection > p {\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #81929f;\r\n  margin: 0 22px 14px;\r\n}\r\n.model-connection > p:last-child {\r\n  font-size: 12px;\r\n  margin-bottom: 22px;\r\n}\r\n@media (max-width: 1200px) {\r\n  .review-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .ai-panel {\r\n    max-width: none;\r\n  }\r\n}\r\n@media (max-width: 720px) {\r\n  .sidebar nav {\r\n    overflow-x: auto;\r\n  }\r\n  .nav-item {\r\n    min-width: 83px;\r\n    flex-shrink: 0;\r\n  }\r\n  .review-intro {\r\n    flex-wrap: wrap;\r\n    gap: 12px;\r\n  }\r\n  .history-list button {\r\n    flex-direction: column;\r\n    gap: 4px;\r\n  }\r\n  .top-group {\r\n    display: none;\r\n  }\r\n  .review-intro p {\r\n    font-size: 13px;\r\n  }\r\n  .review-grid {\r\n    gap: 17px;\r\n  }\r\n}\r\n.pool-panel .table-scroll {\r\n  max-height: 650px;\r\n}\r\n.pool-panel th {\r\n  position: sticky;\r\n  top: 0;\r\n  z-index: 1;\r\n}\r\n.stock-code,\r\n.sector-row-meta,\r\n.panel-footnote,\r\n.outline-tag,\r\n.page-footer,\r\n.sidebar-note p,\r\n.sidebar-footer small {\r\n  font-size: 12px;\r\n}\r\ntable {\r\n  font-size: 14px;\r\n}\r\n.sector-tag,\r\n.height-tag {\r\n  font-size: 12px;\r\n}\r\n.page-footer {\r\n  line-height: 1.7;\r\n}\r\n@media (max-width: 720px) {\r\n  .pool-panel .table-scroll {\r\n    max-height: 560px;\r\n  }\r\n}\r\n\r\n/* Paper account uses the same research workspace visual language. */\r\n.paper-toolbar {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 14px;\r\n  flex-wrap: wrap;\r\n}\r\n.paper-toolbar > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  flex-wrap: wrap;\r\n}\r\n.paper-toolbar a {\r\n  text-decoration: none;\r\n  font-size: 12px;\r\n  display: inline-flex;\r\n  align-items: center;\r\n}\r\n.paper-message {\r\n  font-size: 12px;\r\n  color: var(--muted);\r\n  min-height: 18px;\r\n  margin: 12px 0 20px;\r\n}\r\n.paper-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);\r\n  gap: 20px;\r\n  align-items: start;\r\n}\r\n.paper-panel {\r\n  margin-top: 20px;\r\n}\r\n.equity-chart {\r\n  display: block;\r\n  width: 100%;\r\n  height: auto;\r\n  padding: 4px 18px 0;\r\n}\r\n.chart-axis {\r\n  font-size: 11px;\r\n  fill: #758396;\r\n}\r\n.chart-legend {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 14px;\r\n  padding: 0 24px 18px;\r\n  font-size: 11px;\r\n  color: #758396;\r\n}\r\n.chart-legend i {\r\n  display: inline-block;\r\n  width: 12px;\r\n  height: 3px;\r\n  vertical-align: middle;\r\n  background: #13977e;\r\n  margin-right: 6px;\r\n}\r\n.chart-legend i.benchmark {\r\n  background: #acb6c4;\r\n}\r\n.verified {\r\n  color: #14846f;\r\n  border-color: #bfe5d9;\r\n  background: #f0faf6;\r\n}\r\n.action-tag {\r\n  background: #edf4f8;\r\n  color: #405c73;\r\n  border-radius: 5px;\r\n  padding: 5px 8px;\r\n  font-size: 11px;\r\n  white-space: nowrap;\r\n}\r\n.plan-reason {\r\n  min-width: 220px;\r\n  max-width: 330px;\r\n  white-space: normal !important;\r\n  line-height: 1.7;\r\n}\r\n.paper-config {\r\n  display: flex;\r\n  align-items: end;\r\n  gap: 20px;\r\n  flex-wrap: wrap;\r\n  padding: 0 24px 24px;\r\n}\r\n.paper-config label {\r\n  display: grid;\r\n  gap: 9px;\r\n  font-size: 12px;\r\n  color: #758396;\r\n}\r\n.paper-config input,\r\n.paper-config select {\r\n  border: 1px solid #dce3eb;\r\n  border-radius: 6px;\r\n  background: #fff;\r\n  padding: 10px 12px;\r\n  color: #21384b;\r\n  min-width: 220px;\r\n}\r\n.paper-config input:disabled {\r\n  background: #f2f5f8;\r\n  color: #8896a6;\r\n}\r\n.paper-outcomes {\r\n  padding: 0 24px;\r\n}\r\n.paper-outcomes summary {\r\n  cursor: pointer;\r\n  padding: 16px 0;\r\n  font-size: 12px;\r\n  color: #526b80;\r\n}\r\n.execution-feedback p {\r\n  display: flex;\r\n  gap: 14px;\r\n  justify-content: space-between;\r\n  border-top: 1px solid #edf1f5;\r\n  padding: 12px 0;\r\n  margin: 0;\r\n  font-size: 12px;\r\n}\r\n.execution-feedback span {\r\n  color: #758396;\r\n}\r\n.strategy-active {\r\n  display: grid;\r\n  gap: 8px;\r\n  padding: 0 24px 16px;\r\n}\r\n.strategy-active span {\r\n  font-size: 11px;\r\n  color: #758396;\r\n}\r\n.strategy-active strong {\r\n  font-size: 18px;\r\n  letter-spacing: 0.2px;\r\n}\r\n/* In-panel metrics share heading/footer gutters and stack labels above values. */\r\n.panel-metrics {\r\n  padding-inline: var(--panel-inline-padding);\r\n}\r\n.panel-metrics > div {\r\n  display: grid;\r\n  align-content: start;\r\n  gap: 6px;\r\n  min-width: 0;\r\n  overflow-wrap: anywhere;\r\n}\r\n.panel-metrics .mini-label {\r\n  margin-bottom: 0;\r\n}\r\n.panel-metrics .outline-tag {\r\n  justify-self: start;\r\n  max-width: 100%;\r\n  white-space: normal;\r\n}\r\n.panel-metric-value {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1fr);\r\n  gap: 4px;\r\n  min-width: 0;\r\n  overflow-wrap: anywhere;\r\n  font-size: 14px;\r\n  line-height: 1.7;\r\n  line-break: anywhere;\r\n}\r\n.alert-channel-metrics {\r\n  grid-template-columns: repeat(3, minmax(0, 1fr));\r\n}\r\n.strategy-metrics strong {\r\n  font-size: 16px;\r\n  overflow-wrap: anywhere;\r\n}\r\n.strategy-metrics small {\r\n  font-size: 12px;\r\n  color: var(--muted);\r\n  overflow-wrap: anywhere;\r\n}\r\n#strategies-status .strategy-metrics {\r\n  margin-bottom: 0;\r\n}\r\n@media (max-width: 720px) {\r\n  .alert-channel-metrics {\r\n    grid-template-columns: minmax(0, 1fr);\r\n  }\r\n}\r\n.version-row {\r\n  margin: 16px 24px;\r\n  padding: 14px 0;\r\n  border-top: 1px solid #edf1f5;\r\n  font-size: 12px;\r\n}\r\n.version-row > div {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n}\r\n.version-row p {\r\n  line-height: 1.7;\r\n  color: #758396;\r\n}\r\n.version-row small {\r\n  line-height: 1.8;\r\n  color: #758396;\r\n}\r\n.version-row button {\r\n  margin-top: 12px;\r\n}\r\n.paper-grid .ai-panel > div > p {\r\n  padding: 0 24px;\r\n  color: #758396;\r\n  font-size: 12px;\r\n  line-height: 1.8;\r\n}\r\n.paper-grid .ai-panel .small-muted {\r\n  padding: 0 24px 24px;\r\n}\r\n.paper-grid .ai-process {\r\n  margin: 0 24px;\r\n}\r\n.paper-grid .ai-note {\r\n  margin: 14px 0;\r\n}\r\n.paper-grid .panel-footnote {\r\n  line-height: 1.8;\r\n}\r\n.paper-panel .panel-footnote {\r\n  line-height: 1.8;\r\n}\r\n.paper-panel td {\r\n  vertical-align: top;\r\n}\r\n.paper-message:empty {\r\n  display: none;\r\n}\r\n@media (max-width: 1100px) {\r\n  .paper-grid {\r\n    grid-template-columns: minmax(0, 1fr);\r\n  }\r\n  .paper-toolbar {\r\n    align-items: start;\r\n  }\r\n  .paper-config {\r\n    gap: 14px;\r\n  }\r\n}\r\n@media (max-width: 650px) {\r\n  .paper-toolbar .secondary,\r\n  .paper-toolbar .primary {\r\n    font-size: 11px;\r\n    padding: 9px 10px;\r\n  }\r\n  .paper-toolbar > div {\r\n    gap: 6px;\r\n  }\r\n  .paper-config {\r\n    padding: 0 16px 20px;\r\n  }\r\n  .paper-config label,\r\n  .paper-config input,\r\n  .paper-config select {\r\n    width: 100%;\r\n    min-width: 0;\r\n  }\r\n  .execution-feedback p {\r\n    display: block;\r\n  }\r\n  .execution-feedback span {\r\n    display: block;\r\n    margin-top: 6px;\r\n  }\r\n  .chart-legend {\r\n    padding: 0 16px 16px;\r\n    gap: 9px;\r\n  }\r\n  .paper-grid {\r\n    gap: 16px;\r\n  }\r\n}\r\n\r\n.paper-fee-settings {\r\n  border: 1px solid #dce3eb;\r\n  border-radius: 8px;\r\n  width: 100%;\r\n  padding: 18px 20px;\r\n  margin: 0;\r\n  min-width: 0;\r\n}\r\n.paper-fee-settings legend {\r\n  font-size: 14px;\r\n  font-weight: 600;\r\n  color: #21384b;\r\n  padding: 0 8px;\r\n}\r\n.fee-settings-heading {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  flex-wrap: wrap;\r\n  margin-bottom: 16px;\r\n}\r\n.fee-settings-heading p,\r\n.fee-settings-note {\r\n  font-size: 12px;\r\n  color: #758396;\r\n  line-height: 1.8;\r\n  margin: 0;\r\n}\r\n.paper-fee-controls {\r\n  display: grid;\r\n  grid-template-columns: repeat(3, minmax(0, 1fr));\r\n  gap: 18px 24px;\r\n}\r\n.paper-config .paper-fee-controls input {\r\n  min-width: 0;\r\n  width: 100%;\r\n  font-size: 14px;\r\n}\r\n.paper-fee-controls span {\r\n  font-size: 12px;\r\n  color: #8896a6;\r\n}\r\n.fee-settings-note {\r\n  margin-top: 18px;\r\n}\r\n.paper-fee-settings .text-button {\r\n  margin-top: 8px;\r\n}\r\n.fee-breakdown {\r\n  max-width: 200px;\r\n  white-space: normal;\r\n  line-height: 1.7;\r\n}\r\n.fee-breakdown summary {\r\n  cursor: pointer;\r\n  white-space: nowrap;\r\n}\r\n.fee-breakdown > span {\r\n  display: block;\r\n  color: #758396;\r\n  font-size: 12px;\r\n  margin-top: 8px;\r\n  min-width: 160px;\r\n}\r\n@media (max-width: 650px) {\r\n  .paper-fee-settings {\r\n    padding: 16px 12px;\r\n  }\r\n  .paper-fee-controls {\r\n    grid-template-columns: repeat(2, minmax(0, 1fr));\r\n    gap: 16px 12px;\r\n  }\r\n  .paper-config .paper-fee-controls label {\r\n    font-size: 12px;\r\n  }\r\n  .fee-settings-heading p {\r\n    max-width: 100%;\r\n  }\r\n}\r\n\r\n#paper-metrics .metric-value {\r\n  font-size: clamp(22px, 2.2vw, 32px);\r\n}\r\n.plan-price-conditions {\r\n  min-width: 220px;\r\n  line-height: 1.65;\r\n}\r\n', "type": "text/css; charset=utf-8" } };
 
 // backend/http.js
 function json(body, status = 200) {
@@ -1550,6 +1550,522 @@ function feesForBook(book) {
   return book.feeConfig || LEGACY_FEES;
 }
 
+// shared/execution-cost.js
+var EXECUTION_COST_MODEL = "TIME_LIQUIDITY_V1";
+var EXECUTION_COST_PERIODS = Object.freeze([
+  "openFirstMinute",
+  "openNextFourMinutes",
+  "earlySession",
+  "regular"
+]);
+var HARD_PARTICIPATION_CAP = 0.01;
+var CALIBRATION_STATUSES = Object.freeze([
+  "PRIOR_UNCALIBRATED",
+  "QUOTE_PROXY_VALIDATED",
+  "EXECUTION_CALIBRATED"
+]);
+var EXECUTION_COST_FIELDS = Object.freeze([
+  ...EXECUTION_COST_PERIODS.map((period) => ({
+    key: `periodBaseBps.${period}`,
+    label: `\u65F6\u6BB5\u6B8B\u4F59\u9879 ${period}`,
+    unit: "bps",
+    min: 0,
+    max: 500,
+    decimals: 2
+  })),
+  {
+    key: "previousLimitUpPremiumBps",
+    label: "\u6628\u65E5\u6DA8\u505C\u98CE\u9669\u9879",
+    unit: "bps",
+    min: 0,
+    max: 500,
+    decimals: 2
+  },
+  {
+    key: "unknownSpreadFloorBps",
+    label: "\u7F3A\u76D8\u53E3\u9690\u542B\u4EF7\u5DEE\u56DE\u9000",
+    unit: "bps",
+    min: 0,
+    max: 500,
+    decimals: 2
+  },
+  {
+    key: "impactBpsAtReferenceParticipation",
+    label: "\u53C2\u8003\u53C2\u4E0E\u7387\u4E0B\u7684\u5E73\u5747\u51B2\u51FB",
+    unit: "bps",
+    min: 0,
+    max: 500,
+    decimals: 2
+  },
+  {
+    key: "referenceParticipation",
+    label: "\u51B2\u51FB\u5F52\u4E00\u5316\u53C2\u4E0E\u7387",
+    unit: "\u6BD4\u4F8B",
+    min: 1e-4,
+    max: HARD_PARTICIPATION_CAP,
+    decimals: 6
+  },
+  {
+    key: "impactExponent",
+    label: "\u51B2\u51FB\u66F2\u7EBF\u5F62\u72B6 \u03B3",
+    unit: "\u6307\u6570",
+    min: 0.1,
+    max: 1,
+    decimals: 3
+  },
+  {
+    key: "openingParticipationCap",
+    label: "\u5F00\u76D8\u8F6F\u5BB9\u91CF\u4E0A\u9650",
+    unit: "\u6BD4\u4F8B",
+    min: 0,
+    max: HARD_PARTICIPATION_CAP,
+    decimals: 6
+  },
+  {
+    key: "minuteQualityMultiplier",
+    label: "\u5206\u949F\u91C7\u6837\u6B8B\u4F59\u6210\u672C\u500D\u6570",
+    unit: "\u500D\u6570",
+    min: 1,
+    max: 5,
+    decimals: 3
+  },
+  {
+    // 执行时的残余成本情景倍数；常规执行固定为 1，压力重放由情景
+    // bundle 冻结为登记的情景值（§6.2）。
+    key: "executionStressMultiplier",
+    label: "\u6267\u884C\u60C5\u666F\u538B\u529B\u500D\u6570",
+    unit: "\u500D\u6570",
+    min: 1,
+    max: 10,
+    decimals: 3
+  },
+  {
+    key: "maximumSupportedCostBps",
+    label: "\u6A21\u578B\u9002\u7528\u57DF\u4E0A\u9650",
+    unit: "bps",
+    min: 1,
+    max: 2e3,
+    decimals: 0
+  }
+]);
+var DEFAULT_EXECUTION_COST_PAYLOAD = Object.freeze({
+  periodBaseBps: Object.freeze({
+    openFirstMinute: 30,
+    openNextFourMinutes: 20,
+    earlySession: 10,
+    regular: 5
+  }),
+  previousLimitUpPremiumBps: 15,
+  unknownSpreadFloorBps: 5,
+  impactBpsAtReferenceParticipation: 10,
+  referenceParticipation: 0.01,
+  impactExponent: 0.5,
+  openingParticipationCap: 5e-3,
+  minuteQualityMultiplier: 1.5,
+  executionStressMultiplier: 1,
+  // 两个事前登记的压力情景；基准执行固定使用 1.0，不在此表内。
+  stressResidualMultiplier: Object.freeze([1.5, 2]),
+  maximumSupportedCostBps: 300
+});
+var fieldByKey = new Map(
+  EXECUTION_COST_FIELDS.map((field) => [field.key, field])
+);
+var round = (value, decimals) => Number(value.toFixed(decimals));
+var isPlainKey = (key) => key !== "__proto__" && key !== "constructor" && key !== "prototype";
+function normalizeExecutionCostPayload(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    throw new Error("\u6210\u672C\u653F\u7B56\u5FC5\u987B\u662F\u5BF9\u8C61");
+  const known = /* @__PURE__ */ new Set([
+    ...EXECUTION_COST_FIELDS.map((field) => field.key),
+    "stressResidualMultiplier"
+  ]);
+  for (const key of Object.keys(input)) {
+    if (key === "periodBaseBps") {
+      if (!input.periodBaseBps || typeof input.periodBaseBps !== "object")
+        throw new Error("\u6210\u672C\u653F\u7B56 periodBaseBps \u5FC5\u987B\u662F\u5BF9\u8C61");
+      for (const period of Object.keys(input.periodBaseBps))
+        if (!isPlainKey(period) || !known.has(`periodBaseBps.${period}`))
+          throw new Error(`\u6210\u672C\u653F\u7B56\u5305\u542B\u672A\u77E5\u5B57\u6BB5\uFF1AperiodBaseBps.${period}`);
+      continue;
+    }
+    if (!isPlainKey(key) || !known.has(key))
+      throw new Error(`\u6210\u672C\u653F\u7B56\u5305\u542B\u672A\u77E5\u5B57\u6BB5\uFF1A${key}`);
+  }
+  const output = {};
+  for (const field of EXECUTION_COST_FIELDS) {
+    const value = field.key.startsWith("periodBaseBps.") ? input.periodBaseBps?.[field.key.slice("periodBaseBps.".length)] : input[field.key];
+    if (typeof value !== "number" || !Number.isFinite(value))
+      throw new Error(`\u6210\u672C\u53C2\u6570 ${field.key} \u5FC5\u987B\u662F\u6709\u9650\u6570\u503C`);
+    if (value < field.min || value > field.max)
+      throw new Error(
+        `\u6210\u672C\u53C2\u6570 ${field.key} \u8D85\u51FA\u8303\u56F4 [${field.min}, ${field.max}]`
+      );
+    if (field.key.startsWith("periodBaseBps.")) {
+      const period = field.key.slice("periodBaseBps.".length);
+      output.periodBaseBps = output.periodBaseBps || {};
+      output.periodBaseBps[period] = round(value, field.decimals);
+    } else output[field.key] = round(value, field.decimals);
+  }
+  const stress = input.stressResidualMultiplier;
+  if (!Array.isArray(stress) || stress.length < 1 || stress.length > 4 || stress.some(
+    (value) => typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > 10
+  ) || stress.some((value, index) => index && value <= stress[index - 1]))
+    throw new Error("\u538B\u529B\u500D\u6570\u5FC5\u987B\u662F 1\u20134 \u4E2A\u4E25\u683C\u9012\u589E\u7684 1\u201310 \u6570\u503C");
+  output.stressResidualMultiplier = stress.map((value) => round(value, 3));
+  return Object.freeze(output);
+}
+var DEFAULT_EXECUTION_COST_PAYLOAD_DIGEST = "b7487263b2ed23a6d873b7196609552d402d52c778dd453a001ff7a1e51fb248";
+function normalizeExecutionCostPolicy(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    throw new Error("\u6210\u672C\u653F\u7B56 bundle \u5FC5\u987B\u662F\u5BF9\u8C61");
+  const allowed = /* @__PURE__ */ new Set([
+    "id",
+    "version",
+    "modelVersion",
+    "payloadDigest",
+    "calibrationStatus",
+    "calibrationCutoff",
+    "effectiveFrom",
+    "payload"
+  ]);
+  for (const key of Object.keys(input))
+    if (!allowed.has(key)) throw new Error(`\u6210\u672C\u653F\u7B56\u5305\u542B\u672A\u77E5\u5B57\u6BB5\uFF1A${key}`);
+  if (input.modelVersion !== EXECUTION_COST_MODEL)
+    throw new Error(`\u4E0D\u652F\u6301\u7684\u6210\u672C\u6A21\u578B\uFF1A${input.modelVersion}`);
+  if (!/^[0-9a-f]{64}$/.test(input.payloadDigest ?? ""))
+    throw new Error("\u6210\u672C\u653F\u7B56\u7F3A\u5C11\u6709\u6548\u8F7D\u8377\u6458\u8981");
+  if (!CALIBRATION_STATUSES.includes(input.calibrationStatus))
+    throw new Error("\u6210\u672C\u653F\u7B56\u6821\u51C6\u72B6\u6001\u65E0\u6548");
+  for (const key of ["calibrationCutoff", "effectiveFrom"])
+    if (input[key] != null && !/^\d{4}-\d{2}-\d{2}/.test(input[key]))
+      throw new Error(`\u6210\u672C\u653F\u7B56 ${key} \u5FC5\u987B\u662F ISO \u65E5\u671F`);
+  const payload = normalizeExecutionCostPayload(input.payload);
+  return Object.freeze({
+    id: typeof input.id === "string" && input.id ? input.id : "default",
+    version: Number.isInteger(input.version) && input.version > 0 ? input.version : 0,
+    modelVersion: EXECUTION_COST_MODEL,
+    payloadDigest: input.payloadDigest,
+    calibrationStatus: input.calibrationStatus,
+    calibrationCutoff: input.calibrationCutoff ?? null,
+    effectiveFrom: input.effectiveFrom ?? null,
+    payload
+  });
+}
+function defaultExecutionCostPolicy() {
+  return Object.freeze({
+    id: "default",
+    version: 0,
+    modelVersion: EXECUTION_COST_MODEL,
+    payloadDigest: DEFAULT_EXECUTION_COST_PAYLOAD_DIGEST,
+    calibrationStatus: "PRIOR_UNCALIBRATED",
+    calibrationCutoff: null,
+    effectiveFrom: null,
+    payload: DEFAULT_EXECUTION_COST_PAYLOAD
+  });
+}
+function executionPeriod(time) {
+  if (typeof time !== "string" || !/^\d{2}:\d{2}(:\d{2})?$/.test(time))
+    return null;
+  const normalized = time.length === 5 ? `${time}:00` : time;
+  if (normalized < "09:30:00") return null;
+  if (normalized < "09:31:00") return "openFirstMinute";
+  if (normalized < "09:35:00") return "openNextFourMinutes";
+  if (normalized < "10:00:00") return "earlySession";
+  return "regular";
+}
+var OPENING_PERIODS = Object.freeze([
+  "openFirstMinute",
+  "openNextFourMinutes"
+]);
+var isOpeningPeriod = (period) => OPENING_PERIODS.includes(period);
+
+// backend/domain/execution-cost.js
+var roundLot = (quantity) => Math.floor(Math.max(0, quantity) / 100) * 100;
+var bps = (ratio) => ratio * 1e4;
+function canonicalIntervalState(state) {
+  if (!state || typeof state !== "object") return null;
+  return {
+    intervalKey: typeof state.intervalKey === "string" ? state.intervalKey : null,
+    referencePriceCents: Number(state.referencePriceCents) || 0,
+    marketVolumeShares: Number(state.marketVolumeShares) || 0,
+    consumedShares: Number(state.consumedShares) || 0,
+    cumulativeImpactCents: Number(state.cumulativeImpactCents) || 0
+  };
+}
+function buildExecutionContext({
+  plan,
+  code,
+  event,
+  quote,
+  intervalState
+}) {
+  const price = Number(event?.priceCents);
+  if (!(price > 0))
+    return { supported: false, rejectionReason: "\u7F3A\u5C11\u6709\u6548\u89C2\u6D4B\u4EF7\u683C" };
+  const state = canonicalIntervalState(intervalState);
+  const intervalKey = String(event.intervalKey ?? event.time ?? "");
+  const period = executionPeriod(event.time);
+  if (event.volumeShares == null)
+    return {
+      supported: false,
+      rejectionReason: "DAILY_OBSERVATION_ONLY",
+      detail: "\u65E5\u7EBF\u5047\u8BBE\u5F00\u76D8\u4E0D\u4EA7\u751F\u53EF\u4FE1\u6210\u4EA4\uFF0C\u4EC5\u4FDD\u7559\u89C2\u5BDF"
+    };
+  const continued = state && state.intervalKey === intervalKey && state.marketVolumeShares > 0;
+  const referencePriceCents = continued ? state.referencePriceCents : price;
+  const marketVolumeShares = continued ? state.marketVolumeShares : Number(event.volumeShares);
+  if (!Number.isFinite(marketVolumeShares))
+    return {
+      supported: false,
+      rejectionReason: "DAILY_OBSERVATION_ONLY",
+      detail: "\u65E5\u7EBF\u5047\u8BBE\u5F00\u76D8\u4E0D\u4EA7\u751F\u53EF\u4FE1\u6210\u4EA4\uFF0C\u4EC5\u4FDD\u7559\u89C2\u5BDF"
+    };
+  if (marketVolumeShares <= 0)
+    return {
+      supported: false,
+      rejectionReason: "NO_INTERVAL_VOLUME",
+      detail: "\u9996\u5E27\u3001\u96F6\u91CF\u6216\u7F3A\u53E3\u533A\u95F4\u4E0D\u65B0\u589E\u53EF\u6210\u4EA4\u5BB9\u91CF"
+    };
+  const previousLimitUpCodes = plan?.previousLimitUpCodes;
+  const previousLimitUp = plan?.previousLimitUpKnown !== false && Array.isArray(previousLimitUpCodes) && previousLimitUpCodes.includes(code);
+  const bid1 = Number(quote?.bid1Cents), ask1 = Number(quote?.ask1Cents);
+  const bookUsable = Number.isFinite(bid1) && bid1 > 0 && Number.isFinite(ask1) && ask1 > 0 && bid1 <= ask1 && quote?.orderBookQuality !== "INVERTED" && quote?.orderBookQuality !== "MISSING";
+  return {
+    supported: true,
+    intervalKey,
+    referencePriceCents,
+    marketVolumeShares,
+    consumedShares: continued ? state.consumedShares : 0,
+    cumulativeImpactCents: continued ? state.cumulativeImpactCents : 0,
+    period: period ?? "regular",
+    previousLimitUp,
+    quality: event.quality ?? "unknown",
+    orderBook: bookUsable ? { source: "BOOK", bid1Cents: bid1, ask1Cents: ask1 } : { source: "FALLBACK", bid1Cents: null, ask1Cents: null },
+    orderBookQuality: bookUsable ? "OK" : quote?.orderBookQuality ?? "MISSING"
+  };
+}
+function cumulativeImpactCents(referencePriceCents, marketVolumeShares, consumedShares, impactBpsEffective, referenceParticipation, impactExponent) {
+  if (consumedShares <= 0 || marketVolumeShares <= 0) return 0;
+  const participation = consumedShares / marketVolumeShares;
+  const relative = participation / referenceParticipation;
+  return referencePriceCents * consumedShares * impactBpsEffective * Math.pow(relative, impactExponent) / 1e4;
+}
+function estimateExecutionCost({
+  policy,
+  context,
+  side,
+  quantity,
+  stressMultiplier
+}) {
+  const stress = stressMultiplier ?? policy.payload.executionStressMultiplier ?? 1;
+  if (!context?.supported)
+    return {
+      supported: false,
+      rejectionReason: context?.rejectionReason ?? "\u6267\u884C\u4E0A\u4E0B\u6587\u4E0D\u53EF\u7528"
+    };
+  if (!Number.isInteger(quantity) || quantity <= 0)
+    return { supported: false, rejectionReason: "\u6570\u91CF\u5FC5\u987B\u4E3A\u6B63\u6574\u6570" };
+  if (side !== "BUY" && side !== "SELL")
+    return { supported: false, rejectionReason: "\u65B9\u5411\u65E0\u6548" };
+  const p0 = context.referencePriceCents;
+  const payload = policy.payload;
+  const periodBps = payload.periodBaseBps[context.period] ?? payload.periodBaseBps.regular;
+  const limitUpBps = context.previousLimitUp ? payload.previousLimitUpPremiumBps : 0;
+  const fallbackSpread = context.orderBook.source === "FALLBACK";
+  const floorBps = fallbackSpread ? payload.unknownSpreadFloorBps : 0;
+  const qualityMultiplier = context.quality === "minute" ? payload.minuteQualityMultiplier : 1;
+  const impactBpsEffective = payload.impactBpsAtReferenceParticipation * qualityMultiplier * stress;
+  const residualBps = (periodBps + limitUpBps + floorBps) * qualityMultiplier * stress;
+  const anchorCents = side === "BUY" ? fallbackSpread ? p0 : Math.max(p0, context.orderBook.ask1Cents) : fallbackSpread ? p0 : Math.min(p0, context.orderBook.bid1Cents);
+  const spreadBps = fallbackSpread ? 0 : bps(Math.abs(anchorCents - p0) / p0);
+  const spreadCostCents = Math.abs(anchorCents - p0) * quantity;
+  const residualCostCents = p0 * quantity * residualBps / 1e4;
+  const impactBeforeCents = Math.round(
+    cumulativeImpactCents(
+      p0,
+      context.marketVolumeShares,
+      context.consumedShares,
+      impactBpsEffective,
+      payload.referenceParticipation,
+      payload.impactExponent
+    )
+  );
+  const impactAfterCents = Math.round(
+    cumulativeImpactCents(
+      p0,
+      context.marketVolumeShares,
+      context.consumedShares + quantity,
+      impactBpsEffective,
+      payload.referenceParticipation,
+      payload.impactExponent
+    )
+  );
+  const impactCostCents = impactAfterCents - impactBeforeCents;
+  const unroundedCostCents = spreadCostCents + residualCostCents + impactCostCents;
+  const unroundedBps = bps(unroundedCostCents / (p0 * quantity));
+  if (unroundedBps > payload.maximumSupportedCostBps)
+    return {
+      supported: false,
+      rejectionReason: "EXECUTION_COST_OUT_OF_DOMAIN",
+      detail: `\u6A21\u578B\u6210\u672C ${unroundedBps.toFixed(1)}bps \u8D85\u8FC7\u9002\u7528\u57DF ${payload.maximumSupportedCostBps}bps\uFF1B\u7F29\u91CF\u6216\u62D2\u7EDD\uFF0C\u4E0D\u622A\u6210\u66F4\u4FBF\u5B9C\u7684\u6210\u4EA4`,
+      costBreakdown: { totalBps: Number(unroundedBps.toFixed(2)) }
+    };
+  const sideSign = side === "BUY" ? 1 : -1;
+  const unroundedFillPrice = p0 + sideSign * unroundedCostCents / quantity;
+  const fillPriceCents = side === "BUY" ? Math.ceil(unroundedFillPrice) : Math.floor(unroundedFillPrice);
+  const impliedCostCents = sideSign * (fillPriceCents - p0) * quantity;
+  return {
+    supported: true,
+    referencePriceCents: p0,
+    anchorCents,
+    fillPriceCents,
+    unroundedFillPriceCents: unroundedFillPrice,
+    costBreakdown: {
+      modelVersion: EXECUTION_COST_MODEL,
+      policyDigest: policy.payloadDigest,
+      scenario: stress,
+      intervalKey: context.intervalKey,
+      period: context.period,
+      previousLimitUp: context.previousLimitUp,
+      quality: context.quality,
+      orderBookSource: context.orderBook.source,
+      orderBookQuality: context.orderBookQuality,
+      spreadSource: fallbackSpread ? "FALLBACK_FLOOR" : "BOOK",
+      spreadBps: Number(spreadBps.toFixed(2)),
+      residualBps: Number(residualBps.toFixed(2)),
+      periodBps,
+      limitUpBps,
+      floorBps,
+      qualityMultiplier,
+      stressMultiplier,
+      impactBps: Number(bps(impactCostCents / (p0 * quantity)).toFixed(2)),
+      participation: Number(
+        ((context.consumedShares + quantity) / context.marketVolumeShares).toFixed(8)
+      ),
+      marketVolumeShares: context.marketVolumeShares,
+      consumedBeforeShares: context.consumedShares,
+      spreadCostCents,
+      residualCostCents: Number(residualCostCents.toFixed(2)),
+      impactCostCents,
+      impliedCostCents,
+      roundingCostCents: impliedCostCents - unroundedCostCents,
+      totalBps: Number(bps(impliedCostCents / (p0 * quantity)).toFixed(2)),
+      unroundedTotalBps: Number(unroundedBps.toFixed(2))
+    },
+    nextIntervalState: {
+      intervalKey: context.intervalKey,
+      referencePriceCents: p0,
+      marketVolumeShares: context.marketVolumeShares,
+      consumedShares: context.consumedShares + quantity,
+      cumulativeImpactCents: impactAfterCents
+    }
+  };
+}
+function solveFillQuantity({
+  policy,
+  context,
+  side,
+  desiredQuantity,
+  stressMultiplier,
+  limits = {},
+  estimateFees
+}) {
+  const stress = stressMultiplier ?? policy.payload.executionStressMultiplier ?? 1;
+  if (!context?.supported)
+    return {
+      quantity: 0,
+      reason: context?.rejectionReason ?? "\u6267\u884C\u4E0A\u4E0B\u6587\u4E0D\u53EF\u7528"
+    };
+  const remainingShared = Math.max(
+    0,
+    roundLot(context.marketVolumeShares * HARD_PARTICIPATION_CAP) - context.consumedShares
+  );
+  const remainingOpeningRaw = isOpeningPeriod(context.period) ? Math.max(
+    0,
+    Math.round(
+      context.marketVolumeShares * policy.payload.openingParticipationCap
+    ) - context.consumedShares
+  ) : Infinity;
+  let upper = side === "BUY" ? roundLot(
+    Math.min(
+      desiredQuantity,
+      remainingShared,
+      remainingOpeningRaw,
+      limits.capCents != null ? Math.max(0, limits.capCents) / context.referencePriceCents : Infinity
+    )
+  ) : Math.min(
+    desiredQuantity,
+    Math.floor(remainingShared),
+    Math.floor(remainingOpeningRaw),
+    limits.availableQuantity ?? Infinity
+  );
+  const violates = (quantity) => {
+    const estimate = estimateExecutionCost({
+      policy,
+      context,
+      side,
+      quantity,
+      stressMultiplier: stress
+    });
+    if (!estimate.supported)
+      return {
+        violated: true,
+        reason: estimate.rejectionReason,
+        detail: estimate.detail
+      };
+    if (side === "BUY") {
+      if (limits.maxPriceCents && estimate.fillPriceCents > limits.maxPriceCents)
+        return { violated: true, reason: "\u542B\u6210\u672C\u4EF7\u683C\u8D85\u8FC7\u4E8B\u524D\u4E70\u5165\u4E0A\u9650" };
+      if (limits.limitUpCents && estimate.fillPriceCents >= limits.limitUpCents)
+        return { violated: true, reason: "\u542B\u6210\u672C\u4EF7\u683C\u89E6\u53CA\u6DA8\u505C\u4FDD\u5B88\u8FB9\u754C" };
+      if (limits.capCents != null) {
+        const fees = estimateFees ? estimateFees(quantity * estimate.fillPriceCents, side) : 0;
+        if (quantity * estimate.fillPriceCents + fees > limits.capCents)
+          return { violated: true, reason: "\u73B0\u91D1\u3001\u4ED3\u4F4D\u6216\u6D41\u52A8\u6027\u7EA6\u675F\u4E0D\u8DB3" };
+      }
+    } else if (limits.limitDownCents && estimate.fillPriceCents <= limits.limitDownCents)
+      return { violated: true, reason: "\u542B\u6210\u672C\u4EF7\u683C\u89E6\u53CA\u8DCC\u505C\u4FDD\u5B88\u8FB9\u754C" };
+    return { violated: false, estimate };
+  };
+  if (upper <= 0 || side === "BUY" && upper < 100)
+    return {
+      quantity: 0,
+      reason: side === "SELL" ? "\u6CA1\u6709 T+1 \u53EF\u5356\u5E95\u4ED3\u6216\u6D41\u52A8\u6027\u4E0D\u8DB3" : "\u73B0\u91D1\u3001\u4ED3\u4F4D\u3001\u6D41\u52A8\u6027\u6216\u6210\u672C\u7EA6\u675F\u4E0D\u8DB3\u4E00\u624B"
+    };
+  const probe = violates(upper);
+  if (!probe.violated)
+    return {
+      quantity: upper,
+      executionCost: probe.estimate,
+      nextIntervalState: probe.estimate.nextIntervalState
+    };
+  let low = 0, high = upper, best = null, lastReason = probe.reason, lastDetail = probe.detail;
+  while (low < high) {
+    const mid = side === "BUY" ? Math.max(low, Math.floor((low + high) / 2 / 100) * 100) : Math.floor((low + high) / 2);
+    if (mid === low) break;
+    const check = violates(mid);
+    if (check.violated) {
+      high = mid;
+      lastReason = check.reason;
+      lastDetail = check.detail;
+    } else {
+      low = mid;
+      best = check.estimate;
+    }
+  }
+  if (best)
+    return {
+      quantity: low,
+      executionCost: best,
+      nextIntervalState: best.nextIntervalState
+    };
+  return {
+    quantity: 0,
+    reason: lastReason,
+    detail: lastDetail
+  };
+}
+
 // backend/domain/trading.js
 var ACTIONS = Object.freeze({
   OPEN: "\u5EFA\u4ED3",
@@ -1581,7 +2097,7 @@ var RISK_LIMITS = Object.freeze({
   slippageBps: 10
 });
 var toCents = (value) => Math.round(Number(value) * 100);
-var roundLot = (quantity) => Math.floor(Math.max(0, quantity) / 100) * 100;
+var roundLot2 = (quantity) => Math.floor(Math.max(0, quantity) / 100) * 100;
 var totalQuantity = (position) => position.lots.reduce((sum, lot) => sum + lot.quantity, 0);
 var availableQuantity = (position, date) => position.lots.filter((lot) => lot.acquiredDate < date).reduce((sum, lot) => sum + lot.quantity, 0);
 var costBasis = (position) => position.lots.reduce((sum, lot) => sum + lot.costCents, 0);
@@ -1655,7 +2171,9 @@ function scoreSignals(snapshot, strategy) {
     (a, b) => (b.score ?? -1) - (a.score ?? -1) || a.code.localeCompare(b.code)
   );
 }
-function createPlan(snapshot, book, strategy, strategyVersion, createdAt) {
+function createPlan(snapshot, book, strategy, strategyVersion, createdAt, options = {}) {
+  const executionCostPolicy = options.executionCostPolicy ?? defaultExecutionCostPolicy();
+  const previousLimitUpCodes = (snapshot.stocks ?? []).filter((stock) => Number(stock.height) >= 1).map((stock) => stock.code);
   const signals = scoreSignals(snapshot, strategy);
   const byCode = new Map(signals.map((stock) => [stock.code, stock]));
   const equity = book.equityCents;
@@ -1705,7 +2223,7 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt) {
       continue;
     }
     if (pnl >= strategy.takeProfit || signal && score < 65 || emotion < 40) {
-      const reduceQuantity = roundLot(quantity / 2) || quantity;
+      const reduceQuantity = roundLot2(quantity / 2) || quantity;
       addOrder({
         ...base,
         action: "REDUCE",
@@ -1720,7 +2238,7 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt) {
       equity * Math.min(0.175, targetExposure / strategy.maxPositions)
     );
     const addBudget = target - quantity * referenceCents;
-    const addQuantity = roundLot(addBudget / referenceCents);
+    const addQuantity = roundLot2(addBudget / referenceCents);
     if (signal && score >= 88 && addQuantity >= 100 && emotion >= 65 && plannedExposure + addQuantity * referenceCents <= equity * targetExposure) {
       addOrder({
         ...base,
@@ -1739,7 +2257,7 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt) {
       plannedExposure += addQuantity * referenceCents;
       continue;
     }
-    const tQuantity = roundLot(quantity * strategy.tFraction);
+    const tQuantity = roundLot2(quantity * strategy.tFraction);
     if (tQuantity >= 100 && score >= 65 && emotion >= 40) {
       addOrder({
         ...base,
@@ -1776,7 +2294,7 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt) {
         book.cashCents - plannedBudget - 1e3
       )
     );
-    const quantity = roundLot(budget / referenceCents);
+    const quantity = roundLot2(budget / referenceCents);
     if (quantity < 100) continue;
     addOrder({
       code: signal.code,
@@ -1810,6 +2328,10 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt) {
     createdAt,
     strategyVersion,
     strategy,
+    executionCostModel: EXECUTION_COST_MODEL,
+    executionCostPolicy: structuredClone(executionCostPolicy),
+    previousLimitUpCodes,
+    previousLimitUpKnown: true,
     emotion,
     targetExposure,
     maxExposure: RISK_LIMITS.maxGrossExposure,
@@ -1889,7 +2411,8 @@ function carriedPlanOrders(orders, book, date, strategy) {
     if (order.action === "EXIT") carried.delete(order.code);
   return [...orders.filter((o) => !carried.has(o.code)), ...carried.values()];
 }
-function defensivePlan(date, book, strategy, strategyVersion, createdAt) {
+function defensivePlan(date, book, strategy, strategyVersion, createdAt, options = {}) {
+  const executionCostPolicy = options.executionCostPolicy ?? defaultExecutionCostPolicy();
   const drawdown = 1 - book.equityCents / book.peakEquityCents;
   return {
     signalDate: date,
@@ -1899,6 +2422,10 @@ function defensivePlan(date, book, strategy, strategyVersion, createdAt) {
     createdAt,
     strategyVersion,
     strategy,
+    executionCostModel: EXECUTION_COST_MODEL,
+    executionCostPolicy: structuredClone(executionCostPolicy),
+    previousLimitUpCodes: [],
+    previousLimitUpKnown: false,
     sourceSnapshotMissing: true,
     emotion: null,
     targetExposure: 0,
@@ -1938,6 +2465,8 @@ function executePlan(inputBook, plan, dataset) {
   if (plan && (plan.signalDate >= date || plan.createdAt >= `${date}T01:15:00.000Z`)) {
     throw new Error("\u4EA4\u6613\u8BA1\u5212\u5FC5\u987B\u5728\u6267\u884C\u65E5\u5F00\u76D8\u524D\u51BB\u7ED3\uFF0C\u7981\u6B62\u4F7F\u7528\u5F53\u65E5\u6536\u76D8\u8BC4\u5206\u4EA4\u6613");
   }
+  const policyBundle = plan ? executionPolicyBundle(plan) : null;
+  const execution = policyBundle ? { policyDigest: policyBundle.payloadDigest, byCode: {} } : null;
   const ledger = [];
   const outcomes = [];
   const notices = [];
@@ -2004,7 +2533,8 @@ function executePlan(inputBook, plan, dataset) {
           ...bar,
           orderId: order.id,
           code: order.code,
-          quality: "minute"
+          quality: "minute",
+          intervalKey: `${date}:${bar.time}`
         });
     } else {
       events.push({
@@ -2013,7 +2543,8 @@ function executePlan(inputBook, plan, dataset) {
         time: "09:30",
         priceCents: quote.openCents,
         volumeShares: null,
-        quality: "daily_open_assumption"
+        quality: "daily_open_assumption",
+        intervalKey: `${date}:09:30`
       });
     }
   }
@@ -2036,7 +2567,8 @@ function executePlan(inputBook, plan, dataset) {
         ...bar,
         orderId: order.id,
         code: order.code,
-        quality: "minute"
+        quality: "minute",
+        intervalKey: `${date}:${bar.time}`
       });
   }
   events.sort(
@@ -2051,7 +2583,8 @@ function executePlan(inputBook, plan, dataset) {
     order,
     side,
     quantity,
-    event
+    event,
+    execution
   );
   for (const event of events) {
     const running2 = runtime.get(event.orderId);
@@ -2066,7 +2599,7 @@ function executePlan(inputBook, plan, dataset) {
         running2.triggered = true;
         order.action = event.priceCents <= order.stopCents ? "EXIT" : "REDUCE";
         order.reason = order.action === "EXIT" ? "\u4E8B\u524D\u4FDD\u62A4\u6B62\u635F\u89E6\u53D1" : "\u4E8B\u524D\u5206\u6279\u6B62\u76C8\u89E6\u53D1";
-        order.quantity = order.action === "EXIT" ? order.quantity : roundLot(order.quantity / 2) || order.quantity;
+        order.quantity = order.action === "EXIT" ? order.quantity : roundLot2(order.quantity / 2) || order.quantity;
         for (const [id, other] of runtime) {
           if (id !== order.id && other.order.code === order.code && !other.stage) {
             outcomes.push({
@@ -2111,7 +2644,10 @@ function executePlan(inputBook, plan, dataset) {
         outcomes.push({
           ...order,
           status: "SKIPPED",
-          reason: "\u5F00\u76D8\u6267\u884C\u7A97\u53E3\u5185\u672A\u53D6\u5F97\u53EF\u6210\u4EA4\u6570\u636E"
+          // 拒绝原因进入订单 outcome（§5.2）：保留窗口内最后一次真实拒绝原因，
+          // 并记录最终未成交数量；不只记录成功交易。
+          reason: running2.lastReason || "\u5F00\u76D8\u6267\u884C\u7A97\u53E3\u5185\u672A\u53D6\u5F97\u53EF\u6210\u4EA4\u6570\u636E",
+          unfilledQuantity: order.quantity - running2.filled
         });
         continue;
       }
@@ -2186,7 +2722,8 @@ function executePlan(inputBook, plan, dataset) {
       outcomes.push({
         ...running2.order,
         status: running2.stage === 1 || running2.filled > 0 ? "PARTIAL" : "SKIPPED",
-        reason: running2.stage === 1 ? "\u505A T \u7684\u7B2C\u4E8C\u817F\u672A\u5B8C\u6210\uFF0C\u5B9E\u9645\u65B0\u589E\u6216\u51CF\u5C11\u7684\u4ED3\u4F4D\u4FDD\u7559\u5230\u8D26\u672C" : running2.lastReason || "\u9884\u8BBE\u6761\u4EF6\u672A\u89E6\u53D1"
+        reason: running2.stage === 1 ? "\u505A T \u7684\u7B2C\u4E8C\u817F\u672A\u5B8C\u6210\uFF0C\u5B9E\u9645\u65B0\u589E\u6216\u51CF\u5C11\u7684\u4ED3\u4F4D\u4FDD\u7559\u5230\u8D26\u672C" : running2.lastReason || "\u9884\u8BBE\u6761\u4EF6\u672A\u89E6\u53D1",
+        unfilledQuantity: running2.order.quantity - running2.filled
       });
     }
   }
@@ -2234,14 +2771,44 @@ function executePlan(inputBook, plan, dataset) {
     complete: notices.length === 0,
     positionCount: book.positions.length,
     missingMinuteOrders,
-    source: dataset.source
+    source: dataset.source,
+    executionCost: policyBundle ? {
+      modelVersion: policyBundle.modelVersion,
+      policyDigest: policyBundle.payloadDigest
+    } : null
   };
   if (equityCents - book.initialCashCents !== book.realizedPnlCents + unrealizedPnlCents2)
     throw new Error("\u8D44\u91D1\u8D26\u672C\u4E0E\u76C8\u4E8F\u4E0D\u4E00\u81F4");
   if (book.cashCents < 0) throw new Error("\u6A21\u62DF\u8D26\u6237\u4E0D\u80FD\u900F\u652F");
   return { book, ledger, equity, outcomes, notices };
 }
-function executeFill(book, plan, dataset, prices, ledger, order, side, desiredQuantity, event) {
+function executeFill(book, plan, dataset, prices, ledger, order, side, desiredQuantity, event, execution = null) {
+  const bundle = executionPolicyBundle(plan);
+  if (!bundle) return executeFillLegacy(...arguments);
+  return executeFillWithCostModel(
+    book,
+    plan,
+    dataset,
+    prices,
+    ledger,
+    order,
+    side,
+    desiredQuantity,
+    event,
+    execution,
+    bundle
+  );
+}
+function executionPolicyBundle(plan) {
+  const bundle = plan?.executionCostPolicy ?? null;
+  if (!bundle && !plan?.executionCostModel) return null;
+  if (!bundle?.payload || !bundle?.payloadDigest)
+    throw new Error("\u8BA1\u5212\u7248\u672C\u8981\u6C42\u6210\u672C\u653F\u7B56\uFF0C\u4F46\u7F3A\u5C11\u653F\u7B56\u6216\u6458\u8981\uFF0C\u6682\u505C\u6267\u884C");
+  if (bundle.modelVersion !== EXECUTION_COST_MODEL)
+    throw new Error(`\u672A\u77E5\u6267\u884C\u6210\u672C\u6A21\u578B ${bundle.modelVersion}\uFF0C\u6682\u505C\u6267\u884C`);
+  return bundle;
+}
+function executeFillWithCostModel(book, plan, dataset, prices, ledger, order, side, desiredQuantity, event, execution, bundle) {
   const date = dataset.date;
   const quotes = dataset.quotes;
   const feeConfig = plan?.feeConfig || LEGACY_FEES;
@@ -2254,14 +2821,141 @@ function executeFill(book, plan, dataset, prices, ledger, order, side, desiredQu
       reason: side === "BUY" ? "\u6DA8\u505C\u6392\u961F\u4E0D\u5047\u8BBE\u6210\u4EA4" : "\u8DCC\u505C\u5356\u51FA\u4E0D\u5047\u8BBE\u6210\u4EA4"
     };
   let position = book.positions.find((item) => item.code === order.code);
-  let quantity = side === "BUY" ? roundLot(desiredQuantity) : Math.min(
+  const desired = side === "BUY" ? roundLot2(desiredQuantity) : Math.min(
+    desiredQuantity,
+    position ? availableQuantity(position, date) : 0
+  );
+  const context = buildExecutionContext({
+    plan,
+    code: order.code,
+    event,
+    quote,
+    intervalState: execution?.byCode?.[order.code] ?? null
+  });
+  let capCents = null;
+  if (side === "BUY") {
+    const value = book.positions.reduce(
+      (sum, item) => sum + totalQuantity(item) * (prices.get(item.code) || item.markCents),
+      0
+    );
+    const equity = book.cashCents + value;
+    const current = position ? totalQuantity(position) * (prices.get(order.code) || point) : 0;
+    capCents = Math.min(
+      book.cashCents,
+      equity * RISK_LIMITS.maxPositionWeight - current,
+      equity * RISK_LIMITS.maxGrossExposure - value
+    );
+  }
+  const solved = solveFillQuantity({
+    policy: bundle,
+    context,
+    side,
+    desiredQuantity: desired,
+    limits: {
+      maxPriceCents: order.maxPriceCents,
+      limitUpCents: quote.limitUpCents,
+      limitDownCents: quote.limitDownCents,
+      capCents,
+      availableQuantity: desired
+    },
+    estimateFees: (notional2, fillSide) => transactionFees(notional2, fillSide, feeConfig, feeModel).total
+  });
+  if (!solved.quantity)
+    return {
+      ok: false,
+      reason: solved.reason,
+      detail: solved.detail,
+      executionCost: solved.executionCost?.costBreakdown ?? null
+    };
+  if (execution) execution.byCode[order.code] = solved.nextIntervalState;
+  const fillPriceCents = solved.executionCost.fillPriceCents;
+  const quantity = solved.quantity;
+  const notional = quantity * fillPriceCents;
+  const fees = transactionFees(notional, side, feeConfig, feeModel);
+  let basisCents = 0;
+  let realizedPnlCents = 0;
+  const cashDeltaCents = side === "BUY" ? -notional - fees.total : notional - fees.total;
+  if (side === "BUY") {
+    if (!position) {
+      position = {
+        code: order.code,
+        name: order.name,
+        sector: order.sector,
+        lots: [],
+        heldDays: 0,
+        markCents: point,
+        lastScore: order.score,
+        markDate: date
+      };
+      book.positions.push(position);
+    }
+    position.lots.push({
+      acquiredDate: date,
+      quantity,
+      costCents: notional + fees.total,
+      priceCents: fillPriceCents
+    });
+  } else {
+    basisCents = consumeLots(position, quantity, date);
+    realizedPnlCents = cashDeltaCents - basisCents;
+    book.realizedPnlCents += realizedPnlCents;
+  }
+  book.cashCents += cashDeltaCents;
+  book.feesCents += fees.total;
+  prices.set(order.code, point);
+  ledger.push({
+    id: `${date}:${order.id}:${ledger.length}`,
+    date,
+    signalDate: plan.signalDate,
+    sequence: ledger.length,
+    time: event.time,
+    code: order.code,
+    name: order.name,
+    action: order.action,
+    side,
+    quantity,
+    priceCents: fillPriceCents,
+    notionalCents: notional,
+    feeCents: fees.total,
+    feeBreakdown: fees,
+    ...feeModel === "itemized-v2" ? {
+      feeModel,
+      feeConfig: structuredClone(feeConfig),
+      feeConfigVersion: plan.feeConfigVersion || 1
+    } : {},
+    cashDeltaCents,
+    basisCents,
+    realizedPnlCents,
+    cashAfterCents: book.cashCents,
+    strategyVersion: plan.strategyVersion,
+    dataQuality: event.quality,
+    source: dataset.source,
+    sourcePriceCents: point,
+    executionCost: solved.executionCost.costBreakdown
+  });
+  return { ok: true, quantity, priceCents: fillPriceCents };
+}
+function executeFillLegacy(book, plan, dataset, prices, ledger, order, side, desiredQuantity, event) {
+  const date = dataset.date;
+  const quotes = dataset.quotes;
+  const feeConfig = plan?.feeConfig || LEGACY_FEES;
+  const feeModel = plan?.feeModel || "legacy-v1";
+  const quote = quotes[order.code];
+  const point = event.priceCents;
+  if (side === "BUY" && quote.limitUpCents && point >= quote.limitUpCents || side === "SELL" && quote.limitDownCents && point <= quote.limitDownCents)
+    return {
+      ok: false,
+      reason: side === "BUY" ? "\u6DA8\u505C\u6392\u961F\u4E0D\u5047\u8BBE\u6210\u4EA4" : "\u8DCC\u505C\u5356\u51FA\u4E0D\u5047\u8BBE\u6210\u4EA4"
+    };
+  let position = book.positions.find((item) => item.code === order.code);
+  let quantity = side === "BUY" ? roundLot2(desiredQuantity) : Math.min(
     desiredQuantity,
     position ? availableQuantity(position, date) : 0
   );
   if (event.volumeShares !== null)
     quantity = Math.min(
       quantity,
-      roundLot(event.volumeShares * RISK_LIMITS.maxParticipation)
+      roundLot2(event.volumeShares * RISK_LIMITS.maxParticipation)
     );
   const priceCents = Math.round(
     point * (1 + (side === "BUY" ? 1 : -1) * RISK_LIMITS.slippageBps / 1e4)
@@ -2284,7 +2978,7 @@ function executeFill(book, plan, dataset, prices, ledger, order, side, desiredQu
     );
     quantity = Math.min(
       quantity,
-      roundLot(Math.max(0, cap - 1e3) / priceCents)
+      roundLot2(Math.max(0, cap - 1e3) / priceCents)
     );
     while (quantity >= 100 && quantity * priceCents + transactionFees(quantity * priceCents, side, feeConfig, feeModel).total > cap)
       quantity -= 100;
@@ -2526,6 +3220,24 @@ function parseTencentQuotes(text, date) {
     if (actualDate !== date.replaceAll("-", "")) continue;
     const positive = (value) => Number.isFinite(Number(value)) && Number(value) > 0 ? toCents(value) : null;
     if (!positive(fields[3]) || !positive(fields[4])) continue;
+    const bid1Cents = positive(fields[9]);
+    const ask1Cents = positive(fields[19]);
+    const bid1Shares = Number.isFinite(Number(fields[10])) ? Math.max(0, Math.round(Number(fields[10]) * 100)) : null;
+    const ask1Shares = Number.isFinite(Number(fields[20])) ? Math.max(0, Math.round(Number(fields[20]) * 100)) : null;
+    let orderBookQuality = "OK";
+    let orderBook = {};
+    if (bid1Cents && ask1Cents && bid1Shares !== null && ask1Shares !== null) {
+      if (bid1Cents > ask1Cents) {
+        orderBookQuality = "INVERTED";
+      } else {
+        orderBook = {
+          bid1Cents,
+          ask1Cents,
+          bid1Shares,
+          ask1Shares
+        };
+      }
+    } else orderBookQuality = "MISSING";
     quotes[match[2]] = {
       date,
       closeCents: positive(fields[3]),
@@ -2536,6 +3248,10 @@ function parseTencentQuotes(text, date) {
       volumeShares: Math.round(Number(fields[6]) * 100),
       limitUpCents: positive(fields[47]),
       limitDownCents: positive(fields[48]),
+      ...orderBook,
+      orderBookQuality,
+      orderBookTimestamp: /^\d{14}$/.test(fields[30]) ? `${date}T${fields[30].slice(8, 10)}:${fields[30].slice(10, 12)}:${fields[30].slice(12, 14)}+08:00` : null,
+      quoteSchemaVersion: "tencent-qt-v1",
       timestamp: /^\d{14}$/.test(fields[30]) ? `${date}T${fields[30].slice(8, 10)}:${fields[30].slice(10, 12)}:${fields[30].slice(12, 14)}+08:00` : null
     };
   }
@@ -2662,7 +3378,7 @@ async function marketForDisplay(env, date, { today = beijingDate(), loadMarket =
   }
 }
 
-// backend/storage/paper.js
+// backend/domain/research-lineage.js
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === "object")
@@ -2671,334 +3387,33 @@ function canonical(value) {
     );
   return value;
 }
-async function digest(value) {
+function canonicalJson(value) {
+  return JSON.stringify(canonical(value));
+}
+async function digestOf(value) {
   const bytes = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(JSON.stringify(canonical(value)))
+    new TextEncoder().encode(canonicalJson(value))
   );
   return Array.from(
     new Uint8Array(bytes),
     (byte) => byte.toString(16).padStart(2, "0")
   ).join("");
 }
-var parse = (row) => row ? JSON.parse(row.payload) : null;
-var PaperRepository = class {
-  constructor(env) {
-    this.db = database(env);
-  }
-  async initialize(weights = BASE_STRATEGY.weights) {
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO paper_accounts (id, revision, state, updated_at) VALUES (?, 0, ?, ?)"
-    ).bind(
-      "primary",
-      JSON.stringify({ ...newBook(), improvementMode: "auto" }),
-      now
-    ).run();
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO strategy_versions (id, created_at, status, params, evidence) VALUES (?, ?, ?, ?, ?)"
-    ).bind(
-      "baseline-v1",
-      now,
-      "ACTIVE",
-      JSON.stringify({ ...BASE_STRATEGY, weights }),
-      JSON.stringify({
-        type: "baseline",
-        explanation: "\u89C4\u5219\u521D\u59CB\u7248\u672C\uFF1B\u672A\u58F0\u79F0\u83B7\u5F97\u5386\u53F2\u6536\u76CA\u9A8C\u8BC1"
-      })
-    ).run();
-    return this.account();
-  }
-  async account() {
-    const row = await this.db.prepare("SELECT revision, state FROM paper_accounts WHERE id = ?").bind("primary").first();
-    return row ? { revision: row.revision, book: JSON.parse(row.state) } : null;
-  }
-  async snapshot(date) {
-    return parse(
-      await this.db.prepare("SELECT payload FROM snapshots WHERE trade_date = ?").bind(date).first()
-    );
-  }
-  async plan(date) {
-    return parse(
-      await this.db.prepare("SELECT payload FROM paper_plans WHERE signal_date = ?").bind(date).first()
-    );
-  }
-  async savePlan(plan) {
-    const hash = await digest(plan);
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO paper_plans (signal_date, created_at, payload, digest) VALUES (?, ?, ?, ?)"
-    ).bind(plan.signalDate, plan.createdAt, JSON.stringify(plan), hash).run();
-    return this.plan(plan.signalDate);
-  }
-  async history(table, limit = 120) {
-    if (![
-      "paper_equity",
-      "paper_ledger",
-      "paper_market_days",
-      "paper_plans",
-      "snapshots",
-      "paper_runs",
-      "paper_configuration_history",
-      "paper_plan_revisions"
-    ].includes(table))
-      throw new Error("\u65E0\u6548\u5B58\u50A8\u7C7B\u522B");
-    const column = table === "paper_plans" ? "signal_date" : ["paper_configuration_history", "paper_plan_revisions"].includes(
-      table
-    ) ? "created_at" : "trade_date";
-    const result = await this.db.prepare(`SELECT * FROM ${table} ORDER BY ${column} DESC LIMIT ?`).bind(limit).all();
-    return result.results;
-  }
-  async versions() {
-    const result = await this.db.prepare(
-      "SELECT * FROM strategy_versions ORDER BY created_at DESC LIMIT 40"
-    ).all();
-    return result.results.map((row) => ({
-      id: row.id,
-      createdAt: row.created_at,
-      status: row.status,
-      params: JSON.parse(row.params),
-      evidence: JSON.parse(row.evidence)
-    }));
-  }
-  async strategy(book) {
-    const row = await this.db.prepare("SELECT params FROM strategy_versions WHERE id = ?").bind(book.activeStrategy).first();
-    if (!row) throw new Error("\u7B56\u7565\u7248\u672C\u7F3A\u5931");
-    return JSON.parse(row.params);
-  }
-  async logRun(date, status, payload) {
-    await this.db.prepare(
-      "INSERT INTO paper_runs (trade_date, updated_at, status, payload) VALUES (?, ?, ?, ?) ON CONFLICT(trade_date) DO UPDATE SET updated_at=excluded.updated_at, status=excluded.status, payload=excluded.payload"
-    ).bind(date, (/* @__PURE__ */ new Date()).toISOString(), status, JSON.stringify(payload)).run();
-  }
-  async settle(expectedRevision, result, dataset) {
-    const runId = crypto.randomUUID();
-    const nextRevision = expectedRevision + 1;
-    const guard = "WHERE EXISTS (SELECT 1 FROM paper_accounts WHERE id = ? AND revision = ? AND last_run_id = ?)";
-    const stamp = (/* @__PURE__ */ new Date()).toISOString();
-    const statements = [
-      this.db.prepare(
-        "UPDATE paper_accounts SET state=?, revision=revision+1, last_run_id=?, updated_at=? WHERE id=? AND revision=?"
-      ).bind(
-        JSON.stringify(result.book),
-        runId,
-        stamp,
-        "primary",
-        expectedRevision
-      )
-    ];
-    const guarded = (sql, args) => this.db.prepare(`${sql} ${guard}`).bind(...args, "primary", nextRevision, runId);
-    statements.push(
-      guarded("INSERT INTO paper_equity (trade_date, payload) SELECT ?, ?", [
-        dataset.date,
-        JSON.stringify(result.equity)
-      ])
-    );
-    statements.push(
-      guarded(
-        "INSERT INTO paper_market_days (trade_date, payload, digest) SELECT ?, ?, ?",
-        [dataset.date, JSON.stringify(dataset), await digest(dataset)]
-      )
-    );
-    for (const fill of result.ledger)
-      statements.push(
-        guarded(
-          "INSERT INTO paper_ledger (id, trade_date, payload) SELECT ?, ?, ?",
-          [fill.id, fill.date, JSON.stringify(fill)]
-        )
-      );
-    if (result.session)
-      statements.push(
-        this.db.prepare(
-          `INSERT INTO paper_live_sessions (trade_date,payload,digest) SELECT ?,?,? ${guard} ON CONFLICT(trade_date) DO UPDATE SET payload=excluded.payload,digest=excluded.digest`
-        ).bind(
-          dataset.date,
-          JSON.stringify(result.session),
-          await digest(result.session),
-          "primary",
-          nextRevision,
-          runId
-        )
-      );
-    await this.db.batch(statements);
-    const row = await this.db.prepare("SELECT last_run_id FROM paper_accounts WHERE id=?").bind("primary").first();
-    return row.last_run_id === runId;
-  }
-  async canEditCapital(book) {
-    const live = await this.db.prepare("SELECT COUNT(*) AS count FROM paper_live_sessions").first();
-    if (live.count) return false;
-    if (book.settlementCount > 1 || book.positions.length || book.feesCents || book.realizedPnlCents)
-      return false;
-    const row = await this.db.prepare("SELECT COUNT(*) AS count FROM paper_ledger").first();
-    return row.count === 0;
-  }
-  async configure(settings, now = /* @__PURE__ */ new Date()) {
-    const account = await this.initialize();
-    const book = structuredClone(account.book);
-    const feeConfig = settings.fees === void 0 ? feesForBook(book) : normalizeFees(settings.fees);
-    const feesChanged = settings.fees !== void 0 && (book.feeModel !== "itemized-v2" || JSON.stringify(normalizeFees(feesForBook(book))) !== JSON.stringify(feeConfig));
-    const initial = settings.initialCapital === void 0 ? book.initialCashCents : newBook(settings.initialCapital, feeConfig).initialCashCents;
-    const capitalChanged = initial !== book.initialCashCents;
-    if (capitalChanged) {
-      if (!await this.canEditCapital(book))
-        throw new Error("\u4EA4\u6613\u8BA1\u5212\u5F00\u59CB\u6267\u884C\u540E\u521D\u59CB\u8D44\u91D1\u88AB\u51BB\u7ED3\uFF0C\u4E0D\u80FD\u6539\u5199\u6536\u76CA\u57FA\u51C6");
-      book.initialCashCents = initial;
-      book.cashCents = initial;
-      book.equityCents = initial;
-      book.peakEquityCents = initial;
-    }
-    if (feesChanged) {
-      book.feeConfig = feeConfig;
-      book.feeModel = "itemized-v2";
-      book.feeConfigVersion = (book.feeConfigVersion || 0) + 1;
-    }
-    if (settings.improvementMode !== void 0) {
-      if (!["auto", "manual"].includes(settings.improvementMode))
-        throw new Error("\u6539\u8FDB\u6A21\u5F0F\u65E0\u6548");
-      book.improvementMode = settings.improvementMode;
-    }
-    const stamp = now.toISOString(), nonce = crypto.randomUUID();
-    const statements = [
-      this.db.prepare(
-        "UPDATE paper_accounts SET state=?, revision=revision+1, last_run_id=?, updated_at=? WHERE id=? AND revision=?"
-      ).bind(JSON.stringify(book), nonce, stamp, "primary", account.revision)
-    ];
-    const guard = "EXISTS (SELECT 1 FROM paper_accounts WHERE id=? AND revision=? AND last_run_id=?)";
-    const guardArgs = ["primary", account.revision + 1, nonce];
-    const baselines = capitalChanged ? await this.history("paper_equity", 10) : [];
-    for (const row of baselines) {
-      const previous = JSON.parse(row.payload);
-      if (previous.feesCents || previous.marketValueCents || previous.equityCents !== account.book.initialCashCents)
-        throw new Error("\u5DF2\u6709\u8D26\u6237\u6536\u76CA\u8BB0\u5F55\uFF0C\u4E0D\u80FD\u4FEE\u6539\u521D\u59CB\u8D44\u91D1");
-      const equity = { ...previous, cashCents: initial, equityCents: initial };
-      statements.push(
-        this.db.prepare(
-          `UPDATE paper_equity SET payload=? WHERE trade_date=? AND ${guard}`
-        ).bind(JSON.stringify(equity), row.trade_date, ...guardArgs)
-      );
-    }
-    const day = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Shanghai",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }).format(now);
-    const time = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Asia/Shanghai",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false
-    }).format(now);
-    let replacement = null;
-    if ((capitalChanged || feesChanged) && book.lastDate === day && time >= "15:05") {
-      const previousPlan = await this.db.prepare("SELECT payload,digest FROM paper_plans WHERE signal_date=?").bind(day).first();
-      const snapshot = await this.snapshot(day), strategy = await this.strategy(book);
-      replacement = snapshot ? createPlan(snapshot, book, strategy, book.activeStrategy, stamp) : defensivePlan(day, book, strategy, book.activeStrategy, stamp);
-      if (previousPlan)
-        statements.push(
-          this.db.prepare(
-            `INSERT INTO paper_plan_revisions (id,signal_date,created_at,payload,digest) SELECT ?,?,?,?,? WHERE ${guard}`
-          ).bind(
-            nonce,
-            day,
-            stamp,
-            previousPlan.payload,
-            previousPlan.digest,
-            ...guardArgs
-          )
-        );
-      statements.push(
-        this.db.prepare(`DELETE FROM paper_plans WHERE signal_date=? AND ${guard}`).bind(day, ...guardArgs)
-      );
-      statements.push(
-        this.db.prepare(
-          `INSERT INTO paper_plans (signal_date,created_at,payload,digest) SELECT ?,?,?,? WHERE ${guard}`
-        ).bind(
-          day,
-          stamp,
-          JSON.stringify(replacement),
-          await digest(replacement),
-          ...guardArgs
-        )
-      );
-    }
-    const change = {
-      id: nonce,
-      createdAt: stamp,
-      capitalChanged,
-      feesChanged,
-      before: {
-        initialCashCents: account.book.initialCashCents,
-        fees: feesForBook(account.book),
-        feeConfigVersion: account.book.feeConfigVersion || 0,
-        improvementMode: account.book.improvementMode
-      },
-      after: {
-        initialCashCents: book.initialCashCents,
-        fees: feesForBook(book),
-        feeConfigVersion: book.feeConfigVersion || 0,
-        improvementMode: book.improvementMode
-      },
-      previousBaselines: baselines.map((row) => JSON.parse(row.payload)),
-      revisedPlanDate: replacement?.signalDate || null,
-      effective: replacement ? "\u5F53\u65E5\u5C1A\u672A\u6267\u884C\u7684\u8BA1\u5212\u5DF2\u91CD\u65B0\u51BB\u7ED3\uFF1B\u539F\u8BA1\u5212\u7559\u6863" : "\u65B0\u8D39\u7528\u9002\u7528\u4E8E\u540E\u7EED\u65B0\u8BA1\u5212\uFF0C\u5DF2\u6709\u8BA1\u5212\u4FDD\u6301\u539F\u914D\u7F6E"
-    };
-    statements.push(
-      this.db.prepare(
-        `INSERT INTO paper_configuration_history (id,created_at,payload,digest) SELECT ?,?,?,? WHERE ${guard}`
-      ).bind(
-        nonce,
-        stamp,
-        JSON.stringify(change),
-        await digest(change),
-        ...guardArgs
-      )
-    );
-    const results = await this.db.batch(statements);
-    if ((results[0].meta?.changes ?? results[0].changes) !== 1)
-      throw new Error("\u8D26\u6237\u6B63\u5728\u7ED3\u7B97\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
-    return book;
-  }
-  async recordVersion(version) {
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO strategy_versions (id, created_at, status, params, evidence) VALUES (?, ?, ?, ?, ?)"
-    ).bind(
-      version.id,
-      version.createdAt,
-      version.status,
-      JSON.stringify(version.params),
-      JSON.stringify(version.evidence)
-    ).run();
-  }
-  async activate(id) {
-    const row = await this.db.prepare("SELECT status,evidence FROM strategy_versions WHERE id=?").bind(id).first();
-    if (!row || row.status !== "VALIDATED")
-      throw new Error("\u53EA\u5141\u8BB8\u542F\u7528\u901A\u8FC7\u6837\u672C\u5916\u9A8C\u8BC1\u7684\u65B0\u7B56\u7565");
-    const { book, revision } = await this.account();
-    const evidence = JSON.parse(row.evidence);
-    if (evidence.feeConfigVersion !== void 0 && evidence.feeConfigVersion !== (book.feeConfigVersion || 0) || evidence.initialCashCents !== void 0 && evidence.initialCashCents !== book.initialCashCents)
-      throw new Error("\u9A8C\u8BC1\u6240\u7528\u8D39\u7528\u6216\u8D44\u91D1\u5DF2\u53D8\u66F4\uFF0C\u8BF7\u7B49\u5F85\u65B0\u914D\u7F6E\u4E0B\u7684\u72EC\u7ACB\u9A8C\u8BC1");
-    book.activeStrategy = id;
-    const nonce = crypto.randomUUID();
-    await this.db.batch([
-      this.db.prepare(
-        "UPDATE paper_accounts SET state=?, revision=revision+1, last_run_id=?, updated_at=? WHERE id=? AND revision=?"
-      ).bind(
-        JSON.stringify(book),
-        nonce,
-        (/* @__PURE__ */ new Date()).toISOString(),
-        "primary",
-        revision
-      ),
-      this.db.prepare(
-        "UPDATE strategy_versions SET status='RETIRED' WHERE status='ACTIVE' AND EXISTS (SELECT 1 FROM paper_accounts WHERE last_run_id=?)"
-      ).bind(nonce),
-      this.db.prepare(
-        "UPDATE strategy_versions SET status='ACTIVE' WHERE id=? AND EXISTS (SELECT 1 FROM paper_accounts WHERE last_run_id=?)"
-      ).bind(id, nonce)
-    ]);
-    return (await this.account()).book.activeStrategy === id;
-  }
-};
+function eventDigest({
+  sequence,
+  eventType,
+  createdAt,
+  payload,
+  previousDigest
+}) {
+  return digestOf({ sequence, eventType, createdAt, payload, previousDigest });
+}
+var EXECUTION_VERSION = "exec-batch1-v1";
+var SCORING_VERSION = "six-factor-v1";
+function sampleKey({ namespace, experimentId, role, outcomeDate }) {
+  return `${namespace}:${experimentId}:${role}:${outcomeDate}`;
+}
 
 // backend/domain/realtime.js
 var TERMINAL = /* @__PURE__ */ new Set([
@@ -3038,6 +3453,7 @@ function running(order) {
 function openSession(book, plan, date) {
   if (!plan || plan.signalDate !== book.lastDate || plan.signalDate >= date || plan.createdAt >= `${date}T01:15:00.000Z`)
     throw new Error("\u7F3A\u5C11\u6267\u884C\u65E5\u524D\u51BB\u7ED3\u7684\u8BA1\u5212\uFF0C\u81EA\u52A8\u4EA4\u6613\u6682\u505C");
+  const policyBundle = executionPolicyBundle(plan);
   const carry = /* @__PURE__ */ new Set([
     ...(book.pendingExits || []).map((x) => x.code),
     ...(book.pendingRecovery || []).map((x) => x.code),
@@ -3122,7 +3538,10 @@ function openSession(book, plan, date) {
     fillCount: 0,
     quotes: {},
     orders,
-    lastObservedAt: null
+    lastObservedAt: null,
+    // 同股区间成本状态（§4.4）：policyDigest + byCode 区间游标随会话
+    // 持久化，与账本同一次 CAS 提交，失败重读原状态再试。
+    executionState: policyBundle ? { policyDigest: policyBundle.payloadDigest, byCode: {} } : null
   };
 }
 function mark(book) {
@@ -3141,7 +3560,9 @@ function advanceSession(inputBook, inputSession, observation) {
   for (const [code, quote] of Object.entries(observation.quotes)) {
     const quoteTime = new Date(quote.timestamp).getTime(), age = observed.getTime() - quoteTime;
     const last = session.quotes[code];
-    if (quote.date !== session.date || !/^\d{6}$/.test(code) || !Number.isFinite(quoteTime) || age < -3e3 || age > 15e3 || !(quote.closeCents > 0) || !Number.isFinite(quote.volumeShares) || quote.volumeShares < 0 || last && quote.timestamp <= last.timestamp)
+    if (quote.date !== session.date || !/^\d{6}$/.test(code) || !Number.isFinite(quoteTime) || age < -3e3 || age > 15e3 || !(quote.closeCents > 0) || !Number.isFinite(quote.volumeShares) || quote.volumeShares < 0 || // 去重按时刻比较而非字符串：同一时刻的 UTC/+08:00 表示不得被
+    // 误判为重复或乱序报价（§3.1）。
+    last && quoteTime <= new Date(last.timestamp).getTime())
       continue;
     const expected = session.initialBook.positions.find((p) => p.code === code)?.markCents || session.plan.orders.find((o) => o.code === code)?.referenceCents;
     if (expected && Math.abs(quote.previousCloseCents - expected) > Math.max(1, expected * 1e-3)) {
@@ -3203,11 +3624,17 @@ function advanceSession(inputBook, inputSession, observation) {
         side,
         Math.min(desired, budget),
         {
-          time: quote.timestamp.slice(11, 19),
+          // 分段时刻取可因果执行的观察时刻（§3.1）：本帧在 clock.time
+          // （Asia/Shanghai）尝试成交，报价自身时间戳只用于新鲜度与
+          // 区间标识——09:31:05 观测到 09:30:55 的报价按 09:31 计费。
+          time: clock.time,
           priceCents: quote.closeCents,
           volumeShares: volume,
-          quality: "realtime_poll"
-        }
+          // 采样质量来自观测本身：分钟采样重放与实时轮询分别声明（§4.5）。
+          quality: observation.observationQuality || "realtime_poll",
+          intervalKey: quote.timestamp
+        },
+        session.executionState
       );
       if (result.ok) {
         budget -= result.quantity;
@@ -3218,14 +3645,15 @@ function advanceSession(inputBook, inputSession, observation) {
         row.quoteTimestamp = quote.timestamp;
         row.observationSequence = session.sequence;
         order.lastFillAt = quote.timestamp;
-        order.reason = "\u6309\u5B9E\u65F6\u884C\u60C5\u3001\u6ED1\u70B9\u53CA\u8D39\u7528\u6A21\u62DF\u6210\u4EA4";
+        order.reason = "\u6309\u5B9E\u65F6\u884C\u60C5\u3001\u6210\u672C\u6A21\u578B\u53CA\u8D39\u7528\u6A21\u62DF\u6210\u4EA4";
       } else {
         order.reason = result.reason;
         order.status = order.filledQuantity || order.firstFilled ? "PARTIAL" : "BLOCKED";
       }
       return result;
     };
-    let budget = roundLot(volume * RISK_LIMITS.maxParticipation);
+    const useCostModel = !!session.executionState;
+    let budget = useCostModel ? Infinity : roundLot2(volume * RISK_LIMITS.maxParticipation);
     const list = session.orders.filter((o) => o.code === code).sort(
       (a, b) => Number(b.protective) - Number(a.protective) || Number(b.side === "SELL") - Number(a.side === "SELL") || a.id.localeCompare(b.id)
     );
@@ -3239,7 +3667,7 @@ function advanceSession(inputBook, inputSession, observation) {
           order.triggered = true;
           order.action = quote.closeCents <= order.stopCents || dd >= RISK_LIMITS.maxDrawdown ? "EXIT" : "REDUCE";
           const held = quantityOf(book, code);
-          order.quantity = order.action === "EXIT" ? held : roundLot(held / 2) || held;
+          order.quantity = order.action === "EXIT" ? held : roundLot2(held / 2) || held;
           order.reason = order.action === "EXIT" ? "\u4FDD\u62A4\u9000\u51FA\u89E6\u53D1" : "\u5206\u6279\u6B62\u76C8\u89E6\u53D1";
           for (const other of list)
             if (other !== order && !TERMINAL.has(other.status)) {
@@ -3432,7 +3860,11 @@ function closeSession(inputBook, inputSession, dataset) {
     complete: notices.length === 0,
     positionCount: book.positions.length,
     missingMinuteOrders: 0,
-    source: "\u817E\u8BAF\u5B9E\u65F6\u6A21\u62DF\u6210\u4EA4\u4E0E\u6536\u76D8\u76EF\u5E02"
+    source: "\u817E\u8BAF\u5B9E\u65F6\u6A21\u62DF\u6210\u4EA4\u4E0E\u6536\u76D8\u76EF\u5E02",
+    executionCost: session.plan?.executionCostPolicy ? {
+      modelVersion: session.plan.executionCostPolicy.modelVersion,
+      policyDigest: session.plan.executionCostPolicy.payloadDigest
+    } : null
   };
   if (book.cashCents < 0 || book.equityCents - book.initialCashCents !== book.realizedPnlCents + unrealizedPnlCents2)
     throw new Error("\u5B9E\u65F6\u8D44\u91D1\u8D26\u672C\u4E0E\u76C8\u4E8F\u4E0D\u4E00\u81F4");
@@ -3486,7 +3918,8 @@ function validateProposal(output, base = BASE_STRATEGY) {
     rationale: output.rationale
   };
 }
-function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITAL, feeConfig = DEFAULT_FEES, initialBook = null) {
+function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITAL, feeConfig = DEFAULT_FEES, initialBook = null, executionCostPolicy = null, options = {}) {
+  const observationGrade = options.observationOnly === true;
   let book = initialBook ? structuredClone(initialBook) : newBook(initialCapital, feeConfig);
   const equities = [], fills = [];
   let covered = true;
@@ -3502,7 +3935,8 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
       book,
       strategy,
       "validation",
-      pair.snapshot.createdAt
+      pair.snapshot.createdAt,
+      { executionCostPolicy: executionCostPolicy ?? void 0 }
     );
     try {
       let result;
@@ -3538,8 +3972,20 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
       book = result.book;
       equities.push(result.equity);
       fills.push(...result.ledger);
-      if (!result.equity.complete || pair.dataset.executionMode === "realtime" && result.equity.missingMinuteOrders || result.outcomes.some(
-        (order) => /缺少日期|可能除权/.test(order.reason || "")
+      if (result.outcomes.some(
+        (outcome) => String(outcome.reason || "").includes("DAILY_OBSERVATION_ONLY")
+      )) {
+        if (!observationGrade) {
+          covered = false;
+          reason = reason ?? "DAILY_OBSERVATION_ONLY\uFF1A\u65E5\u7EBF\u89C2\u5BDF\u6536\u76CA\u4E0D\u6784\u6210\u53EF\u4FE1\u6267\u884C\u51C0\u6536\u76CA";
+        }
+      }
+      if (!observationGrade && result.equity.missingMinuteOrders > 0 && !reason)
+        reason = "\u7F3A\u5C11\u76D8\u4E2D\u5206\u949F\u6570\u636E\uFF1A\u505A T \u88AB\u8DF3\u8FC7\uFF0C\u7A97\u53E3\u6536\u76CA\u4E3A\u89C2\u5BDF\u53E3\u5F84";
+      if (!result.equity.complete || // 缺分钟数据的窗口不构成覆盖：做 T 被跳过或日线观察被拒绝时，
+      // 收益只是观察口径，不能用于晋级或验证结论（§4.4）。
+      !observationGrade && result.equity.missingMinuteOrders > 0 || pair.dataset.executionMode === "realtime" && result.equity.missingMinuteOrders || result.outcomes.some(
+        (outcome) => /缺少日期|可能除权/.test(outcome.reason || "")
       ))
         covered = false;
     } catch (error) {
@@ -3551,28 +3997,35 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
   return {
     days: equities.length,
     covered,
+    // 观察口径声明：为 true 时该窗口的收益是日线观察口径，
+    // 不是可执行净收益（§4.4）。
+    observationOnly: observationGrade,
     reason,
     totalReturn: book.equityCents / (initialBook ? initialBook.equityCents : book.initialCashCents) - 1,
     maxDrawdown: Math.max(0, ...equities.map((row) => row.drawdown)),
     fillCount: fills.length,
+    // 逐笔成交随重放返回：成本敏感性据此汇总隐含成本（§6.2）。
+    fills,
     feesCents: book.feesCents,
     equities
   };
 }
-function validateCandidate(trainingPairs, holdoutPairs, base, candidate, initialCapital, feeConfig = DEFAULT_FEES, initialBook = null) {
+function validateCandidate(trainingPairs, holdoutPairs, base, candidate, initialCapital, feeConfig = DEFAULT_FEES, initialBook = null, executionCostPolicy = null) {
   const baseline = replayStrategy(
     holdoutPairs,
     base,
     initialCapital,
     feeConfig,
-    initialBook
+    initialBook,
+    executionCostPolicy
   );
   const proposed = replayStrategy(
     holdoutPairs,
     candidate,
     initialCapital,
     feeConfig,
-    initialBook
+    initialBook,
+    executionCostPolicy
   );
   const checks = {
     trainingSize: trainingPairs.length >= 20,
@@ -3589,6 +4042,10 @@ function validateCandidate(trainingPairs, holdoutPairs, base, candidate, initial
     baseline,
     candidate: proposed,
     feeConfig: normalizeFees(feeConfig),
+    executionCostPolicy: executionCostPolicy ? {
+      modelVersion: executionCostPolicy.modelVersion,
+      payloadDigest: executionCostPolicy.payloadDigest
+    } : null,
     trainingStart: trainingPairs[0]?.dataset.date,
     trainingEnd: trainingPairs.at(-1)?.dataset.date,
     validationStart: holdoutPairs[0]?.dataset.date,
@@ -3597,7 +4054,1040 @@ function validateCandidate(trainingPairs, holdoutPairs, base, candidate, initial
   };
 }
 
-// backend/domain/research-lineage.js
+// backend/domain/research-policy.js
+var STEP_LIMITS = Object.freeze({
+  minScore: 2,
+  minSectorScore: 2,
+  maxPositions: 1,
+  maxHoldDays: 1,
+  stopLoss: 5e-3,
+  takeProfit: 0.01,
+  maxBuyGap: 5e-3,
+  tBuyDip: 5e-3,
+  tSellRise: 5e-3,
+  tFraction: 0.02
+});
+var DEFAULT_RESEARCH_POLICY = Object.freeze({
+  version: 1,
+  trainDays: 60,
+  trainMinDays: 60,
+  trainMaxDays: 120,
+  histTestDays: 20,
+  histTestMinDays: 20,
+  histTestMaxDays: 60,
+  forwardDays: 30,
+  forwardMinDays: 20,
+  forwardMaxDays: 90,
+  monthlyProposalLimit: 1,
+  maxParamGroups: 2,
+  weightsMaxComponents: 2,
+  weightsMaxStep: 2,
+  stepLimits: STEP_LIMITS,
+  ranges: RANGES,
+  statistical: { familyAlpha: 0.05, blockLength: 5 },
+  methodNote: "\u8BAD\u7EC3\u4E0E\u5386\u53F2\u6D4B\u8BD5\u7A97\u53E3\u6309\u51BB\u7ED3\u653F\u7B56\u5212\u5206\uFF1B\u6D4B\u8BD5\u65E5\u671F\u5168\u5386\u53F2\u4E00\u6B21\u6027\u5360\u7528\uFF1B\u5386\u53F2\u901A\u8FC7\u53EA\u83B7\u5F97\u5F71\u5B50\u9636\u6BB5\u8D44\u683C\uFF0C\u4E0D\u6784\u6210\u542F\u7528\u6743"
+});
+var FORBIDDEN_KEYS = /* @__PURE__ */ new Set(["__proto__", "constructor", "prototype"]);
+function checkPolicyRanges(ranges) {
+  for (const [key, value] of Object.entries(ranges)) {
+    if (!Array.isArray(value) || value.length !== 2 || value[0] > value[1])
+      throw new Error(`\u653F\u7B56\u53C2\u6570\u8303\u56F4\u65E0\u6548\uFF1A${key}`);
+  }
+}
+function checkPolicySteps(steps) {
+  for (const [key, value] of Object.entries(steps)) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+      throw new Error(`\u653F\u7B56\u6B65\u957F\u65E0\u6548\uFF1A${key}`);
+  }
+}
+function validateResearchPolicy(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    throw new Error("\u7814\u7A76\u653F\u7B56\u7ED3\u6784\u65E0\u6548");
+  const policy = { ...DEFAULT_RESEARCH_POLICY, ...input };
+  const integerChecks = [
+    ["trainDays", policy.trainMinDays, policy.trainMaxDays],
+    ["histTestDays", policy.histTestMinDays, policy.histTestMaxDays],
+    ["forwardDays", policy.forwardMinDays, policy.forwardMaxDays]
+  ];
+  for (const [key, min, max] of integerChecks) {
+    const value = policy[key];
+    if (!Number.isInteger(value) || value < min || value > max || !Number.isInteger(min) || !Number.isInteger(max))
+      throw new Error(`\u7814\u7A76\u653F\u7B56\u7A97\u53E3\u65E0\u6548\uFF1A${key}`);
+  }
+  if (!Number.isInteger(policy.monthlyProposalLimit) || policy.monthlyProposalLimit < 1 || policy.monthlyProposalLimit > 12)
+    throw new Error("\u7814\u7A76\u653F\u7B56\u6708\u5EA6\u63D0\u6848\u6B21\u6570\u65E0\u6548");
+  if (!Number.isInteger(policy.maxParamGroups) || policy.maxParamGroups < 1 || policy.maxParamGroups > 4)
+    throw new Error("\u7814\u7A76\u653F\u7B56\u53C2\u6570\u7EC4\u4E0A\u9650\u65E0\u6548");
+  checkPolicySteps(policy.stepLimits);
+  checkPolicyRanges(policy.ranges);
+  if (!Number.isInteger(policy.weightsMaxComponents) || policy.weightsMaxComponents < 1 || policy.weightsMaxComponents > 6 || !Number.isInteger(policy.weightsMaxStep) || policy.weightsMaxStep < 1 || policy.weightsMaxStep > 10)
+    throw new Error("\u7814\u7A76\u653F\u7B56\u6743\u91CD\u6B65\u957F\u65E0\u6548");
+  return policy;
+}
+function changedGroups(patch) {
+  return Object.keys(patch).length;
+}
+function validateCandidatePatch({
+  proposal,
+  parentParams,
+  frozenPolicy
+}) {
+  const policy = validateResearchPolicy(frozenPolicy);
+  const patch = proposal?.patch;
+  if (!patch || typeof patch !== "object" || Array.isArray(patch) || !Object.keys(patch).length)
+    throw new Error("\u5019\u9009\u7F3A\u5C11\u6709\u6548\u53C2\u6570\u53D8\u5316");
+  for (const key of Object.keys(patch))
+    if (FORBIDDEN_KEYS.has(key)) throw new Error("\u5019\u9009\u5305\u542B\u672A\u6388\u6743\u5B57\u6BB5");
+  const effective = {};
+  for (const [key, value] of Object.entries(patch)) {
+    const parent = parentParams[key];
+    if (parent === void 0) throw new Error("\u5019\u9009\u5305\u542B\u7236\u7B56\u7565\u4E0D\u5B58\u5728\u7684\u53C2\u6570");
+    if (key === "weights") {
+      if (!Array.isArray(value) || value.length !== 6 || value.some((v) => !Number.isInteger(v) || v < 0 || v > 50) || !value.some((v) => v > 0))
+        throw new Error("\u6743\u91CD\u6570\u7EC4\u4E0D\u7B26\u5408\u7EA6\u675F");
+      const changed = value.map((v, index) => ({ index, delta: v - parent[index] })).filter((row) => row.delta !== 0);
+      if (!changed.length) continue;
+      if (changed.length > policy.weightsMaxComponents)
+        throw new Error(
+          `\u6743\u91CD\u4E00\u6B21\u6700\u591A\u8C03\u6574 ${policy.weightsMaxComponents} \u4E2A\u5206\u91CF`
+        );
+      if (changed.some((row) => Math.abs(row.delta) > policy.weightsMaxStep))
+        throw new Error(`\u6743\u91CD\u5355\u5206\u91CF\u53D8\u5316\u4E0D\u80FD\u8D85\u8FC7 ${policy.weightsMaxStep}`);
+      if (value.reduce((a, b) => a + b, 0) !== parent.reduce((a, b) => a + b, 0))
+        throw new Error("\u6743\u91CD\u603B\u548C\u5FC5\u987B\u4E0E\u7236\u7B56\u7565\u4E00\u81F4");
+      effective.weights = value;
+      continue;
+    }
+    if (typeof value !== "number" || !Number.isFinite(value))
+      throw new Error("\u5019\u9009\u53C2\u6570\u5FC5\u987B\u662F\u6709\u9650\u6570\u503C");
+    if (value === parent) continue;
+    const range = policy.ranges[key];
+    if (!range || value < range[0] || value > range[1] || parent < range[0] || parent > range[1])
+      throw new Error("\u5019\u9009\u63D0\u51FA\u4E86\u672A\u6388\u6743\u6216\u8D8A\u754C\u7684\u53C2\u6570");
+    if (["minScore", "minSectorScore", "maxPositions", "maxHoldDays"].includes(
+      key
+    ) && !Number.isInteger(value))
+      throw new Error("\u6574\u6570\u53C2\u6570\u65E0\u6548");
+    const step = policy.stepLimits[key];
+    if (step === void 0 || Math.abs(value - parent) > step + 1e-9)
+      throw new Error(`\u53C2\u6570 ${key} \u5355\u6B21\u53D8\u5316\u8D85\u8FC7\u653F\u7B56\u6B65\u957F ${step ?? "\u672A\u6388\u6743"}`);
+    effective[key] = value;
+  }
+  if (!Object.keys(effective).length)
+    throw new Error("\u5019\u9009\u4E0E\u7236\u7B56\u7565\u65E0\u5B9E\u9645\u5DEE\u5F02\uFF0C\u62D2\u7EDD\u5360\u7528\u63D0\u6848\u6B21\u6570");
+  if (changedGroups(effective) > policy.maxParamGroups)
+    throw new Error(`\u4E00\u6B21\u6700\u591A\u4FEE\u6539 ${policy.maxParamGroups} \u4E2A\u903B\u8F91\u53C2\u6570\u7EC4`);
+  return {
+    params: { ...structuredClone(parentParams), ...effective },
+    patch: effective,
+    rationale: proposal.rationale,
+    changedGroups: changedGroups(effective)
+  };
+}
+
+// backend/domain/cohort-policy.js
+var TOURNAMENT_MODE = "TOURNAMENT";
+var DEFAULT_COHORT_POLICY = Object.freeze({
+  version: 1,
+  mode: TOURNAMENT_MODE,
+  maxCandidates: 4,
+  maxCandidatesMin: 2,
+  maxCandidatesMax: 4,
+  monthlyGenerationLimit: 1,
+  maxActiveCohorts: 1,
+  trainingDays: 60,
+  historicalTestDays: 20,
+  forwardDays: 60,
+  forwardDaysAllowed: [30, 60, 90],
+  minimumCompletedRounds: 10,
+  pollIntervalSeconds: 10,
+  pollIntervalMinSeconds: 3,
+  pollIntervalMaxSeconds: 60,
+  rankingRule: "NET_RETURN_THEN_DRAWDOWN",
+  promotionLimitPerCohort: 1,
+  statistical: {
+    familyAlpha: 0.05,
+    blockLength: 5,
+    resampleFloor: 1e4,
+    resampleCap: 1e6
+  },
+  methodNote: "\u540C\u4E00\u51BB\u7ED3\u6279\u6B21\u5185\u56FA\u5B9A\u5019\u9009\u5E76\u884C\u524D\u77BB\uFF1B\u5168\u90E8\u5019\u9009\u5171\u4EAB\u6D4B\u8BD5\u65E5\u671F\u4E0E\u7EDF\u8BA1\u9884\u7B97\uFF1B\u6279\u6B21\u7ED3\u675F\u4ECE\u5408\u683C\u96C6\u5408\u6309\u51BB\u7ED3\u6392\u5E8F\u542F\u7528\u81F3\u591A\u4E00\u4E2A\u5019\u9009"
+});
+var FORBIDDEN_KEYS2 = /* @__PURE__ */ new Set(["__proto__", "constructor", "prototype"]);
+function validateCohortPolicy(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    throw new Error("\u8D5B\u9A6C\u653F\u7B56\u7ED3\u6784\u65E0\u6548");
+  for (const key of Object.keys(input))
+    if (FORBIDDEN_KEYS2.has(key)) throw new Error("\u8D5B\u9A6C\u653F\u7B56\u5305\u542B\u672A\u6388\u6743\u5B57\u6BB5");
+  const policy = { ...DEFAULT_COHORT_POLICY, ...input };
+  if (!Number.isInteger(policy.maxCandidates) || policy.maxCandidates < policy.maxCandidatesMin || policy.maxCandidates > policy.maxCandidatesMax)
+    throw new Error(
+      `\u8D5B\u9A6C\u5019\u9009\u6570\u91CF\u65E0\u6548\uFF1A\u5E94\u5728 ${policy.maxCandidatesMin}-${policy.maxCandidatesMax} \u4E4B\u95F4`
+    );
+  if (!Number.isInteger(policy.monthlyGenerationLimit) || policy.monthlyGenerationLimit < 1 || policy.monthlyGenerationLimit > 12)
+    throw new Error("\u8D5B\u9A6C\u6708\u5EA6\u751F\u6210\u6279\u6B21\u4E0A\u9650\u65E0\u6548");
+  if (policy.maxActiveCohorts !== 1)
+    throw new Error("\u9996\u671F\u53EA\u5141\u8BB8\u4E00\u4E2A\u6D3B\u52A8\u8D5B\u9A6C\u6279\u6B21");
+  if (!Number.isInteger(policy.trainingDays) || policy.trainingDays < DEFAULT_RESEARCH_POLICY.trainMinDays || policy.trainingDays > DEFAULT_RESEARCH_POLICY.trainMaxDays)
+    throw new Error("\u8D5B\u9A6C\u8BAD\u7EC3\u7A97\u53E3\u65E0\u6548");
+  if (!Number.isInteger(policy.historicalTestDays) || policy.historicalTestDays < DEFAULT_RESEARCH_POLICY.histTestMinDays || policy.historicalTestDays > DEFAULT_RESEARCH_POLICY.histTestMaxDays)
+    throw new Error("\u8D5B\u9A6C\u5386\u53F2\u6D4B\u8BD5\u7A97\u53E3\u65E0\u6548");
+  if (!policy.forwardDaysAllowed.includes(policy.forwardDays))
+    throw new Error(
+      `\u8D5B\u9A6C\u524D\u77BB\u7A97\u53E3\u53EA\u80FD\u4E8B\u524D\u8BBE\u4E3A ${policy.forwardDaysAllowed.join("/")} \u65E5\uFF0C\u4E0D\u80FD\u4E2D\u9014\u5EF6\u957F`
+    );
+  if (!Number.isInteger(policy.minimumCompletedRounds) || policy.minimumCompletedRounds < 1)
+    throw new Error("\u8D5B\u9A6C\u5B8C\u6574\u8F6E\u6B21\u95E8\u69DB\u65E0\u6548");
+  if (!Number.isInteger(policy.pollIntervalSeconds) || policy.pollIntervalSeconds < policy.pollIntervalMinSeconds || policy.pollIntervalSeconds > policy.pollIntervalMaxSeconds)
+    throw new Error("\u8D5B\u9A6C\u8F6E\u8BE2\u95F4\u9694\u65E0\u6548");
+  if (policy.rankingRule !== "NET_RETURN_THEN_DRAWDOWN")
+    throw new Error("\u8D5B\u9A6C\u6392\u5E8F\u89C4\u5219\u65E0\u6548");
+  if (policy.promotionLimitPerCohort !== 1)
+    throw new Error("\u4E00\u4E2A\u6279\u6B21\u6700\u591A\u542F\u7528\u4E00\u4E2A\u5019\u9009");
+  const stats = policy.statistical ?? {};
+  if (typeof stats.familyAlpha !== "number" || stats.familyAlpha <= 0 || stats.familyAlpha >= 1)
+    throw new Error("\u8D5B\u9A6C\u65CF\u9519\u8BEF\u7387\u65E0\u6548");
+  if (!Number.isInteger(stats.blockLength) || stats.blockLength < 2 || stats.blockLength > 20)
+    throw new Error("\u8D5B\u9A6C\u7EDF\u8BA1\u533A\u5757\u957F\u5EA6\u65E0\u6548");
+  if (!Number.isInteger(stats.resampleFloor) || !Number.isInteger(stats.resampleCap) || stats.resampleFloor > stats.resampleCap)
+    throw new Error("\u8D5B\u9A6C\u7EDF\u8BA1\u91CD\u91C7\u6837\u9884\u7B97\u65E0\u6548");
+  return policy;
+}
+function alphaPerComparisonForK(k, familyAlpha = 0.05) {
+  const integer = Number(k);
+  if (!Number.isInteger(integer) || integer < 1)
+    throw new Error("\u7EDF\u8BA1\u6BD4\u8F83\u5E8F\u53F7 k \u5FC5\u987B\u4E3A\u6B63\u6574\u6570");
+  return familyAlpha / (integer * (integer + 1)) / 2;
+}
+function computeStatisticsBudget({ ks, statistical }) {
+  const stats = { ...DEFAULT_COHORT_POLICY.statistical, ...statistical };
+  const ksSorted = [...ks].sort((a, b) => a - b);
+  if (!ksSorted.length) throw new Error("\u7EDF\u8BA1\u9884\u7B97\u9884\u68C0\u7F3A\u5C11\u6BD4\u8F83\u5E8F\u53F7");
+  const tightest = Math.min(
+    ...ksSorted.map((k) => alphaPerComparisonForK(k, stats.familyAlpha))
+  );
+  const required = Math.max(stats.resampleFloor, Math.ceil(50 / tightest));
+  return {
+    alphaPerComparison: tightest,
+    resamples: Math.min(required, stats.resampleCap),
+    requiredResamples: required,
+    sufficient: required <= stats.resampleCap,
+    resampleCap: stats.resampleCap,
+    blockLength: stats.blockLength,
+    note: required > stats.resampleCap ? `\u672C\u6279\u6309\u5168\u5386\u53F2\u5E8F\u53F7\u9700\u8981\u7684\u91CD\u91C7\u6837\u6B21\u6570 ${required} \u8D85\u8FC7\u8BA1\u7B97\u989D\u5EA6 ${stats.resampleCap}\uFF0C\u8FD4\u56DE COMPUTE_BUDGET_INSUFFICIENT \u5E76\u4FDD\u6301\u5F53\u524D\u7B56\u7565` : null
+  };
+}
+function frozenParamDistance(candidateParams, parentParams) {
+  const steps = STEP_LIMITS;
+  let distance = 0;
+  for (const [key, value] of Object.entries(candidateParams)) {
+    if (key === "weights") continue;
+    const parent = parentParams[key];
+    if (parent === void 0) continue;
+    const step = steps[key];
+    if (step === void 0) continue;
+    distance += Math.abs(value - parent) / step;
+  }
+  const weights = candidateParams.weights;
+  if (Array.isArray(weights) && Array.isArray(parentParams.weights)) {
+    const weightStep = DEFAULT_RESEARCH_POLICY.weightsMaxStep;
+    for (let index = 0; index < weights.length; index++)
+      distance += Math.abs(weights[index] - parentParams.weights[index]) / weightStep;
+  }
+  return distance;
+}
+
+// shared/research-status.js
+var RESEARCH_TERMINAL_STAGES = /* @__PURE__ */ new Set([
+  "REJECTED",
+  "ERROR",
+  "INCONCLUSIVE",
+  "INVALIDATED"
+]);
+var COHORT_ACTIVE_STAGES = /* @__PURE__ */ new Set([
+  "RESERVED",
+  "PROPOSING",
+  "FROZEN",
+  "HISTORICAL_CHECK",
+  "SCHEDULED",
+  "RUNNING",
+  "EVALUATING"
+]);
+
+// backend/storage/cohorts.js
+var RESEARCH_NAMESPACE = "main";
+var mapCohort = (row) => row ? {
+  id: row.id,
+  namespace: row.namespace,
+  revision: row.revision,
+  parentVersion: row.parent_version,
+  policyId: row.policy_id,
+  policyDigest: row.policy_digest,
+  researchPolicyId: row.research_policy_id,
+  researchPolicyDigest: row.research_policy_digest,
+  mode: row.mode,
+  stage: row.stage,
+  maxCandidates: row.max_candidates,
+  forwardDays: row.forward_days,
+  reservationManifest: JSON.parse(row.reservation_manifest || "{}"),
+  proposalManifest: row.proposal_manifest ? JSON.parse(row.proposal_manifest) : null,
+  forwardManifest: row.forward_manifest ? JSON.parse(row.forward_manifest) : null,
+  evaluationManifest: row.evaluation_manifest ? JSON.parse(row.evaluation_manifest) : null,
+  promotionDigest: row.promotion_digest,
+  effectiveTradeDate: row.effective_trade_date,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+} : null;
+var mapMember = (row) => row ? {
+  cohortId: row.cohort_id,
+  memberId: row.member_id,
+  slotIndex: row.slot_index,
+  experimentId: row.experiment_id,
+  strategyVersion: row.strategy_version,
+  k: row.k,
+  familyId: row.family_id,
+  familyVersion: row.family_version,
+  params: row.params ? JSON.parse(row.params) : null,
+  paramsDigest: row.params_digest,
+  paramsDistance: row.params_distance,
+  stage: row.stage,
+  failureReason: row.failure_reason,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+} : null;
+var CohortRepository = class {
+  constructor(env) {
+    this.db = database(env);
+    this.namespace = RESEARCH_NAMESPACE;
+  }
+  // ---------- 赛马政策 ----------
+  async saveTournamentPolicy(input) {
+    const payload = validateCohortPolicy(input);
+    const id = `cohort-policy-${crypto.randomUUID()}`;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const digest2 = await digestOf(payload);
+    await this.db.prepare(
+      "INSERT INTO tournament_policy_versions (id, created_at, effective_at, payload, digest) VALUES (?, ?, ?, ?, ?)"
+    ).bind(id, now, now, JSON.stringify(payload), digest2).run();
+    return { id, payload, digest: digest2 };
+  }
+  async getTournamentPolicy() {
+    const row = await this.db.prepare(
+      "SELECT * FROM tournament_policy_versions ORDER BY created_at DESC, id DESC LIMIT 1"
+    ).first();
+    if (row)
+      return {
+        id: row.id,
+        payload: JSON.parse(row.payload),
+        digest: row.digest
+      };
+    const payload = validateCohortPolicy(DEFAULT_COHORT_POLICY);
+    const id = "cohort-policy-default-v1";
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const digest2 = await digestOf(payload);
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO tournament_policy_versions (id, created_at, effective_at, payload, digest) VALUES (?, ?, ?, ?, ?)"
+    ).bind(id, now, now, JSON.stringify(payload), digest2).run();
+    const saved = await this.db.prepare("SELECT * FROM tournament_policy_versions WHERE id = ?").bind(id).first();
+    return {
+      id: saved.id,
+      payload: JSON.parse(saved.payload),
+      digest: saved.digest
+    };
+  }
+  // ---------- 活动窗口所有者（统一锁） ----------
+  async windowOwner() {
+    const row = await this.db.prepare("SELECT * FROM research_window_owners WHERE namespace = ?").bind(this.namespace).first();
+    return row ? {
+      namespace: row.namespace,
+      ownerType: row.owner_type,
+      ownerId: row.owner_id,
+      windowPayload: JSON.parse(row.window_payload || "{}"),
+      leaseUntil: row.lease_until,
+      createdAt: row.created_at
+    } : null;
+  }
+  async releaseWindowOwner(ownerType, ownerId) {
+    await this.db.prepare(
+      "DELETE FROM research_window_owners WHERE namespace = ? AND owner_type = ? AND owner_id = ?"
+    ).bind(this.namespace, ownerType, ownerId).run();
+  }
+  // ---------- 原子批次预留（§9.1） ----------
+  // 任一步冲突整批失败：注册表 CAS、窗口锁、生成名额、测试日期、成员实验与首事件一次提交。
+  async reserveCohort({
+    cohortPolicy,
+    researchPolicy,
+    month,
+    parentVersion,
+    windowPayload,
+    testDates,
+    samples,
+    forwardDays,
+    cohortPolicyPayload = null,
+    statisticsBudget = null,
+    feeConfig = null,
+    feeConfigDigest = null
+  }) {
+    const memberCount = Number(
+      cohortPolicy.payload?.maxCandidates ?? cohortPolicy.maxCandidates
+    );
+    const attempt = async () => {
+      const registryRow = await this.db.prepare(
+        "SELECT revision, attempt_sequence FROM research_registry WHERE namespace = ?"
+      ).bind(this.namespace).first();
+      if (!registryRow) throw new Error("\u7814\u7A76\u6CE8\u518C\u8868\u672A\u521D\u59CB\u5316\uFF0C\u65E0\u6CD5\u9884\u7559\u8D5B\u9A6C\u6279\u6B21");
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const nonce = crypto.randomUUID();
+      const cohortId = `cohort-${crypto.randomUUID()}`;
+      const baseAttempt = Number(registryRow.attempt_sequence);
+      const members = Array.from({ length: memberCount }, (_, index) => ({
+        memberId: `m${index + 1}`,
+        slotIndex: index + 1,
+        experimentId: `exp-${crypto.randomUUID()}`,
+        k: baseAttempt + index + 1
+      }));
+      const slotRow = await this.db.prepare(
+        "SELECT COALESCE(MAX(slot), 0) AS max_slot FROM research_generation_slots WHERE namespace = ? AND month = ?"
+      ).bind(this.namespace, month).first();
+      const startSlot = Number(slotRow?.max_slot ?? 0);
+      const reservation = {
+        cohortId,
+        namespace: this.namespace,
+        attemptSequences: members.map((member) => member.k),
+        parentVersion,
+        trainingDates: samples.filter((sample) => sample.role === "TRAIN").map((sample) => sample.date),
+        testDates,
+        cohortPolicyId: cohortPolicy.id,
+        cohortPolicyDigest: cohortPolicy.digest,
+        researchPolicyId: researchPolicy.id,
+        researchPolicyDigest: researchPolicy.digest,
+        forwardDays,
+        cohortPolicy: cohortPolicyPayload,
+        statisticsBudget,
+        feeConfig,
+        feeConfigDigest,
+        reservedAt: now
+      };
+      const reservationDigest = await digestOf(reservation);
+      const guardArgs = [
+        this.namespace,
+        Number(registryRow.revision) + 1,
+        nonce
+      ];
+      const guarded = (sql, args) => this.db.prepare(
+        `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`
+      ).bind(...args, ...guardArgs);
+      const event = {
+        sequence: 1,
+        eventType: "RESERVED",
+        createdAt: now,
+        payload: { reservation, reservationDigest },
+        previousDigest: null
+      };
+      const statements = [
+        this.db.prepare(
+          "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + ?, last_run_id = ? WHERE namespace = ? AND revision = ?"
+        ).bind(memberCount, nonce, this.namespace, registryRow.revision),
+        guarded(
+          "INSERT INTO research_window_owners (namespace, owner_type, owner_id, window_payload, created_at) SELECT ?, 'COHORT', ?, ?, ?",
+          [
+            this.namespace,
+            cohortId,
+            JSON.stringify({
+              ...windowPayload,
+              cohortPolicyId: cohortPolicy.id
+            }),
+            now
+          ]
+        ),
+        ...members.map(
+          (member, index) => guarded(
+            "INSERT INTO research_generation_slots (namespace, month, slot, owner_type, owner_id, reserved_at) SELECT ?, ?, ?, 'COHORT', ?, ?",
+            [this.namespace, month, startSlot + index + 1, cohortId, now]
+          )
+        ),
+        ...testDates.map(
+          (date) => this.db.prepare(
+            "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at, owner_type, owner_id) SELECT ?, ?, ?, 'HISTORICAL_TEST', ?, 'COHORT', ? WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)"
+          ).bind(this.namespace, date, cohortId, now, cohortId, ...guardArgs)
+        ),
+        ...members.flatMap(
+          (member) => samples.map(
+            (sample) => guarded(
+              "INSERT INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+              [
+                this.namespace,
+                member.experimentId,
+                sample.role,
+                sample.date,
+                `${this.namespace}:${member.experimentId}:${sample.role}:${sample.date}`,
+                JSON.stringify(sample.payload),
+                sample.digest
+              ]
+            )
+          )
+        ),
+        ...members.map(
+          (member) => guarded(
+            "INSERT INTO research_experiments (id, namespace, parent_version, candidate_version, policy_id, kind, stage, revision, frozen_at, reservation_payload, proposal_manifest, proposal_digest, created_at) SELECT ?, ?, ?, NULL, ?, 'COHORT_MEMBER', 'PROPOSING', 0, NULL, ?, NULL, NULL, ?",
+            [
+              member.experimentId,
+              this.namespace,
+              parentVersion,
+              cohortPolicy.id,
+              JSON.stringify({
+                ...reservation,
+                memberId: member.memberId,
+                k: member.k
+              }),
+              now
+            ]
+          )
+        ),
+        guarded(
+          "INSERT INTO strategy_cohorts (id, namespace, revision, parent_version, policy_id, policy_digest, research_policy_id, research_policy_digest, mode, stage, max_candidates, forward_days, reservation_manifest, created_at, updated_at) SELECT ?, ?, 0, ?, ?, ?, ?, ?, 'TOURNAMENT', 'PROPOSING', ?, ?, ?, ?, ?",
+          [
+            cohortId,
+            this.namespace,
+            parentVersion,
+            cohortPolicy.id,
+            cohortPolicy.digest,
+            researchPolicy.id,
+            researchPolicy.digest,
+            memberCount,
+            forwardDays,
+            JSON.stringify({ ...reservation, reservationDigest }),
+            now,
+            now
+          ]
+        ),
+        ...members.map(
+          (member) => guarded(
+            "INSERT INTO strategy_cohort_members (cohort_id, member_id, slot_index, experiment_id, k, stage, created_at, updated_at) SELECT ?, ?, ?, ?, ?, 'PROPOSING', ?, ?",
+            [
+              cohortId,
+              member.memberId,
+              member.slotIndex,
+              member.experimentId,
+              member.k,
+              now,
+              now
+            ]
+          )
+        ),
+        guarded(
+          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
+          [
+            cohortId,
+            event.sequence,
+            event.eventType,
+            event.createdAt,
+            JSON.stringify(event.payload),
+            event.previousDigest,
+            await eventDigest(event)
+          ]
+        )
+      ];
+      await this.executeReservation(statements);
+      const claimCount = (await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM research_test_claims WHERE owner_type = 'COHORT' AND owner_id = ?"
+      ).bind(cohortId).first()).n;
+      if (claimCount !== testDates.length)
+        throw new Error(
+          "\u6D4B\u8BD5\u65E5\u671F\u767B\u8BB0\u4E0D\u5B8C\u6574\uFF08\u7814\u7A76\u89E6\u53D1\u5668\u7F3A\u5931\u6216\u8FC1\u79FB\u672A\u5B8C\u6210\uFF09\uFF0C\u9884\u7559\u5DF2\u7EC8\u6B62"
+        );
+      const memberCountCheck = (await this.db.prepare(
+        "SELECT COUNT(*) AS n FROM strategy_cohort_members WHERE cohort_id = ?"
+      ).bind(cohortId).first()).n;
+      if (memberCountCheck !== memberCount) return null;
+      const after = await this.db.prepare(
+        "SELECT revision, last_run_id, attempt_sequence FROM research_registry WHERE namespace = ?"
+      ).bind(this.namespace).first();
+      if (Number(after.revision) !== Number(registryRow.revision) + 1 || after.last_run_id !== nonce)
+        return null;
+      return { cohortId, members, reservation, reservationDigest };
+    };
+    if (typeof this.db.transaction === "function")
+      return this.db.transaction(async () => {
+        this.inTransaction = true;
+        try {
+          return await attempt();
+        } finally {
+          this.inTransaction = false;
+        }
+      });
+    return attempt();
+  }
+  async executeReservation(statements) {
+    if (this.inTransaction) {
+      for (const statement of statements) await statement.run();
+      return;
+    }
+    await this.db.batch(statements);
+  }
+  // ---------- 批次与成员读写 ----------
+  async getCohort(id) {
+    return mapCohort(
+      await this.db.prepare("SELECT * FROM strategy_cohorts WHERE id = ?").bind(id).first()
+    );
+  }
+  async listCohorts({ limit = 20, offset = 0 } = {}) {
+    const rows = (await this.db.prepare(
+      "SELECT id FROM strategy_cohorts ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+    ).bind(limit, offset).all()).results;
+    const cohorts = [];
+    for (const row of rows) cohorts.push(await this.getCohort(row.id));
+    const total = (await this.db.prepare("SELECT COUNT(*) AS n FROM strategy_cohorts").first()).n;
+    return { cohorts, total };
+  }
+  async activeCohort() {
+    const rows = (await this.db.prepare("SELECT id FROM strategy_cohorts ORDER BY created_at DESC").all()).results;
+    for (const row of rows) {
+      const cohort = await this.getCohort(row.id);
+      if (cohort && COHORT_ACTIVE_STAGES.has(cohort.stage)) return cohort;
+    }
+    return null;
+  }
+  async members(cohortId) {
+    const rows = (await this.db.prepare(
+      "SELECT * FROM strategy_cohort_members WHERE cohort_id = ? ORDER BY slot_index"
+    ).bind(cohortId).all()).results;
+    return rows.map((row) => mapMember(row));
+  }
+  async member(cohortId, memberId) {
+    return mapMember(
+      await this.db.prepare(
+        "SELECT * FROM strategy_cohort_members WHERE cohort_id = ? AND member_id = ?"
+      ).bind(cohortId, memberId).first()
+    );
+  }
+  async memberByExperiment(experimentId) {
+    return mapMember(
+      await this.db.prepare(
+        "SELECT * FROM strategy_cohort_members WHERE experiment_id = ?"
+      ).bind(experimentId).first()
+    );
+  }
+  // ---------- 批次状态迁移（revision CAS + 事件链原子追加） ----------
+  async transitionCohort(id, { from, to, eventType, payload = {}, set = {} }) {
+    const cohort = await this.getCohort(id);
+    if (!cohort) throw new Error("\u8D5B\u9A6C\u6279\u6B21\u4E0D\u5B58\u5728");
+    if (cohort.stage !== from)
+      throw new Error(
+        `\u6279\u6B21\u72B6\u6001\u5DF2\u53D8\u5316\uFF08${cohort.stage}\uFF09\uFF0C\u4E0D\u80FD\u4ECE ${from} \u8FC1\u79FB\u5230 ${to}`
+      );
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const previous = await this.lastEvent(id);
+    const event = {
+      sequence: (previous?.sequence ?? 0) + 1,
+      eventType,
+      createdAt: now,
+      payload: { from, to, ...payload },
+      previousDigest: previous?.digest ?? null
+    };
+    const setKeys = Object.keys(set);
+    const setSql = setKeys.length ? `, ${setKeys.map((key) => `${key} = ?`).join(", ")}` : "";
+    const setArgs = setKeys.map(
+      (key) => typeof set[key] === "string" || set[key] === null ? set[key] : JSON.stringify(set[key])
+    );
+    const expectedRevision = cohort.revision;
+    const runId = crypto.randomUUID();
+    const statements = [
+      this.db.prepare(
+        `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, last_run_id = ?, updated_at = ?${setSql} WHERE id = ? AND stage = ? AND revision = ?`
+      ).bind(to, runId, now, ...setArgs, id, from, expectedRevision),
+      this.db.prepare(
+        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM strategy_cohorts WHERE id = ? AND revision = ? AND last_run_id = ?)"
+      ).bind(
+        id,
+        event.sequence,
+        event.eventType,
+        event.createdAt,
+        JSON.stringify(event.payload),
+        event.previousDigest,
+        await eventDigest(event),
+        id,
+        expectedRevision + 1,
+        runId
+      )
+    ];
+    const results = await this.db.batch(statements);
+    if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1)
+      throw new Error(
+        `\u6279\u6B21\u72B6\u6001\u8FC1\u79FB\u51B2\u7A81\uFF1A\u9884\u671F revision ${expectedRevision} \u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8`
+      );
+    const after = await this.getCohort(id);
+    if (after.stage !== to)
+      throw new Error("\u6279\u6B21\u72B6\u6001\u5199\u5165\u5931\u8D25\uFF1A\u72B6\u6001\u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8");
+    return after;
+  }
+  async appendEvent(cohortId, event) {
+    await this.db.prepare(
+      "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      cohortId,
+      event.sequence,
+      event.eventType,
+      event.createdAt,
+      JSON.stringify(event.payload),
+      event.previousDigest,
+      await eventDigest(event)
+    ).run();
+    return event;
+  }
+  async updateMember(cohortId, memberId, set) {
+    const keys = Object.keys(set);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    if (keys.length) {
+      const args = keys.map((key) => {
+        const value = set[key];
+        if (value === null || typeof value === "string" || typeof value === "number")
+          return value;
+        return JSON.stringify(value);
+      });
+      await this.db.prepare(
+        `UPDATE strategy_cohort_members SET ${keys.map((key) => `${key} = ?`).join(", ")}, updated_at = ? WHERE cohort_id = ? AND member_id = ?`
+      ).bind(...args, now, cohortId, memberId).run();
+    } else {
+      await this.db.prepare(
+        "UPDATE strategy_cohort_members SET updated_at = ? WHERE cohort_id = ? AND member_id = ?"
+      ).bind(now, cohortId, memberId).run();
+    }
+    return this.member(cohortId, memberId);
+  }
+  async lastEvent(cohortId) {
+    const row = await this.db.prepare(
+      "SELECT * FROM cohort_events WHERE cohort_id = ? ORDER BY sequence DESC LIMIT 1"
+    ).bind(cohortId).first();
+    return row ? {
+      sequence: row.sequence,
+      eventType: row.event_type,
+      createdAt: row.created_at,
+      payload: JSON.parse(row.payload),
+      previousDigest: row.previous_digest,
+      digest: row.digest
+    } : null;
+  }
+  async events(cohortId) {
+    const rows = (await this.db.prepare(
+      "SELECT * FROM cohort_events WHERE cohort_id = ? ORDER BY sequence"
+    ).bind(cohortId).all()).results;
+    return rows.map((row) => ({
+      sequence: row.sequence,
+      eventType: row.event_type,
+      createdAt: row.created_at,
+      payload: JSON.parse(row.payload),
+      previousDigest: row.previous_digest,
+      digest: row.digest
+    }));
+  }
+  // ---------- 成员状态迁移（同步成员实验状态 + 研究事件） ----------
+  async transitionMember(cohortId, memberId, {
+    from,
+    to,
+    versionStatus = null,
+    versionId = null,
+    failureReason = null,
+    set = {}
+  }) {
+    const cohort = await this.getCohort(cohortId);
+    const member = await this.member(cohortId, memberId);
+    if (!cohort || !member) throw new Error("\u8D5B\u9A6C\u6210\u5458\u4E0D\u5B58\u5728");
+    if (member.stage !== from)
+      throw new Error(
+        `\u6210\u5458\u72B6\u6001\u5DF2\u53D8\u5316\uFF08${member.stage}\uFF09\uFF0C\u4E0D\u80FD\u4ECE ${from} \u8FC1\u79FB\u5230 ${to}`
+      );
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const setKeys = Object.keys(set);
+    const setSql = setKeys.length ? `, ${setKeys.map((key) => `${key} = ?`).join(", ")}` : "";
+    const setArgs = setKeys.map(
+      (key) => typeof set[key] === "string" || set[key] === null || typeof set[key] === "number" ? set[key] : JSON.stringify(set[key])
+    );
+    const experiment = await this.db.prepare("SELECT revision FROM research_experiments WHERE id = ?").bind(member.experimentId).first();
+    const nextRevision = Number(experiment?.revision ?? 0) + 1;
+    const previous = await this.lastEvent(cohortId);
+    const nextCohortSequence = (previous?.sequence ?? 0) + 1;
+    const experimentEvent = {
+      sequence: 0,
+      eventType: `MEMBER_${to}`,
+      createdAt: now,
+      payload: { memberId, from, to, failureReason },
+      previousDigest: null
+    };
+    const experimentEvents = (await this.db.prepare(
+      "SELECT sequence, digest FROM research_events WHERE experiment_id = ? ORDER BY sequence DESC LIMIT 1"
+    ).bind(member.experimentId).all()).results;
+    const lastExperimentEvent = experimentEvents[0];
+    experimentEvent.sequence = (lastExperimentEvent?.sequence ?? 0) + 1;
+    experimentEvent.previousDigest = lastExperimentEvent?.digest ?? null;
+    const cohortEvent = {
+      sequence: nextCohortSequence,
+      eventType: `MEMBER_${to}`,
+      createdAt: now,
+      payload: { memberId, from, to, failureReason },
+      previousDigest: previous?.digest ?? null
+    };
+    const expectedRevision = Number(experiment?.revision ?? 0);
+    const runId = crypto.randomUUID();
+    const statements = [
+      this.db.prepare(
+        "UPDATE research_experiments SET stage = ?, revision = revision + 1, last_run_id = ? WHERE id = ? AND stage = ? AND revision = ?"
+      ).bind(to, runId, member.experimentId, from, expectedRevision),
+      this.db.prepare(
+        `UPDATE strategy_cohort_members SET stage = ?, failure_reason = ?, updated_at = ?${setSql} WHERE cohort_id = ? AND member_id = ? AND stage = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)`
+      ).bind(
+        to,
+        failureReason,
+        now,
+        ...setArgs,
+        cohortId,
+        memberId,
+        from,
+        member.experimentId,
+        nextRevision,
+        runId
+      ),
+      this.db.prepare(
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)"
+      ).bind(
+        member.experimentId,
+        experimentEvent.sequence,
+        experimentEvent.eventType,
+        experimentEvent.createdAt,
+        JSON.stringify(experimentEvent.payload),
+        experimentEvent.previousDigest,
+        await eventDigest(experimentEvent),
+        member.experimentId,
+        nextRevision,
+        runId
+      ),
+      this.db.prepare(
+        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)"
+      ).bind(
+        cohortId,
+        cohortEvent.sequence,
+        cohortEvent.eventType,
+        cohortEvent.createdAt,
+        JSON.stringify(cohortEvent.payload),
+        cohortEvent.previousDigest,
+        await eventDigest(cohortEvent),
+        member.experimentId,
+        nextRevision,
+        runId
+      )
+    ];
+    if (versionId && versionStatus)
+      statements.push(
+        this.db.prepare(
+          "UPDATE strategy_versions SET status = ? WHERE id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ? AND last_run_id = ?)"
+        ).bind(
+          versionStatus,
+          versionId,
+          member.experimentId,
+          to,
+          nextRevision,
+          runId
+        )
+      );
+    const results = await this.db.batch(statements);
+    if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1 || results[2].meta.changes !== 1 || results[3].meta.changes !== 1)
+      throw new Error(
+        `\u6210\u5458\u72B6\u6001\u8FC1\u79FB\u51B2\u7A81\uFF1A\u5B9E\u9A8C revision ${expectedRevision} \u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8`
+      );
+    const after = await this.member(cohortId, memberId);
+    if (after.stage !== to)
+      throw new Error("\u6210\u5458\u72B6\u6001\u5199\u5165\u5931\u8D25\uFF1A\u72B6\u6001\u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8");
+    return after;
+  }
+  // ---------- 冻结成员参数（复用实验冻结清单） ----------
+  async freezeMemberExperiment(experimentId, manifest) {
+    const manifestDigest = await digestOf(manifest);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const lastEventRow = (await this.db.prepare(
+      "SELECT sequence, digest FROM research_events WHERE experiment_id = ? ORDER BY sequence DESC LIMIT 1"
+    ).bind(experimentId).all()).results[0];
+    const frozenEvent = {
+      sequence: (lastEventRow?.sequence ?? 0) + 1,
+      eventType: "CANDIDATE_FROZEN",
+      createdAt: now,
+      payload: { manifestDigest, memberId: manifest.memberId },
+      previousDigest: lastEventRow?.digest ?? null
+    };
+    const runId = crypto.randomUUID();
+    const statements = [
+      this.db.prepare(
+        "UPDATE research_experiments SET stage = 'HISTORICAL_CHECK', revision = revision + 1, last_run_id = ?, frozen_at = ?, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'"
+      ).bind(
+        runId,
+        now,
+        JSON.stringify(manifest),
+        manifestDigest,
+        experimentId
+      ),
+      this.db.prepare(
+        "UPDATE strategy_cohort_members SET stage = 'HISTORICAL_CHECK', updated_at = ? WHERE experiment_id = ? AND stage = 'PROPOSING' AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)"
+      ).bind(now, experimentId, experimentId, runId),
+      this.db.prepare(
+        "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)"
+      ).bind(
+        manifest.versionId,
+        now,
+        JSON.stringify(manifest.candidateParams),
+        JSON.stringify({
+          cohortId: manifest.cohortId,
+          memberId: manifest.memberId,
+          attemptSequence: manifest.attemptSequence,
+          parentVersion: manifest.parentVersion,
+          trainingStart: manifest.trainingDates?.[0] ?? null,
+          trainingEnd: manifest.trainingDates?.at(-1) ?? null,
+          validationStart: manifest.testDates?.[0] ?? null,
+          validationEnd: manifest.testDates?.at(-1) ?? null
+        }),
+        experimentId,
+        runId
+      ),
+      this.db.prepare(
+        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)"
+      ).bind(
+        experimentId,
+        frozenEvent.sequence,
+        frozenEvent.eventType,
+        frozenEvent.createdAt,
+        JSON.stringify(frozenEvent.payload),
+        frozenEvent.previousDigest,
+        await eventDigest(frozenEvent),
+        experimentId,
+        runId
+      )
+    ];
+    const results = await this.db.batch(statements);
+    if (results[0].meta.changes !== 1)
+      throw new Error("\u6210\u5458\u5019\u9009\u51BB\u7ED3\u5931\u8D25\uFF1A\u5B9E\u9A8C\u72B6\u6001\u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8");
+    return { manifestDigest };
+  }
+  // ---------- 测试日期与样本用途 ----------
+  async claimCohortForwardDate(date, cohortId) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at, owner_type, owner_id) VALUES (?, ?, ?, 'FORWARD_TEST', ?, 'COHORT', ?)"
+    ).bind(this.namespace, date, cohortId, now, cohortId).run();
+    const row = await this.db.prepare(
+      "SELECT owner_type, owner_id FROM research_test_claims WHERE namespace = ? AND outcome_date = ?"
+    ).bind(this.namespace, date).first();
+    if (!row || row.owner_type !== "COHORT" || row.owner_id !== cohortId)
+      throw new Error(`\u524D\u77BB\u65E5\u671F ${date} \u5DF2\u88AB\u5176\u4ED6\u7814\u7A76\u5360\u7528\uFF0C\u6279\u6B21\u65E0\u8D44\u683C\u7EE7\u7EED`);
+    return true;
+  }
+  async recordMemberSampleUse({ experimentId, sample }) {
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      this.namespace,
+      experimentId,
+      sample.role,
+      sample.date,
+      `${this.namespace}:${experimentId}:${sample.role}:${sample.date}`,
+      JSON.stringify(sample.payload),
+      sample.digest
+    ).run();
+  }
+  // ---------- 批次报告 ----------
+  async saveReport(cohortId, stage, payload) {
+    const digest2 = await digestOf(payload);
+    const existing = await this.report(cohortId, stage);
+    if (existing) {
+      if (existing.digest !== digest2)
+        throw new Error("\u6279\u6B21\u62A5\u544A\u5DF2\u5B58\u5728\u4E14\u5185\u5BB9\u4E0D\u4E00\u81F4\uFF0C\u4E0D\u5141\u8BB8\u8986\u76D6");
+      return existing;
+    }
+    await this.db.prepare(
+      "INSERT INTO cohort_reports (cohort_id, stage, payload, digest, created_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind(
+      cohortId,
+      stage,
+      JSON.stringify(payload),
+      digest2,
+      (/* @__PURE__ */ new Date()).toISOString()
+    ).run();
+    return { payload, digest: digest2 };
+  }
+  async report(cohortId, stage) {
+    const row = await this.db.prepare(
+      "SELECT payload, digest, created_at FROM cohort_reports WHERE cohort_id = ? AND stage = ?"
+    ).bind(cohortId, stage).first();
+    return row ? {
+      payload: JSON.parse(row.payload),
+      digest: row.digest,
+      createdAt: row.created_at
+    } : null;
+  }
+  // ---------- 研究任务（租约 + 幂等） ----------
+  async createTask({ ownerId, taskType, inputDigest, payload }) {
+    const id = `task-${crypto.randomUUID()}`;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT INTO research_tasks (id, owner_id, task_type, input_digest, stage, payload, created_at, updated_at) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?)"
+    ).bind(
+      id,
+      ownerId,
+      taskType,
+      inputDigest,
+      JSON.stringify(payload ?? {}),
+      now,
+      now
+    ).run();
+    return id;
+  }
+  async leaseTask(taskId, { leaseOwner, leaseMs = 12e4 }) {
+    const now = Date.now();
+    const leaseUntil = new Date(now + leaseMs).toISOString();
+    const result = await this.db.prepare(
+      "UPDATE research_tasks SET stage = 'RUNNING', lease_owner = ?, lease_until = ?, updated_at = ? WHERE id = ? AND (stage = 'PENDING' OR (stage = 'RUNNING' AND lease_until IS NOT NULL AND lease_until <= ?))"
+    ).bind(
+      leaseOwner,
+      leaseUntil,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      taskId,
+      new Date(now).toISOString()
+    ).run();
+    return result.meta.changes === 1;
+  }
+  async completeTask(taskId, { outputDigest, cursor = null }) {
+    await this.db.prepare(
+      "UPDATE research_tasks SET stage = 'DONE', output_digest = ?, cursor = COALESCE(?, cursor), updated_at = ? WHERE id = ?"
+    ).bind(outputDigest, cursor, (/* @__PURE__ */ new Date()).toISOString(), taskId).run();
+  }
+  async failTask(taskId, reason) {
+    await this.db.prepare(
+      "UPDATE research_tasks SET stage = 'ERROR', payload = json_set(payload, '$.lastError', ?), lease_until = NULL, updated_at = ? WHERE id = ?"
+    ).bind(String(reason).slice(0, 500), (/* @__PURE__ */ new Date()).toISOString(), taskId).run();
+  }
+  async task(taskId) {
+    const row = await this.db.prepare("SELECT * FROM research_tasks WHERE id = ?").bind(taskId).first();
+    return row ? {
+      id: row.id,
+      ownerId: row.owner_id,
+      taskType: row.task_type,
+      inputDigest: row.input_digest,
+      stage: row.stage,
+      leaseUntil: row.lease_until,
+      leaseOwner: row.lease_owner,
+      cursor: row.cursor,
+      outputDigest: row.output_digest,
+      payload: JSON.parse(row.payload || "{}")
+    } : null;
+  }
+  async tasksForOwner(ownerId, taskType) {
+    const rows = (await this.db.prepare(
+      "SELECT id FROM research_tasks WHERE owner_id = ? AND task_type = ? ORDER BY created_at"
+    ).bind(ownerId, taskType).all()).results;
+    const tasks = [];
+    for (const row of rows) tasks.push(await this.task(row.id));
+    return tasks;
+  }
+};
+
+// backend/storage/execution-cost.js
 function canonical2(value) {
   if (Array.isArray(value)) return value.map(canonical2);
   if (value && typeof value === "object")
@@ -3606,33 +5096,500 @@ function canonical2(value) {
     );
   return value;
 }
-function canonicalJson(value) {
-  return JSON.stringify(canonical2(value));
-}
-async function digestOf(value) {
+async function policyDigest(value) {
   const bytes = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(canonicalJson(value))
+    new TextEncoder().encode(JSON.stringify(canonical2(value)))
   );
   return Array.from(
     new Uint8Array(bytes),
     (byte) => byte.toString(16).padStart(2, "0")
   ).join("");
 }
-function eventDigest({
-  sequence,
-  eventType,
-  createdAt,
-  payload,
-  previousDigest
-}) {
-  return digestOf({ sequence, eventType, createdAt, payload, previousDigest });
+function rowToBundle(row) {
+  const bundle = normalizeExecutionCostPolicy({
+    id: row.id,
+    version: row.version,
+    modelVersion: row.model_version,
+    payloadDigest: row.digest,
+    calibrationStatus: row.calibration_status,
+    calibrationCutoff: row.calibration_cutoff,
+    effectiveFrom: row.effective_from,
+    payload: JSON.parse(row.payload)
+  });
+  return bundle;
 }
-var EXECUTION_VERSION = "exec-batch1-v1";
-var SCORING_VERSION = "six-factor-v1";
-function sampleKey({ namespace, experimentId, role, outcomeDate }) {
-  return `${namespace}:${experimentId}:${role}:${outcomeDate}`;
+async function verifyPolicyBundle(bundle) {
+  if (!bundle?.payload || !/^[0-9a-f]{64}$/.test(bundle.payloadDigest ?? ""))
+    return false;
+  try {
+    return await policyDigest(bundle.payload) === bundle.payloadDigest;
+  } catch {
+    return false;
+  }
 }
+async function latestPolicyBundle(db) {
+  let row;
+  try {
+    row = await db.prepare(
+      "SELECT * FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1"
+    ).bind(EXECUTION_COST_MODEL).first();
+  } catch (error) {
+    if (/no such table/i.test(String(error?.message ?? error)))
+      return defaultExecutionCostPolicy();
+    throw error;
+  }
+  if (!row) return defaultExecutionCostPolicy();
+  let bundle;
+  try {
+    bundle = rowToBundle(row);
+  } catch {
+    throw new Error(
+      `\u6210\u672C\u653F\u7B56 v${row.version} \u5B58\u50A8\u5185\u5BB9\u635F\u574F\uFF0C\u62D2\u7EDD\u9759\u9ED8\u56DE\u9000\uFF1B\u8BF7\u4FEE\u590D\u6216\u5220\u9664\u8BE5\u7248\u672C`
+    );
+  }
+  if (!await verifyPolicyBundle(bundle))
+    throw new Error(
+      `\u6210\u672C\u653F\u7B56 v${row.version} \u5B58\u50A8\u5185\u5BB9\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4\uFF0C\u62D2\u7EDD\u9759\u9ED8\u56DE\u9000\uFF1B\u8BF7\u4FEE\u590D\u6216\u5220\u9664\u8BE5\u7248\u672C`
+    );
+  return bundle;
+}
+var ExecutionCostRepository = class {
+  constructor(env) {
+    this.db = database(env);
+  }
+  async latest() {
+    return latestPolicyBundle(this.db);
+  }
+  async list(limit = 20) {
+    const rows = await this.db.prepare(
+      "SELECT * FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT ?"
+    ).bind(EXECUTION_COST_MODEL, limit).all();
+    return rows.results.map(rowToBundle);
+  }
+  async save({
+    payload,
+    calibrationStatus = "PRIOR_UNCALIBRATED",
+    calibrationCutoff = null,
+    effectiveFrom = null
+  }) {
+    const normalized = normalizeExecutionCostPayload(payload);
+    const digest2 = await policyDigest(normalized);
+    const row = await this.db.prepare(
+      "SELECT COALESCE(MAX(version), 0) AS version FROM execution_cost_policies WHERE model_version=?"
+    ).bind(EXECUTION_COST_MODEL).first();
+    const version = row.version + 1;
+    const id = `exec-cost-v${version}`;
+    const bundle = normalizeExecutionCostPolicy({
+      id,
+      version,
+      modelVersion: EXECUTION_COST_MODEL,
+      payloadDigest: digest2,
+      calibrationStatus,
+      calibrationCutoff,
+      effectiveFrom,
+      payload: normalized
+    });
+    const result = await this.db.prepare(
+      "INSERT INTO execution_cost_policies (id,version,model_version,payload,digest,calibration_status,calibration_cutoff,effective_from,created_at) SELECT ?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM research_window_owners WHERE namespace = ?)"
+    ).bind(
+      id,
+      version,
+      EXECUTION_COST_MODEL,
+      JSON.stringify(normalized),
+      digest2,
+      calibrationStatus,
+      calibrationCutoff,
+      effectiveFrom,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      RESEARCH_NAMESPACE
+    ).run();
+    const changes = result.meta?.changes ?? result.changes;
+    if (!changes)
+      throw new Error(
+        "\u5B58\u5728\u6D3B\u52A8\u7814\u7A76\u7A97\u53E3\uFF0C\u51BB\u7ED3\u653F\u7B56\u7EE7\u7EED\u670D\u52A1\u5DF2\u6709\u6279\u6B21\uFF0C\u4E0D\u80FD\u6DF7\u7528\u6210\u672C\u653F\u7B56"
+      );
+    return bundle;
+  }
+  async saveSensitivityRun(run) {
+    const manifestDigest = await policyDigest(run.manifest);
+    await this.db.prepare(
+      "INSERT OR REPLACE INTO execution_sensitivity_runs (id,namespace,manifest,status,result_digest,payload,created_at) VALUES (?,?,?,?,?,?,?)"
+    ).bind(
+      run.id,
+      run.namespace,
+      JSON.stringify(run.manifest),
+      run.status,
+      await policyDigest(run.payload ?? {}),
+      JSON.stringify(run.payload ?? {}),
+      (/* @__PURE__ */ new Date()).toISOString()
+    ).run();
+    return manifestDigest;
+  }
+  async sensitivityRun(id) {
+    const row = await this.db.prepare("SELECT * FROM execution_sensitivity_runs WHERE id=?").bind(id).first();
+    return row ? {
+      id: row.id,
+      namespace: row.namespace,
+      manifest: JSON.parse(row.manifest),
+      status: row.status,
+      resultDigest: row.result_digest,
+      payload: JSON.parse(row.payload),
+      createdAt: row.created_at
+    } : null;
+  }
+  async listSensitivityRuns(limit = 10) {
+    const rows = await this.db.prepare(
+      "SELECT id,namespace,status,created_at FROM execution_sensitivity_runs ORDER BY created_at DESC LIMIT ?"
+    ).bind(limit).all();
+    return rows.results;
+  }
+};
+
+// backend/storage/paper.js
+function canonical3(value) {
+  if (Array.isArray(value)) return value.map(canonical3);
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonical3(value[key])])
+    );
+  return value;
+}
+async function digest(value) {
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(canonical3(value)))
+  );
+  return Array.from(
+    new Uint8Array(bytes),
+    (byte) => byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+var parse = (row) => row ? JSON.parse(row.payload) : null;
+var PaperRepository = class {
+  constructor(env) {
+    this.db = database(env);
+  }
+  async initialize(weights = BASE_STRATEGY.weights) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO paper_accounts (id, revision, state, updated_at) VALUES (?, 0, ?, ?)"
+    ).bind(
+      "primary",
+      JSON.stringify({ ...newBook(), improvementMode: "auto" }),
+      now
+    ).run();
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO strategy_versions (id, created_at, status, params, evidence) VALUES (?, ?, ?, ?, ?)"
+    ).bind(
+      "baseline-v1",
+      now,
+      "ACTIVE",
+      JSON.stringify({ ...BASE_STRATEGY, weights }),
+      JSON.stringify({
+        type: "baseline",
+        explanation: "\u89C4\u5219\u521D\u59CB\u7248\u672C\uFF1B\u672A\u58F0\u79F0\u83B7\u5F97\u5386\u53F2\u6536\u76CA\u9A8C\u8BC1"
+      })
+    ).run();
+    return this.account();
+  }
+  async account() {
+    const row = await this.db.prepare("SELECT revision, state FROM paper_accounts WHERE id = ?").bind("primary").first();
+    return row ? { revision: row.revision, book: JSON.parse(row.state) } : null;
+  }
+  async snapshot(date) {
+    return parse(
+      await this.db.prepare("SELECT payload FROM snapshots WHERE trade_date = ?").bind(date).first()
+    );
+  }
+  async plan(date) {
+    return parse(
+      await this.db.prepare("SELECT payload FROM paper_plans WHERE signal_date = ?").bind(date).first()
+    );
+  }
+  async savePlan(plan) {
+    if (plan?.executionCostPolicy && !await verifyPolicyBundle(plan.executionCostPolicy))
+      throw new Error("\u8BA1\u5212\u6210\u672C\u653F\u7B56\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4\uFF0C\u62D2\u7EDD\u51BB\u7ED3");
+    const hash = await digest(plan);
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO paper_plans (signal_date, created_at, payload, digest) VALUES (?, ?, ?, ?)"
+    ).bind(plan.signalDate, plan.createdAt, JSON.stringify(plan), hash).run();
+    return this.plan(plan.signalDate);
+  }
+  async history(table, limit = 120) {
+    if (![
+      "paper_equity",
+      "paper_ledger",
+      "paper_market_days",
+      "paper_plans",
+      "snapshots",
+      "paper_runs",
+      "paper_configuration_history",
+      "paper_plan_revisions"
+    ].includes(table))
+      throw new Error("\u65E0\u6548\u5B58\u50A8\u7C7B\u522B");
+    const column = table === "paper_plans" ? "signal_date" : ["paper_configuration_history", "paper_plan_revisions"].includes(
+      table
+    ) ? "created_at" : "trade_date";
+    const result = await this.db.prepare(`SELECT * FROM ${table} ORDER BY ${column} DESC LIMIT ?`).bind(limit).all();
+    return result.results;
+  }
+  async versions() {
+    const result = await this.db.prepare(
+      "SELECT * FROM strategy_versions ORDER BY created_at DESC LIMIT 40"
+    ).all();
+    return result.results.map((row) => ({
+      id: row.id,
+      createdAt: row.created_at,
+      status: row.status,
+      params: JSON.parse(row.params),
+      evidence: JSON.parse(row.evidence)
+    }));
+  }
+  async strategy(book) {
+    const row = await this.db.prepare("SELECT params FROM strategy_versions WHERE id = ?").bind(book.activeStrategy).first();
+    if (!row) throw new Error("\u7B56\u7565\u7248\u672C\u7F3A\u5931");
+    return JSON.parse(row.params);
+  }
+  async logRun(date, status, payload) {
+    await this.db.prepare(
+      "INSERT INTO paper_runs (trade_date, updated_at, status, payload) VALUES (?, ?, ?, ?) ON CONFLICT(trade_date) DO UPDATE SET updated_at=excluded.updated_at, status=excluded.status, payload=excluded.payload"
+    ).bind(date, (/* @__PURE__ */ new Date()).toISOString(), status, JSON.stringify(payload)).run();
+  }
+  async settle(expectedRevision, result, dataset) {
+    const runId = crypto.randomUUID();
+    const nextRevision = expectedRevision + 1;
+    const guard = "WHERE EXISTS (SELECT 1 FROM paper_accounts WHERE id = ? AND revision = ? AND last_run_id = ?)";
+    const stamp = (/* @__PURE__ */ new Date()).toISOString();
+    const statements = [
+      this.db.prepare(
+        "UPDATE paper_accounts SET state=?, revision=revision+1, last_run_id=?, updated_at=? WHERE id=? AND revision=?"
+      ).bind(
+        JSON.stringify(result.book),
+        runId,
+        stamp,
+        "primary",
+        expectedRevision
+      )
+    ];
+    const guarded = (sql, args) => this.db.prepare(`${sql} ${guard}`).bind(...args, "primary", nextRevision, runId);
+    statements.push(
+      guarded("INSERT INTO paper_equity (trade_date, payload) SELECT ?, ?", [
+        dataset.date,
+        JSON.stringify(result.equity)
+      ])
+    );
+    statements.push(
+      guarded(
+        "INSERT INTO paper_market_days (trade_date, payload, digest) SELECT ?, ?, ?",
+        [dataset.date, JSON.stringify(dataset), await digest(dataset)]
+      )
+    );
+    for (const fill of result.ledger)
+      statements.push(
+        guarded(
+          "INSERT INTO paper_ledger (id, trade_date, payload) SELECT ?, ?, ?",
+          [fill.id, fill.date, JSON.stringify(fill)]
+        )
+      );
+    if (result.session)
+      statements.push(
+        this.db.prepare(
+          `INSERT INTO paper_live_sessions (trade_date,payload,digest) SELECT ?,?,? ${guard} ON CONFLICT(trade_date) DO UPDATE SET payload=excluded.payload,digest=excluded.digest`
+        ).bind(
+          dataset.date,
+          JSON.stringify(result.session),
+          await digest(result.session),
+          "primary",
+          nextRevision,
+          runId
+        )
+      );
+    await this.db.batch(statements);
+    const row = await this.db.prepare("SELECT last_run_id FROM paper_accounts WHERE id=?").bind("primary").first();
+    return row.last_run_id === runId;
+  }
+  async canEditCapital(book) {
+    const live = await this.db.prepare("SELECT COUNT(*) AS count FROM paper_live_sessions").first();
+    if (live.count) return false;
+    if (book.settlementCount > 1 || book.positions.length || book.feesCents || book.realizedPnlCents)
+      return false;
+    const row = await this.db.prepare("SELECT COUNT(*) AS count FROM paper_ledger").first();
+    return row.count === 0;
+  }
+  async configure(settings, now = /* @__PURE__ */ new Date()) {
+    const account = await this.initialize();
+    const book = structuredClone(account.book);
+    const feeConfig = settings.fees === void 0 ? feesForBook(book) : normalizeFees(settings.fees);
+    const feesChanged = settings.fees !== void 0 && (book.feeModel !== "itemized-v2" || JSON.stringify(normalizeFees(feesForBook(book))) !== JSON.stringify(feeConfig));
+    const initial = settings.initialCapital === void 0 ? book.initialCashCents : newBook(settings.initialCapital, feeConfig).initialCashCents;
+    const capitalChanged = initial !== book.initialCashCents;
+    if (capitalChanged) {
+      if (!await this.canEditCapital(book))
+        throw new Error("\u4EA4\u6613\u8BA1\u5212\u5F00\u59CB\u6267\u884C\u540E\u521D\u59CB\u8D44\u91D1\u88AB\u51BB\u7ED3\uFF0C\u4E0D\u80FD\u6539\u5199\u6536\u76CA\u57FA\u51C6");
+      book.initialCashCents = initial;
+      book.cashCents = initial;
+      book.equityCents = initial;
+      book.peakEquityCents = initial;
+    }
+    if (feesChanged) {
+      book.feeConfig = feeConfig;
+      book.feeModel = "itemized-v2";
+      book.feeConfigVersion = (book.feeConfigVersion || 0) + 1;
+    }
+    if (settings.improvementMode !== void 0) {
+      if (!["auto", "manual"].includes(settings.improvementMode))
+        throw new Error("\u6539\u8FDB\u6A21\u5F0F\u65E0\u6548");
+      book.improvementMode = settings.improvementMode;
+    }
+    const stamp = now.toISOString(), nonce = crypto.randomUUID();
+    const statements = [
+      this.db.prepare(
+        "UPDATE paper_accounts SET state=?, revision=revision+1, last_run_id=?, updated_at=? WHERE id=? AND revision=?"
+      ).bind(JSON.stringify(book), nonce, stamp, "primary", account.revision)
+    ];
+    const guard = "EXISTS (SELECT 1 FROM paper_accounts WHERE id=? AND revision=? AND last_run_id=?)";
+    const guardArgs = ["primary", account.revision + 1, nonce];
+    const baselines = capitalChanged ? await this.history("paper_equity", 10) : [];
+    for (const row of baselines) {
+      const previous = JSON.parse(row.payload);
+      if (previous.feesCents || previous.marketValueCents || previous.equityCents !== account.book.initialCashCents)
+        throw new Error("\u5DF2\u6709\u8D26\u6237\u6536\u76CA\u8BB0\u5F55\uFF0C\u4E0D\u80FD\u4FEE\u6539\u521D\u59CB\u8D44\u91D1");
+      const equity = { ...previous, cashCents: initial, equityCents: initial };
+      statements.push(
+        this.db.prepare(
+          `UPDATE paper_equity SET payload=? WHERE trade_date=? AND ${guard}`
+        ).bind(JSON.stringify(equity), row.trade_date, ...guardArgs)
+      );
+    }
+    const day = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(now);
+    const time = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Shanghai",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(now);
+    let replacement = null;
+    if ((capitalChanged || feesChanged) && book.lastDate === day && time >= "15:05") {
+      const previousPlan = await this.db.prepare("SELECT payload,digest FROM paper_plans WHERE signal_date=?").bind(day).first();
+      const snapshot = await this.snapshot(day), strategy = await this.strategy(book);
+      const executionCostPolicy = await latestPolicyBundle(this.db);
+      replacement = snapshot ? createPlan(snapshot, book, strategy, book.activeStrategy, stamp, {
+        executionCostPolicy
+      }) : defensivePlan(day, book, strategy, book.activeStrategy, stamp, {
+        executionCostPolicy
+      });
+      if (previousPlan)
+        statements.push(
+          this.db.prepare(
+            `INSERT INTO paper_plan_revisions (id,signal_date,created_at,payload,digest) SELECT ?,?,?,?,? WHERE ${guard}`
+          ).bind(
+            nonce,
+            day,
+            stamp,
+            previousPlan.payload,
+            previousPlan.digest,
+            ...guardArgs
+          )
+        );
+      statements.push(
+        this.db.prepare(`DELETE FROM paper_plans WHERE signal_date=? AND ${guard}`).bind(day, ...guardArgs)
+      );
+      statements.push(
+        this.db.prepare(
+          `INSERT INTO paper_plans (signal_date,created_at,payload,digest) SELECT ?,?,?,? WHERE ${guard}`
+        ).bind(
+          day,
+          stamp,
+          JSON.stringify(replacement),
+          await digest(replacement),
+          ...guardArgs
+        )
+      );
+    }
+    const change = {
+      id: nonce,
+      createdAt: stamp,
+      capitalChanged,
+      feesChanged,
+      before: {
+        initialCashCents: account.book.initialCashCents,
+        fees: feesForBook(account.book),
+        feeConfigVersion: account.book.feeConfigVersion || 0,
+        improvementMode: account.book.improvementMode
+      },
+      after: {
+        initialCashCents: book.initialCashCents,
+        fees: feesForBook(book),
+        feeConfigVersion: book.feeConfigVersion || 0,
+        improvementMode: book.improvementMode
+      },
+      previousBaselines: baselines.map((row) => JSON.parse(row.payload)),
+      revisedPlanDate: replacement?.signalDate || null,
+      effective: replacement ? "\u5F53\u65E5\u5C1A\u672A\u6267\u884C\u7684\u8BA1\u5212\u5DF2\u91CD\u65B0\u51BB\u7ED3\uFF1B\u539F\u8BA1\u5212\u7559\u6863" : "\u65B0\u8D39\u7528\u9002\u7528\u4E8E\u540E\u7EED\u65B0\u8BA1\u5212\uFF0C\u5DF2\u6709\u8BA1\u5212\u4FDD\u6301\u539F\u914D\u7F6E"
+    };
+    statements.push(
+      this.db.prepare(
+        `INSERT INTO paper_configuration_history (id,created_at,payload,digest) SELECT ?,?,?,? WHERE ${guard}`
+      ).bind(
+        nonce,
+        stamp,
+        JSON.stringify(change),
+        await digest(change),
+        ...guardArgs
+      )
+    );
+    const results = await this.db.batch(statements);
+    if ((results[0].meta?.changes ?? results[0].changes) !== 1)
+      throw new Error("\u8D26\u6237\u6B63\u5728\u7ED3\u7B97\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+    return book;
+  }
+  async recordVersion(version) {
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO strategy_versions (id, created_at, status, params, evidence) VALUES (?, ?, ?, ?, ?)"
+    ).bind(
+      version.id,
+      version.createdAt,
+      version.status,
+      JSON.stringify(version.params),
+      JSON.stringify(version.evidence)
+    ).run();
+  }
+  async activate(id) {
+    const row = await this.db.prepare("SELECT status,evidence FROM strategy_versions WHERE id=?").bind(id).first();
+    if (!row || row.status !== "VALIDATED")
+      throw new Error("\u53EA\u5141\u8BB8\u542F\u7528\u901A\u8FC7\u6837\u672C\u5916\u9A8C\u8BC1\u7684\u65B0\u7B56\u7565");
+    const { book, revision } = await this.account();
+    const evidence = JSON.parse(row.evidence);
+    if (evidence.feeConfigVersion !== void 0 && evidence.feeConfigVersion !== (book.feeConfigVersion || 0) || evidence.initialCashCents !== void 0 && evidence.initialCashCents !== book.initialCashCents)
+      throw new Error("\u9A8C\u8BC1\u6240\u7528\u8D39\u7528\u6216\u8D44\u91D1\u5DF2\u53D8\u66F4\uFF0C\u8BF7\u7B49\u5F85\u65B0\u914D\u7F6E\u4E0B\u7684\u72EC\u7ACB\u9A8C\u8BC1");
+    book.activeStrategy = id;
+    const nonce = crypto.randomUUID();
+    await this.db.batch([
+      this.db.prepare(
+        "UPDATE paper_accounts SET state=?, revision=revision+1, last_run_id=?, updated_at=? WHERE id=? AND revision=?"
+      ).bind(
+        JSON.stringify(book),
+        nonce,
+        (/* @__PURE__ */ new Date()).toISOString(),
+        "primary",
+        revision
+      ),
+      this.db.prepare(
+        "UPDATE strategy_versions SET status='RETIRED' WHERE status='ACTIVE' AND EXISTS (SELECT 1 FROM paper_accounts WHERE last_run_id=?)"
+      ).bind(nonce),
+      this.db.prepare(
+        "UPDATE strategy_versions SET status='ACTIVE' WHERE id=? AND EXISTS (SELECT 1 FROM paper_accounts WHERE last_run_id=?)"
+      ).bind(id, nonce)
+    ]);
+    return (await this.account()).book.activeStrategy === id;
+  }
+};
 
 // backend/services/improvement.js
 async function requestProposal(env, base, trainingPairs, initialCapital, feeConfig = DEFAULT_FEES) {
@@ -3785,137 +5742,6 @@ async function requestCohortProposal(env, base, trainingPairs, initialCapital, f
     candidates: candidates.map((candidate) => ({ ...candidate })),
     evidenceDigest,
     requestDigest
-  };
-}
-
-// backend/domain/research-policy.js
-var STEP_LIMITS = Object.freeze({
-  minScore: 2,
-  minSectorScore: 2,
-  maxPositions: 1,
-  maxHoldDays: 1,
-  stopLoss: 5e-3,
-  takeProfit: 0.01,
-  maxBuyGap: 5e-3,
-  tBuyDip: 5e-3,
-  tSellRise: 5e-3,
-  tFraction: 0.02
-});
-var DEFAULT_RESEARCH_POLICY = Object.freeze({
-  version: 1,
-  trainDays: 60,
-  trainMinDays: 60,
-  trainMaxDays: 120,
-  histTestDays: 20,
-  histTestMinDays: 20,
-  histTestMaxDays: 60,
-  forwardDays: 30,
-  forwardMinDays: 20,
-  forwardMaxDays: 90,
-  monthlyProposalLimit: 1,
-  maxParamGroups: 2,
-  weightsMaxComponents: 2,
-  weightsMaxStep: 2,
-  stepLimits: STEP_LIMITS,
-  ranges: RANGES,
-  statistical: { familyAlpha: 0.05, blockLength: 5 },
-  methodNote: "\u8BAD\u7EC3\u4E0E\u5386\u53F2\u6D4B\u8BD5\u7A97\u53E3\u6309\u51BB\u7ED3\u653F\u7B56\u5212\u5206\uFF1B\u6D4B\u8BD5\u65E5\u671F\u5168\u5386\u53F2\u4E00\u6B21\u6027\u5360\u7528\uFF1B\u5386\u53F2\u901A\u8FC7\u53EA\u83B7\u5F97\u5F71\u5B50\u9636\u6BB5\u8D44\u683C\uFF0C\u4E0D\u6784\u6210\u542F\u7528\u6743"
-});
-var FORBIDDEN_KEYS = /* @__PURE__ */ new Set(["__proto__", "constructor", "prototype"]);
-function checkPolicyRanges(ranges) {
-  for (const [key, value] of Object.entries(ranges)) {
-    if (!Array.isArray(value) || value.length !== 2 || value[0] > value[1])
-      throw new Error(`\u653F\u7B56\u53C2\u6570\u8303\u56F4\u65E0\u6548\uFF1A${key}`);
-  }
-}
-function checkPolicySteps(steps) {
-  for (const [key, value] of Object.entries(steps)) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
-      throw new Error(`\u653F\u7B56\u6B65\u957F\u65E0\u6548\uFF1A${key}`);
-  }
-}
-function validateResearchPolicy(input) {
-  if (!input || typeof input !== "object" || Array.isArray(input))
-    throw new Error("\u7814\u7A76\u653F\u7B56\u7ED3\u6784\u65E0\u6548");
-  const policy = { ...DEFAULT_RESEARCH_POLICY, ...input };
-  const integerChecks = [
-    ["trainDays", policy.trainMinDays, policy.trainMaxDays],
-    ["histTestDays", policy.histTestMinDays, policy.histTestMaxDays],
-    ["forwardDays", policy.forwardMinDays, policy.forwardMaxDays]
-  ];
-  for (const [key, min, max] of integerChecks) {
-    const value = policy[key];
-    if (!Number.isInteger(value) || value < min || value > max || !Number.isInteger(min) || !Number.isInteger(max))
-      throw new Error(`\u7814\u7A76\u653F\u7B56\u7A97\u53E3\u65E0\u6548\uFF1A${key}`);
-  }
-  if (!Number.isInteger(policy.monthlyProposalLimit) || policy.monthlyProposalLimit < 1 || policy.monthlyProposalLimit > 12)
-    throw new Error("\u7814\u7A76\u653F\u7B56\u6708\u5EA6\u63D0\u6848\u6B21\u6570\u65E0\u6548");
-  if (!Number.isInteger(policy.maxParamGroups) || policy.maxParamGroups < 1 || policy.maxParamGroups > 4)
-    throw new Error("\u7814\u7A76\u653F\u7B56\u53C2\u6570\u7EC4\u4E0A\u9650\u65E0\u6548");
-  checkPolicySteps(policy.stepLimits);
-  checkPolicyRanges(policy.ranges);
-  if (!Number.isInteger(policy.weightsMaxComponents) || policy.weightsMaxComponents < 1 || policy.weightsMaxComponents > 6 || !Number.isInteger(policy.weightsMaxStep) || policy.weightsMaxStep < 1 || policy.weightsMaxStep > 10)
-    throw new Error("\u7814\u7A76\u653F\u7B56\u6743\u91CD\u6B65\u957F\u65E0\u6548");
-  return policy;
-}
-function changedGroups(patch) {
-  return Object.keys(patch).length;
-}
-function validateCandidatePatch({
-  proposal,
-  parentParams,
-  frozenPolicy
-}) {
-  const policy = validateResearchPolicy(frozenPolicy);
-  const patch = proposal?.patch;
-  if (!patch || typeof patch !== "object" || Array.isArray(patch) || !Object.keys(patch).length)
-    throw new Error("\u5019\u9009\u7F3A\u5C11\u6709\u6548\u53C2\u6570\u53D8\u5316");
-  for (const key of Object.keys(patch))
-    if (FORBIDDEN_KEYS.has(key)) throw new Error("\u5019\u9009\u5305\u542B\u672A\u6388\u6743\u5B57\u6BB5");
-  const effective = {};
-  for (const [key, value] of Object.entries(patch)) {
-    const parent = parentParams[key];
-    if (parent === void 0) throw new Error("\u5019\u9009\u5305\u542B\u7236\u7B56\u7565\u4E0D\u5B58\u5728\u7684\u53C2\u6570");
-    if (key === "weights") {
-      if (!Array.isArray(value) || value.length !== 6 || value.some((v) => !Number.isInteger(v) || v < 0 || v > 50) || !value.some((v) => v > 0))
-        throw new Error("\u6743\u91CD\u6570\u7EC4\u4E0D\u7B26\u5408\u7EA6\u675F");
-      const changed = value.map((v, index) => ({ index, delta: v - parent[index] })).filter((row) => row.delta !== 0);
-      if (!changed.length) continue;
-      if (changed.length > policy.weightsMaxComponents)
-        throw new Error(
-          `\u6743\u91CD\u4E00\u6B21\u6700\u591A\u8C03\u6574 ${policy.weightsMaxComponents} \u4E2A\u5206\u91CF`
-        );
-      if (changed.some((row) => Math.abs(row.delta) > policy.weightsMaxStep))
-        throw new Error(`\u6743\u91CD\u5355\u5206\u91CF\u53D8\u5316\u4E0D\u80FD\u8D85\u8FC7 ${policy.weightsMaxStep}`);
-      if (value.reduce((a, b) => a + b, 0) !== parent.reduce((a, b) => a + b, 0))
-        throw new Error("\u6743\u91CD\u603B\u548C\u5FC5\u987B\u4E0E\u7236\u7B56\u7565\u4E00\u81F4");
-      effective.weights = value;
-      continue;
-    }
-    if (typeof value !== "number" || !Number.isFinite(value))
-      throw new Error("\u5019\u9009\u53C2\u6570\u5FC5\u987B\u662F\u6709\u9650\u6570\u503C");
-    if (value === parent) continue;
-    const range = policy.ranges[key];
-    if (!range || value < range[0] || value > range[1] || parent < range[0] || parent > range[1])
-      throw new Error("\u5019\u9009\u63D0\u51FA\u4E86\u672A\u6388\u6743\u6216\u8D8A\u754C\u7684\u53C2\u6570");
-    if (["minScore", "minSectorScore", "maxPositions", "maxHoldDays"].includes(
-      key
-    ) && !Number.isInteger(value))
-      throw new Error("\u6574\u6570\u53C2\u6570\u65E0\u6548");
-    const step = policy.stepLimits[key];
-    if (step === void 0 || Math.abs(value - parent) > step + 1e-9)
-      throw new Error(`\u53C2\u6570 ${key} \u5355\u6B21\u53D8\u5316\u8D85\u8FC7\u653F\u7B56\u6B65\u957F ${step ?? "\u672A\u6388\u6743"}`);
-    effective[key] = value;
-  }
-  if (!Object.keys(effective).length)
-    throw new Error("\u5019\u9009\u4E0E\u7236\u7B56\u7565\u65E0\u5B9E\u9645\u5DEE\u5F02\uFF0C\u62D2\u7EDD\u5360\u7528\u63D0\u6848\u6B21\u6570");
-  if (changedGroups(effective) > policy.maxParamGroups)
-    throw new Error(`\u4E00\u6B21\u6700\u591A\u4FEE\u6539 ${policy.maxParamGroups} \u4E2A\u903B\u8F91\u53C2\u6570\u7EC4`);
-  return {
-    params: { ...structuredClone(parentParams), ...effective },
-    patch: effective,
-    rationale: proposal.rationale,
-    changedGroups: changedGroups(effective)
   };
 }
 
@@ -4127,7 +5953,7 @@ function isAdjacentTradingDay(adjacency, signalDate, tradeDate) {
 }
 
 // backend/storage/history.js
-var RESEARCH_NAMESPACE = "main";
+var RESEARCH_NAMESPACE2 = "main";
 var HISTORY_STAGES = [
   "PLANNED",
   "PROBING",
@@ -4211,7 +6037,7 @@ var HistoryJobRepository = class {
       "INSERT INTO history_import_jobs (id, namespace, provider, kind, requested_start, requested_end, name, stage, progress, status_payload, dataset_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'PLANNED', '{}', '{}', NULL, ?, ?)"
     ).bind(
       id,
-      RESEARCH_NAMESPACE,
+      RESEARCH_NAMESPACE2,
       provider,
       kind,
       start,
@@ -4476,7 +6302,7 @@ var HistoryDatasetStore = class {
     await this.ensure();
     if (!datasetId) throw new Error("\u6570\u636E\u96C6\u6240\u6709\u6743\u9700\u8981 datasetId");
     const executorId = owner?.executorId;
-    const round = Number(owner?.round ?? 0);
+    const round2 = Number(owner?.round ?? 0);
     if (!executorId) throw new Error("\u6570\u636E\u96C6\u6240\u6709\u6743\u9700\u8981 executorId");
     return this.db.transaction(async () => {
       const row = await this.db.prepare(
@@ -4484,14 +6310,14 @@ var HistoryDatasetStore = class {
       ).bind(datasetId).first();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const existingRound = row ? Number(row.round) : null;
-      if (row && row.executor_id === executorId && existingRound === round) {
+      if (row && row.executor_id === executorId && existingRound === round2) {
         if (jobId)
           await this.db.prepare(
             "UPDATE history_dataset_owners SET job_id = ?, updated_at = ? WHERE dataset_id = ?"
           ).bind(jobId, now, datasetId).run();
-        return { granted: true, datasetId, executorId, round };
+        return { granted: true, datasetId, executorId, round: round2 };
       }
-      if (row && existingRound > round)
+      if (row && existingRound > round2)
         return {
           granted: false,
           datasetId,
@@ -4500,8 +6326,8 @@ var HistoryDatasetStore = class {
         };
       await this.db.prepare(
         "INSERT INTO history_dataset_owners (dataset_id, job_id, executor_id, round, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (dataset_id) DO UPDATE SET job_id = excluded.job_id, executor_id = excluded.executor_id, round = excluded.round, updated_at = excluded.updated_at"
-      ).bind(datasetId, jobId ?? null, executorId, round, now).run();
-      return { granted: true, datasetId, executorId, round };
+      ).bind(datasetId, jobId ?? null, executorId, round2, now).run();
+      return { granted: true, datasetId, executorId, round: round2 };
     });
   }
   async _applyGuarded(datasetId, owner, apply) {
@@ -5157,25 +6983,8 @@ function beijingMonth(now = /* @__PURE__ */ new Date()) {
   }).format(now);
 }
 
-// shared/research-status.js
-var RESEARCH_TERMINAL_STAGES = /* @__PURE__ */ new Set([
-  "REJECTED",
-  "ERROR",
-  "INCONCLUSIVE",
-  "INVALIDATED"
-]);
-var COHORT_ACTIVE_STAGES = /* @__PURE__ */ new Set([
-  "RESERVED",
-  "PROPOSING",
-  "FROZEN",
-  "HISTORICAL_CHECK",
-  "SCHEDULED",
-  "RUNNING",
-  "EVALUATING"
-]);
-
 // backend/storage/research.js
-var RESEARCH_NAMESPACE2 = "main";
+var RESEARCH_NAMESPACE3 = "main";
 var mapRow = (row) => row ? {
   id: row.id,
   namespace: row.namespace,
@@ -5194,7 +7003,7 @@ var mapRow = (row) => row ? {
 var ResearchRepository = class {
   constructor(env) {
     this.db = database(env);
-    this.namespace = RESEARCH_NAMESPACE2;
+    this.namespace = RESEARCH_NAMESPACE3;
   }
   async ensureRegistry() {
     let row = await this.db.prepare("SELECT * FROM research_registry WHERE namespace = ?").bind(this.namespace).first();
@@ -6681,7 +8490,10 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
     trainingPairs,
     base,
     account.book.initialCashCents / 100,
-    feeConfig
+    feeConfig,
+    null,
+    null,
+    { observationOnly: true }
   );
   if (dryRun.covered === false || !dryRun.days)
     return {
@@ -6770,13 +8582,19 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
       trainingPairs,
       base,
       account.book.initialCashCents / 100,
-      feeConfig
+      feeConfig,
+      null,
+      null,
+      { observationOnly: true }
     );
     const candidateReplay = replayStrategy(
       trainingPairs,
       candidate.params,
       account.book.initialCashCents / 100,
-      feeConfig
+      feeConfig,
+      null,
+      null,
+      { observationOnly: true }
     );
     const { stage } = await research.concludeBootstrap(
       experimentId,
@@ -6879,6 +8697,101 @@ async function researchStatus(env) {
       createdAt: experiment.createdAt
     })),
     note: "\u542F\u7528\u5FC5\u987B\u901A\u8FC7\u5B8C\u6574\u524D\u77BB\u9A8C\u8BC1\uFF1B\u5386\u53F2\u7B5B\u67E5\u901A\u8FC7\u4E0D\u5177\u6709\u542F\u7528\u8D44\u683C"
+  };
+}
+
+// backend/services/execution-cost.js
+async function effectiveExecutionCostPolicy(env) {
+  return latestPolicyBundle(env.DB);
+}
+async function getExecutionCostConfig(env) {
+  const repository = new ExecutionCostRepository(env);
+  const policy = await repository.latest();
+  return {
+    policy,
+    default: defaultExecutionCostPolicy(),
+    defaultPayload: DEFAULT_EXECUTION_COST_PAYLOAD,
+    fields: EXECUTION_COST_FIELDS,
+    modelVersion: EXECUTION_COST_MODEL,
+    note: "\u6240\u6709\u53C2\u6570\u662F\u5DE5\u7A0B\u5148\u9A8C\u4E0E\u538B\u529B\u5047\u8BBE\uFF0C\u4E0D\u662F\u5DF2\u6D4B\u5F97\u7684\u5E02\u573A\u6210\u672C\uFF1B\u4FEE\u6539\u4EA7\u751F\u65B0\u7248\u672C\u5E76\u4ECE\u4E0B\u4E00\u4E2A\u5C1A\u672A\u51BB\u7ED3\u7684\u8BA1\u5212\u751F\u6548\uFF0C\u6D3B\u52A8\u7814\u7A76\u7A97\u53E3\u5185\u4E0D\u5141\u8BB8\u66F4\u6362\u653F\u7B56\u3002"
+  };
+}
+async function saveExecutionCostPolicy(env, input) {
+  const cohorts = new CohortRepository(env);
+  const owner = await cohorts.windowOwner();
+  if (owner)
+    throw new Error(
+      "\u5B58\u5728\u6D3B\u52A8\u7814\u7A76\u7A97\u53E3\uFF0C\u51BB\u7ED3\u653F\u7B56\u7EE7\u7EED\u670D\u52A1\u5DF2\u6709\u6279\u6B21\uFF0C\u4E0D\u80FD\u6DF7\u7528\u6210\u672C\u653F\u7B56"
+    );
+  const repository = new ExecutionCostRepository(env);
+  const current = await repository.latest();
+  const payload = normalizeExecutionCostPayload({
+    ...DEFAULT_EXECUTION_COST_PAYLOAD,
+    ...input?.payload,
+    periodBaseBps: {
+      ...DEFAULT_EXECUTION_COST_PAYLOAD.periodBaseBps,
+      ...input?.payload?.periodBaseBps
+    }
+  });
+  const next = await repository.save({
+    payload,
+    calibrationStatus: input?.calibrationStatus,
+    effectiveFrom: input?.effectiveFrom
+  });
+  return {
+    saved: true,
+    previous: {
+      id: current.id,
+      version: current.version,
+      payloadDigest: current.payloadDigest
+    },
+    policy: next
+  };
+}
+async function executionCostDiagnostics(env) {
+  const repository = new ExecutionCostRepository(env);
+  const policy = await repository.latest();
+  const paper = new PaperRepository(env);
+  const planRows = (await paper.history("paper_plans", 40)).map((row) => {
+    const payload = JSON.parse(row.payload);
+    const bundle = payload.executionCostPolicy;
+    return {
+      signalDate: payload.signalDate,
+      createdAt: payload.createdAt,
+      modelVersion: bundle?.modelVersion ?? "LEGACY_FIXED_10BPS_V1",
+      policyVersion: bundle?.version ?? null,
+      payloadDigest: bundle?.payloadDigest ?? null,
+      policyPayload: bundle?.payload ?? null
+    };
+  }).filter((plan) => plan.modelVersion !== "LEGACY_FIXED_10BPS_V1").slice(0, 12);
+  const plans = await Promise.all(
+    planRows.map(async (plan) => {
+      const digestVerified = plan.policyPayload ? await policyDigest(plan.policyPayload) === plan.payloadDigest : null;
+      const { policyPayload: _payload, ...rest } = plan;
+      return { ...rest, digestVerified };
+    })
+  );
+  const ledger = (await paper.history("paper_ledger", 60)).map((row) => JSON.parse(row.payload)).filter((fill) => fill.executionCost).slice(0, 12).map((fill) => ({
+    date: fill.date,
+    code: fill.code,
+    side: fill.side,
+    quantity: fill.quantity,
+    priceCents: fill.priceCents,
+    sourcePriceCents: fill.sourcePriceCents,
+    totalBps: fill.executionCost.totalBps,
+    residualBps: fill.executionCost.residualBps,
+    spreadSource: fill.executionCost.spreadSource,
+    period: fill.executionCost.period,
+    quality: fill.executionCost.quality
+  }));
+  const runs = await repository.listSensitivityRuns(5);
+  return {
+    policy,
+    modelVersion: EXECUTION_COST_MODEL,
+    plansUsingPolicy: plans,
+    recentCostFills: ledger,
+    sensitivityRuns: runs,
+    note: "\u8BCA\u65AD\u53EA\u5C55\u793A\u540E\u7AEF\u5DF2\u843D\u5E93\u7ED3\u679C\uFF1B\u7EB8\u9762\u6210\u4EA4\u7531\u672C\u6A21\u578B\u751F\u6210\uFF0C\u4E0D\u80FD\u53CD\u8FC7\u6765\u8BC1\u660E\u6A21\u578B\u53C2\u6570\u6B63\u786E\u3002"
   };
 }
 
@@ -8040,14 +9953,21 @@ async function pollTrading(env, now = /* @__PURE__ */ new Date(), providers = {}
           status: "BLOCKED",
           reason: "\u4E0A\u4E00\u4EA4\u6613\u65E5\u672A\u7ED3\u7B97\uFF0C\u505C\u6B62\u65B0\u589E\u4EA4\u6613"
         });
-      session = openSession(
-        account.book,
-        await repo.plan(previous),
-        clock.date
-      );
+      const plan = await repo.plan(previous);
+      if (plan?.executionCostPolicy && !await verifyPolicyBundle(plan.executionCostPolicy))
+        return heartbeat({
+          status: "BLOCKED",
+          reason: "\u8BA1\u5212\u6210\u672C\u653F\u7B56\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4\uFF0C\u6682\u505C\u4EA4\u6613\uFF1B\u8BF7\u91CD\u65B0\u51BB\u7ED3\u8BA1\u5212"
+        });
+      session = openSession(account.book, plan, clock.date);
     }
     if (session.status !== "OPEN")
       return heartbeat({ status: session.status, reason: "\u4EA4\u6613\u65E5\u5DF2\u5173\u95ED" });
+    if (session.plan?.executionCostPolicy && !await verifyPolicyBundle(session.plan.executionCostPolicy))
+      return heartbeat({
+        status: "BLOCKED",
+        reason: "\u4F1A\u8BDD\u8BA1\u5212\u6210\u672C\u653F\u7B56\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4\uFF0C\u6682\u505C\u4EA4\u6613\uFF1B\u8BF7\u91CD\u65B0\u51BB\u7ED3\u8BA1\u5212"
+      });
     const codes = [
       .../* @__PURE__ */ new Set([
         ...session.orders.map((o) => o.code),
@@ -8212,6 +10132,11 @@ async function settlePaperDay(env, date) {
       await repository.logRun(date, "BLOCKED", { reason });
       return { status: "BLOCKED", reason, calendarDates };
     }
+    if (plan?.executionCostPolicy && !await verifyPolicyBundle(plan.executionCostPolicy)) {
+      const reason = "\u8BA1\u5212\u6210\u672C\u653F\u7B56\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4\uFF0C\u7ED3\u7B97\u6682\u505C\uFF1B\u8BF7\u91CD\u65B0\u51BB\u7ED3\u8BA1\u5212";
+      await repository.logRun(date, "BLOCKED", { reason });
+      return { status: "BLOCKED", reason, calendarDates };
+    }
     const historical = await repository.history("snapshots", 30);
     const codes = new Set(
       account.book.positions.map((position) => position.code)
@@ -8280,6 +10205,7 @@ async function settlePaperDay(env, date) {
   const snapshot = await repository.snapshot(date);
   let nextPlan = await repository.plan(date);
   if (!nextPlan) {
+    const executionCostPolicy = await effectiveExecutionCostPolicy(env);
     const strategy = await repository.strategy(account.book);
     nextPlan = await repository.savePlan(
       snapshot ? createPlan(
@@ -8287,13 +10213,15 @@ async function settlePaperDay(env, date) {
         account.book,
         strategy,
         account.book.activeStrategy,
-        (/* @__PURE__ */ new Date()).toISOString()
+        (/* @__PURE__ */ new Date()).toISOString(),
+        { executionCostPolicy }
       ) : defensivePlan(
         date,
         account.book,
         strategy,
         account.book.activeStrategy,
-        (/* @__PURE__ */ new Date()).toISOString()
+        (/* @__PURE__ */ new Date()).toISOString(),
+        { executionCostPolicy }
       )
     );
   }
@@ -8349,11 +10277,13 @@ async function exportPaper(env, attempt = 0) {
   }
   return {
     format: "limit-lens-paper-v1",
+    schemaVersion: 2,
     exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
     initialCashCents: book.initialCashCents,
     book,
     riskLimits: RISK_LIMITS,
     feeConfig: feesForBook(book),
+    executionCostPolicy: await effectiveExecutionCostPolicy(env),
     equities: rows[0].map((row) => JSON.parse(row.payload)).reverse(),
     ledger: rows[1].map((row) => JSON.parse(row.payload)).sort((a, b) => a.date.localeCompare(b.date) || a.sequence - b.sequence),
     plans: rows[2].map((row) => ({ payload: JSON.parse(row.payload), digest: row.digest })).reverse(),
@@ -8402,6 +10332,11 @@ async function verifyExport(bundle) {
       ...(bundle.realtimeObservations || []).flatMap((row2) => row2.observations)
     ])
       if (await digest(row.payload) !== row.digest) hashes = false;
+    for (const row of bundle.plans) {
+      const frozen = row.payload.executionCostPolicy;
+      if (frozen && await digest(frozen.payload) !== frozen.payloadDigest)
+        hashes = false;
+    }
     for (let index = 0; index < bundle.datasets.length; index++) {
       const dataset = bundle.datasets[index].payload;
       const plan = index ? plans.get(dataset.previousTradingDate) : null;
@@ -8831,7 +10766,7 @@ async function runHistoryImport(env, jobId, options = {}) {
     };
   }
 }
-async function runHistoryImportInner(env, job, { jobs, store, options, executorId, round }) {
+async function runHistoryImportInner(env, job, { jobs, store, options, executorId, round: round2 }) {
   const jobId = job.id;
   const takeoverNotice = TAKEOVER_NOTICE;
   const guardOwnership = async () => {
@@ -8904,7 +10839,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options, executorI
   datasetOwner = requireGranted(
     await store.acquireDatasetOwnership(
       datasetId,
-      { executorId, round },
+      { executorId, round: round2 },
       jobId
     )
   );
@@ -9186,7 +11121,7 @@ async function runHistoryImportInner(env, job, { jobs, store, options, executorI
       datasetOwner = requireGranted(
         await store.acquireDatasetOwnership(
           datasetId,
-          { executorId, round },
+          { executorId, round: round2 },
           jobId
         )
       );
@@ -9521,6 +11456,9 @@ function observationsForDay({ date, minuteByCode, templates }) {
     observations.push({
       observedAt: (/* @__PURE__ */ new Date(`${date}T${time}:00+08:00`)).toISOString(),
       pollIntervalSeconds: 60,
+      // 分钟采样重放必须声明采样质量：残余成本按 minuteQualityMultiplier
+      // 计，不得冒充实时轮询精度（§3.1/§4.5）。
+      observationQuality: "minute",
       quotes
     });
   }
@@ -9547,7 +11485,15 @@ function endOfDayQuotes({ date, minuteByCode, templates }) {
   }
   return { quotes, sampledCloseTimes };
 }
-async function runBacktest(env, { datasetId, name, strategy, initialCapital, weights, fees }) {
+async function runBacktest(env, {
+  datasetId,
+  name,
+  strategy,
+  initialCapital,
+  weights,
+  fees,
+  executionCostPolicy
+}) {
   const store = openHistoryStore(env);
   if (!store)
     throw new Error(
@@ -9564,6 +11510,9 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
     throw new Error("\u56DE\u6D4B\u9700\u8981\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09");
   const strategyParams = strategy ?? BASE_STRATEGY;
   const feeConfig = fees ? normalizeFees(fees) : DEFAULT_FEES;
+  const policyBundle = executionCostPolicy ? normalizeExecutionCostPolicy(executionCostPolicy) : defaultExecutionCostPolicy();
+  if (!await verifyPolicyBundle(policyBundle))
+    throw new Error("\u56DE\u6D4B\u6210\u672C\u653F\u7B56\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4\uFF0C\u62D2\u7EDD\u7528\u4E8E\u56DE\u6D4B");
   const runId = newId2("bt");
   let book = newBook(initialCapital ?? 1e6, feeConfig);
   const paramsDigest = await digestOf(strategyParams);
@@ -9578,14 +11527,18 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
     feeConfig,
     feeDigest,
     executionModel: HISTORICAL_EXECUTION_MODEL,
-    executionVersion: HISTORICAL_EXECUTION_VERSION,
-    initialBook: { initialCashCents: book.initialCashCents }
+    executionVersion: `${HISTORICAL_EXECUTION_VERSION}+${policyBundle.modelVersion.toLowerCase()}`,
+    initialBook: {
+      initialCashCents: book.initialCashCents,
+      executionCostPolicy: policyBundle
+    }
   });
   try {
     return await runBacktestInner(store, runId, dataset, {
       strategyParams,
       feeConfig,
-      book
+      book,
+      policyBundle
     });
   } catch (error) {
     const reason = String(error?.message ?? error).slice(0, 300);
@@ -9597,7 +11550,7 @@ async function runBacktest(env, { datasetId, name, strategy, initialCapital, wei
     throw error;
   }
 }
-async function runBacktestInner(store, runId, dataset, { strategyParams, feeConfig, book }) {
+async function runBacktestInner(store, runId, dataset, { strategyParams, feeConfig, book, policyBundle }) {
   const datasetId = dataset.id;
   const scores = await store.listScores(datasetId);
   const minuteDates = new Set(await store.listMinuteDates(datasetId));
@@ -9613,8 +11566,13 @@ async function runBacktestInner(store, runId, dataset, { strategyParams, feeConf
     maxDrawdown: null,
     fillCount: 0,
     feesCents: null,
+    executionCostPolicy: policyBundle ? {
+      modelVersion: policyBundle.modelVersion,
+      payloadDigest: policyBundle.payloadDigest
+    } : null,
     notes: [
-      "\u7814\u7A76\u56DE\u6D4B\uFF1AMINUTE_SAMPLE_V1 \u91C7\u6837\u4EF7\u6A21\u578B\uFF0C\u6DA8\u8DCC\u505C\u8FB9\u754C\u6309\u4E0A\u4E00\u6536\u76D8 \xB110% \u8FD1\u4F3C\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA"
+      "\u7814\u7A76\u56DE\u6D4B\uFF1AMINUTE_SAMPLE_V1 \u91C7\u6837\u4EF7\u6A21\u578B\uFF0C\u6DA8\u8DCC\u505C\u8FB9\u754C\u6309\u4E0A\u4E00\u6536\u76D8 \xB110% \u8FD1\u4F3C\uFF1B\u4E0D\u542B\u53EF\u6210\u4EA4\u6027\u4FDD\u8BC1\uFF0C\u4E0D\u4EE3\u8868\u53EF\u6267\u884C\u7B56\u7565\u6536\u76CA",
+      `\u6267\u884C\u6210\u672C\uFF1A${policyBundle.modelVersion} \u653F\u7B56 v${policyBundle.version}\uFF08\u6458\u8981 ${policyBundle.payloadDigest.slice(0, 12)}\uFF09\uFF1B\u5206\u949F\u91C7\u6837\u6309\u58F0\u660E\u500D\u6570\u8BA1\u6B8B\u4F59\u6210\u672C\uFF0C\u4E0D\u4EE3\u8868\u5B9E\u65F6\u6ED1\u70B9\u6D4B\u91CF`
     ]
   };
   if (!tradingDates.length)
@@ -9650,7 +11608,8 @@ async function runBacktestInner(store, runId, dataset, { strategyParams, feeConf
         book,
         strategyParams,
         `backtest-${runId}`,
-        `${signalDate}T07:10:00.000Z`
+        `${signalDate}T07:10:00.000Z`,
+        { executionCostPolicy: policyBundle }
       );
     } catch (error) {
       coverage.skippedPairs.push({
@@ -9849,891 +11808,6 @@ async function backtestDetail(env, runId) {
     }
   };
 }
-
-// backend/domain/cohort-policy.js
-var TOURNAMENT_MODE = "TOURNAMENT";
-var DEFAULT_COHORT_POLICY = Object.freeze({
-  version: 1,
-  mode: TOURNAMENT_MODE,
-  maxCandidates: 4,
-  maxCandidatesMin: 2,
-  maxCandidatesMax: 4,
-  monthlyGenerationLimit: 1,
-  maxActiveCohorts: 1,
-  trainingDays: 60,
-  historicalTestDays: 20,
-  forwardDays: 60,
-  forwardDaysAllowed: [30, 60, 90],
-  minimumCompletedRounds: 10,
-  pollIntervalSeconds: 10,
-  pollIntervalMinSeconds: 3,
-  pollIntervalMaxSeconds: 60,
-  rankingRule: "NET_RETURN_THEN_DRAWDOWN",
-  promotionLimitPerCohort: 1,
-  statistical: {
-    familyAlpha: 0.05,
-    blockLength: 5,
-    resampleFloor: 1e4,
-    resampleCap: 1e6
-  },
-  methodNote: "\u540C\u4E00\u51BB\u7ED3\u6279\u6B21\u5185\u56FA\u5B9A\u5019\u9009\u5E76\u884C\u524D\u77BB\uFF1B\u5168\u90E8\u5019\u9009\u5171\u4EAB\u6D4B\u8BD5\u65E5\u671F\u4E0E\u7EDF\u8BA1\u9884\u7B97\uFF1B\u6279\u6B21\u7ED3\u675F\u4ECE\u5408\u683C\u96C6\u5408\u6309\u51BB\u7ED3\u6392\u5E8F\u542F\u7528\u81F3\u591A\u4E00\u4E2A\u5019\u9009"
-});
-var FORBIDDEN_KEYS2 = /* @__PURE__ */ new Set(["__proto__", "constructor", "prototype"]);
-function validateCohortPolicy(input) {
-  if (!input || typeof input !== "object" || Array.isArray(input))
-    throw new Error("\u8D5B\u9A6C\u653F\u7B56\u7ED3\u6784\u65E0\u6548");
-  for (const key of Object.keys(input))
-    if (FORBIDDEN_KEYS2.has(key)) throw new Error("\u8D5B\u9A6C\u653F\u7B56\u5305\u542B\u672A\u6388\u6743\u5B57\u6BB5");
-  const policy = { ...DEFAULT_COHORT_POLICY, ...input };
-  if (!Number.isInteger(policy.maxCandidates) || policy.maxCandidates < policy.maxCandidatesMin || policy.maxCandidates > policy.maxCandidatesMax)
-    throw new Error(
-      `\u8D5B\u9A6C\u5019\u9009\u6570\u91CF\u65E0\u6548\uFF1A\u5E94\u5728 ${policy.maxCandidatesMin}-${policy.maxCandidatesMax} \u4E4B\u95F4`
-    );
-  if (!Number.isInteger(policy.monthlyGenerationLimit) || policy.monthlyGenerationLimit < 1 || policy.monthlyGenerationLimit > 12)
-    throw new Error("\u8D5B\u9A6C\u6708\u5EA6\u751F\u6210\u6279\u6B21\u4E0A\u9650\u65E0\u6548");
-  if (policy.maxActiveCohorts !== 1)
-    throw new Error("\u9996\u671F\u53EA\u5141\u8BB8\u4E00\u4E2A\u6D3B\u52A8\u8D5B\u9A6C\u6279\u6B21");
-  if (!Number.isInteger(policy.trainingDays) || policy.trainingDays < DEFAULT_RESEARCH_POLICY.trainMinDays || policy.trainingDays > DEFAULT_RESEARCH_POLICY.trainMaxDays)
-    throw new Error("\u8D5B\u9A6C\u8BAD\u7EC3\u7A97\u53E3\u65E0\u6548");
-  if (!Number.isInteger(policy.historicalTestDays) || policy.historicalTestDays < DEFAULT_RESEARCH_POLICY.histTestMinDays || policy.historicalTestDays > DEFAULT_RESEARCH_POLICY.histTestMaxDays)
-    throw new Error("\u8D5B\u9A6C\u5386\u53F2\u6D4B\u8BD5\u7A97\u53E3\u65E0\u6548");
-  if (!policy.forwardDaysAllowed.includes(policy.forwardDays))
-    throw new Error(
-      `\u8D5B\u9A6C\u524D\u77BB\u7A97\u53E3\u53EA\u80FD\u4E8B\u524D\u8BBE\u4E3A ${policy.forwardDaysAllowed.join("/")} \u65E5\uFF0C\u4E0D\u80FD\u4E2D\u9014\u5EF6\u957F`
-    );
-  if (!Number.isInteger(policy.minimumCompletedRounds) || policy.minimumCompletedRounds < 1)
-    throw new Error("\u8D5B\u9A6C\u5B8C\u6574\u8F6E\u6B21\u95E8\u69DB\u65E0\u6548");
-  if (!Number.isInteger(policy.pollIntervalSeconds) || policy.pollIntervalSeconds < policy.pollIntervalMinSeconds || policy.pollIntervalSeconds > policy.pollIntervalMaxSeconds)
-    throw new Error("\u8D5B\u9A6C\u8F6E\u8BE2\u95F4\u9694\u65E0\u6548");
-  if (policy.rankingRule !== "NET_RETURN_THEN_DRAWDOWN")
-    throw new Error("\u8D5B\u9A6C\u6392\u5E8F\u89C4\u5219\u65E0\u6548");
-  if (policy.promotionLimitPerCohort !== 1)
-    throw new Error("\u4E00\u4E2A\u6279\u6B21\u6700\u591A\u542F\u7528\u4E00\u4E2A\u5019\u9009");
-  const stats = policy.statistical ?? {};
-  if (typeof stats.familyAlpha !== "number" || stats.familyAlpha <= 0 || stats.familyAlpha >= 1)
-    throw new Error("\u8D5B\u9A6C\u65CF\u9519\u8BEF\u7387\u65E0\u6548");
-  if (!Number.isInteger(stats.blockLength) || stats.blockLength < 2 || stats.blockLength > 20)
-    throw new Error("\u8D5B\u9A6C\u7EDF\u8BA1\u533A\u5757\u957F\u5EA6\u65E0\u6548");
-  if (!Number.isInteger(stats.resampleFloor) || !Number.isInteger(stats.resampleCap) || stats.resampleFloor > stats.resampleCap)
-    throw new Error("\u8D5B\u9A6C\u7EDF\u8BA1\u91CD\u91C7\u6837\u9884\u7B97\u65E0\u6548");
-  return policy;
-}
-function alphaPerComparisonForK(k, familyAlpha = 0.05) {
-  const integer = Number(k);
-  if (!Number.isInteger(integer) || integer < 1)
-    throw new Error("\u7EDF\u8BA1\u6BD4\u8F83\u5E8F\u53F7 k \u5FC5\u987B\u4E3A\u6B63\u6574\u6570");
-  return familyAlpha / (integer * (integer + 1)) / 2;
-}
-function computeStatisticsBudget({ ks, statistical }) {
-  const stats = { ...DEFAULT_COHORT_POLICY.statistical, ...statistical };
-  const ksSorted = [...ks].sort((a, b) => a - b);
-  if (!ksSorted.length) throw new Error("\u7EDF\u8BA1\u9884\u7B97\u9884\u68C0\u7F3A\u5C11\u6BD4\u8F83\u5E8F\u53F7");
-  const tightest = Math.min(
-    ...ksSorted.map((k) => alphaPerComparisonForK(k, stats.familyAlpha))
-  );
-  const required = Math.max(stats.resampleFloor, Math.ceil(50 / tightest));
-  return {
-    alphaPerComparison: tightest,
-    resamples: Math.min(required, stats.resampleCap),
-    requiredResamples: required,
-    sufficient: required <= stats.resampleCap,
-    resampleCap: stats.resampleCap,
-    blockLength: stats.blockLength,
-    note: required > stats.resampleCap ? `\u672C\u6279\u6309\u5168\u5386\u53F2\u5E8F\u53F7\u9700\u8981\u7684\u91CD\u91C7\u6837\u6B21\u6570 ${required} \u8D85\u8FC7\u8BA1\u7B97\u989D\u5EA6 ${stats.resampleCap}\uFF0C\u8FD4\u56DE COMPUTE_BUDGET_INSUFFICIENT \u5E76\u4FDD\u6301\u5F53\u524D\u7B56\u7565` : null
-  };
-}
-function frozenParamDistance(candidateParams, parentParams) {
-  const steps = STEP_LIMITS;
-  let distance = 0;
-  for (const [key, value] of Object.entries(candidateParams)) {
-    if (key === "weights") continue;
-    const parent = parentParams[key];
-    if (parent === void 0) continue;
-    const step = steps[key];
-    if (step === void 0) continue;
-    distance += Math.abs(value - parent) / step;
-  }
-  const weights = candidateParams.weights;
-  if (Array.isArray(weights) && Array.isArray(parentParams.weights)) {
-    const weightStep = DEFAULT_RESEARCH_POLICY.weightsMaxStep;
-    for (let index = 0; index < weights.length; index++)
-      distance += Math.abs(weights[index] - parentParams.weights[index]) / weightStep;
-  }
-  return distance;
-}
-
-// backend/storage/cohorts.js
-var RESEARCH_NAMESPACE3 = "main";
-var mapCohort = (row) => row ? {
-  id: row.id,
-  namespace: row.namespace,
-  revision: row.revision,
-  parentVersion: row.parent_version,
-  policyId: row.policy_id,
-  policyDigest: row.policy_digest,
-  researchPolicyId: row.research_policy_id,
-  researchPolicyDigest: row.research_policy_digest,
-  mode: row.mode,
-  stage: row.stage,
-  maxCandidates: row.max_candidates,
-  forwardDays: row.forward_days,
-  reservationManifest: JSON.parse(row.reservation_manifest || "{}"),
-  proposalManifest: row.proposal_manifest ? JSON.parse(row.proposal_manifest) : null,
-  forwardManifest: row.forward_manifest ? JSON.parse(row.forward_manifest) : null,
-  evaluationManifest: row.evaluation_manifest ? JSON.parse(row.evaluation_manifest) : null,
-  promotionDigest: row.promotion_digest,
-  effectiveTradeDate: row.effective_trade_date,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at
-} : null;
-var mapMember = (row) => row ? {
-  cohortId: row.cohort_id,
-  memberId: row.member_id,
-  slotIndex: row.slot_index,
-  experimentId: row.experiment_id,
-  strategyVersion: row.strategy_version,
-  k: row.k,
-  familyId: row.family_id,
-  familyVersion: row.family_version,
-  params: row.params ? JSON.parse(row.params) : null,
-  paramsDigest: row.params_digest,
-  paramsDistance: row.params_distance,
-  stage: row.stage,
-  failureReason: row.failure_reason,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at
-} : null;
-var CohortRepository = class {
-  constructor(env) {
-    this.db = database(env);
-    this.namespace = RESEARCH_NAMESPACE3;
-  }
-  // ---------- 赛马政策 ----------
-  async saveTournamentPolicy(input) {
-    const payload = validateCohortPolicy(input);
-    const id = `cohort-policy-${crypto.randomUUID()}`;
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const digest2 = await digestOf(payload);
-    await this.db.prepare(
-      "INSERT INTO tournament_policy_versions (id, created_at, effective_at, payload, digest) VALUES (?, ?, ?, ?, ?)"
-    ).bind(id, now, now, JSON.stringify(payload), digest2).run();
-    return { id, payload, digest: digest2 };
-  }
-  async getTournamentPolicy() {
-    const row = await this.db.prepare(
-      "SELECT * FROM tournament_policy_versions ORDER BY created_at DESC, id DESC LIMIT 1"
-    ).first();
-    if (row)
-      return {
-        id: row.id,
-        payload: JSON.parse(row.payload),
-        digest: row.digest
-      };
-    const payload = validateCohortPolicy(DEFAULT_COHORT_POLICY);
-    const id = "cohort-policy-default-v1";
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const digest2 = await digestOf(payload);
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO tournament_policy_versions (id, created_at, effective_at, payload, digest) VALUES (?, ?, ?, ?, ?)"
-    ).bind(id, now, now, JSON.stringify(payload), digest2).run();
-    const saved = await this.db.prepare("SELECT * FROM tournament_policy_versions WHERE id = ?").bind(id).first();
-    return {
-      id: saved.id,
-      payload: JSON.parse(saved.payload),
-      digest: saved.digest
-    };
-  }
-  // ---------- 活动窗口所有者（统一锁） ----------
-  async windowOwner() {
-    const row = await this.db.prepare("SELECT * FROM research_window_owners WHERE namespace = ?").bind(this.namespace).first();
-    return row ? {
-      namespace: row.namespace,
-      ownerType: row.owner_type,
-      ownerId: row.owner_id,
-      windowPayload: JSON.parse(row.window_payload || "{}"),
-      leaseUntil: row.lease_until,
-      createdAt: row.created_at
-    } : null;
-  }
-  async releaseWindowOwner(ownerType, ownerId) {
-    await this.db.prepare(
-      "DELETE FROM research_window_owners WHERE namespace = ? AND owner_type = ? AND owner_id = ?"
-    ).bind(this.namespace, ownerType, ownerId).run();
-  }
-  // ---------- 原子批次预留（§9.1） ----------
-  // 任一步冲突整批失败：注册表 CAS、窗口锁、生成名额、测试日期、成员实验与首事件一次提交。
-  async reserveCohort({
-    cohortPolicy,
-    researchPolicy,
-    month,
-    parentVersion,
-    windowPayload,
-    testDates,
-    samples,
-    forwardDays,
-    cohortPolicyPayload = null,
-    statisticsBudget = null,
-    feeConfig = null,
-    feeConfigDigest = null
-  }) {
-    const memberCount = Number(
-      cohortPolicy.payload?.maxCandidates ?? cohortPolicy.maxCandidates
-    );
-    const attempt = async () => {
-      const registryRow = await this.db.prepare(
-        "SELECT revision, attempt_sequence FROM research_registry WHERE namespace = ?"
-      ).bind(this.namespace).first();
-      if (!registryRow) throw new Error("\u7814\u7A76\u6CE8\u518C\u8868\u672A\u521D\u59CB\u5316\uFF0C\u65E0\u6CD5\u9884\u7559\u8D5B\u9A6C\u6279\u6B21");
-      const now = (/* @__PURE__ */ new Date()).toISOString();
-      const nonce = crypto.randomUUID();
-      const cohortId = `cohort-${crypto.randomUUID()}`;
-      const baseAttempt = Number(registryRow.attempt_sequence);
-      const members = Array.from({ length: memberCount }, (_, index) => ({
-        memberId: `m${index + 1}`,
-        slotIndex: index + 1,
-        experimentId: `exp-${crypto.randomUUID()}`,
-        k: baseAttempt + index + 1
-      }));
-      const slotRow = await this.db.prepare(
-        "SELECT COALESCE(MAX(slot), 0) AS max_slot FROM research_generation_slots WHERE namespace = ? AND month = ?"
-      ).bind(this.namespace, month).first();
-      const startSlot = Number(slotRow?.max_slot ?? 0);
-      const reservation = {
-        cohortId,
-        namespace: this.namespace,
-        attemptSequences: members.map((member) => member.k),
-        parentVersion,
-        trainingDates: samples.filter((sample) => sample.role === "TRAIN").map((sample) => sample.date),
-        testDates,
-        cohortPolicyId: cohortPolicy.id,
-        cohortPolicyDigest: cohortPolicy.digest,
-        researchPolicyId: researchPolicy.id,
-        researchPolicyDigest: researchPolicy.digest,
-        forwardDays,
-        cohortPolicy: cohortPolicyPayload,
-        statisticsBudget,
-        feeConfig,
-        feeConfigDigest,
-        reservedAt: now
-      };
-      const reservationDigest = await digestOf(reservation);
-      const guardArgs = [
-        this.namespace,
-        Number(registryRow.revision) + 1,
-        nonce
-      ];
-      const guarded = (sql, args) => this.db.prepare(
-        `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`
-      ).bind(...args, ...guardArgs);
-      const event = {
-        sequence: 1,
-        eventType: "RESERVED",
-        createdAt: now,
-        payload: { reservation, reservationDigest },
-        previousDigest: null
-      };
-      const statements = [
-        this.db.prepare(
-          "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + ?, last_run_id = ? WHERE namespace = ? AND revision = ?"
-        ).bind(memberCount, nonce, this.namespace, registryRow.revision),
-        guarded(
-          "INSERT INTO research_window_owners (namespace, owner_type, owner_id, window_payload, created_at) SELECT ?, 'COHORT', ?, ?, ?",
-          [
-            this.namespace,
-            cohortId,
-            JSON.stringify({
-              ...windowPayload,
-              cohortPolicyId: cohortPolicy.id
-            }),
-            now
-          ]
-        ),
-        ...members.map(
-          (member, index) => guarded(
-            "INSERT INTO research_generation_slots (namespace, month, slot, owner_type, owner_id, reserved_at) SELECT ?, ?, ?, 'COHORT', ?, ?",
-            [this.namespace, month, startSlot + index + 1, cohortId, now]
-          )
-        ),
-        ...testDates.map(
-          (date) => this.db.prepare(
-            "INSERT INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at, owner_type, owner_id) SELECT ?, ?, ?, 'HISTORICAL_TEST', ?, 'COHORT', ? WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)"
-          ).bind(this.namespace, date, cohortId, now, cohortId, ...guardArgs)
-        ),
-        ...members.flatMap(
-          (member) => samples.map(
-            (sample) => guarded(
-              "INSERT INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
-              [
-                this.namespace,
-                member.experimentId,
-                sample.role,
-                sample.date,
-                `${this.namespace}:${member.experimentId}:${sample.role}:${sample.date}`,
-                JSON.stringify(sample.payload),
-                sample.digest
-              ]
-            )
-          )
-        ),
-        ...members.map(
-          (member) => guarded(
-            "INSERT INTO research_experiments (id, namespace, parent_version, candidate_version, policy_id, kind, stage, revision, frozen_at, reservation_payload, proposal_manifest, proposal_digest, created_at) SELECT ?, ?, ?, NULL, ?, 'COHORT_MEMBER', 'PROPOSING', 0, NULL, ?, NULL, NULL, ?",
-            [
-              member.experimentId,
-              this.namespace,
-              parentVersion,
-              cohortPolicy.id,
-              JSON.stringify({
-                ...reservation,
-                memberId: member.memberId,
-                k: member.k
-              }),
-              now
-            ]
-          )
-        ),
-        guarded(
-          "INSERT INTO strategy_cohorts (id, namespace, revision, parent_version, policy_id, policy_digest, research_policy_id, research_policy_digest, mode, stage, max_candidates, forward_days, reservation_manifest, created_at, updated_at) SELECT ?, ?, 0, ?, ?, ?, ?, ?, 'TOURNAMENT', 'PROPOSING', ?, ?, ?, ?, ?",
-          [
-            cohortId,
-            this.namespace,
-            parentVersion,
-            cohortPolicy.id,
-            cohortPolicy.digest,
-            researchPolicy.id,
-            researchPolicy.digest,
-            memberCount,
-            forwardDays,
-            JSON.stringify({ ...reservation, reservationDigest }),
-            now,
-            now
-          ]
-        ),
-        ...members.map(
-          (member) => guarded(
-            "INSERT INTO strategy_cohort_members (cohort_id, member_id, slot_index, experiment_id, k, stage, created_at, updated_at) SELECT ?, ?, ?, ?, ?, 'PROPOSING', ?, ?",
-            [
-              cohortId,
-              member.memberId,
-              member.slotIndex,
-              member.experimentId,
-              member.k,
-              now,
-              now
-            ]
-          )
-        ),
-        guarded(
-          "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ?",
-          [
-            cohortId,
-            event.sequence,
-            event.eventType,
-            event.createdAt,
-            JSON.stringify(event.payload),
-            event.previousDigest,
-            await eventDigest(event)
-          ]
-        )
-      ];
-      await this.executeReservation(statements);
-      const claimCount = (await this.db.prepare(
-        "SELECT COUNT(*) AS n FROM research_test_claims WHERE owner_type = 'COHORT' AND owner_id = ?"
-      ).bind(cohortId).first()).n;
-      if (claimCount !== testDates.length)
-        throw new Error(
-          "\u6D4B\u8BD5\u65E5\u671F\u767B\u8BB0\u4E0D\u5B8C\u6574\uFF08\u7814\u7A76\u89E6\u53D1\u5668\u7F3A\u5931\u6216\u8FC1\u79FB\u672A\u5B8C\u6210\uFF09\uFF0C\u9884\u7559\u5DF2\u7EC8\u6B62"
-        );
-      const memberCountCheck = (await this.db.prepare(
-        "SELECT COUNT(*) AS n FROM strategy_cohort_members WHERE cohort_id = ?"
-      ).bind(cohortId).first()).n;
-      if (memberCountCheck !== memberCount) return null;
-      const after = await this.db.prepare(
-        "SELECT revision, last_run_id, attempt_sequence FROM research_registry WHERE namespace = ?"
-      ).bind(this.namespace).first();
-      if (Number(after.revision) !== Number(registryRow.revision) + 1 || after.last_run_id !== nonce)
-        return null;
-      return { cohortId, members, reservation, reservationDigest };
-    };
-    if (typeof this.db.transaction === "function")
-      return this.db.transaction(async () => {
-        this.inTransaction = true;
-        try {
-          return await attempt();
-        } finally {
-          this.inTransaction = false;
-        }
-      });
-    return attempt();
-  }
-  async executeReservation(statements) {
-    if (this.inTransaction) {
-      for (const statement of statements) await statement.run();
-      return;
-    }
-    await this.db.batch(statements);
-  }
-  // ---------- 批次与成员读写 ----------
-  async getCohort(id) {
-    return mapCohort(
-      await this.db.prepare("SELECT * FROM strategy_cohorts WHERE id = ?").bind(id).first()
-    );
-  }
-  async listCohorts({ limit = 20, offset = 0 } = {}) {
-    const rows = (await this.db.prepare(
-      "SELECT id FROM strategy_cohorts ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
-    ).bind(limit, offset).all()).results;
-    const cohorts = [];
-    for (const row of rows) cohorts.push(await this.getCohort(row.id));
-    const total = (await this.db.prepare("SELECT COUNT(*) AS n FROM strategy_cohorts").first()).n;
-    return { cohorts, total };
-  }
-  async activeCohort() {
-    const rows = (await this.db.prepare("SELECT id FROM strategy_cohorts ORDER BY created_at DESC").all()).results;
-    for (const row of rows) {
-      const cohort = await this.getCohort(row.id);
-      if (cohort && COHORT_ACTIVE_STAGES.has(cohort.stage)) return cohort;
-    }
-    return null;
-  }
-  async members(cohortId) {
-    const rows = (await this.db.prepare(
-      "SELECT * FROM strategy_cohort_members WHERE cohort_id = ? ORDER BY slot_index"
-    ).bind(cohortId).all()).results;
-    return rows.map((row) => mapMember(row));
-  }
-  async member(cohortId, memberId) {
-    return mapMember(
-      await this.db.prepare(
-        "SELECT * FROM strategy_cohort_members WHERE cohort_id = ? AND member_id = ?"
-      ).bind(cohortId, memberId).first()
-    );
-  }
-  async memberByExperiment(experimentId) {
-    return mapMember(
-      await this.db.prepare(
-        "SELECT * FROM strategy_cohort_members WHERE experiment_id = ?"
-      ).bind(experimentId).first()
-    );
-  }
-  // ---------- 批次状态迁移（revision CAS + 事件链原子追加） ----------
-  async transitionCohort(id, { from, to, eventType, payload = {}, set = {} }) {
-    const cohort = await this.getCohort(id);
-    if (!cohort) throw new Error("\u8D5B\u9A6C\u6279\u6B21\u4E0D\u5B58\u5728");
-    if (cohort.stage !== from)
-      throw new Error(
-        `\u6279\u6B21\u72B6\u6001\u5DF2\u53D8\u5316\uFF08${cohort.stage}\uFF09\uFF0C\u4E0D\u80FD\u4ECE ${from} \u8FC1\u79FB\u5230 ${to}`
-      );
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const previous = await this.lastEvent(id);
-    const event = {
-      sequence: (previous?.sequence ?? 0) + 1,
-      eventType,
-      createdAt: now,
-      payload: { from, to, ...payload },
-      previousDigest: previous?.digest ?? null
-    };
-    const setKeys = Object.keys(set);
-    const setSql = setKeys.length ? `, ${setKeys.map((key) => `${key} = ?`).join(", ")}` : "";
-    const setArgs = setKeys.map(
-      (key) => typeof set[key] === "string" || set[key] === null ? set[key] : JSON.stringify(set[key])
-    );
-    const expectedRevision = cohort.revision;
-    const runId = crypto.randomUUID();
-    const statements = [
-      this.db.prepare(
-        `UPDATE strategy_cohorts SET stage = ?, revision = revision + 1, last_run_id = ?, updated_at = ?${setSql} WHERE id = ? AND stage = ? AND revision = ?`
-      ).bind(to, runId, now, ...setArgs, id, from, expectedRevision),
-      this.db.prepare(
-        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM strategy_cohorts WHERE id = ? AND revision = ? AND last_run_id = ?)"
-      ).bind(
-        id,
-        event.sequence,
-        event.eventType,
-        event.createdAt,
-        JSON.stringify(event.payload),
-        event.previousDigest,
-        await eventDigest(event),
-        id,
-        expectedRevision + 1,
-        runId
-      )
-    ];
-    const results = await this.db.batch(statements);
-    if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1)
-      throw new Error(
-        `\u6279\u6B21\u72B6\u6001\u8FC1\u79FB\u51B2\u7A81\uFF1A\u9884\u671F revision ${expectedRevision} \u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8`
-      );
-    const after = await this.getCohort(id);
-    if (after.stage !== to)
-      throw new Error("\u6279\u6B21\u72B6\u6001\u5199\u5165\u5931\u8D25\uFF1A\u72B6\u6001\u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8");
-    return after;
-  }
-  async appendEvent(cohortId, event) {
-    await this.db.prepare(
-      "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(
-      cohortId,
-      event.sequence,
-      event.eventType,
-      event.createdAt,
-      JSON.stringify(event.payload),
-      event.previousDigest,
-      await eventDigest(event)
-    ).run();
-    return event;
-  }
-  async updateMember(cohortId, memberId, set) {
-    const keys = Object.keys(set);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    if (keys.length) {
-      const args = keys.map((key) => {
-        const value = set[key];
-        if (value === null || typeof value === "string" || typeof value === "number")
-          return value;
-        return JSON.stringify(value);
-      });
-      await this.db.prepare(
-        `UPDATE strategy_cohort_members SET ${keys.map((key) => `${key} = ?`).join(", ")}, updated_at = ? WHERE cohort_id = ? AND member_id = ?`
-      ).bind(...args, now, cohortId, memberId).run();
-    } else {
-      await this.db.prepare(
-        "UPDATE strategy_cohort_members SET updated_at = ? WHERE cohort_id = ? AND member_id = ?"
-      ).bind(now, cohortId, memberId).run();
-    }
-    return this.member(cohortId, memberId);
-  }
-  async lastEvent(cohortId) {
-    const row = await this.db.prepare(
-      "SELECT * FROM cohort_events WHERE cohort_id = ? ORDER BY sequence DESC LIMIT 1"
-    ).bind(cohortId).first();
-    return row ? {
-      sequence: row.sequence,
-      eventType: row.event_type,
-      createdAt: row.created_at,
-      payload: JSON.parse(row.payload),
-      previousDigest: row.previous_digest,
-      digest: row.digest
-    } : null;
-  }
-  async events(cohortId) {
-    const rows = (await this.db.prepare(
-      "SELECT * FROM cohort_events WHERE cohort_id = ? ORDER BY sequence"
-    ).bind(cohortId).all()).results;
-    return rows.map((row) => ({
-      sequence: row.sequence,
-      eventType: row.event_type,
-      createdAt: row.created_at,
-      payload: JSON.parse(row.payload),
-      previousDigest: row.previous_digest,
-      digest: row.digest
-    }));
-  }
-  // ---------- 成员状态迁移（同步成员实验状态 + 研究事件） ----------
-  async transitionMember(cohortId, memberId, {
-    from,
-    to,
-    versionStatus = null,
-    versionId = null,
-    failureReason = null,
-    set = {}
-  }) {
-    const cohort = await this.getCohort(cohortId);
-    const member = await this.member(cohortId, memberId);
-    if (!cohort || !member) throw new Error("\u8D5B\u9A6C\u6210\u5458\u4E0D\u5B58\u5728");
-    if (member.stage !== from)
-      throw new Error(
-        `\u6210\u5458\u72B6\u6001\u5DF2\u53D8\u5316\uFF08${member.stage}\uFF09\uFF0C\u4E0D\u80FD\u4ECE ${from} \u8FC1\u79FB\u5230 ${to}`
-      );
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const setKeys = Object.keys(set);
-    const setSql = setKeys.length ? `, ${setKeys.map((key) => `${key} = ?`).join(", ")}` : "";
-    const setArgs = setKeys.map(
-      (key) => typeof set[key] === "string" || set[key] === null || typeof set[key] === "number" ? set[key] : JSON.stringify(set[key])
-    );
-    const experiment = await this.db.prepare("SELECT revision FROM research_experiments WHERE id = ?").bind(member.experimentId).first();
-    const nextRevision = Number(experiment?.revision ?? 0) + 1;
-    const previous = await this.lastEvent(cohortId);
-    const nextCohortSequence = (previous?.sequence ?? 0) + 1;
-    const experimentEvent = {
-      sequence: 0,
-      eventType: `MEMBER_${to}`,
-      createdAt: now,
-      payload: { memberId, from, to, failureReason },
-      previousDigest: null
-    };
-    const experimentEvents = (await this.db.prepare(
-      "SELECT sequence, digest FROM research_events WHERE experiment_id = ? ORDER BY sequence DESC LIMIT 1"
-    ).bind(member.experimentId).all()).results;
-    const lastExperimentEvent = experimentEvents[0];
-    experimentEvent.sequence = (lastExperimentEvent?.sequence ?? 0) + 1;
-    experimentEvent.previousDigest = lastExperimentEvent?.digest ?? null;
-    const cohortEvent = {
-      sequence: nextCohortSequence,
-      eventType: `MEMBER_${to}`,
-      createdAt: now,
-      payload: { memberId, from, to, failureReason },
-      previousDigest: previous?.digest ?? null
-    };
-    const expectedRevision = Number(experiment?.revision ?? 0);
-    const runId = crypto.randomUUID();
-    const statements = [
-      this.db.prepare(
-        "UPDATE research_experiments SET stage = ?, revision = revision + 1, last_run_id = ? WHERE id = ? AND stage = ? AND revision = ?"
-      ).bind(to, runId, member.experimentId, from, expectedRevision),
-      this.db.prepare(
-        `UPDATE strategy_cohort_members SET stage = ?, failure_reason = ?, updated_at = ?${setSql} WHERE cohort_id = ? AND member_id = ? AND stage = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)`
-      ).bind(
-        to,
-        failureReason,
-        now,
-        ...setArgs,
-        cohortId,
-        memberId,
-        from,
-        member.experimentId,
-        nextRevision,
-        runId
-      ),
-      this.db.prepare(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)"
-      ).bind(
-        member.experimentId,
-        experimentEvent.sequence,
-        experimentEvent.eventType,
-        experimentEvent.createdAt,
-        JSON.stringify(experimentEvent.payload),
-        experimentEvent.previousDigest,
-        await eventDigest(experimentEvent),
-        member.experimentId,
-        nextRevision,
-        runId
-      ),
-      this.db.prepare(
-        "INSERT INTO cohort_events (cohort_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)"
-      ).bind(
-        cohortId,
-        cohortEvent.sequence,
-        cohortEvent.eventType,
-        cohortEvent.createdAt,
-        JSON.stringify(cohortEvent.payload),
-        cohortEvent.previousDigest,
-        await eventDigest(cohortEvent),
-        member.experimentId,
-        nextRevision,
-        runId
-      )
-    ];
-    if (versionId && versionStatus)
-      statements.push(
-        this.db.prepare(
-          "UPDATE strategy_versions SET status = ? WHERE id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ? AND revision = ? AND last_run_id = ?)"
-        ).bind(
-          versionStatus,
-          versionId,
-          member.experimentId,
-          to,
-          nextRevision,
-          runId
-        )
-      );
-    const results = await this.db.batch(statements);
-    if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1 || results[2].meta.changes !== 1 || results[3].meta.changes !== 1)
-      throw new Error(
-        `\u6210\u5458\u72B6\u6001\u8FC1\u79FB\u51B2\u7A81\uFF1A\u5B9E\u9A8C revision ${expectedRevision} \u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8`
-      );
-    const after = await this.member(cohortId, memberId);
-    if (after.stage !== to)
-      throw new Error("\u6210\u5458\u72B6\u6001\u5199\u5165\u5931\u8D25\uFF1A\u72B6\u6001\u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8");
-    return after;
-  }
-  // ---------- 冻结成员参数（复用实验冻结清单） ----------
-  async freezeMemberExperiment(experimentId, manifest) {
-    const manifestDigest = await digestOf(manifest);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const lastEventRow = (await this.db.prepare(
-      "SELECT sequence, digest FROM research_events WHERE experiment_id = ? ORDER BY sequence DESC LIMIT 1"
-    ).bind(experimentId).all()).results[0];
-    const frozenEvent = {
-      sequence: (lastEventRow?.sequence ?? 0) + 1,
-      eventType: "CANDIDATE_FROZEN",
-      createdAt: now,
-      payload: { manifestDigest, memberId: manifest.memberId },
-      previousDigest: lastEventRow?.digest ?? null
-    };
-    const runId = crypto.randomUUID();
-    const statements = [
-      this.db.prepare(
-        "UPDATE research_experiments SET stage = 'HISTORICAL_CHECK', revision = revision + 1, last_run_id = ?, frozen_at = ?, proposal_manifest = ?, proposal_digest = ? WHERE id = ? AND stage = 'PROPOSING'"
-      ).bind(
-        runId,
-        now,
-        JSON.stringify(manifest),
-        manifestDigest,
-        experimentId
-      ),
-      this.db.prepare(
-        "UPDATE strategy_cohort_members SET stage = 'HISTORICAL_CHECK', updated_at = ? WHERE experiment_id = ? AND stage = 'PROPOSING' AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)"
-      ).bind(now, experimentId, experimentId, runId),
-      this.db.prepare(
-        "INSERT INTO strategy_versions (id, created_at, status, params, evidence) SELECT ?, ?, 'PROPOSING', ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)"
-      ).bind(
-        manifest.versionId,
-        now,
-        JSON.stringify(manifest.candidateParams),
-        JSON.stringify({
-          cohortId: manifest.cohortId,
-          memberId: manifest.memberId,
-          attemptSequence: manifest.attemptSequence,
-          parentVersion: manifest.parentVersion,
-          trainingStart: manifest.trainingDates?.[0] ?? null,
-          trainingEnd: manifest.trainingDates?.at(-1) ?? null,
-          validationStart: manifest.testDates?.[0] ?? null,
-          validationEnd: manifest.testDates?.at(-1) ?? null
-        }),
-        experimentId,
-        runId
-      ),
-      this.db.prepare(
-        "INSERT INTO research_events (experiment_id, sequence, event_type, created_at, payload, previous_digest, digest) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = 'HISTORICAL_CHECK' AND last_run_id = ?)"
-      ).bind(
-        experimentId,
-        frozenEvent.sequence,
-        frozenEvent.eventType,
-        frozenEvent.createdAt,
-        JSON.stringify(frozenEvent.payload),
-        frozenEvent.previousDigest,
-        await eventDigest(frozenEvent),
-        experimentId,
-        runId
-      )
-    ];
-    const results = await this.db.batch(statements);
-    if (results[0].meta.changes !== 1)
-      throw new Error("\u6210\u5458\u5019\u9009\u51BB\u7ED3\u5931\u8D25\uFF1A\u5B9E\u9A8C\u72B6\u6001\u5DF2\u88AB\u5176\u4ED6\u6D41\u7A0B\u6539\u53D8");
-    return { manifestDigest };
-  }
-  // ---------- 测试日期与样本用途 ----------
-  async claimCohortForwardDate(date, cohortId) {
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO research_test_claims (namespace, outcome_date, experiment_id, role, reserved_at, owner_type, owner_id) VALUES (?, ?, ?, 'FORWARD_TEST', ?, 'COHORT', ?)"
-    ).bind(this.namespace, date, cohortId, now, cohortId).run();
-    const row = await this.db.prepare(
-      "SELECT owner_type, owner_id FROM research_test_claims WHERE namespace = ? AND outcome_date = ?"
-    ).bind(this.namespace, date).first();
-    if (!row || row.owner_type !== "COHORT" || row.owner_id !== cohortId)
-      throw new Error(`\u524D\u77BB\u65E5\u671F ${date} \u5DF2\u88AB\u5176\u4ED6\u7814\u7A76\u5360\u7528\uFF0C\u6279\u6B21\u65E0\u8D44\u683C\u7EE7\u7EED`);
-    return true;
-  }
-  async recordMemberSampleUse({ experimentId, sample }) {
-    await this.db.prepare(
-      "INSERT OR IGNORE INTO research_sample_uses (namespace, experiment_id, role, outcome_date, sample_key, payload, digest) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(
-      this.namespace,
-      experimentId,
-      sample.role,
-      sample.date,
-      `${this.namespace}:${experimentId}:${sample.role}:${sample.date}`,
-      JSON.stringify(sample.payload),
-      sample.digest
-    ).run();
-  }
-  // ---------- 批次报告 ----------
-  async saveReport(cohortId, stage, payload) {
-    const digest2 = await digestOf(payload);
-    const existing = await this.report(cohortId, stage);
-    if (existing) {
-      if (existing.digest !== digest2)
-        throw new Error("\u6279\u6B21\u62A5\u544A\u5DF2\u5B58\u5728\u4E14\u5185\u5BB9\u4E0D\u4E00\u81F4\uFF0C\u4E0D\u5141\u8BB8\u8986\u76D6");
-      return existing;
-    }
-    await this.db.prepare(
-      "INSERT INTO cohort_reports (cohort_id, stage, payload, digest, created_at) VALUES (?, ?, ?, ?, ?)"
-    ).bind(
-      cohortId,
-      stage,
-      JSON.stringify(payload),
-      digest2,
-      (/* @__PURE__ */ new Date()).toISOString()
-    ).run();
-    return { payload, digest: digest2 };
-  }
-  async report(cohortId, stage) {
-    const row = await this.db.prepare(
-      "SELECT payload, digest, created_at FROM cohort_reports WHERE cohort_id = ? AND stage = ?"
-    ).bind(cohortId, stage).first();
-    return row ? {
-      payload: JSON.parse(row.payload),
-      digest: row.digest,
-      createdAt: row.created_at
-    } : null;
-  }
-  // ---------- 研究任务（租约 + 幂等） ----------
-  async createTask({ ownerId, taskType, inputDigest, payload }) {
-    const id = `task-${crypto.randomUUID()}`;
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    await this.db.prepare(
-      "INSERT INTO research_tasks (id, owner_id, task_type, input_digest, stage, payload, created_at, updated_at) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?)"
-    ).bind(
-      id,
-      ownerId,
-      taskType,
-      inputDigest,
-      JSON.stringify(payload ?? {}),
-      now,
-      now
-    ).run();
-    return id;
-  }
-  async leaseTask(taskId, { leaseOwner, leaseMs = 12e4 }) {
-    const now = Date.now();
-    const leaseUntil = new Date(now + leaseMs).toISOString();
-    const result = await this.db.prepare(
-      "UPDATE research_tasks SET stage = 'RUNNING', lease_owner = ?, lease_until = ?, updated_at = ? WHERE id = ? AND (stage = 'PENDING' OR (stage = 'RUNNING' AND lease_until IS NOT NULL AND lease_until <= ?))"
-    ).bind(
-      leaseOwner,
-      leaseUntil,
-      (/* @__PURE__ */ new Date()).toISOString(),
-      taskId,
-      new Date(now).toISOString()
-    ).run();
-    return result.meta.changes === 1;
-  }
-  async completeTask(taskId, { outputDigest, cursor = null }) {
-    await this.db.prepare(
-      "UPDATE research_tasks SET stage = 'DONE', output_digest = ?, cursor = COALESCE(?, cursor), updated_at = ? WHERE id = ?"
-    ).bind(outputDigest, cursor, (/* @__PURE__ */ new Date()).toISOString(), taskId).run();
-  }
-  async failTask(taskId, reason) {
-    await this.db.prepare(
-      "UPDATE research_tasks SET stage = 'ERROR', payload = json_set(payload, '$.lastError', ?), lease_until = NULL, updated_at = ? WHERE id = ?"
-    ).bind(String(reason).slice(0, 500), (/* @__PURE__ */ new Date()).toISOString(), taskId).run();
-  }
-  async task(taskId) {
-    const row = await this.db.prepare("SELECT * FROM research_tasks WHERE id = ?").bind(taskId).first();
-    return row ? {
-      id: row.id,
-      ownerId: row.owner_id,
-      taskType: row.task_type,
-      inputDigest: row.input_digest,
-      stage: row.stage,
-      leaseUntil: row.lease_until,
-      leaseOwner: row.lease_owner,
-      cursor: row.cursor,
-      outputDigest: row.output_digest,
-      payload: JSON.parse(row.payload || "{}")
-    } : null;
-  }
-  async tasksForOwner(ownerId, taskType) {
-    const rows = (await this.db.prepare(
-      "SELECT id FROM research_tasks WHERE owner_id = ? AND task_type = ? ORDER BY created_at"
-    ).bind(ownerId, taskType).all()).results;
-    const tasks = [];
-    for (const row of rows) tasks.push(await this.task(row.id));
-    return tasks;
-  }
-};
 
 // backend/storage/shadow.js
 var SHADOW_ACCOUNT_KINDS = Object.freeze({
@@ -11322,8 +12396,20 @@ async function consumePortfolioFrame(env, accountId, frame, { shadows = new Shad
         stalled: true,
         reason: "\u7F3A\u5C11\u6267\u884C\u65E5\u524D\u51BB\u7ED3\u7684\u8BA1\u5212\uFF0C\u8D26\u6237\u6682\u505C\u6D88\u8D39\uFF1B\u4E0D\u4E8B\u540E\u6784\u9020\u8BA1\u5212"
       };
+    if (plan.executionCostPolicy && !await verifyPolicyBundle(plan.executionCostPolicy))
+      return {
+        stalled: true,
+        reason: "\u8BA1\u5212\u6210\u672C\u653F\u7B56\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4\uFF0C\u8D26\u6237\u6682\u505C\u6D88\u8D39\uFF1B\u8BF7\u91CD\u65B0\u51BB\u7ED3\u8BA1\u5212"
+      };
     working = openSession(account.book, plan, frame.tradeDate);
-  }
+  } else if (
+    // 已有会话同样逐帧核验：政策被篡改的会话不得继续成交（§5.4）。
+    working.plan?.executionCostPolicy && !await verifyPolicyBundle(working.plan.executionCostPolicy)
+  )
+    return {
+      stalled: true,
+      reason: "\u4F1A\u8BDD\u8BA1\u5212\u6210\u672C\u653F\u7B56\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4\uFF0C\u8D26\u6237\u6682\u505C\u6D88\u8D39\uFF1B\u8BF7\u91CD\u65B0\u51BB\u7ED3\u8BA1\u5212"
+    };
   const observation = {
     observedAt: frame.observedAt,
     quotes: frame.payload?.quotes ?? frame.quotes,
@@ -11383,12 +12469,16 @@ async function settlePortfolioDay(env, accountId, date, dataset, { shadows = new
 async function freezePortfolioPlan(env, accountId, { snapshot, strategy, strategyVersion, now }, { shadows = new ShadowAccountRepository(env) } = {}) {
   const account = await shadows.account(accountId);
   if (!account) throw new Error("\u5F71\u5B50\u8D26\u6237\u4E0D\u5B58\u5728");
-  const plan = snapshot ? createPlan(snapshot, account.book, strategy, strategyVersion, now) : defensivePlan(
+  const executionCostPolicy = await latestPolicyBundle(env.DB);
+  const plan = snapshot ? createPlan(snapshot, account.book, strategy, strategyVersion, now, {
+    executionCostPolicy
+  }) : defensivePlan(
     account.book.lastDate,
     account.book,
     strategy,
     strategyVersion,
-    now
+    now,
+    { executionCostPolicy }
   );
   return shadows.savePlan(accountId, plan);
 }
@@ -13085,6 +14175,118 @@ async function cohortExport(env, cohortId) {
   };
 }
 
+// backend/services/execution-sensitivity.js
+async function scenarioPolicyBundles(basePolicy) {
+  const scenarios = [1, ...basePolicy.payload.stressResidualMultiplier];
+  return Promise.all(
+    scenarios.map(async (multiplier) => {
+      const payload = normalizeExecutionCostPayload({
+        ...basePolicy.payload,
+        executionStressMultiplier: multiplier
+      });
+      return {
+        id: `${basePolicy.id}-s${multiplier}`,
+        version: basePolicy.version,
+        modelVersion: EXECUTION_COST_MODEL,
+        payloadDigest: await policyDigest(payload),
+        calibrationStatus: basePolicy.calibrationStatus,
+        calibrationCutoff: basePolicy.calibrationCutoff,
+        effectiveFrom: basePolicy.effectiveFrom,
+        payload
+      };
+    })
+  );
+}
+var REPLAY_FIELDS = [
+  "days",
+  "covered",
+  "reason",
+  "totalReturn",
+  "maxDrawdown",
+  "fillCount",
+  "feesCents"
+];
+async function runExecutionSensitivity(env, { days = 40, strategy = null } = {}) {
+  const repository = new PaperRepository(env);
+  const account = await repository.initialize();
+  const pairs = (await collectPairs(repository)).slice(-Math.max(5, days));
+  if (pairs.length < 5)
+    throw new Error("\u5DF2\u79EF\u7D2F\u6837\u672C\u4E0D\u8DB3 5 \u4E2A\u4EA4\u6613\u65E5\uFF0C\u65E0\u6CD5\u8FD0\u884C\u6210\u672C\u654F\u611F\u6027\u91CD\u653E");
+  const strategyParams = strategy ?? await repository.strategy(account.book);
+  const initialCapital = account.book.initialCashCents / 100;
+  const feeConfig = feesForBook(account.book);
+  const basePolicy = await new ExecutionCostRepository(env).latest();
+  const bundles = await scenarioPolicyBundles(basePolicy);
+  const strategyDigest = await policyDigest(strategyParams);
+  const inputDigests = await Promise.all(
+    pairs.map(async (pair) => ({
+      tradeDate: pair.dataset.date,
+      snapshotDigest: await policyDigest(pair.snapshot),
+      marketDigest: await policyDigest(pair.dataset),
+      observationsDigest: pair.observations ? await policyDigest(pair.observations) : null
+    }))
+  );
+  const results = [];
+  for (const bundle of bundles) {
+    const replay = replayStrategy(
+      pairs,
+      strategyParams,
+      initialCapital,
+      feeConfig,
+      null,
+      bundle
+    );
+    const impliedCostCents = replay.fills.reduce(
+      (sum, fill) => sum + (fill.executionCost?.impliedCostCents ?? 0),
+      0
+    );
+    results.push({
+      scenario: bundle.payload.executionStressMultiplier,
+      policyDigest: bundle.payloadDigest,
+      ...Object.fromEntries(
+        REPLAY_FIELDS.map((field) => [field, replay[field] ?? null])
+      ),
+      impliedCostCents,
+      // 逐情景完整账本与权益曲线：结果可从冻结输入独立重算。
+      equity: replay.equities,
+      fills: replay.fills
+    });
+  }
+  const manifest = {
+    namespace: "execution-cost",
+    basePolicy: {
+      id: basePolicy.id,
+      version: basePolicy.version,
+      payloadDigest: basePolicy.payloadDigest,
+      payload: basePolicy.payload
+    },
+    scenarios: bundles.map((bundle) => ({
+      multiplier: bundle.payload.executionStressMultiplier,
+      payloadDigest: bundle.payloadDigest
+    })),
+    strategy: { params: strategyParams, digest: strategyDigest },
+    inputs: inputDigests,
+    sampleDays: pairs.length,
+    firstDate: pairs[0].dataset.date,
+    lastDate: pairs.at(-1).dataset.date,
+    initialCapitalCents: account.book.initialCashCents,
+    feeConfig,
+    note: "\u6210\u672C\u538B\u529B\u533A\u95F4\u4E0D\u662F\u6536\u76CA\u7EDF\u8BA1\u7F6E\u4FE1\u533A\u95F4\uFF1B\u5355\u7B14\u4EF7\u683C/\u6210\u672C\u5355\u8C03\uFF0C\u4E0D\u8981\u6C42\u6BCF\u6761\u8D44\u91D1\u66F2\u7EBF\u6392\u5E8F\u5355\u8C03\u3002"
+  };
+  const store = new ExecutionCostRepository(env);
+  const id = `sens-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}`;
+  const payload = { results };
+  await store.saveSensitivityRun({
+    id,
+    namespace: manifest.namespace,
+    manifest,
+    status: "COMPLETE",
+    payload
+  });
+  const saved = await store.sensitivityRun(id);
+  return { id, ...saved };
+}
+
 // backend/routes/api.js
 async function runDaily(env) {
   const date = beijingDate();
@@ -13153,6 +14355,9 @@ async function api(request, env) {
     "/api/paper/settings": ["POST"],
     "/api/paper/export": ["GET"],
     "/api/paper/verify": ["GET"],
+    "/api/paper/execution-cost": ["GET", "PUT"],
+    "/api/paper/execution-cost/diagnostics": ["GET"],
+    "/api/research/execution-sensitivity": ["GET", "POST"],
     "/api/paper/improve": ["POST"],
     "/api/research/bootstrap": ["POST"],
     "/api/paper/activate": ["POST"],
@@ -13446,6 +14651,26 @@ async function api(request, env) {
     }
     if (path === "/api/paper/verify")
       return json(await verifyExport(await exportPaper(env)));
+    if (path === "/api/paper/execution-cost") {
+      if (request.method === "GET")
+        return json(await getExecutionCostConfig(env));
+      const body2 = await readJson(request);
+      return json(await saveExecutionCostPolicy(env, body2));
+    }
+    if (path === "/api/paper/execution-cost/diagnostics")
+      return json(await executionCostDiagnostics(env));
+    if (path === "/api/research/execution-sensitivity") {
+      if (request.method === "GET")
+        return json({
+          runs: await new ExecutionCostRepository(env).listSensitivityRuns(20)
+        });
+      const body2 = await readJson(request);
+      return json(
+        await runExecutionSensitivity(env, {
+          days: Number(body2?.days ?? 40)
+        })
+      );
+    }
     const repository = new PaperRepository(env);
     await repository.initialize(await readWeights(env));
     if (path === "/api/paper/improve")

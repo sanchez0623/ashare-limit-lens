@@ -5,7 +5,10 @@ import {
   closeSession,
 } from "../domain/realtime.js";
 import { createPlan, defensivePlan } from "../domain/trading.js";
-import { latestPolicyBundle } from "../storage/execution-cost.js";
+import {
+  latestPolicyBundle,
+  verifyPolicyBundle,
+} from "../storage/execution-cost.js";
 
 // 组合执行器（§7.2）：指定 accountId 顺序消费已落盘行情帧与盘后结算。
 // 每个账户按序消费；一账户的重试不重复其他账户的成交；崩溃后只消费已经落盘的帧。
@@ -44,8 +47,25 @@ export async function consumePortfolioFrame(
         stalled: true,
         reason: "缺少执行日前冻结的计划，账户暂停消费；不事后构造计划",
       };
+    // 首次开会话前核验政策摘要（§5.4）。
+    if (
+      plan.executionCostPolicy &&
+      !(await verifyPolicyBundle(plan.executionCostPolicy))
+    )
+      return {
+        stalled: true,
+        reason: "计划成本政策与摘要不一致，账户暂停消费；请重新冻结计划",
+      };
     working = openSession(account.book, plan, frame.tradeDate);
-  }
+  } else if (
+    // 已有会话同样逐帧核验：政策被篡改的会话不得继续成交（§5.4）。
+    working.plan?.executionCostPolicy &&
+    !(await verifyPolicyBundle(working.plan.executionCostPolicy))
+  )
+    return {
+      stalled: true,
+      reason: "会话计划成本政策与摘要不一致，账户暂停消费；请重新冻结计划",
+    };
   const observation = {
     observedAt: frame.observedAt,
     quotes: frame.payload?.quotes ?? frame.quotes,
