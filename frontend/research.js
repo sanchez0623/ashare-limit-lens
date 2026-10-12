@@ -711,7 +711,27 @@ function renderReview() {
     )
     .join("");
   $("review-conclusion").hidden = !r;
-  $("review-conclusion").textContent = r?.conclusion || "";
+  // 滚动证据摘要（§9）：均值、95% 区间、覆盖与方法标签；区间跨零表示
+  // 证据不足；方法模拟受限的窗口只作探索展示，不作结论性表述。
+  // 历史复盘按所选日期截取（P1-8）：不混入所选日期之后发布的报告。
+  const evidenceReport = state.evidence?.review?.report;
+  let evidenceText = "";
+  if (evidenceReport) {
+    const entry = evidenceReport.payload.family?.find(
+      (item) => item.metric === "MEAN_DAILY_IC",
+    );
+    const limited = evidenceReport.payload.tags?.includes(
+      "METHOD_SIMULATION_LIMITED",
+    );
+    const horizon = evidenceReport.horizon;
+    const validDays = evidenceReport.payload.window.validDates.length;
+    if (entry?.ci)
+      evidenceText = `${horizon} 日滚动证据（探索诊断）：平均日 IC ${entry.estimate.toFixed(2)}，95% 区间 [${entry.ci.lower.toFixed(2)}, ${entry.ci.upper.toFixed(2)}]，${validDays}/${evidenceReport.payload.window.expectedDates.length} 个有效交易日${limited ? "；方法模拟受限，仅作探索展示" : ""}。区间跨零表示证据不足，不等于策略无效。`;
+    else
+      evidenceText = `${horizon} 日滚动证据：${evidenceReport.payload.status}${evidenceReport.payload.reasons?.length ? `（${evidenceReport.payload.reasons[0]}）` : "，样本积累中"}。`;
+  }
+  $("review-conclusion").textContent =
+    `${r?.conclusion || ""}${evidenceText ? ` ${evidenceText}` : ""}`;
   $("review-rows").innerHTML = r
     ? r.rows
         .map(
@@ -757,9 +777,11 @@ function renderReview() {
 }
 async function readReview(req = state.request) {
   try {
-    const [response, historyResponse] = await Promise.all([
+    const [response, historyResponse, evidenceResponse] = await Promise.all([
       fetch(`/api/review?date=${encodeURIComponent($("trade-date").value)}`),
       fetch("/api/history"),
+      // 证据按所选复盘日期截取（P1-8）：历史日期不显示之后的滚动证据。
+      fetch(`/api/evidence?asOf=${encodeURIComponent($("trade-date").value)}`),
     ]);
     const p = await response.json(),
       h = await historyResponse.json();
@@ -769,6 +791,8 @@ async function readReview(req = state.request) {
     state.ai = p.ai;
     state.aiConfig = p.aiStatus || state.aiConfig;
     state.history = historyResponse.ok ? h : state.history;
+    // 滚动证据为探索诊断（purpose=DIAGNOSTIC），只展示后端冻结结果
+    state.evidence = evidenceResponse.ok ? await evidenceResponse.json() : null;
     state.reviewMessage = p.reason || "已加载冻结评分与实际结果。";
   } catch (e) {
     if (req === state.request)

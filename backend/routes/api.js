@@ -62,6 +62,15 @@ import {
 } from "../services/execution-cost.js";
 import { runExecutionSensitivity } from "../services/execution-sensitivity.js";
 import { ExecutionCostRepository } from "../storage/execution-cost.js";
+import {
+  evidenceOverview,
+  getEvidence,
+  exportEvidence,
+  recomputeEvidence,
+  refreshEvidence,
+  REVIEW_SERIES,
+  ACCOUNT_SERIES,
+} from "../services/evidence.js";
 
 async function runDaily(env) {
   const date = beijingDate();
@@ -109,12 +118,23 @@ async function runDaily(env) {
       aiError = safeError(error);
     }
   }
+  // 统计证据（§8.3）：必须在复盘核验行保存之后刷新，否则首次运行读不到
+  // 当天复盘、漏登记当日指标（P1-1）。日历由证据服务自行冻结：账户结算
+  // 交出的是未来日历，直接传入会冻结出空窗口（P1-2）。
+  // 失败不阻塞交易与复盘，次日重跑按幂等 id 补齐。
+  let evidence = null;
+  try {
+    evidence = await refreshEvidence(env, { date });
+  } catch (error) {
+    evidence = { error: safeError(error) };
+  }
   return {
     ...result,
     ai,
     snapshot,
     paper,
     tournament,
+    evidence,
     aiError,
     aiStatus: aiConfig(env),
     history: await historyList(env),
@@ -138,6 +158,11 @@ export async function api(request, env) {
     "/api/paper/execution-cost": ["GET", "PUT"],
     "/api/paper/execution-cost/diagnostics": ["GET"],
     "/api/research/execution-sensitivity": ["GET", "POST"],
+    "/api/evidence": ["GET"],
+    "/api/evidence/history": ["GET"],
+    "/api/evidence/export": ["GET"],
+    "/api/evidence/recompute": ["POST"],
+    "/api/evidence/refresh": ["POST"],
     "/api/paper/improve": ["POST"],
     "/api/research/bootstrap": ["POST"],
     "/api/paper/activate": ["POST"],
@@ -497,6 +522,51 @@ export async function api(request, env) {
         await runExecutionSensitivity(env, {
           days: Number(body?.days ?? 40),
         }),
+      );
+    }
+    if (path === "/api/evidence" || path === "/api/evidence/history") {
+      const asOf = url.searchParams.get("asOf") || undefined;
+      if (asOf && !validDate(asOf)) return json({ error: "日期格式无效" }, 400);
+      const series = url.searchParams.get("series") || REVIEW_SERIES;
+      const horizon = Number(url.searchParams.get("horizon") ?? 0);
+      // 仅带 asOf：返回按所选日期截取的证据总览（复盘页历史日期不得
+      // 混入该日期之后发布的滚动证据，P1-8）。
+      if (
+        path === "/api/evidence" &&
+        !url.searchParams.get("series") &&
+        !url.searchParams.get("horizon")
+      )
+        return json(await evidenceOverview(env, { asOf }));
+      if (![REVIEW_SERIES, ACCOUNT_SERIES].includes(series))
+        return json({ error: "未知证据系列" }, 400);
+      if (!Number.isInteger(horizon) || horizon < 5 || horizon > 250)
+        return json({ error: "horizon 必须是 5–250 的整数" }, 400);
+      const result = await getEvidence(env, { series, asOf, horizon });
+      return json(
+        path === "/api/evidence/history"
+          ? { series, horizon, history: result.history }
+          : result,
+      );
+    }
+    if (path === "/api/evidence/export") {
+      const id = url.searchParams.get("id");
+      if (!id) return json({ error: "缺少报告 id" }, 400);
+      const bundle = await exportEvidence(env, { id });
+      return bundle.report
+        ? json(bundle)
+        : json({ error: "证据报告不存在" }, 404);
+    }
+    if (path === "/api/evidence/recompute") {
+      const body = await readJson(request);
+      if (!body?.id) return json({ error: "缺少报告 id" }, 400);
+      return json(await recomputeEvidence(env, { id: body.id }));
+    }
+    if (path === "/api/evidence/refresh") {
+      const body = await readJson(request);
+      if (body?.date && !validDate(body.date))
+        return json({ error: "日期格式无效" }, 400);
+      return json(
+        await refreshEvidence(env, { date: body?.date || beijingDate() }),
       );
     }
     const repository = new PaperRepository(env);

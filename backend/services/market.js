@@ -89,9 +89,14 @@ export async function marketData(date) {
 }
 
 // 拉取单个指数的日线（含当日实时报价合并）；交易日历与基准曲线共用。
-async function indexKline(code, startDate, endDate) {
+async function indexKline(code, startDate, endDate, limit = 80) {
+  if (!Number.isInteger(limit) || limit < 1)
+    throw new Error("交易日历条数限制无效");
   const url = new URL("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get");
-  url.searchParams.set("param", `${code},day,${startDate},${endDate},80,qfq`);
+  url.searchParams.set(
+    "param",
+    `${code},day,${startDate},${endDate},${limit},qfq`,
+  );
   const response = await publicFetch(url, 12000);
   if (!response.ok) throw new Error("交易日行情暂不可用");
   const body = await response.json();
@@ -114,13 +119,24 @@ async function indexKline(code, startDate, endDate) {
   return days;
 }
 
-export async function tradingCalendar(startDate, endDate, benchmarkCode) {
+export async function tradingCalendar(
+  startDate,
+  endDate,
+  benchmarkCode,
+  calendarLimit = 80,
+) {
   // 交易日历固定取上证指数；基准曲线用账户所选指数，缺失时回退上证。
-  const days = await indexKline("sh000001", startDate, endDate);
+  // calendarLimit 供证据服务等长日历消费方使用，默认保持原 80 条行为。
+  const days = await indexKline("sh000001", startDate, endDate, calendarLimit);
   let benchmarkDays = days;
   if (benchmarkCode && benchmarkCode !== "sh000001") {
     try {
-      const rows = await indexKline(benchmarkCode, startDate, endDate);
+      const rows = await indexKline(
+        benchmarkCode,
+        startDate,
+        endDate,
+        calendarLimit,
+      );
       if (rows.length) benchmarkDays = rows;
     } catch {
       benchmarkDays = days;
