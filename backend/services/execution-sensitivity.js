@@ -63,6 +63,15 @@ export async function runExecutionSensitivity(
   const feeConfig = feesForBook(account.book);
   const basePolicy = await new ExecutionCostRepository(env).latest();
   const bundles = await scenarioPolicyBundles(basePolicy);
+  // 独立复核所需的冻结输入（§6.2）：策略身份与摘要、逐对评分/行情摘要。
+  const strategyDigest = await policyDigest(strategyParams);
+  const inputDigests = await Promise.all(
+    pairs.map(async (pair) => ({
+      tradeDate: pair.dataset.date,
+      snapshotDigest: await policyDigest(pair.snapshot),
+      marketDigest: await policyDigest(pair.dataset),
+    })),
+  );
   const results = [];
   for (const bundle of bundles) {
     const replay = replayStrategy(
@@ -84,6 +93,9 @@ export async function runExecutionSensitivity(
         REPLAY_FIELDS.map((field) => [field, replay[field] ?? null]),
       ),
       impliedCostCents,
+      // 逐情景完整账本与权益曲线：结果可从冻结输入独立重算。
+      equity: replay.equities,
+      fills: replay.fills,
     });
   }
   const manifest = {
@@ -92,11 +104,14 @@ export async function runExecutionSensitivity(
       id: basePolicy.id,
       version: basePolicy.version,
       payloadDigest: basePolicy.payloadDigest,
+      payload: basePolicy.payload,
     },
     scenarios: bundles.map((bundle) => ({
       multiplier: bundle.payload.executionStressMultiplier,
       payloadDigest: bundle.payloadDigest,
     })),
+    strategy: { params: strategyParams, digest: strategyDigest },
+    inputs: inputDigests,
     sampleDays: pairs.length,
     firstDate: pairs[0].dataset.date,
     lastDate: pairs.at(-1).dataset.date,

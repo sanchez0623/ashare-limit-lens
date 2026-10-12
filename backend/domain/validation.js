@@ -83,7 +83,12 @@ export function replayStrategy(
   feeConfig = DEFAULT_FEES,
   initialBook = null,
   executionCostPolicy = null,
+  options = {},
 ) {
+  // observationOnly：调用方显式声明该窗口按观察口径评估（如冷启动训练
+  // 的记录性指标），日线观察不视为覆盖缺口；但结果仍标注观察口径，
+  // 不得据此主张可执行净收益或用于晋级（§4.4）。
+  const observationGrade = options.observationOnly === true;
   let book = initialBook
     ? structuredClone(initialBook)
     : newBook(initialCapital, feeConfig);
@@ -162,12 +167,31 @@ export function replayStrategy(
       book = result.book;
       equities.push(result.equity);
       fills.push(...result.ledger);
+      // 日线观察与可信执行净收益必须隔离（§4.4）：DAILY_OBSERVATION_ONLY
+      // 的窗口不构成覆盖，不能用于晋级或验证结论；观察口径评估除外。
+      if (
+        result.outcomes.some((outcome) =>
+          String(outcome.reason || "").includes("DAILY_OBSERVATION_ONLY"),
+        )
+      ) {
+        if (!observationGrade) {
+          covered = false;
+          reason =
+            reason ??
+            "DAILY_OBSERVATION_ONLY：日线观察收益不构成可信执行净收益";
+        }
+      }
+      if (!observationGrade && result.equity.missingMinuteOrders > 0 && !reason)
+        reason = "缺少盘中分钟数据：做 T 被跳过，窗口收益为观察口径";
       if (
         !result.equity.complete ||
+        // 缺分钟数据的窗口不构成覆盖：做 T 被跳过或日线观察被拒绝时，
+        // 收益只是观察口径，不能用于晋级或验证结论（§4.4）。
+        (!observationGrade && result.equity.missingMinuteOrders > 0) ||
         (pair.dataset.executionMode === "realtime" &&
           result.equity.missingMinuteOrders) ||
-        result.outcomes.some((order) =>
-          /缺少日期|可能除权/.test(order.reason || ""),
+        result.outcomes.some((outcome) =>
+          /缺少日期|可能除权/.test(outcome.reason || ""),
         )
       )
         covered = false;
@@ -180,6 +204,9 @@ export function replayStrategy(
   return {
     days: equities.length,
     covered,
+    // 观察口径声明：为 true 时该窗口的收益是日线观察口径，
+    // 不是可执行净收益（§4.4）。
+    observationOnly: observationGrade,
     reason,
     totalReturn:
       book.equityCents /

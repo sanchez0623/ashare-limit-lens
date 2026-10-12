@@ -682,11 +682,16 @@ export async function proposeBootstrapImprovement(
     };
   const base = await repository.strategy(account.book);
   const feeConfig = feesForBook(account.book);
+  // 冷启动训练窗口只有日线观察数据：按观察口径重放（§4.4），
+  // 记录性指标不构成验证或启用资格，候选仍需未来前瞻影子验证。
   const dryRun = replayStrategy(
     trainingPairs,
     base,
     account.book.initialCashCents / 100,
     feeConfig,
+    null,
+    null,
+    { observationOnly: true },
   );
   if (dryRun.covered === false || !dryRun.days)
     return {
@@ -778,12 +783,18 @@ export async function proposeBootstrapImprovement(
       base,
       account.book.initialCashCents / 100,
       feeConfig,
+      null,
+      null,
+      { observationOnly: true },
     );
     const candidateReplay = replayStrategy(
       trainingPairs,
       candidate.params,
       account.book.initialCashCents / 100,
       feeConfig,
+      null,
+      null,
+      { observationOnly: true },
     );
     const { stage } = await research.concludeBootstrap(
       experimentId,

@@ -6,7 +6,7 @@ import {
   defensivePlan,
 } from "../domain/trading.js";
 import { normalizeFees, feesForBook } from "../../shared/fees.js";
-import { latestPolicyBundle } from "./execution-cost.js";
+import { latestPolicyBundle, verifyPolicyBundle } from "./execution-cost.js";
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -85,6 +85,13 @@ export class PaperRepository {
     );
   }
   async savePlan(plan) {
+    // 冻结入口核验（§3.2）：计划内嵌政策 payload 必须与摘要一致，
+    // 防止改参不改编号的计划进入执行链。
+    if (
+      plan?.executionCostPolicy &&
+      !(await verifyPolicyBundle(plan.executionCostPolicy))
+    )
+      throw new Error("计划成本政策与摘要不一致，拒绝冻结");
     const hash = await digest(plan);
     await this.db
       .prepare(

@@ -42,21 +42,48 @@ function rowToBundle(row) {
   return bundle;
 }
 
-// 政策尚未迁移（D1 未应用 0012）或查询失败时回退默认政策：
-// 默认政策与未自定义时的行为一致，不阻塞结算。
-export async function latestPolicyBundle(db) {
+// 执行前核验：bundle 内嵌 payload 必须与摘要一致（§3.2/§5.4）。
+// 修改参数但保留旧摘要的政策在这里被拒绝。
+export async function verifyPolicyBundle(bundle) {
+  if (!bundle?.payload || !/^[0-9a-f]{64}$/.test(bundle.payloadDigest ?? ""))
+    return false;
   try {
-    const row = await db
+    return (await policyDigest(bundle.payload)) === bundle.payloadDigest;
+  } catch {
+    return false;
+  }
+}
+
+// 政策读取：表未迁移时回退默认政策；行存在但内容损坏或摘要不一致时
+// 必须抛错，不能静默回退默认值继续交易。
+export async function latestPolicyBundle(db) {
+  let row;
+  try {
+    row = await db
       .prepare(
         "SELECT * FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1",
       )
       .bind(EXECUTION_COST_MODEL)
       .first();
-    if (!row) return defaultExecutionCostPolicy();
-    return rowToBundle(row);
-  } catch {
-    return defaultExecutionCostPolicy();
+  } catch (error) {
+    if (/no such table/i.test(String(error?.message ?? error)))
+      return defaultExecutionCostPolicy();
+    throw error;
   }
+  if (!row) return defaultExecutionCostPolicy();
+  let bundle;
+  try {
+    bundle = rowToBundle(row);
+  } catch {
+    throw new Error(
+      `成本政策 v${row.version} 存储内容损坏，拒绝静默回退；请修复或删除该版本`,
+    );
+  }
+  if (!(await verifyPolicyBundle(bundle)))
+    throw new Error(
+      `成本政策 v${row.version} 存储内容与摘要不一致，拒绝静默回退；请修复或删除该版本`,
+    );
+  return bundle;
 }
 
 export class ExecutionCostRepository {

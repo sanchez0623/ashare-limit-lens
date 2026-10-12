@@ -101,22 +101,25 @@ export function buildExecutionContext({
   };
 }
 
-// 累计冲击代理 F(Q) = P0 × Q × κ × (p(Q)/p_ref)^γ / 10000（单位：分）。
-// 使用累计成本差：同一价格/区间下拆成多笔不会获得更低的模型冲击（§4.2）。
+// 累计冲击代理 F(Q) = P0 × Q × κ_eff × (p(Q)/p_ref)^γ / 10000（单位：分）。
+// κ_eff 已含数据质量倍数与压力倍数（§4.1：倍数作用于残余项，冲击项是残余项
+// 的组成部分）；同一区间内 κ_eff 不变，保证拆单一致的累计成本差（§4.2）。
 export function cumulativeImpactCents(
   referencePriceCents,
   marketVolumeShares,
   consumedShares,
-  policy,
+  impactBpsEffective,
+  referenceParticipation,
+  impactExponent,
 ) {
   if (consumedShares <= 0 || marketVolumeShares <= 0) return 0;
   const participation = consumedShares / marketVolumeShares;
-  const relative = participation / policy.payload.referenceParticipation;
+  const relative = participation / referenceParticipation;
   return (
     (referencePriceCents *
       consumedShares *
-      policy.payload.impactBpsAtReferenceParticipation *
-      Math.pow(relative, policy.payload.impactExponent)) /
+      impactBpsEffective *
+      Math.pow(relative, impactExponent)) /
     10000
   );
 }
@@ -153,6 +156,9 @@ export function estimateExecutionCost({
   const floorBps = fallbackSpread ? payload.unknownSpreadFloorBps : 0;
   const qualityMultiplier =
     context.quality === "minute" ? payload.minuteQualityMultiplier : 1;
+  // 倍数同时作用于残余项与数量冲击项（冲击项属于残余项，§4.1）。
+  const impactBpsEffective =
+    payload.impactBpsAtReferenceParticipation * qualityMultiplier * stress;
   const residualBps =
     (periodBps + limitUpBps + floorBps) * qualityMultiplier * stress;
   // 对手盘可用时锚定不利价差；已用对手盘后不再加同一份价差，避免双计。
@@ -172,7 +178,9 @@ export function estimateExecutionCost({
       p0,
       context.marketVolumeShares,
       context.consumedShares,
-      policy,
+      impactBpsEffective,
+      payload.referenceParticipation,
+      payload.impactExponent,
     ),
   );
   const impactAfterCents = Math.round(
@@ -180,7 +188,9 @@ export function estimateExecutionCost({
       p0,
       context.marketVolumeShares,
       context.consumedShares + quantity,
-      policy,
+      impactBpsEffective,
+      payload.referenceParticipation,
+      payload.impactExponent,
     ),
   );
   const impactCostCents = impactAfterCents - impactBeforeCents;
@@ -286,12 +296,19 @@ export function solveFillQuantity({
         ) - context.consumedShares,
       )
     : Infinity;
+  // 买入上限必须整手：共享容量扣除奇数股卖出后的余额也要向下取整，
+  // 否则“先卖 1 股后买 999 股”会突破整手约束（§4.3）。
   let upper =
     side === "BUY"
-      ? Math.min(
-          roundLot(desiredQuantity),
-          remainingShared,
-          roundLot(remainingOpeningRaw),
+      ? roundLot(
+          Math.min(
+            desiredQuantity,
+            remainingShared,
+            remainingOpeningRaw,
+            limits.capCents != null
+              ? Math.max(0, limits.capCents) / context.referencePriceCents
+              : Infinity,
+          ),
         )
       : Math.min(
           desiredQuantity,
@@ -299,12 +316,6 @@ export function solveFillQuantity({
           Math.floor(remainingOpeningRaw),
           limits.availableQuantity ?? Infinity,
         );
-  if (side === "BUY" && limits.capCents != null) {
-    const affordable = Math.floor(
-      (limits.capCents - 1000) / context.referencePriceCents,
-    );
-    upper = Math.min(upper, roundLot(Math.max(0, affordable)));
-  }
   const violates = (quantity) => {
     const estimate = estimateExecutionCost({
       policy,

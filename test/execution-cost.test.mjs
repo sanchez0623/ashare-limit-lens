@@ -23,7 +23,14 @@ import {
 } from "../backend/domain/trading.js";
 import { openSession, advanceSession } from "../backend/domain/realtime.js";
 import { PaperRepository, digest } from "../backend/storage/paper.js";
+import {
+  ExecutionCostRepository,
+  latestPolicyBundle,
+  verifyPolicyBundle,
+} from "../backend/storage/execution-cost.js";
 import { exportPaper, verifyExport } from "../backend/services/paper.js";
+import { freezePortfolioPlan } from "../backend/services/portfolio-runner.js";
+import { replayStrategy } from "../backend/domain/validation.js";
 import {
   runExecutionSensitivity,
   scenarioPolicyBundles,
@@ -250,7 +257,53 @@ test("拆单一致：同区间一次成交与拆成数笔的累计模型冲击�
       10000,
   );
   assert.equal(single.costBreakdown.impactCostCents, manual);
-  assert.equal(cumulativeImpactCents(1000, 10_000_000, 0, policy), 0);
+  assert.equal(cumulativeImpactCents(1000, 10_000_000, 0, 10, 0.01, 0.5), 0);
+});
+
+test("倍数作用于冲击项：分钟质量与压力情景同比例放大冲击成本", () => {
+  // F(Q) 与 κ_eff 严格线性：质量 1.5 倍或压力 2 倍时冲击成本同倍放大
+  const base = cumulativeImpactCents(1000, 10_000_000, 5000, 10, 0.01, 0.5);
+  assert.equal(
+    cumulativeImpactCents(1000, 10_000_000, 5000, 15, 0.01, 0.5),
+    base * 1.5,
+  );
+  assert.equal(
+    cumulativeImpactCents(1000, 10_000_000, 5000, 20, 0.01, 0.5),
+    base * 2,
+  );
+  const minute = estimateExecutionCost({
+    policy: defaultExecutionCostPolicy(),
+    context: context({
+      event: event("10:00:00", { quality: "minute" }),
+    }),
+    side: "BUY",
+    quantity: 1000,
+  }).costBreakdown;
+  const realtime = estimate({}).costBreakdown;
+  assert.equal(minute.impactCostCents, realtime.impactCostCents * 1.5);
+  // 仅保留冲击项时（时段项/回退为 0、无涨停项），压力情景仍改变成交价
+  const impactOnly = {
+    ...defaultExecutionCostPolicy(),
+    payload: normalizeExecutionCostPayload({
+      ...DEFAULT_EXECUTION_COST_PAYLOAD,
+      periodBaseBps: {
+        openFirstMinute: 0,
+        openNextFourMinutes: 0,
+        earlySession: 0,
+        regular: 0,
+      },
+      unknownSpreadFloorBps: 0,
+      executionStressMultiplier: 2,
+    }),
+  };
+  const stressed = estimateExecutionCost({
+    policy: impactOnly,
+    context: context(),
+    side: "BUY",
+    quantity: 1000,
+  }).costBreakdown;
+  assert.equal(stressed.impactCostCents, realtime.impactCostCents * 2);
+  assert.ok(stressed.impliedCostCents > 0);
 });
 
 test("盘口：可用时锚定不利价差且不加回退；缺失/倒挂回退并留痕，无价差双计", () => {
@@ -577,9 +630,10 @@ test("同一时刻 UTC 与 +08:00 表示产生相同成本分段；重放不使�
       `${dateAt(0)}T07:10:00.000Z`,
     ),
   );
-  // 09:30:30 +08:00 ≡ 01:30:30Z；观测时间取帧采集时刻而非重放当天时钟。
+  // 09:30:30 +08:00 预热；第二帧改用同一时刻的 UTC 表示（01:30:40Z）：
+  // 成本分段与容量必须与 +08:00 表示完全一致（§3.1 验收项）。
   // 首帧仅预热建立累计量基线，第二帧的量差才提供区间容量（§4.4）。
-  const quoteAt = (time, volume) => ({
+  const quoteAt = (time, volume, timestamp) => ({
     date: dateAt(1),
     previousCloseCents: 1000,
     openCents: 1000,
@@ -587,7 +641,7 @@ test("同一时刻 UTC 与 +08:00 表示产生相同成本分段；重放不使�
     volumeShares: volume,
     limitUpCents: 1100,
     limitDownCents: 900,
-    timestamp: `${dateAt(1)}T${time}+08:00`,
+    timestamp: timestamp ?? `${dateAt(1)}T${time}+08:00`,
   });
   const session = openSession(current.book, frozen, dateAt(1));
   let step = advanceSession(current.book, session, {
@@ -598,13 +652,42 @@ test("同一时刻 UTC 与 +08:00 表示产生相同成本分段；重放不使�
   assert.equal(step.ledger.length, 0, "首帧只预热，不凭缺口量成交");
   step = advanceSession(step.book, step.session, {
     observedAt: new Date(`${dateAt(1)}T01:30:40.000Z`).toISOString(),
-    quotes: { 600001: quoteAt("09:30:40", 15_000_000) },
+    quotes: {
+      600001: quoteAt("09:30:40", 15_000_000, `${dateAt(1)}T01:30:40.000Z`),
+    },
     pollIntervalSeconds: 10,
   });
   assert.equal(step.ledger.length, 1);
+  // UTC 表示不得把开盘段误判为普通时段：残余项 30+15+5 = 50
   assert.equal(step.ledger[0].executionCost.period, "openFirstMinute");
-  assert.equal(step.ledger[0].quoteTimestamp, `${dateAt(1)}T09:30:40+08:00`);
+  assert.equal(step.ledger[0].executionCost.residualBps, 50);
+  assert.equal(step.ledger[0].quoteTimestamp, `${dateAt(1)}T01:30:40.000Z`);
   assert.equal(step.ledger[0].executionCost.marketVolumeShares, 5_000_000);
+  // 分钟采样质量随观测声明：observationQuality=minute 时残余 ×1.5 = 75
+  const sampledBook = structuredClone(current.book);
+  const sampled = openSession(sampledBook, frozen, dateAt(1));
+  const warm = advanceSession(sampledBook, sampled, {
+    observedAt: new Date(`${dateAt(1)}T01:30:30.000Z`).toISOString(),
+    quotes: { 600001: quoteAt("09:30:30", 10_000_000) },
+    pollIntervalSeconds: 10,
+    observationQuality: "minute",
+  });
+  const sampledStep = advanceSession(warm.book, warm.session, {
+    observedAt: new Date(`${dateAt(1)}T01:30:40.000Z`).toISOString(),
+    quotes: { 600001: quoteAt("09:30:40", 15_000_000) },
+    pollIntervalSeconds: 10,
+    observationQuality: "minute",
+  });
+  assert.equal(sampledStep.ledger.length, 1);
+  assert.equal(sampledStep.ledger[0].executionCost.quality, "minute");
+  assert.equal(sampledStep.ledger[0].executionCost.residualBps, 75);
+  assert.ok(
+    Math.abs(
+      sampledStep.ledger[0].executionCost.impactCostCents -
+        step.ledger[0].executionCost.impactCostCents * 1.5,
+    ) <= 1,
+    "分钟质量倍数应等比放大冲击成本（允许累计取整 1 分差）",
+  );
   DB.close();
 });
 
@@ -714,5 +797,191 @@ test("敏感性：情景倍数冻结进政策，单笔成本随压力单调上�
   assert.ok(stress.impliedCostCents > mid.impliedCostCents);
   // 三情景各自独立重放，结果带完整摘要可独立复核
   assert.ok(run.manifest.basePolicy.payloadDigest);
+  // P1-8：manifest 冻结策略身份与逐对输入摘要；逐情景账本随结果保存
+  assert.ok(run.manifest.strategy?.digest);
+  assert.equal(run.manifest.inputs?.length, run.manifest.sampleDays);
+  assert.equal(run.payload.results[0].fills.length, baseline.fillCount);
+  assert.ok(run.payload.results[0].equity.length > 0);
+  const variant = await runExecutionSensitivity(env, {
+    days: 10,
+    strategy: { ...BASE_STRATEGY, minScore: 70 },
+  });
+  assert.notEqual(
+    variant.manifest.strategy.digest,
+    run.manifest.strategy.digest,
+  );
+  assert.notEqual(
+    JSON.stringify(variant.manifest),
+    JSON.stringify(run.manifest),
+    "不同策略不得生成相同 manifest",
+  );
   DB.close();
+});
+
+test("摘要执行前校验：改参保留旧摘要的计划拒绝冻结与执行", async () => {
+  const DB = localDatabase(),
+    env = { DB },
+    repository = new PaperRepository(env);
+  await repository.initialize();
+  const frozen = createPlan(
+    snapshot(dateAt(0)),
+    newBook(100000),
+    BASE_STRATEGY,
+    "baseline-v1",
+    `${dateAt(0)}T07:10:00.000Z`,
+  );
+  const tampered = structuredClone(frozen);
+  tampered.executionCostPolicy.payload.periodBaseBps.regular = 1;
+  await assert.rejects(() => repository.savePlan(tampered), /政策与摘要不一致/);
+  // 正常计划可冻结且 bundle 核验通过
+  const saved = await repository.savePlan(frozen);
+  assert.equal(await verifyPolicyBundle(saved.executionCostPolicy), true);
+  // 存储中损坏的政策行必须抛错，不静默回退默认值
+  await DB.prepare(
+    "INSERT INTO execution_cost_policies (id,version,model_version,payload,digest,calibration_status,created_at) VALUES (?,?,?,?,?,?,?)",
+  )
+    .bind(
+      "exec-cost-v1",
+      1,
+      EXECUTION_COST_MODEL,
+      JSON.stringify({ periodBaseBps: { regular: 90 } }),
+      "0".repeat(64),
+      "PRIOR_UNCALIBRATED",
+      new Date().toISOString(),
+    )
+    .run();
+  await assert.rejects(() => latestPolicyBundle(DB), /拒绝静默回退/);
+  DB.close();
+});
+
+test("整手约束：奇数卖出消耗共享容量后，买入上限仍整手向下取整", () => {
+  const policy = defaultExecutionCostPolicy();
+  // 与测试现金约束一致的费用估计：佣金最低 5 元 + 万 5
+  const feeOf = (notionalCents) => Math.round(notionalCents * 0.0005) + 500;
+  const base = {
+    policy,
+    side: "BUY",
+    desiredQuantity: 1000,
+    estimateFees: feeOf,
+  };
+  // V=100000：硬预算 roundLot(1000)=1000；先卖 1 股 → 剩余 999 → 买入 900
+  const afterOddSell = solveFillQuantity({
+    ...base,
+    context: context({
+      event: event("10:00:00", { volumeShares: 100_000 }),
+      intervalState: {
+        intervalKey: "2026-01-02:10:00:00",
+        referencePriceCents: 1000,
+        marketVolumeShares: 100_000,
+        consumedShares: 1,
+        cumulativeImpactCents: 0,
+      },
+    }),
+  });
+  assert.equal(afterOddSell.quantity, 900);
+  // 无预留缓冲：现金恰好够一手含费时仍可成交，不透支
+  const probe = solveFillQuantity({
+    ...base,
+    context: context({ event: event("10:00:00") }),
+    limits: { capCents: 10_000_000 },
+  });
+  const price = probe.executionCost.fillPriceCents;
+  const fees = feeOf(100 * price);
+  const exact = solveFillQuantity({
+    ...base,
+    context: context({ event: event("10:00:00") }),
+    limits: { capCents: 100 * price + fees },
+  });
+  assert.equal(exact.quantity, 100);
+  assert.ok(
+    100 * exact.executionCost.fillPriceCents + fees <= 100 * price + fees,
+  );
+  const oneCentLess = solveFillQuantity({
+    ...base,
+    context: context({ event: event("10:00:00") }),
+    limits: { capCents: 100 * price + fees - 1 },
+  });
+  assert.equal(oneCentLess.quantity, 0);
+});
+
+test("日线观察隔离：缺分钟窗口 covered=false，不构成可信执行净收益", () => {
+  // 单对样本、缺分钟：建仓订单走日线假设 → DAILY_OBSERVATION_ONLY 拒绝
+  const sample = pairs(1).map((pair) => ({
+    ...pair,
+    dataset: { ...pair.dataset, minutes: {} },
+  }));
+  const replay = replayStrategy(
+    sample,
+    BASE_STRATEGY,
+    100000,
+    undefined,
+    null,
+    defaultExecutionCostPolicy(),
+  );
+  assert.equal(replay.covered, false);
+  assert.ok(String(replay.reason).includes("DAILY_OBSERVATION_ONLY"));
+  // 持仓后缺分钟：做 T 被跳过（missingMinuteOrders），同样不构成覆盖
+  const held = pairs(2).map((pair, index) =>
+    index === 1 ? { ...pair, dataset: { ...pair.dataset, minutes: {} } } : pair,
+  );
+  const skipT = replayStrategy(
+    held,
+    BASE_STRATEGY,
+    100000,
+    undefined,
+    null,
+    defaultExecutionCostPolicy(),
+  );
+  assert.equal(skipT.covered, false);
+  assert.ok(String(skipT.reason).includes("缺少盘中分钟数据"));
+});
+
+test("影子账户与主账户冻结相同政策", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const repository = new ExecutionCostRepository(env);
+    // 主账户自定义 regular=90bps → 影子计划必须携带同一政策
+    await repository.save({
+      payload: {
+        ...DEFAULT_EXECUTION_COST_PAYLOAD,
+        periodBaseBps: {
+          ...DEFAULT_EXECUTION_COST_PAYLOAD.periodBaseBps,
+          regular: 90,
+        },
+      },
+    });
+    const saved = { plan: null };
+    const shadows = {
+      account: async () => ({
+        book: { ...newBook(100000), lastDate: dateAt(0) },
+        status: "ACTIVE",
+      }),
+      savePlan: async (_accountId, plan) => {
+        saved.plan = plan;
+        return plan;
+      },
+    };
+    await freezePortfolioPlan(
+      env,
+      "shadow-1",
+      {
+        snapshot: snapshot(dateAt(0)),
+        strategy: BASE_STRATEGY,
+        strategyVersion: "baseline-v1",
+        now: `${dateAt(0)}T07:10:00.000Z`,
+      },
+      { shadows },
+    );
+    assert.equal(
+      saved.plan.executionCostPolicy.payload.periodBaseBps.regular,
+      90,
+    );
+    assert.equal(
+      await verifyPolicyBundle(saved.plan.executionCostPolicy),
+      true,
+    );
+  } finally {
+    DB.close();
+  }
 });

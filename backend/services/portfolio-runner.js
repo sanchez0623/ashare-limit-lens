@@ -5,6 +5,7 @@ import {
   closeSession,
 } from "../domain/realtime.js";
 import { createPlan, defensivePlan } from "../domain/trading.js";
+import { latestPolicyBundle } from "../storage/execution-cost.js";
 
 // 组合执行器（§7.2）：指定 accountId 顺序消费已落盘行情帧与盘后结算。
 // 每个账户按序消费；一账户的重试不重复其他账户的成交；崩溃后只消费已经落盘的帧。
@@ -118,14 +119,20 @@ export async function freezePortfolioPlan(
 ) {
   const account = await shadows.account(accountId);
   if (!account) throw new Error("影子账户不存在");
+  // 同一批次与主账户冻结相同政策（§3.2）：影子组合是独立假设路径，
+  // 但成本假设必须一致，否则对照与赛马排名不可比。
+  const executionCostPolicy = await latestPolicyBundle(env.DB);
   const plan = snapshot
-    ? createPlan(snapshot, account.book, strategy, strategyVersion, now)
+    ? createPlan(snapshot, account.book, strategy, strategyVersion, now, {
+        executionCostPolicy,
+      })
     : defensivePlan(
         account.book.lastDate,
         account.book,
         strategy,
         strategyVersion,
         now,
+        { executionCostPolicy },
       );
   return shadows.savePlan(accountId, plan);
 }

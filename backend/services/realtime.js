@@ -11,6 +11,7 @@ import { tradingQuotes, tradingCalendar } from "./market.js";
 import { readWeights } from "./review.js";
 import { buildOperationEvents } from "./alerts.js";
 import { instanceAlias } from "../domain/alert-messages.js";
+import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { safeError } from "../http.js";
 const calendars = new Map();
 async function calendarFor(start, date, now) {
@@ -70,11 +71,17 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
           status: "BLOCKED",
           reason: "上一交易日未结算，停止新增交易",
         });
-      session = openSession(
-        account.book,
-        await repo.plan(previous),
-        clock.date,
-      );
+      const plan = await repo.plan(previous);
+      // 执行前核验计划冻结的成本政策摘要（§5.4）：损坏政策不进入执行链。
+      if (
+        plan?.executionCostPolicy &&
+        !(await verifyPolicyBundle(plan.executionCostPolicy))
+      )
+        return heartbeat({
+          status: "BLOCKED",
+          reason: "计划成本政策与摘要不一致，暂停交易；请重新冻结计划",
+        });
+      session = openSession(account.book, plan, clock.date);
     }
     if (session.status !== "OPEN")
       return heartbeat({ status: session.status, reason: "交易日已关闭" });

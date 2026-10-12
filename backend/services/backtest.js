@@ -14,6 +14,7 @@ import {
   defaultExecutionCostPolicy,
   normalizeExecutionCostPolicy,
 } from "../../shared/execution-cost.js";
+import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { digestOf } from "../domain/research-lineage.js";
 import {
   HISTORICAL_EXECUTION_MODEL,
@@ -94,6 +95,9 @@ function observationsForDay({ date, minuteByCode, templates }) {
     observations.push({
       observedAt: new Date(`${date}T${time}:00+08:00`).toISOString(),
       pollIntervalSeconds: 60,
+      // 分钟采样重放必须声明采样质量：残余成本按 minuteQualityMultiplier
+      // 计，不得冒充实时轮询精度（§3.1/§4.5）。
+      observationQuality: "minute",
       quotes,
     });
   }
@@ -156,6 +160,8 @@ export async function runBacktest(
   const policyBundle = executionCostPolicy
     ? normalizeExecutionCostPolicy(executionCostPolicy)
     : defaultExecutionCostPolicy();
+  if (!(await verifyPolicyBundle(policyBundle)))
+    throw new Error("回测成本政策与摘要不一致，拒绝用于回测");
   const runId = newId("bt");
   let book = newBook(initialCapital ?? 1000000, feeConfig);
   const paramsDigest = await digestOf(strategyParams);

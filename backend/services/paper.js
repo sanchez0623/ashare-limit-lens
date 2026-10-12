@@ -11,6 +11,7 @@ import { collectTradingDay, tradingCalendar } from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
+import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { safeError } from "../http.js";
 import { feesForBook } from "../../shared/fees.js";
 import { RealtimeRepository } from "../storage/realtime.js";
@@ -71,6 +72,15 @@ async function settlePaperDay(env, date) {
       : null;
     if (account.book.lastDate && !plan) {
       const reason = "缺少上一交易日事前计划，结算暂停，避免事后构造交易";
+      await repository.logRun(date, "BLOCKED", { reason });
+      return { status: "BLOCKED", reason, calendarDates };
+    }
+    // 执行前核验计划冻结的成本政策摘要（§5.4）：损坏政策不进入结算链。
+    if (
+      plan?.executionCostPolicy &&
+      !(await verifyPolicyBundle(plan.executionCostPolicy))
+    ) {
+      const reason = "计划成本政策与摘要不一致，结算暂停；请重新冻结计划";
       await repository.logRun(date, "BLOCKED", { reason });
       return { status: "BLOCKED", reason, calendarDates };
     }
