@@ -1,837 +1,861 @@
 // .sites-runtime/assets.js
-var ASSETS = { "/": { "body": `<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#101e2e" />
-    <title>\u6DA8\u505C\u7814\u7A76\u53F0 \xB7 A \u80A1\u590D\u76D8\u4E0E\u8BC4\u5206</title>
-    <meta
-      name="description"
-      content="\u6BCF\u65E5 A \u80A1\u6DA8\u505C\u590D\u76D8\uFF0C\u67E5\u770B\u53EF\u89E3\u91CA\u7684\u4E2A\u80A1\u8BC4\u5206\u3001\u884C\u4E1A\u677F\u5757\u5F3A\u5EA6\u548C\u5E02\u573A\u60C5\u7EEA\u3002"
-    />
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101e2e'/%3E%3Cpath d='M7 24V17h4v7m3 0V12h4v12m3 0V7h4v17' stroke='%2356d3b5' stroke-width='3'/%3E%3C/svg%3E"
-    />
-    <link rel="stylesheet" href="/assets/styles.css" />
-  </head>
-  <body>
-    <div class="shell">
-      <aside class="sidebar">
-        <a class="brand" href="#overview" aria-label="\u6DA8\u505C\u7814\u7A76\u53F0\u9996\u9875"
-          ><span class="brand-mark"><i></i><i></i><i></i></span
-          ><span>\u6DA8\u505C\u7814\u7A76\u53F0<small>LIMIT LENS</small></span></a
-        >
-        <div class="nav-label">\u7814\u7A76\u5DE5\u4F5C\u53F0</div>
-        <nav aria-label="\u4E3B\u5BFC\u822A">
-          <button data-view="overview" class="nav-item active">
-            <span data-icon="dashboard"></span>\u603B\u89C8\u590D\u76D8
-          </button>
-          <button data-view="stocks" class="nav-item">
-            <span data-icon="chart"></span>\u4E2A\u80A1\u5206\u6790
-          </button>
-          <button data-view="sectors" class="nav-item">
-            <span data-icon="grid"></span>\u677F\u5757\u7814\u7A76
-          </button>
-          <button data-view="review" class="nav-item">
-            <span data-icon="shield"></span>\u6628\u65E5\u53CD\u9988
-          </button>
-          <button data-view="paper" class="nav-item">
-            <span data-icon="chart"></span>\u6A21\u62DF\u4EA4\u6613
-          </button>
-          <button data-view="strategies" class="nav-item">
-            <span data-icon="sliders"></span>\u7B56\u7565\u8D5B\u9A6C
-          </button>
-          <button data-view="alerts" class="nav-item">
-            <span data-icon="shield"></span>\u8FD0\u7EF4\u544A\u8B66
-          </button>
-          <button data-view="model" class="nav-item">
-            <span data-icon="sliders"></span>\u8BC4\u5206\u6A21\u578B
-          </button>
-        </nav>
-        <div class="sidebar-note">
-          <span class="mini-label">\u590D\u76D8\u95ED\u73AF</span
-          ><strong>\u8BC4\u5206 \xB7 \u68C0\u9A8C \xB7 \u6539\u8FDB</strong>
-          <p>\u4FDD\u5B58\u5F53\u65F6\u7684\u5224\u65AD\uFF0C\u518D\u7528\u4E0B\u4E00\u4EA4\u6613\u65E5\u7684\u7ED3\u679C\u68C0\u9A8C\u3002</p>
-          <div class="note-line"></div>
-          <span id="snapshot-status">\u6536\u76D8\u540E\u81EA\u52A8\u4FDD\u5B58\u8BC4\u5206\u5FEB\u7167</span>
-        </div>
-        <div class="sidebar-footer">
-          <span data-icon="database"></span>
-          <div>
-            \u516C\u5F00\u884C\u60C5\u63A5\u5165<small id="sidebar-source">\u6B63\u5728\u68C0\u67E5\u6570\u636E\u6E90</small>
-          </div>
-        </div>
-      </aside>
-      <div class="workspace">
-        <header class="topbar">
-          <div class="breadcrumb">
-            \u7814\u7A76\u5DE5\u4F5C\u53F0 <span>/</span> <strong id="crumb">\u603B\u89C8\u590D\u76D8</strong>
-          </div>
-          <div class="topbar-right">
-            <span class="session-label">A \u80A1 \xB7 \u6CAA\u6DF1\u5E02\u573A</span
-            ><button
-              class="icon-button"
-              id="help-btn"
-              aria-label="\u67E5\u770B\u6570\u636E\u53E3\u5F84"
-            >
-              <span data-icon="info"></span>
-            </button>
-          </div>
-        </header>
-        <main>
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">DAILY MARKET REVIEW</div>
-              <h1 id="page-title">\u6BCF\u65E5\u6DA8\u505C\u590D\u76D8</h1>
-              <p id="page-subtitle">\u628A\u6DA8\u505C\u62C6\u6210\u4FE1\u53F7\uFF0C\u628A\u5224\u65AD\u5EFA\u7ACB\u5728\u6570\u636E\u4E0A\u3002</p>
-            </div>
-            <div class="heading-actions">
-              <label class="date-control"
-                ><span data-icon="calendar"></span
-                ><input
-                  type="date"
-                  id="trade-date"
-                  aria-label="\u4EA4\u6613\u65E5\u671F" /></label
-              ><button class="primary" id="refresh-btn">
-                <span data-icon="refresh"></span>\u5237\u65B0\u884C\u60C5
-              </button>
-            </div>
-          </div>
-          <div class="data-strip">
-            <div>
-              <span class="source-tag" id="source-tag">\u884C\u60C5\u52A0\u8F7D\u4E2D</span
-              ><span id="data-time">\u6B63\u5728\u83B7\u53D6\u6240\u9009\u4EA4\u6613\u65E5\u6DA8\u505C\u6C60</span>
-            </div>
-            <button class="text-button" id="demo-btn">\u67E5\u770B\u6F14\u793A</button>
-          </div>
-          <div class="notice" id="notice" role="status" hidden></div>
-          <section id="summary" class="metrics" aria-label="\u5E02\u573A\u6982\u51B5"></section>
-          <div id="overview-content" class="overview-grid">
-            <section class="panel pool-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>
-                    \u6DA8\u505C\u4E2A\u80A1 <span class="count-chip" id="pool-count">\u2014</span>
-                  </h2>
-                  <p>\u6309\u7EFC\u5408\u8BC4\u5206\u6392\u5E8F\uFF0C\u70B9\u51FB\u4E2A\u80A1\u67E5\u770B\u5B8C\u6574\u8BCA\u65AD</p>
-                </div>
-                <span class="small-muted" id="coverage-label">\u516D\u7EF4\u8BC4\u5206</span>
-              </div>
-              <div class="filters">
-                <div class="search-control">
-                  <span data-icon="search"></span
-                  ><input
-                    id="search"
-                    placeholder="\u641C\u7D22\u540D\u79F0 / \u4EE3\u7801"
-                    aria-label="\u641C\u7D22\u6DA8\u505C\u4E2A\u80A1"
-                  />
-                </div>
-                <select id="sector-filter" aria-label="\u7B5B\u9009\u884C\u4E1A\u677F\u5757">
-                  <option value="">\u5168\u90E8\u884C\u4E1A</option>
-                </select>
-              </div>
-              <div class="table-subnav">
-                <div class="segments" role="group" aria-label="\u8FDE\u677F\u7B5B\u9009">
-                  <button data-height="all" class="active">\u5168\u90E8</button
-                  ><button data-height="first">\u9996\u677F</button
-                  ><button data-height="relay">\u8FDE\u677F</button>
-                </div>
-                <div class="sort-control">
-                  <label for="sort">\u6392\u5E8F</label
-                  ><select id="sort">
-                    <option value="score">\u7EFC\u5408\u8BC4\u5206</option>
-                    <option value="height">\u8FDE\u677F\u9AD8\u5EA6</option>
-                    <option value="seal">\u5C01\u5355\u91D1\u989D</option>
-                    <option value="first">\u9996\u5C01\u65F6\u95F4</option>
-                  </select>
-                </div>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u4E2A\u80A1 / \u4EE3\u7801</th>
-                      <th>\u7EFC\u5408\u8BC4\u5206</th>
-                      <th>\u884C\u4E1A\u677F\u5757</th>
-                      <th>\u8FDE\u677F</th>
-                      <th>\u9996\u5C01\u65F6\u95F4</th>
-                      <th>\u5C01\u5355\u91D1\u989D</th>
-                      <th>\u6362\u624B\u7387</th>
-                      <th>\u70B8\u677F</th>
-                    </tr>
-                  </thead>
-                  <tbody id="stock-rows"></tbody>
-                </table>
-              </div>
-              <div class="table-footer">
-                <span id="table-status">\u6B63\u5728\u8BFB\u53D6\u516C\u5F00\u884C\u60C5\u2026</span
-                ><span>\u8BC4\u5206\u533A\u95F4 0\u2013100</span>
-              </div>
-            </section>
-            <div class="right-column">
-              <section class="panel sector-panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u677F\u5757\u5F3A\u5EA6</h2>
-                    <p>\u6DA8\u505C\u96C6\u805A \xD7 \u8FDE\u677F\u9AD8\u5EA6 \xD7 \u5C01\u677F\u8868\u73B0</p>
-                  </div>
-                  <button
-                    class="icon-button"
-                    id="all-sectors"
-                    aria-label="\u67E5\u770B\u5168\u90E8\u884C\u4E1A\u677F\u5757"
-                  >
-                    <span data-icon="grid"></span>
-                  </button>
-                </div>
-                <div id="sector-rank"></div>
-                <div class="panel-footnote">
-                  \u884C\u4E1A\u5206\u7C7B\u53E3\u5F84\uFF0C\u4E0D\u7B49\u540C\u4E8E\u6982\u5FF5\u9898\u6750\u70ED\u5EA6
-                </div>
-              </section>
-              <section class="panel ladder-panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u8FDE\u677F\u68AF\u961F</h2>
-                    <p>\u89C2\u5BDF\u5E02\u573A\u9AD8\u5EA6\u4E0E\u63A5\u529B\u7ED3\u6784</p>
-                  </div>
-                  <span class="outline-tag">\u5F53\u65E5</span>
-                </div>
-                <div id="ladder-chart"></div>
-                <div id="ladder-insight" class="insight"></div>
-              </section>
-            </div>
-          </div>
-          <section id="sectors-view" class="panel" hidden>
-            <div class="panel-heading">
-              <div>
-                <h2>\u884C\u4E1A\u677F\u5757\u8BC4\u5206</h2>
-                <p>\u70B9\u51FB\u677F\u5757\uFF0C\u7B5B\u9009\u5B83\u7684\u6DA8\u505C\u4E2A\u80A1</p>
-              </div>
-              <span class="outline-tag">\u900F\u660E\u6743\u91CD</span>
-            </div>
-            <div class="sector-formula">
-              \u6DA8\u505C\u96C6\u805A 35% <span>+</span> \u8FDE\u677F\u9AD8\u5EA6 25% <span>+</span> \u5C01\u677F\u7A33\u5B9A
-              25% <span>+</span> \u65E9\u76D8\u8054\u52A8 15%
-            </div>
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>\u884C\u4E1A\u677F\u5757</th>
-                    <th>\u677F\u5757\u5F97\u5206</th>
-                    <th>\u6DA8\u505C\u5BB6\u6570</th>
-                    <th>\u6700\u9AD8\u8FDE\u677F</th>
-                    <th>\u5C01\u677F\u7A33\u5B9A</th>
-                    <th>\u65E9\u76D8\u8054\u52A8</th>
-                    <th>\u6DA8\u505C\u80A1\u6210\u4EA4\u989D</th>
-                  </tr>
-                </thead>
-                <tbody id="sector-rows"></tbody>
-              </table>
-            </div>
-          </section>
-          <section id="review-view" hidden>
-            <div class="review-intro">
-              <div>
-                <span class="outline-tag" id="review-date-label"
-                  >\u7B49\u5F85\u9996\u4E2A\u53CD\u9988\u65E5</span
-                >
-                <p id="review-status">
-                  \u5F53\u5929\u6536\u76D8\u540E\u4FDD\u5B58\u539F\u59CB\u8BC4\u5206\uFF0C\u4E0B\u4E00\u4E2A\u4EA4\u6613\u65E5\u6838\u9A8C\u5E02\u573A\u8868\u73B0\u3002
-                </p>
-              </div>
-              <button class="secondary" id="run-review">
-                <span data-icon="refresh"></span>\u66F4\u65B0\u53CD\u9988
-              </button>
-            </div>
-            <div id="review-metrics" class="metrics"></div>
-            <div class="review-grid">
-              <section class="panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u539F\u59CB\u8BC4\u5206\u4E0E\u5B9E\u9645\u8868\u73B0</h2>
-                    <p>\u56FA\u5B9A\u6628\u65E5\u6837\u672C\uFF0C\u68C0\u9A8C\u4ECA\u5929\u7684\u8868\u73B0\uFF0C\u907F\u514D\u4E8B\u540E\u6311\u9009\u8D62\u5BB6</p>
-                  </div>
-                  <span id="review-coverage" class="outline-tag">\u7B49\u5F85\u6837\u672C</span>
-                </div>
-                <div
-                  id="review-conclusion"
-                  class="review-conclusion"
-                  hidden
-                ></div>
-                <div class="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>\u6628\u65E5\u6DA8\u505C\u4E2A\u80A1</th>
-                        <th>\u539F\u59CB\u8BC4\u5206</th>
-                        <th>\u6B21\u65E5\u5F00\u76D8</th>
-                        <th>\u6B21\u65E5\u6536\u76D8</th>
-                        <th>\u76D8\u4E2D\u6700\u4F4E</th>
-                        <th>\u518D\u6B21\u6DA8\u505C</th>
-                      </tr>
-                    </thead>
-                    <tbody id="review-rows"></tbody>
-                  </table>
-                </div>
-                <div class="panel-footnote">
-                  \u6536\u76CA\u4EE5\u539F\u59CB\u6536\u76D8\u4EF7\u4E3A\u57FA\u51C6\uFF0C\u672A\u5047\u8BBE\u80FD\u5728\u6DA8\u505C\u4EF7\u6210\u4EA4\uFF1B\u4E0D\u7B49\u540C\u4E8E\u53EF\u5B9E\u73B0\u7B56\u7565\u6536\u76CA\u3002
-                </div>
-              </section>
-              <section class="panel ai-panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>AI \u7CFB\u7EDF\u8BC4\u4F30</h2>
-                    <p>\u7528\u5DF2\u6838\u9A8C\u7684\u5E02\u573A\u7ED3\u679C\uFF0C\u5BA1\u89C6\u8BC4\u5206\u8D28\u91CF</p>
-                  </div>
-                  <span class="outline-tag" id="ai-status-tag">\u68C0\u67E5\u8FDE\u63A5</span>
-                </div>
-                <div id="ai-content"></div>
-                <div class="ai-actions">
-                  <button class="primary" id="ai-grade-btn">\u751F\u6210 AI \u8BC4\u4EF7</button
-                  ><span id="ai-action-status" role="status"></span>
-                </div>
-              </section>
-            </div>
-            <section class="panel review-sector-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u677F\u5757\u5224\u65AD\u53CD\u9988</h2>
-                  <p>\u4F7F\u7528\u6628\u65E5\u56FA\u5B9A\u7684\u6DA8\u505C\u6210\u5458\uFF0C\u6BD4\u8F83\u6B21\u65E5\u5E73\u5747\u8868\u73B0</p>
-                </div>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u6628\u65E5\u884C\u4E1A\u677F\u5757</th>
-                      <th>\u539F\u59CB\u677F\u5757\u5206</th>
-                      <th>\u6709\u6548 / \u539F\u59CB\u6837\u672C</th>
-                      <th>\u6B21\u65E5\u5E73\u5747\u6536\u76CA</th>
-                      <th>\u518D\u6B21\u6DA8\u505C\u6BD4\u4F8B</th>
-                    </tr>
-                  </thead>
-                  <tbody id="review-sector-rows"></tbody>
-                </table>
-              </div>
-            </section>
-            <section class="panel history-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u53CD\u9988\u8BB0\u5F55</h2>
-                  <p>\u6301\u7EED\u79EF\u7D2F\u6837\u672C\uFF0C\u518D\u5224\u65AD\u6A21\u578B\u662F\u5426\u7A33\u5B9A\u6709\u6548</p>
-                </div>
-              </div>
-              <div id="review-history"></div>
-            </section>
-          </section>
-          <section id="model-view" hidden>
-            <div class="model-grid">
-              <section class="panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u4E2A\u80A1\u8BC4\u5206\u6743\u91CD</h2>
-                    <p>\u5373\u65F6\u91CD\u7B97\u5E76\u4FDD\u5B58\uFF1B\u5DF2\u5F52\u6863\u7684\u539F\u59CB\u8BC4\u5206\u4E0D\u4F1A\u88AB\u8986\u76D6</p>
-                  </div>
-                  <span id="weight-total" class="outline-tag">\u5408\u8BA1 100%</span>
-                </div>
-                <div class="preset-buttons">
-                  <button data-preset="balanced" class="active">\u7EFC\u5408\u590D\u76D8</button
-                  ><button data-preset="first">\u9996\u677F\u6316\u6398</button
-                  ><button data-preset="relay">\u77ED\u7EBF\u63A5\u529B</button>
-                </div>
-                <div id="weight-controls"></div>
-                <div class="model-actions">
-                  <button class="secondary" id="reset-model">
-                    \u6062\u590D\u7EFC\u5408\u590D\u76D8</button
-                  ><span id="model-status" role="status"
-                    >\u6743\u91CD\u76F8\u52A0\u540E\u5F52\u4E00\u5316\u8BA1\u7B97</span
-                  >
-                </div>
-              </section>
-              <section class="panel model-explain">
-                <div class="panel-heading"><h2>\u5206\u6570\u5982\u4F55\u4EA7\u751F</h2></div>
-                <div class="formula-box">
-                  \u7EFC\u5408\u5206 = \u6709\u6548\u6307\u6807\u52A0\u6743\u5747\u5206<br /><span
-                    >\u2212 \u98CE\u9669\u6263\u5206\uFF08\u6700\u591A 20 \u5206\uFF09</span
-                  >
-                </div>
-                <h3>\u6570\u636E\u4E0D\u5B8C\u6574\u65F6</h3>
-                <p>
-                  \u7F3A\u5931\u6307\u6807\u4E0D\u6309\u96F6\u5206\u8BA1\u5165\uFF0C\u5269\u4F59\u6743\u91CD\u91CD\u65B0\u5F52\u4E00\u5316\u3002\u6570\u636E\u8986\u76D6\u7387\u540C\u65F6\u663E\u793A\uFF0C\u8986\u76D6\u7387\u8F83\u4F4E\u7684\u5F97\u5206\u53EF\u6BD4\u6027\u8F83\u5F31\u3002
-                </p>
-                <h3>\u98CE\u9669\u6263\u5206</h3>
-                <dl>
-                  <div>
-                    <dt>5 \u677F\u53CA\u4EE5\u4E0A</dt>
-                    <dd>\u22128</dd>
-                  </div>
-                  <div>
-                    <dt>\u6362\u624B\u7387 > 40%</dt>
-                    <dd>\u22128</dd>
-                  </div>
-                  <div>
-                    <dt>\u70B8\u677F \u2265 3 \u6B21</dt>
-                    <dd>\u22125</dd>
-                  </div>
-                  <div>
-                    <dt>\u4F4E\u6362\u624B\u7ADE\u4EF7\u5C01\u677F\u7279\u5F81</dt>
-                    <dd>\u221210</dd>
-                  </div>
-                  <div>
-                    <dt>14:50 \u540E\u56DE\u5C01</dt>
-                    <dd>\u22124</dd>
-                  </div>
-                </dl>
-                <p class="model-limit">
-                  \u6B64\u6A21\u578B\u662F\u89C4\u5219\u8BC4\u5206\uFF0C\u5C1A\u672A\u8FDB\u884C\u5386\u53F2\u6536\u76CA\u6821\u51C6\u3002\u5206\u6570\u8861\u91CF\u89C2\u5BDF\u6307\u6807\uFF0C\u4E0D\u4EE3\u8868\u6B21\u65E5\u4E0A\u6DA8\u6982\u7387\u3002
-                </p>
-              </section>
-            </div>
-            <section class="panel model-connection">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u5927\u6A21\u578B\u8FDE\u63A5</h2>
-                  <p>DeepSeek\u3001OpenAI\u3001\u901A\u4E49\u517C\u5BB9\u63A5\u53E3</p>
-                </div>
-                <span class="outline-tag" id="model-ai-status">\u672A\u914D\u7F6E</span>
-              </div>
-              <p id="model-ai-detail">
-                \u670D\u52A1\u7AEF\u914D\u7F6E\u5BC6\u94A5\u3001\u63A5\u53E3\u5730\u5740\u548C\u6A21\u578B\u540E\uFF0CAI
-                \u4F1A\u6839\u636E\u51BB\u7ED3\u8BC4\u5206\u4E0E\u5DF2\u6838\u9A8C\u5E02\u573A\u7ED3\u679C\u751F\u6210\u8BC4\u4EF7\u3002\u5BC6\u94A5\u4E0D\u8FDB\u5165\u6D4F\u89C8\u5668\u3002
-              </p>
-              <p>
-                AI
-                \u7ED9\u51FA\u8BC1\u636E\u3001\u5224\u65AD\u5931\u8BEF\u4E0E\u53C2\u6570\u5019\u9009\uFF1B\u6A21\u62DF\u4EA4\u6613\u7B56\u7565\u4EC5\u5728\u72EC\u7ACB\u9A8C\u8BC1\u901A\u8FC7\u540E\u542F\u7528\uFF0C\u5386\u53F2\u8BB0\u5F55\u4FDD\u6301\u51BB\u7ED3\u3002
-              </p>
-            </section>
-          </section>
-          <section id="paper-view" hidden>
-            <div class="paper-toolbar">
-              <div>
-                <span id="paper-date" class="outline-tag">\u68C0\u67E5\u8D26\u6237</span
-                ><span id="paper-audit" class="outline-tag">\u68C0\u67E5\u8D26\u672C</span>
-              </div>
-              <div>
-                <a
-                  class="secondary"
-                  href="/api/paper/export?format=csv"
-                  download
-                  >\u6210\u4EA4 CSV</a
-                ><a class="secondary" href="/api/paper/export" download
-                  >\u5B8C\u6574\u8BB0\u5F55 JSON</a
-                ><button
-                  id="paper-verify"
-                  class="secondary"
-                  data-paper-operation
-                >
-                  \u6838\u9A8C\u6536\u76CA</button
-                ><button id="paper-run" class="primary" data-paper-operation>
-                  \u66F4\u65B0\u76D8\u540E\u8D26\u6237
-                </button>
-              </div>
-            </div>
-            <p class="paper-message" id="paper-message" role="status">
-              \u6A21\u62DF\u8D26\u6237\u6309\u4E8B\u524D\u8BA1\u5212\u6267\u884C\uFF0C\u771F\u5B9E\u6570\u636E\u5230\u8FBE\u540E\u66F4\u65B0\u6536\u76CA\u3002
-            </p>
-            <div id="paper-metrics" class="metrics"></div>
-            <section class="panel paper-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u81EA\u52A8\u6267\u884C\u72B6\u6001</h2>
-                  <p id="paper-live-summary">\u68C0\u67E5\u6267\u884C\u5668\u5FC3\u8DF3\u4E0E\u817E\u8BAF\u884C\u60C5</p>
-                </div>
-                <span class="outline-tag" id="paper-live-tag">\u672A\u8FDE\u63A5</span>
-              </div>
-              <p class="panel-footnote" id="paper-live-health"></p>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u4E2A\u80A1 / \u52A8\u4F5C</th>
-                      <th>\u6267\u884C\u72B6\u6001</th>
-                      <th>\u8FDB\u5EA6</th>
-                      <th>\u6700\u8FD1\u5904\u7406\u7ED3\u679C</th>
-                    </tr>
-                  </thead>
-                  <tbody id="paper-live-orders"></tbody>
-                </table>
-              </div>
-            </section>
-            <div class="paper-grid">
-              <section class="panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>\u8D26\u6237\u6536\u76CA\u8F68\u8FF9</h2>
-                    <p>\u6BCF\u65E5\u6743\u76CA\u3001\u6210\u4EA4\u6210\u672C\u4E0E\u6307\u6570\u57FA\u51C6\u5747\u53EF\u91CD\u653E\u9A8C\u8BC1</p>
-                  </div>
-                  <span class="outline-tag">\u51C0\u6536\u76CA</span>
-                </div>
-                <div id="paper-chart"></div>
-                <div class="panel-footnote" id="paper-risk"></div>
-              </section>
-              <section class="panel ai-panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>AI \u7B56\u7565\u6539\u8FDB</h2>
-                    <p>\u5728\u5C01\u5B58\u6570\u636E\u4E0A\u9A8C\u8BC1\uFF0C\u518D\u542F\u7528\u65B0\u7248\u672C</p>
-                  </div>
-                  <span class="outline-tag" id="paper-ai-tag">\u68C0\u67E5\u8FDE\u63A5</span>
-                </div>
-                <div id="paper-ai-content"></div>
-                <div class="ai-actions">
-                  <button
-                    class="secondary"
-                    id="paper-improve"
-                    data-paper-operation
-                  >
-                    \u68C0\u67E5\u6539\u8FDB\u6761\u4EF6
-                  </button>
-                </div>
-                <div id="paper-version-list"></div>
-              </section>
-            </div>
-            <section class="panel paper-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u5F53\u524D\u6301\u4ED3</h2>
-                  <p>
-                    \u542B\u4E70\u5165\u8D39\u7528\u7684\u6210\u672C\uFF0CFIFO \u6838\u7B97\u5DF2\u5B9E\u73B0\u76C8\u4E8F\uFF1B\u5F53\u65E5\u65B0\u4E70\u5165\u4EFD\u989D\u4E0D\u53EF\u5356
-                  </p>
-                </div>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u4E2A\u80A1</th>
-                      <th>\u6301\u80A1\u6570\u91CF</th>
-                      <th>\u6BCF\u80A1\u6210\u672C</th>
-                      <th>\u6700\u65B0\u4F30\u503C\u4EF7</th>
-                      <th>\u6301\u4ED3\u5E02\u503C</th>
-                      <th>\u6D6E\u52A8\u76C8\u4E8F</th>
-                      <th>\u6301\u4ED3\u65F6\u95F4</th>
-                    </tr>
-                  </thead>
-                  <tbody id="paper-position-rows"></tbody>
-                </table>
-              </div>
-            </section>
-            <section class="panel paper-panel">
-              <div class="panel-heading paper-plan-heading">
-                <div>
-                  <h2>\u4E0B\u4E00\u4EA4\u6613\u65E5\u8BA1\u5212</h2>
-                  <p id="paper-plan-meta">
-                    \u76D8\u540E\u51BB\u7ED3\u6570\u91CF\u4E0E\u4EF7\u683C\u6761\u4EF6\uFF0C\u4E0B\u4E00\u4EA4\u6613\u65E5\u6309\u5B9E\u65F6\u884C\u60C5\u81EA\u52A8\u6A21\u62DF\u6210\u4EA4
-                  </p>
-                </div>
-                <span class="outline-tag" id="paper-plan-date">\u7B49\u5F85\u8BC4\u5206</span>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u4E2A\u80A1 / \u677F\u5757</th>
-                      <th>\u52A8\u4F5C</th>
-                      <th>\u7B56\u7565\u8BC4\u5206</th>
-                      <th>\u8BA1\u5212\u6570\u91CF</th>
-                      <th>\u4E8B\u524D\u4EF7\u683C\u6761\u4EF6</th>
-                      <th>\u89C4\u5212\u4F9D\u636E</th>
-                    </tr>
-                  </thead>
-                  <tbody id="paper-plan-rows"></tbody>
-                </table>
-              </div>
-              <div id="paper-selection-audit" class="paper-outcomes"></div>
-              <div id="paper-outcomes" class="paper-outcomes"></div>
-              <div class="panel-footnote">
-                \u5B9E\u65F6\u8F6E\u8BE2\u6309\u5DF2\u89C2\u5BDF\u5230\u7684\u62A5\u4EF7\u5148\u540E\u6267\u884C\u505A T\uFF1B14:50
-                \u8D77\u5C1D\u8BD5\u6062\u590D\u7B2C\u4E8C\u817F\uFF0C\u672A\u5B8C\u6210\u90E8\u5206\u4FDD\u7559\u4ED3\u4F4D\u5E76\u5EF6\u7EED\u5230\u4E0B\u4E00\u4EA4\u6613\u65E5\u3002\u4FDD\u62A4\u9000\u51FA\u9075\u5B88
-                T+1\uFF1B\u6DA8\u8DCC\u505C\u6216\u7F3A\u5C11\u884C\u60C5\u65F6\u53EF\u80FD\u65E0\u6CD5\u6210\u4EA4\u3002\u6240\u6709\u6301\u4ED3\u6301\u7EED\u83B7\u53D6\u884C\u60C5\uFF0C\u5373\u4F7F\u4E0D\u518D\u51FA\u73B0\u5728\u6DA8\u505C\u6C60\u4E2D\u3002
-              </div>
-            </section>
-            <section class="panel paper-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u9010\u7B14\u6210\u4EA4\u8D26\u672C</h2>
-                  <p>
-                    \u5C55\u793A\u6700\u8FD1 100
-                    \u7B14\uFF1B\u5B8C\u6574\u5BFC\u51FA\u5305\u542B\u5168\u90E8\u6210\u4EA4\u3001\u8BA1\u5212\u3001\u884C\u60C5\u3001\u8D39\u7528\u4E0E\u6821\u9A8C\u503C
-                  </p>
-                </div>
-                <span class="outline-tag">\u8D39\u7528\u4E0E\u6ED1\u70B9\u5DF2\u8BA1\u5165</span>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u65E5\u671F / \u65F6\u95F4</th>
-                      <th>\u4E2A\u80A1</th>
-                      <th>\u52A8\u4F5C / \u65B9\u5411</th>
-                      <th>\u80A1\u6570</th>
-                      <th>\u6210\u4EA4\u4EF7</th>
-                      <th>\u8D39\u7528</th>
-                      <th>\u73B0\u91D1\u53D8\u52A8</th>
-                      <th>\u6210\u4EA4\u6A21\u578B</th>
-                    </tr>
-                  </thead>
-                  <tbody id="paper-ledger-rows"></tbody>
-                </table>
-              </div>
-              <div class="panel-footnote">
-                \u5206\u949F\u91C7\u6837\u4EF7\u683C\u52A0\u5165 10 bps \u6ED1\u70B9\u30011%
-                \u5206\u949F\u6210\u4EA4\u91CF\u53C2\u4E0E\u7387\uFF1B\u7F3A\u5C11\u5206\u949F\u884C\u60C5\u65F6\u4EC5\u4F7F\u7528\u660E\u786E\u6807\u8BB0\u7684\u5F00\u76D8\u6210\u4EA4\u5047\u8BBE\u3002\u65E0\u6CD5\u8FD8\u539F\u9010\u7B14\u6392\u961F\uFF0C\u4E0D\u7B49\u540C\u4E8E\u5B9E\u76D8\u6210\u4EA4\u3002
-              </div>
-            </section>
-            <section class="panel paper-panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u8D26\u6237\u8BBE\u7F6E</h2>
-                  <p id="paper-config-note">\u521D\u59CB\u8D44\u91D1\u4E0E\u6BCF\u9879\u8D39\u7528\u5747\u53EF\u81EA\u5B9A\u4E49</p>
-                </div>
-              </div>
-              <form id="paper-config-form" class="paper-config">
-                <label
-                  >\u521D\u59CB\u6A21\u62DF\u8D44\u91D1\uFF08\u5143\uFF09<input
-                    id="paper-initial-capital"
-                    type="number"
-                    min="10000"
-                    max="100000000"
-                    step="1000"
-                    value="1000000"
-                    required /></label
-                ><label
-                  >AI \u9A8C\u8BC1\u901A\u8FC7\u540E<select id="paper-improvement-mode">
-                    <option value="auto">\u81EA\u52A8\u542F\u7528\u65B0\u7B56\u7565</option>
-                    <option value="manual">\u4EBA\u5DE5\u9009\u62E9\u542F\u7528</option>
-                  </select></label
-                ><label
-                  >\u6536\u76CA\u57FA\u51C6\u6307\u6570<select id="paper-benchmark"></select
-                ></label>
-                <fieldset class="paper-fee-settings">
-                  <legend>\u8D39\u7528\u6784\u6210\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>
-                  <div class="fee-settings-heading">
-                    <p>\u8D39\u7387\u6309\u4E07\u5206\u4E4B\u8F93\u5165\uFF0C\u5206\u9879\u76F8\u52A0\uFF1B\u6700\u4F4E\u4F63\u91D1\u4EC5\u9002\u7528\u4E8E\u4F63\u91D1\u9879\u3002</p>
-                    <span class="outline-tag" id="paper-fee-version"
-                      >\u8D39\u7528\u914D\u7F6E v1</span
-                    >
-                  </div>
-                  <div id="paper-fee-controls" class="paper-fee-controls"></div>
-                  <p id="paper-fee-summary" class="fee-settings-note"></p>
-                  <button
-                    type="button"
-                    id="paper-fee-defaults"
-                    class="text-button"
-                  >
-                    \u6062\u590D\u56FE\u4E2D\u9ED8\u8BA4\u8D39\u7528
-                  </button>
-                </fieldset>
-                <fieldset class="paper-fee-settings">
-                  <legend>\u98CE\u63A7\u7EA6\u675F\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>
-                  <div class="fee-settings-heading">
-                    <p>
-                      \u5355\u80A1\u4E0E\u603B\u4ED3\u4F4D\u4E0A\u9650\u7EA6\u675F\u4E70\u5165\u89C4\u6A21\uFF0C\u56DE\u64A4\u7194\u65AD\u7EBF\u89E6\u53D1\u6E05\u4ED3\u5E76\u6682\u505C\u4E70\u5165\uFF1B\u6BD4\u4F8B\u6309
-                      % \u8F93\u5165\u3002\u65B0\u8BBE\u7F6E\u968F\u4E0B\u4E00\u8BA1\u5212\u51BB\u7ED3\uFF0C\u5386\u53F2\u6210\u4EA4\u6309\u5F53\u65F6\u914D\u7F6E\u6838\u9A8C\u3002
-                    </p>
-                    <span class="outline-tag" id="paper-risk-version"
-                      >\u98CE\u63A7\u914D\u7F6E v1</span
-                    >
-                  </div>
-                  <div
-                    id="paper-risk-controls"
-                    class="paper-fee-controls"
-                  ></div>
-                  <p id="paper-risk-summary" class="fee-settings-note"></p>
-                  <button
-                    type="button"
-                    id="paper-risk-defaults"
-                    class="text-button"
-                  >
-                    \u6062\u590D\u9ED8\u8BA4\u98CE\u63A7
-                  </button>
-                </fieldset>
-                <button class="secondary" type="submit" data-paper-operation>
-                  \u4FDD\u5B58\u8BBE\u7F6E
-                </button>
-              </form>
-            </section>
-          </section>
-          <section id="strategies-view" hidden>
-            <div class="paper-toolbar">
-              <div>
-                <span id="strategies-status-note" class="outline-tag"
-                  >\u540C\u4E00\u51BB\u7ED3\u6279\u6B21\u5185\u56FA\u5B9A\u5019\u9009\u5E76\u884C\u524D\u77BB\uFF1B\u6279\u6B21\u7ED3\u675F\u81F3\u591A\u542F\u7528\u4E00\u4E2A\u5019\u9009</span
-                >
-              </div>
-              <div>
-                <button id="strategies-reserve" class="primary">
-                  \u53D1\u8D77\u65B0\u6279\u6B21
-                </button>
-              </div>
-            </div>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u6279\u6B21\u4E0E\u653F\u7B56</h2>
-                  <p>\u7EDF\u4E00\u7814\u7A76\u7A97\u53E3\u9501\u3001\u751F\u6210\u9884\u7B97\u4E0E\u7EDF\u8BA1\u9884\u7B97\uFF1B\u5931\u8D25\u6279\u6B21\u540C\u6837\u53EF\u67E5</p>
-                </div>
-                <span class="outline-tag">\u53D7\u63A7\u664B\u7EA7</span>
-              </div>
-              <div id="strategies-status"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u6279\u6B21\u5217\u8868</h2>
-                  <p>\u70B9\u51FB\u6279\u6B21\u67E5\u770B\u56FA\u5B9A\u6210\u5458\u3001\u5339\u914D\u8D26\u6237\u51C0\u503C\u4E0E\u8D44\u683C</p>
-                </div>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u6279\u6B21</th>
-                      <th>\u9636\u6BB5</th>
-                      <th>\u7236\u7B56\u7565</th>
-                      <th>\u5019\u9009\u6570</th>
-                      <th>\u521B\u5EFA\u65F6\u95F4</th>
-                    </tr>
-                  </thead>
-                  <tbody id="strategies-cohort-rows"></tbody>
-                </table>
-              </div>
-            </section>
-            <section class="panel" id="strategies-detail"></section>
-          </section>
-          <section id="alerts-view" hidden>
-            <div class="paper-toolbar">
-              <div>
-                <span id="alerts-status-note" class="outline-tag"
-                  >\u68C0\u67E5\u544A\u8B66\u914D\u7F6E</span
-                >
-              </div>
-              <div>
-                <button id="alerts-test" class="secondary">\u53D1\u9001\u6D4B\u8BD5\u901A\u77E5</button>
-                <button id="alerts-maintenance" class="secondary">
-                  \u8BBE\u7F6E\u7EF4\u62A4\u7A97\u53E3
-                </button>
-                <button id="alerts-refresh" class="primary">\u5237\u65B0</button>
-              </div>
-            </div>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u901A\u9053\u4E0E\u5916\u90E8\u76D1\u6D4B</h2>
-                  <p>\u98DE\u4E66\u673A\u5668\u4EBA\u63A5\u6536\u4E1A\u52A1\u544A\u8B66\uFF1B\u5916\u90E8\u76D1\u6D4B\u53D1\u73B0\u6574\u673A\u79BB\u7EBF</p>
-                </div>
-                <span class="outline-tag" id="alerts-enabled-tag">\u672A\u542F\u7528</span>
-              </div>
-              <div
-                id="alerts-channel-list"
-                class="metrics panel-metrics alert-channel-metrics"
-              ></div>
-              <p class="panel-footnote">
-                \u5BC6\u94A5\uFF08FEISHU_WEBHOOK_URL / FEISHU_SECRET /
-                WATCHDOG_*_URL\uFF09\u53EA\u4FDD\u5B58\u5728\u670D\u52A1\u7AEF
-                .env\uFF0C\u9875\u9762\u53EA\u663E\u793A\u914D\u7F6E\u72B6\u6001\u3002\u65AD\u7535\u6216\u65AD\u7F51\u65F6\u672C\u673A\u65E0\u6CD5\u53D1\u6D88\u606F\uFF0C\u7531\u5916\u90E8\u76D1\u6D4B\u6309\u7F3A\u5931\u4FE1\u53F7\u544A\u8B66\u3002
-              </p>
-            </section>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>\u544A\u8B66\u4E8B\u4EF6</h2>
-                  <p>\u6309\u6301\u7EED\u65F6\u95F4\u53BB\u91CD\u4E0E\u5347\u7EA7\uFF1B\u786E\u8BA4\u53EA\u9759\u9ED8\u63D0\u9192\uFF0C\u4E0D\u63A9\u76D6\u672A\u6062\u590D</p>
-                </div>
-                <label class="text-button"
-                  ><input
-                    type="checkbox"
-                    id="alerts-active-only"
-                  />\u53EA\u770B\u672A\u6062\u590D</label
-                >
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>\u89C4\u5219</th>
-                      <th>\u7EA7\u522B</th>
-                      <th>\u72B6\u6001</th>
-                      <th>\u9996\u6B21\u53D1\u751F</th>
-                      <th>\u6700\u8FD1\u53D1\u751F</th>
-                      <th>\u64CD\u4F5C</th>
-                    </tr>
-                  </thead>
-                  <tbody id="alerts-incident-rows"></tbody>
-                </table>
-              </div>
-              <div class="table-footer">
-                <span id="alerts-list-status">\u6B63\u5728\u8BFB\u53D6\u2026</span>
-                <button class="text-button" id="alerts-more" hidden>
-                  \u52A0\u8F7D\u66F4\u591A
-                </button>
-              </div>
-            </section>
-          </section>
-          <footer class="page-footer">
-            <span>LIMIT LENS <i>\xB7</i> \u6BCF\u65E5\u6DA8\u505C\u7814\u7A76</span
-            ><span
-              >\u7814\u7A76\u8BC4\u5206\u7528\u4E8E\u8F85\u52A9\u590D\u76D8\uFF1B\u5B9E\u76D8\u5224\u65AD\u9700\u7ED3\u5408\u516C\u544A\u3001\u9898\u6750\u4E0E\u6B21\u65E5\u627F\u63A5\u3002</span
-            >
-          </footer>
-        </main>
-      </div>
-    </div>
-    <dialog id="stock-dialog" class="detail-dialog">
-      <div class="dialog-top">
-        <span class="eyebrow">STOCK DIAGNOSTICS</span
-        ><button class="icon-button close-dialog" aria-label="\u5173\u95ED\u4E2A\u80A1\u8BCA\u65AD">
-          <span data-icon="close"></span>
-        </button>
-      </div>
-      <div id="stock-detail"></div>
-    </dialog>
-    <dialog id="help-dialog" class="help-dialog">
-      <div class="dialog-top">
-        <h2>\u6570\u636E\u4E0E\u8BA1\u7B97\u53E3\u5F84</h2>
-        <button class="icon-button close-dialog" aria-label="\u5173\u95ED\u6570\u636E\u8BF4\u660E">
-          <span data-icon="close"></span>
-        </button>
-      </div>
-      <div class="help-content">
-        <p>
-          \u6DA8\u505C\u6C60\u4F18\u5148\u8BFB\u53D6\u4E1C\u65B9\u8D22\u5BCC\u516C\u5F00\u884C\u60C5\uFF1B\u6307\u6570\u8BFB\u53D6\u817E\u8BAF\u516C\u5F00\u884C\u60C5\u3002\u9875\u9762\u4F1A\u6807\u660E\u5B9E\u9645\u6765\u6E90\u3001\u8BF7\u6C42\u65F6\u95F4\u548C\u4EA4\u6613\u65E5\u671F\u3002\u516C\u5F00\u63A5\u53E3\u53EF\u80FD\u9650\u6D41\u3001\u5EF6\u8FDF\u6216\u505C\u6B62\u670D\u52A1\u3002
-        </p>
-        <p>
-          \u6DA8\u505C\u6C60\u4EE5\u6765\u6E90\u7684\u6CAA\u6DF1\u6536\u76D8\u5C01\u677F\u5217\u8868\u4E3A\u51C6\u3002ST
-          \u4E0E\u9000\u5E02\u6807\u8BC6\u80A1\u7968\u4ECE\u8BC4\u5206\u4E2D\u5254\u9664\uFF1B\u5F53\u524D\u6765\u6E90\u4E0D\u542B\u79D1\u521B\u677F\u3001\u5317\u4EA4\u6240\u53CA\u672A\u4E2D\u65AD\u8FDE\u7EED\u4E00\u5B57\u6DA8\u505C\u7684\u65B0\u80A1\u3002
-        </p>
-        <p>
-          \u5C01\u5355\u989D\u4F7F\u7528\u5F53\u524D\u5C01\u5355\u91D1\u989D\uFF0C\u5C01\u5355\u6BD4\u4E3A\u5C01\u5355\u989D \xF7
-          \u5F53\u65E5\u6210\u4EA4\u989D\uFF1B\u9996\u5C01\u548C\u6700\u540E\u5C01\u677F\u65F6\u95F4\u6765\u81EA\u884C\u60C5\u5B57\u6BB5\uFF0C\u4E24\u8005\u7684\u95F4\u9694\u4E0D\u80FD\u89E3\u91CA\u4E3A\u5B9E\u9645\u5F00\u677F\u65F6\u957F\u3002
-        </p>
-        <p>
-          \u677F\u5757\u4EC5\u6309\u884C\u60C5\u63D0\u4F9B\u7684\u884C\u4E1A\u5206\u7C7B\u805A\u5408\uFF0C\u4E0D\u63A8\u65AD\u65B0\u95FB\u9898\u6750\u3002\u677F\u5757\u6DA8\u505C\u6570\u91CF\u672A\u9664\u4EE5\u884C\u4E1A\u603B\u6210\u5206\u6570\uFF0C\u56E0\u6B64\u5206\u6570\u4F1A\u53D7\u884C\u4E1A\u89C4\u6A21\u5F71\u54CD\u3002
-        </p>
-        <p>
-          \u5C01\u677F\u7387 = \u6DA8\u505C\u6C60\u5BB6\u6570 \xF7\uFF08\u6DA8\u505C\u6C60\u5BB6\u6570 +
-          \u6536\u76D8\u672A\u5C01\u4F4F\u7684\u70B8\u677F\u6C60\u5BB6\u6570\uFF09\u3002\u60C5\u7EEA\u5F3A\u5EA6\u7531\u6DA8\u505C\u5BB6\u6570\uFF0840%\uFF09\u3001\u5C01\u677F\u7387\uFF0835%\uFF09\u3001\u5E02\u573A\u9AD8\u5EA6\uFF0825%\uFF09\u6784\u6210\uFF1B\u6570\u636E\u7F3A\u5931\u4F1A\u91CD\u65B0\u5F52\u4E00\u5316\u3002
-        </p>
-        <p>
-          \u664B\u7EA7\u7387\u9700\u8981\u4E0A\u4E00\u53EF\u7528\u4EA4\u6613\u65E5\u6DA8\u505C\u5217\u8868\uFF1B\u6628\u65E5\u6C60\u63A5\u53E3\u7528\u4E8E\u5F53\u65E5\u664B\u7EA7\u7EDF\u8BA1\uFF1B\u8DE8\u65E5\u53CD\u9988\u53E6\u7528\u6307\u6570\u65E5\u671F\u5E8F\u5217\u786E\u8BA4\u76F8\u90BB\u4EA4\u6613\u65E5\u3002\u83B7\u53D6\u4E0D\u5230\u5386\u53F2\u6570\u636E\u65F6\u663E\u793A\u201C\u2014\u201D\u3002
-        </p>
-        <p>
-          \u6A21\u62DF\u4EA4\u6613\u6309\u524D\u4E00\u4EA4\u6613\u65E5\u51BB\u7ED3\u7684\u6570\u91CF\u548C\u4EF7\u683C\u6761\u4EF6\uFF0C\u4EE5\u817E\u8BAF HTTP
-          \u5B9E\u65F6\u62A5\u4EF7\u81EA\u52A8\u6267\u884C\u5E76\u8BA1\u5165\u8D39\u7528\uFF1B\u6240\u6709\u6301\u4ED3\u6301\u7EED\u8DDF\u8E2A\uFF0C\u76D8\u540E\u6309\u5B9E\u9645\u6A21\u62DF\u6210\u4EA4\u66F4\u65B0\u6536\u76CA\u3002\u9010\u7B14\u6392\u961F\u3001\u9F99\u864E\u699C\u4E0E\u516C\u544A\u5C1A\u672A\u63A5\u5165\uFF1B\u7CFB\u7EDF\u53EA\u64CD\u4F5C\u6A21\u62DF\u8D26\u6237\u3002
-        </p>
-      </div>
-    </dialog>
-    <script type="module" src="/assets/app.js"><\/script>
-  </body>
-</html>
-`, "type": "text/html; charset=utf-8" }, "/assets/app.js": { "body": 'var pt=[{key:"quality",name:"\\u5C01\\u677F\\u8D28\\u91CF",weight:30,description:"100 \\u2212 \\u70B8\\u677F\\u6B21\\u6570 \\xD7 15\\uFF0C\\u6700\\u4F4E 10 \\u5206"},{key:"capital",name:"\\u5C01\\u5355\\u5F3A\\u5EA6",weight:20,description:"\\u5C01\\u5355\\u91D1\\u989D \\xF7 \\u6210\\u4EA4\\u989D \\xF7 10%\\uFF0C\\u4E0A\\u9650 100 \\u5206"},{key:"liquidity",name:"\\u6362\\u624B\\u7ED3\\u6784",weight:15,description:"4\\u201312%\\uFF1A95\\uFF1B12\\u201325%\\uFF1A80\\uFF1B1\\u20134%\\uFF1A65\\uFF1B25\\u201340%\\uFF1A50\\uFF1B\\u5176\\u4F59\\uFF1A30"},{key:"timing",name:"\\u9996\\u5C01\\u65F6\\u70B9",weight:15,description:"09:45 \\u524D 100\\uFF1B10:30 \\u524D 85\\uFF1B11:30 \\u524D 65\\uFF1B14:00 \\u524D 45\\uFF1B\\u5176\\u4F59 25"},{key:"sector",name:"\\u677F\\u5757\\u534F\\u540C",weight:15,description:"\\u4F7F\\u7528\\u540C\\u65E5\\u3001\\u540C\\u4E00\\u884C\\u4E1A\\u7684\\u677F\\u5757\\u8BC4\\u5206"},{key:"ladder",name:"\\u8FDE\\u677F\\u7ED3\\u6784",weight:5,description:"\\u9996\\u677F 75\\uFF1B2\\u20133 \\u677F 100\\uFF1B4 \\u677F 65\\uFF1B5 \\u677F\\u53CA\\u4EE5\\u4E0A 40"}],N={balanced:[30,20,15,15,15,5],first:[30,20,15,20,12,3],relay:[30,20,10,10,20,10]},M=(t,e=0,a=100)=>Math.max(e,Math.min(a,t)),L=t=>t==null||t===""||!Number.isFinite(Number(t))?null:Number(t);function Q(t){if(t==null)return"\\u2014";let e=String(t).padStart(6,"0");return/^\\d{6}$/.test(e)?`${e.slice(0,2)}:${e.slice(2,4)}`:"\\u2014"}function mt(t){return{code:String(t.c||""),name:String(t.n||""),sector:String(t.hybk||"\\u672A\\u5206\\u7C7B"),price:L(t.p)===null?null:Number(t.p)/1e3,change:L(t.zdp),amount:L(t.amount),floatCap:L(t.ltsz),seal:L(t.fund),turnover:L(t.hs),first:L(t.fbt),last:L(t.lbt),breaks:L(t.zbc),height:L(t.lbc)??L(t.ylbc),history:t.zttj?`${t.zttj.days} \\u5929 ${t.zttj.ct} \\u677F`:null}}function Bt(t,e){let a=t.map(i=>i[e]).filter(Number.isFinite);return a.length?a.reduce((i,s)=>i+s,0)/a.length:null}function Vt(t){let e=new Map;return t.forEach(a=>{e.has(a.sector)||e.set(a.sector,[]),e.get(a.sector).push(a)}),[...e].map(([a,i])=>{let s=i.filter(m=>m.breaks!==null),p=s.length?Bt(s.map(m=>({...m,q:M(100-m.breaks*15,10)})),"q"):null,l=Math.max(0,...i.map(m=>m.height||0)),d=[{name:"\\u6DA8\\u505C\\u96C6\\u805A",weight:35,value:M(i.length/6*100)},{name:"\\u8FDE\\u677F\\u9AD8\\u5EA6",weight:25,value:M(l/5*100)},{name:"\\u5C01\\u677F\\u7A33\\u5B9A",weight:25,value:p},{name:"\\u65E9\\u76D8\\u8054\\u52A8",weight:15,value:i.filter(m=>m.first!==null).length?i.filter(m=>m.first!==null&&m.first<103e3).length/i.filter(m=>m.first!==null).length*100:null}],k=d.filter(m=>m.value!==null).reduce((m,u)=>m+u.weight,0),x=Math.round(d.reduce((m,u)=>m+(u.value===null?0:u.value*u.weight),0)/k);return{name:a,count:i.length,height:l,quality:p,score:x,coverage:k,components:d,amount:i.reduce((m,u)=>m+(u.amount||0),0),members:i.map(m=>m.code)}}).sort((a,i)=>i.score-a.score||i.count-a.count)}function Ut(t,e,a=N.balanced){let i={quality:t.breaks===null?null:M(100-t.breaks*15,10),capital:t.seal===null||!t.amount?null:M(t.seal/t.amount/.1*100),liquidity:t.turnover===null?null:t.turnover>=4&&t.turnover<=12?95:t.turnover>12&&t.turnover<=25?80:t.turnover>=1&&t.turnover<4?65:t.turnover>25&&t.turnover<=40?50:30,timing:t.first===null?null:t.first<94500?100:t.first<103e3?85:t.first<113e3?65:t.first<14e4?45:25,sector:e??null,ladder:t.height===null?null:t.height===1?75:t.height<=3?100:t.height===4?65:40},s=[];t.height>=5&&s.push({text:"\\u9AD8\\u4F4D\\u8FDE\\u677F",penalty:8,detail:"5 \\u677F\\u53CA\\u4EE5\\u4E0A\\uFF0C\\u5206\\u6B67\\u4E0E\\u9000\\u6F6E\\u98CE\\u9669\\u4E0A\\u5347\\u3002"}),t.turnover>40&&s.push({text:"\\u9AD8\\u6362\\u624B",penalty:8,detail:"\\u6362\\u624B\\u7387\\u8D85\\u8FC7 40%\\uFF0C\\u7B79\\u7801\\u4EA4\\u6362\\u5267\\u70C8\\u3002"}),t.breaks>=3&&s.push({text:"\\u53CD\\u590D\\u70B8\\u677F",penalty:5,detail:"\\u76D8\\u4E2D\\u81F3\\u5C11 3 \\u6B21\\u5F00\\u677F\\uFF0C\\u5C01\\u677F\\u7A33\\u5B9A\\u6027\\u504F\\u5F31\\u3002"}),t.first===92500&&t.last===92500&&t.turnover!==null&&t.turnover<1&&s.push({text:"\\u4E00\\u5B57\\u7279\\u5F81",penalty:10,detail:"\\u7ADE\\u4EF7\\u5C01\\u677F\\u4E14\\u4F4E\\u6362\\u624B\\uFF0C\\u5B9E\\u9645\\u6210\\u4EA4\\u673A\\u4F1A\\u53EF\\u80FD\\u6709\\u9650\\u3002"}),t.last!==null&&t.last>=145e3&&s.push({text:"\\u5C3E\\u76D8\\u56DE\\u5C01",penalty:4,detail:"\\u6700\\u540E\\u5C01\\u677F\\u65F6\\u95F4\\u63A5\\u8FD1\\u6536\\u76D8\\uFF0C\\u9700\\u89C2\\u5BDF\\u6B21\\u65E5\\u627F\\u63A5\\u3002"});let p=pt.map((u,f)=>({...u,weight:a[f],value:i[u.key]})),l=p.filter(u=>u.value!==null),d=l.reduce((u,f)=>u+f.weight,0),k=a.reduce((u,f)=>u+f,0),x=d?l.reduce((u,f)=>u+f.value*f.weight,0)/d:null,m=Math.min(20,s.reduce((u,f)=>u+f.penalty,0));return{...t,score:x===null?null:Math.round(M(x-m)),rawScore:x,deduction:m,factors:p,risks:s,coverage:k?Math.round(d/k*100):0,sealRatio:t.seal!==null&&t.amount>0?t.seal/t.amount:null}}function Gt(t,e=null){let a=t.filter(p=>p.code&&!/ST|\u9000/.test(p.name)),i=e?new Set(e.map(p=>p.code)):null,s=e?.filter(p=>Number.isInteger(p.height)&&p.height>0);return{promotion:s?.length?s.filter(p=>a.some(l=>l.code===p.code&&Number.isInteger(l.height)&&l.height>p.height)).length/s.length*100:null,previousCount:i?i.size:null}}function St(t,e=null,a=null,i=N.balanced){let s=t.filter(g=>g.code&&!/ST|\u9000/.test(g.name)),p=Vt(s),l=new Map(p.map(g=>[g.name,g.score])),d=s.map(g=>Ut(g,l.get(g.sector),i)).sort((g,A)=>(A.score??-1)-(g.score??-1)),k=e===null?null:t.length+e?t.length/(t.length+e)*100:null,x=Math.max(0,...s.map(g=>g.height||0)),m=s.filter(g=>g.height===1).length,u=s.filter(g=>g.height>1).length,f=[{weight:40,value:M(s.length/80*100)},{weight:35,value:k},{weight:25,value:M(x/7*100)}],H=f.filter(g=>g.value!==null).reduce((g,A)=>g+A.weight,0),ut=s.length?Math.round(f.reduce((g,A)=>g+(A.value??0)*A.weight,0)/H):null,{promotion:o,previousCount:C}=Gt(s,a);return{stocks:d,sectors:p,count:s.length,excluded:t.length-s.length,first:m,relay:u,height:x,sealRate:k,emotion:ut,emotionCoverage:H,promotion:o,previousCount:C}}var B=Object.freeze([{key:"commission_rate",label:"\\u4F63\\u91D1\\u7387",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"commission_min",label:"\\u6700\\u4F4E\\u4F63\\u91D1",unit:"\\u5143",direction:"\\u53CC\\u8FB9"},{key:"stamp_tax",label:"\\u5370\\u82B1\\u7A0E",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u4EC5\\u5356\\u51FA"},{key:"handling_fee",label:"\\u7ECF\\u624B\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"regulatory_fee",label:"\\u8BC1\\u7BA1\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"transfer_fee",label:"\\u8FC7\\u6237\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"}]),ht=Object.freeze({commission_rate:5e-5,commission_min:5,stamp_tax:5e-4,handling_fee:341e-7,regulatory_fee:2e-5,transfer_fee:1e-5}),$e=Object.freeze({commission_rate:25e-5,commission_min:5,stamp_tax:5e-4,handling_fee:0,regulatory_fee:0,transfer_fee:1e-5});var gt=Object.freeze({maxPositionWeight:.2,maxGrossExposure:.6,maxDrawdown:.1,maxParticipation:.01,slippageBps:10}),_=Object.freeze([{key:"maxPositionWeight",label:"\\u5355\\u80A1\\u4ED3\\u4F4D\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u5355\\u53EA\\u4E2A\\u80A1\\u5E02\\u503C\\u5360\\u8D26\\u6237\\u6743\\u76CA\\u7684\\u4E0A\\u9650"},{key:"maxGrossExposure",label:"\\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u5168\\u90E8\\u6301\\u4ED3\\u5E02\\u503C\\u5360\\u8D26\\u6237\\u6743\\u76CA\\u7684\\u4E0A\\u9650"},{key:"maxDrawdown",label:"\\u56DE\\u64A4\\u7194\\u65AD\\u7EBF",unit:"%",percent:!0,hint:"\\u6743\\u76CA\\u81EA\\u5CF0\\u503C\\u56DE\\u64A4\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u65F6\\u6E05\\u4ED3\\u5E76\\u6682\\u505C\\u4E70\\u5165"},{key:"maxParticipation",label:"\\u5206\\u949F\\u6210\\u4EA4\\u91CF\\u53C2\\u4E0E\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u65E7\\u6210\\u672C\\u6A21\\u578B\\u4E0B\\u5355\\u5206\\u949F\\u6700\\u591A\\u6D88\\u8017\\u7684\\u6210\\u4EA4\\u91CF\\u6BD4\\u4F8B"},{key:"slippageBps",label:"\\u65E7\\u6A21\\u578B\\u56FA\\u5B9A\\u6ED1\\u70B9",unit:"bps",percent:!1,hint:"\\u65E7\\u6210\\u672C\\u6A21\\u578B\\u6210\\u4EA4\\u4EF7\\u76F8\\u5BF9\\u53C2\\u8003\\u4EF7\\u7684\\u56FA\\u5B9A\\u504F\\u79FB"}]),ve=Object.freeze({maxPositionWeight:[.01,1],maxGrossExposure:[.01,1],maxDrawdown:[.005,1],maxParticipation:[1e-4,.1],slippageBps:[0,200]});var $t="sh000001",tt=[{code:"sh000001",name:"\\u4E0A\\u8BC1\\u6307\\u6570"},{code:"sz399001",name:"\\u6DF1\\u8BC1\\u6210\\u6307"},{code:"sh000300",name:"\\u6CAA\\u6DF1300"},{code:"sh000905",name:"\\u4E2D\\u8BC1500"},{code:"sh000852",name:"\\u4E2D\\u8BC11000"},{code:"sz399006",name:"\\u521B\\u4E1A\\u677F\\u6307"},{code:"sh000688",name:"\\u79D1\\u521B50"}],be=new Set(tt.map(t=>t.code)),At=t=>tt.find(e=>e.code===t)?.name||"\\u4E0A\\u8BC1\\u6307\\u6570";var c=t=>document.getElementById(t),h=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),y=t=>(Number(t||0)/100).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2}),ft=t=>Math.abs(t||0)>=1e10?`${(t/1e10).toFixed(2)} \\u4EBF`:Math.abs(t||0)>=1e6?`${(t/1e6).toFixed(2)} \\u4E07`:y(t),E=t=>t==null?"\\u2014":`${t>0?"+":""}${(t*100).toFixed(2)}%`,et=t=>t>0?"up":t<0?"down":"",at={OPEN:"\\u5EFA\\u4ED3",ADD:"\\u52A0\\u4ED3",REDUCE:"\\u51CF\\u4ED3",EXIT:"\\u6E05\\u4ED3",T_FORWARD:"\\u6B63\\u5411 T",T_REVERSE:"\\u53CD\\u5411 T",HOLD:"\\u6301\\u6709"},Dt={ACTIVE:"\\u4F7F\\u7528\\u4E2D",VALIDATED:"\\u9A8C\\u8BC1\\u901A\\u8FC7",LEGACY_VALIDATED:"\\u5386\\u53F2\\u901A\\u8FC7\\uFF08\\u65E0\\u542F\\u7528\\u8D44\\u683C\\uFF09",SHADOW_PENDING:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",AWAITING_SHADOW:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",REJECTED:"\\u672A\\u901A\\u8FC7",ERROR:"\\u8C03\\u7528\\u5931\\u8D25",PROPOSING:"\\u6B63\\u5728\\u9A8C\\u8BC1",RETIRED:"\\u5DF2\\u5F52\\u6863",COLLECTING:"\\u6570\\u636E\\u79EF\\u7D2F\\u4E2D",NOT_CONFIGURED:"\\u672A\\u914D\\u7F6E\\u5927\\u6A21\\u578B",BUSY:"\\u5DF2\\u6709\\u8FDB\\u884C\\u4E2D\\u7684\\u5B9E\\u9A8C",BUDGET_EXHAUSTED:"\\u672C\\u6708\\u63D0\\u6848\\u6B21\\u6570\\u5DF2\\u7528\\u5B8C",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u73AF\\u5883\\u53D8\\u5316\\u5DF2\\u5931\\u6548",APPROVED:"\\u5DF2\\u6279\\u51C6\\u5F85\\u6392\\u671F",SCHEDULED:"\\u5DF2\\u6392\\u671F",PROMOTED:"\\u5DF2\\u542F\\u7528"},Lt={PENDING:"\\u7B49\\u5F85\\u89E6\\u53D1",BLOCKED:"\\u53D7\\u7EA6\\u675F\\uFF0C\\u91CD\\u8BD5\\u4E2D",PARTIAL:"\\u90E8\\u5206\\u6210\\u4EA4",FIRST_LEG:"\\u505A T \\u7B2C\\u4E00\\u817F",SECOND_LEG:"\\u6062\\u590D\\u7B2C\\u4E8C\\u817F",FILLED:"\\u5B8C\\u6210",CANCELLED:"\\u5DF2\\u53D6\\u6D88",EXPIRED:"\\u5F53\\u65E5\\u5230\\u671F",EXPIRED_PARTIAL:"\\u90E8\\u5206\\u5B8C\\u6210\\u540E\\u5230\\u671F",INCOMPLETE_T:"\\u7B2C\\u4E8C\\u817F\\u8F6C\\u4E0B\\u65E5",RUNNING:"\\u8F6E\\u8BE2\\u8FD0\\u884C\\u4E2D",STALE_QUOTES:"\\u62A5\\u4EF7\\u9648\\u65E7\\uFF0C\\u6682\\u505C\\u6210\\u4EA4",MARKET_CLOSED:"\\u7B49\\u5F85\\u4EA4\\u6613\\u65F6\\u6BB5",ERROR:"\\u5F02\\u5E38\\uFF0C\\u81EA\\u52A8\\u91CD\\u8BD5",NON_TRADING_DAY:"\\u975E\\u4EA4\\u6613\\u65E5",CONFLICT:"\\u5E76\\u53D1\\u7ED3\\u679C\\u5DF2\\u4E22\\u5F03",SETTLED:"\\u5DF2\\u7ED3\\u7B97"},b=null,nt=!1,D=!1;async function j(t,e){let a=await fetch(t,{...e===void 0?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)},signal:AbortSignal.timeout(13e4)}),i=await a.json();if(!a.ok)throw new Error(i.error||"\\u670D\\u52A1\\u6682\\u4E0D\\u53EF\\u7528");return i}function q(t){c("paper-message").textContent=t}var vt=(t,e)=>t==="commission_min"?e:Number((e*1e4).toFixed(5));function It(t){for(let{key:e}of B)c(`fee-${e}`).value=vt(e,t[e])}function Wt(t){return B.map(({key:e,label:a,unit:i})=>`${a} ${vt(e,t[e])}${i==="\\u5143"?" \\u5143":" / \\u4E07"}`).join(" \\xB7 ")}var yt=(t,e)=>_.find(a=>a.key===t)?.percent?Number((e*100).toFixed(4)):e;function Mt(t){for(let{key:e}of _)c(`risk-${e}`).value=yt(e,t[e])}function Kt(t){return _.map(({key:e,label:a,unit:i})=>`${a} ${yt(e,t[e])}${i}`).join(" \\xB7 ")}function Tt(t){return Object.entries({commission:"\\u4F63\\u91D1",stamp:"\\u5370\\u82B1\\u7A0E",handling:"\\u7ECF\\u624B\\u8D39",regulatory:"\\u8BC1\\u7BA1\\u8D39",transfer:"\\u8FC7\\u6237\\u8D39"}).map(([a,i])=>`${i} \\xA5 ${y(t.feeBreakdown[a]||0)}`).join("\\uFF1B")}function Yt(t){let e=`<span class="stock-code">\\u53C2\\u8003\\u4EF7 \\xA5 ${y(t.referenceCents)}</span>`,a=`<span class="stock-code">\\u6B62\\u635F \\u2264 \\xA5 ${y(t.stopCents)}<br>\\u5206\\u6279\\u6B62\\u76C8 \\u2265 \\xA5 ${y(t.takeProfitCents)}</span>`,i=t.side==="PAIR"?`\\u4F4E\\u5438 \\u2264 \\xA5 ${y(t.buyTriggerCents)}<br>\\u5151\\u73B0 \\u2265 \\xA5 ${y(t.sellTriggerCents)}<span class="stock-code">09:35 \\u8D77\\u89E6\\u53D1 \\xB7 14:50 \\u8D77\\u6062\\u590D\\u7B2C\\u4E8C\\u817F</span>`:t.side==="BUY"&&t.recovery?`\\u6062\\u590D\\u4E70\\u56DE \\xB7 \\u53C2\\u8003 \\xA5 ${y(t.referenceCents)}<span class="stock-code">\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u6309\\u5B9E\\u65F6\\u4EF7 + 0.1% \\u6ED1\\u70B9<br>\\u53D7\\u73B0\\u91D1\\u3001\\u4ED3\\u4F4D\\u4E0E\\u6DA8\\u505C\\u8FB9\\u754C\\u9650\\u5236</span>`:t.side==="BUY"?`\\u4E70\\u5165\\u4E0A\\u9650 \\xA5 ${y(t.maxPriceCents)}<span class="stock-code">\\u542B\\u6ED1\\u70B9 \\xB7 09:30\\u201309:35 \\u5185\\u6EE1\\u8DB3\\u65F6\\u6210\\u4EA4</span>`:t.side==="SELL"?`\\u53C2\\u8003\\u5356\\u4EF7 \\xA5 ${y(Math.round(t.referenceCents*.999))}<span class="stock-code">\\u5B9E\\u9645\\u5356\\u4EF7 = \\u5B9E\\u65F6\\u62A5\\u4EF7 \\u2212 0.1% \\u6ED1\\u70B9<br>\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u91CD\\u8BD5\\uFF0C\\u8DCC\\u505C\\u4E0D\\u5047\\u8BBE\\u6210\\u4EA4</span>`:"\\u6301\\u6709\\u5E76\\u76D1\\u63A7\\u4FDD\\u62A4\\u9608\\u503C";return e+i+a}function Xt(t,e="\\u4E0A\\u8BC1\\u6307\\u6570"){if(!t.length)return\'<div class="empty"><strong>\\u6536\\u76CA\\u66F2\\u7EBF\\u4ECE\\u9996\\u4E2A\\u7ED3\\u7B97\\u65E5\\u5F00\\u59CB</strong>\\u4FDD\\u5B58\\u771F\\u5B9E\\u8BA1\\u5212\\u5E76\\u6267\\u884C\\u540E\\uFF0C\\u9010\\u65E5\\u79EF\\u7D2F\\u51C0\\u503C\\u3002</div>\';let a=760,i=200,s=30,p=[0,...t.map(u=>u.totalReturn),...t.map(u=>u.benchmarkReturn).filter(u=>u!=null)],l=Math.min(...p)-.005,d=Math.max(...p)+.005,k=u=>s+u/Math.max(1,t.length-1)*(a-2*s),x=u=>i-s-(u-l)/(d-l)*(i-s*2),m=u=>t.map((f,H)=>f[u]===null||f[u]===void 0?null:`${k(H)},${x(f[u])}`).filter(Boolean).join(" ");return`<svg class="equity-chart" viewBox="0 0 ${a} ${i}" role="img" aria-label="\\u8D26\\u6237\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387\\u4E0E${h(e)}\\u6536\\u76CA\\u7387"><line x1="${s}" x2="${a-s}" y1="${x(0)}" y2="${x(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${s}" y="18" class="chart-axis">${E(d)}</text><text x="${s}" y="${i-7}" class="chart-axis">${E(l)}</text><polyline points="${m("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${m("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${t.map((u,f)=>`<circle cx="${k(f)}" cy="${x(u.totalReturn)}" r="3" fill="#13977e"><title>${h(u.date)}\\uFF1A\\u8D26\\u6237 ${E(u.totalReturn)}\\uFF1B\\u57FA\\u51C6 ${E(u.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>\\u6A21\\u62DF\\u8D26\\u6237</span><span><i class="benchmark"></i>${h(e)}</span><span>${h(t[0].date)} \\u2014 ${h(t.at(-1).date)} \\xB7 ${t.length} \\u4E2A\\u7ED3\\u7B97\\u65E5</span></div>${t.length===1?\'<p class="panel-footnote">\\u9996\\u6B21\\u7ED3\\u7B97\\u53EA\\u5EFA\\u7ACB\\u6536\\u76CA\\u57FA\\u51C6\\uFF1B\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8D77\\u6267\\u884C\\u4E8B\\u524D\\u8BA1\\u5212\\u3002</p>\':""}`}function Zt(){if(!b)return;let{book:t,equity:e,plan:a,run:i,versions:s,riskLimits:p}=b,l=b.realtime,d=l?.health;c("paper-live-tag").textContent=l?.running?"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5DF2\\u8FDE\\u63A5":"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u672A\\u8FDE\\u63A5",c("paper-live-summary").textContent=l?.session?`${l.session.date} \\xB7 ${l.session.sequence} \\u6B21\\u89C2\\u6D4B \\xB7 ${l.session.fillCount} \\u7B14\\u6210\\u4EA4`:"\\u5C1A\\u65E0\\u4ECA\\u65E5\\u5B9E\\u65F6\\u4EA4\\u6613\\u8BB0\\u5F55",c("paper-live-health").textContent=`${d?`${Lt[d.status]||d.status} \\xB7 \\u6700\\u8FD1\\u5FC3\\u8DF3 ${new Date(d.checkedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\xB7 ${d.pollIntervalSeconds} \\u79D2\\u8F6E\\u8BE2\\u3002`:"\\u5C1A\\u672A\\u6536\\u5230\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5FC3\\u8DF3\\u3002"} ${l?.running?"\\u5173\\u95ED\\u7F51\\u9875\\u540E\\u670D\\u52A1\\u7EE7\\u7EED\\u6267\\u884C\\uFF1B\\u76D8\\u540E\\u6309\\u5DF2\\u8BB0\\u5F55\\u6210\\u4EA4\\u7ED3\\u7B97\\u3002":l?.requirement||""}`,c("paper-live-orders").innerHTML=l?.session?.orders.length?l.session.orders.map(o=>`<tr><td><strong>${h(o.name)} \\xB7 ${at[o.action]}</strong><span class="stock-code">${h(o.code)}</span></td><td>${Lt[o.status]||h(o.status)}</td><td>${o.side==="PAIR"?`\\u7B2C\\u4E00\\u817F ${o.firstFilled} / \\u7B2C\\u4E8C\\u817F ${o.secondFilled}`:`${o.filledQuantity} / ${o.quantity}`} \\u80A1</td><td>${h(o.reason)}</td></tr>`).join(""):\'<tr><td colspan="4"><div class="empty compact">\\u7B49\\u5F85\\u5E38\\u9A7B\\u670D\\u52A1\\u5728\\u4EA4\\u6613\\u65F6\\u6BB5\\u6267\\u884C\\u51BB\\u7ED3\\u8BA1\\u5212\\u3002</div></td></tr>\';let k=t.positions.reduce((o,C)=>o+C.lots.reduce((g,A)=>g+A.quantity,0)*C.markCents,0),x=[["\\u8D26\\u6237\\u603B\\u6743\\u76CA",`\\xA5 ${ft(t.equityCents)}`,`\\u521D\\u59CB\\u8D44\\u91D1 \\xA5 ${y(t.initialCashCents)}`,""],["\\u5F53\\u65E5\\u76C8\\u4E8F",`\\xA5 ${ft(e?.dailyPnlCents)}`,`\\u5F53\\u65E5\\u6536\\u76CA ${E(e?.dailyReturn??0)}`,et(e?.dailyPnlCents)],["\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387",E(t.equityCents/t.initialCashCents-1),`\\u5DF2\\u6263\\u8D39\\u7528 \\xA5 ${y(t.feesCents)}`,et(t.equityCents-t.initialCashCents)],["\\u5F53\\u524D\\u6301\\u4ED3\\u6BD4\\u4F8B",E(k/t.equityCents),`\\u53EF\\u7528\\u73B0\\u91D1 \\xA5 ${y(t.cashCents)}`,""]];c("paper-metrics").innerHTML=x.map(([o,C,g,A])=>`<article class="metric"><div class="metric-head">${o}</div><div class="metric-value ${A}">${C}</div><div class="metric-caption">${g}</div></article>`).join(""),c("paper-date").textContent=t.lastDate?`\\u5DF2\\u7ED3\\u7B97\\u81F3 ${t.lastDate}`:"\\u7B49\\u5F85\\u9996\\u6B21\\u76D8\\u540E\\u7ED3\\u7B97",c("paper-audit").textContent=b.audit.passed?"\\u8D44\\u91D1\\u8D26\\u672C\\u4E00\\u81F4":"\\u8D26\\u672C\\u6838\\u5BF9\\u5F02\\u5E38",c("paper-audit").className=`outline-tag ${b.audit.passed?"verified":"down"}`,c("paper-chart").innerHTML=Xt(b.equities,At(b.benchmarkCode||t.benchmarkCode)),c("paper-risk").textContent=`\\u5355\\u80A1\\u4E0A\\u9650 ${E(p.maxPositionWeight)} \\xB7 \\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650 ${E(p.maxGrossExposure)} \\xB7 \\u56DE\\u64A4 ${E(e?.drawdown??0)} / ${E(p.maxDrawdown)} \\xB7 \\u4E0D\\u900F\\u652F`,c("paper-position-rows").innerHTML=t.positions.length?t.positions.map(o=>{let C=o.lots.reduce((R,z)=>R+z.quantity,0),g=o.lots.reduce((R,z)=>R+z.costCents,0),A=o.lots.filter(R=>R.acquiredDate<(l?.session?.date||new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"}))).reduce((R,z)=>R+z.quantity,0);return`<tr><td><strong>${h(o.name)}</strong><span class="stock-code">${h(o.code)}</span></td><td>${C}<span class="stock-code">\\u5F53\\u65E5\\u53EF\\u5356 ${A}</span></td><td>${y(g/C)}</td><td>${y(o.markCents)}</td><td>\\xA5 ${y(C*o.markCents)}</td><td class="${et(C*o.markCents-g)}">\\xA5 ${y(C*o.markCents-g)}</td><td>${o.heldDays} \\u65E5</td></tr>`}).join(""):\'<tr><td colspan="7"><div class="empty compact">\\u5F53\\u524D\\u7A7A\\u4ED3\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6309\\u7167\\u51BB\\u7ED3\\u8BA1\\u5212\\u4E0E\\u5B9E\\u9645\\u6210\\u4EA4\\u6761\\u4EF6\\u6A21\\u62DF\\u6267\\u884C\\u3002</div></td></tr>\',c("paper-plan-date").textContent=a?`${a.signalDate} \\u76D8\\u540E\\u5236\\u5B9A \\u2192 \\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5`:"\\u5C1A\\u672A\\u751F\\u6210\\u8BA1\\u5212",c("paper-plan-meta").textContent=a?`\\u7B56\\u7565 ${a.strategyVersion} \\xB7 \\u9009\\u80A1 ${a.selectionPolicy?.version==="signal-ranking-v2"?"\\u7CBE\\u786E\\u5206 \\u2192 \\u6210\\u4EA4\\u989D \\u2192 \\u4EE3\\u7801":"\\u6574\\u6570\\u5206 \\u2192 \\u4EE3\\u7801"} \\xB7 \\u8D39\\u7528 v${a.feeConfigVersion||0} \\xB7 \\u6210\\u672C ${a.executionCostPolicy?`${a.executionCostPolicy.modelVersion} v${a.executionCostPolicy.version||0}`:"\\u65E7\\u7248\\u56FA\\u5B9A 10bps"}${a.sourceSnapshotMissing?" \\xB7 \\u8BC4\\u5206\\u7F3A\\u5931\\uFF0C\\u4EC5\\u6267\\u884C\\u98CE\\u9669\\u4FDD\\u62A4":""} \\xB7 \\u76EE\\u6807\\u4ED3\\u4F4D ${E(a.targetExposure)} \\xB7 ${new Date(a.createdAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\u51BB\\u7ED3`:"\\u5F53\\u65E5\\u8BC4\\u5206\\u4FDD\\u5B58\\u540E\\uFF0C\\u751F\\u6210\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8BA1\\u5212\\u3002",c("paper-plan-rows").innerHTML=a?.orders.length?a.orders.map(o=>`<tr><td><strong>${h(o.name)}</strong><span class="stock-code">${h(o.code)} \\xB7 ${h(o.sector)}</span></td><td><span class="action-tag">${at[o.action]}</span></td><td>${o.score??"\\u2014"}${Number.isFinite(o.scoreValue)?`<span class="stock-code">\\u7CBE\\u786E ${Number(o.scoreValue.toFixed(6))}</span>`:""}<span class="stock-code">\\u539F\\u59CB ${o.originalScore??"\\u2014"}</span></td><td>${o.quantity||"\\u2014"} \\u80A1</td><td class="plan-price-conditions">${Yt(o)}</td><td class="plan-reason">${h(o.reason)}</td></tr>`).join(""):`<tr><td colspan="6"><div class="empty compact">${a?"\\u5F53\\u524D\\u6CA1\\u6709\\u6EE1\\u8DB3\\u5EFA\\u4ED3\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1\\uFF0C\\u4FDD\\u6301\\u7A7A\\u4ED3\\u3002":"\\u7B49\\u5F85\\u6709\\u6548\\u76D8\\u540E\\u8BC4\\u5206\\u3002"}</div></td></tr>`;let m=a?.selectionAudit?.candidates??[],u=c("paper-selection-audit").querySelector("details")?.open??!1;c("paper-selection-audit").innerHTML=m.length?`<details><summary>\\u9009\\u80A1\\u4F9D\\u636E \\xB7 ${m.filter(o=>o.status==="SELECTED").length} \\u53EA\\u5165\\u9009 / ${m.length} \\u53EA\\u5019\\u9009</summary><div class="table-scroll"><table><thead><tr><th>\\u987A\\u5E8F</th><th>\\u4E2A\\u80A1</th><th>\\u7CBE\\u786E\\u8BC4\\u5206</th><th>\\u4FE1\\u53F7\\u65E5\\u6210\\u4EA4\\u989D</th><th>\\u9009\\u62E9\\u7ED3\\u679C</th></tr></thead><tbody>${m.map(o=>`<tr><td>${o.rank}</td><td>${h(o.name)}<span class="stock-code">${h(o.code)}</span></td><td>${Number.isFinite(o.scoreValue)?Number(o.scoreValue.toFixed(6)):"\\u2014"}</td><td>${Number.isFinite(o.liquidityAmountCents)?`\\xA5 ${ft(o.liquidityAmountCents)}`:"\\u672A\\u77E5"}</td><td>${o.status==="SELECTED"?"\\u5DF2\\u5165\\u9009":"\\u672A\\u5165\\u9009"}<span class="stock-code">${h(o.reason)}</span></td></tr>`).join("")}</tbody></table></div><p class="small-muted">\\u6210\\u4EA4\\u989D\\u53D6\\u81EA\\u4FE1\\u53F7\\u65E5\\u51BB\\u7ED3\\u6570\\u636E\\uFF0C\\u4EC5\\u4F5C\\u540C\\u5206\\u51B3\\u80DC\\uFF1B\\u5B9E\\u9645\\u6210\\u4EA4\\u4ECD\\u53D7\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3001\\u8D44\\u91D1\\u53CA\\u5BB9\\u91CF\\u9650\\u5236\\u3002</p></details>`:"";let f=c("paper-selection-audit").querySelector("details");f&&(f.open=u),c("paper-outcomes").innerHTML=i?.outcomes?.length?`<details><summary>\\u6700\\u8FD1\\u6267\\u884C\\u53CD\\u9988 \\xB7 ${h(i.date)}</summary><div class="execution-feedback">${i.outcomes.map(o=>`<p><strong>${h(o.name)} \\xB7 ${at[o.action]}</strong><span>${o.status==="FILLED"?"\\u5DF2\\u6210\\u4EA4":o.status==="PARTIAL"?"\\u90E8\\u5206\\u5B8C\\u6210":"\\u672A\\u6267\\u884C"} ${o.filledQuantity?`${o.filledQuantity} \\u80A1`:""} \\xB7 ${h(o.reason||"")}</span></p>`).join("")}</div></details>`:"",c("paper-ledger-rows").innerHTML=b.ledger.length?[...b.ledger].sort((o,C)=>C.date.localeCompare(o.date)||C.sequence-o.sequence).map(o=>`<tr><td>${h(o.date)}<span class="stock-code">${h(o.time)}</span></td><td><strong>${h(o.name)}</strong><span class="stock-code">${h(o.code)}</span></td><td>${at[o.action]} \\xB7 ${o.side==="BUY"?"\\u4E70":"\\u5356"}</td><td>${o.quantity}</td><td>${y(o.priceCents)}</td><td title="${h(Tt(o))}"><details class="fee-breakdown"><summary>\\xA5 ${y(o.feeCents)}</summary><span>${h(Tt(o))}</span></details><span class="stock-code">\\u8D39\\u7528 v${o.feeConfigVersion||0}</span></td><td class="${et(o.cashDeltaCents)}">${y(o.cashDeltaCents)}</td><td>${o.dataQuality==="realtime_poll"?"\\u5B9E\\u65F6 HTTP \\u8F6E\\u8BE2":o.dataQuality==="minute"?"\\u5386\\u53F2\\u5206\\u949F\\u91C7\\u6837":"\\u5F00\\u76D8\\u5047\\u8BBE"}${o.executionCost?`<span class="stock-code">\\u6ED1\\u70B9 ${o.executionCost.totalBps}bps \\xB7 ${o.executionCost.spreadSource==="BOOK"?"\\u76D8\\u53E3\\u4EF7\\u5DEE":"\\u56DE\\u9000\\u4EF7\\u5DEE"}</span>`:""}</td></tr>`).join(""):\'<tr><td colspan="8"><div class="empty compact">\\u5C1A\\u65E0\\u6210\\u4EA4\\u8BB0\\u5F55\\u3002\\u672A\\u6EE1\\u8DB3\\u6210\\u4EA4\\u6761\\u4EF6\\u7684\\u8BA1\\u5212\\u4E0D\\u4F1A\\u8BB0\\u4E3A\\u6536\\u76CA\\u3002</div></td></tr>\';let ut=i?.improvement?.days??Math.max(0,t.settlementCount-1);c("paper-ai-tag").textContent=b.ai.configured?"\\u5DF2\\u914D\\u7F6E\\u6A21\\u578B":"\\u6A21\\u578B\\u5F85\\u914D\\u7F6E",c("paper-ai-content").innerHTML=`<div class="strategy-active"><span>\\u5F53\\u524D\\u7B56\\u7565</span><strong>${h(t.activeStrategy)}</strong></div><p>${b.ai.configured?`\\u5DF2\\u79EF\\u7D2F ${ut} \\u4E2A\\u53EF\\u9A8C\\u8BC1\\u4EA4\\u6613\\u65E5\\u3002\\u81F3\\u5C11 20 \\u65E5\\u8BAD\\u7EC3 + 10 \\u65E5\\u5C01\\u5B58\\u9A8C\\u8BC1\\u540E\\u63D0\\u51FA\\u65B0\\u5019\\u9009\\u3002`:"\\u5C1A\\u672A\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5927\\u6A21\\u578B\\u5BC6\\u94A5\\u3002\\u89C4\\u5219\\u7B56\\u7565\\u6B63\\u5E38\\u8FD0\\u884C\\uFF1B\\u914D\\u7F6E\\u540E\\u63A5\\u5165\\u771F\\u5B9E AI \\u63D0\\u6848\\u4E0E\\u9A8C\\u8BC1\\u3002"}</p><div class="ai-process">\\u771F\\u5B9E\\u6210\\u4EA4\\u4E0E\\u8D39\\u7528<span>\\u2193</span>AI \\u8BAD\\u7EC3\\u7A97\\u53E3\\u5EFA\\u8BAE<span>\\u2193</span>\\u72EC\\u7ACB\\u9A8C\\u8BC1 \\xB7 \\u6536\\u76CA\\u4E0E\\u56DE\\u64A4<span>\\u2193</span>\\u901A\\u8FC7\\u540E\\u542F\\u7528\\u65B0\\u7248\\u672C</div><p class="ai-note">\\u6BCF\\u4E2A\\u5C01\\u5B58\\u7A97\\u53E3\\u53EA\\u9A8C\\u8BC1\\u4E00\\u4E2A\\u5019\\u9009\\uFF1B\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u548C\\u5386\\u53F2\\u4EA4\\u6613\\u4FDD\\u7559\\u539F\\u7248\\u672C\\u3002</p>`,c("paper-version-list").innerHTML=s.filter(o=>o.id!=="baseline-v1").slice(0,6).map(o=>`<div class="version-row"><div><strong>${h(o.id)}</strong><span>${Dt[o.status]||h(o.status)}</span></div><p>${h(o.evidence.rationale||o.evidence.error||"\\u7B49\\u5F85\\u9A8C\\u8BC1\\u7ED3\\u679C")}</p>${o.evidence.baseline?`<small>\\u5C01\\u5B58\\u9A8C\\u8BC1 ${h(o.evidence.validationStart)} \\u2014 ${h(o.evidence.validationEnd)}<br>\\u57FA\\u7EBF ${E(o.evidence.baseline.totalReturn)} \\u2192 \\u5019\\u9009 ${E(o.evidence.candidate.totalReturn)} \\xB7 \\u56DE\\u64A4 ${E(o.evidence.candidate.maxDrawdown)}</small>`:""}${o.status==="VALIDATED"?`<button class="secondary" data-activate="${h(o.id)}">\\u542F\\u7528\\u6B64\\u7248\\u672C</button>`:""}</div>`).join("")||\'<div class="small-muted">\\u5C1A\\u65E0 AI \\u5019\\u9009\\u7248\\u672C\\uFF0C\\u6301\\u7EED\\u79EF\\u7D2F\\u771F\\u5B9E\\u6570\\u636E\\u3002</div>\',D||(c("paper-initial-capital").value=t.initialCashCents/100),c("paper-initial-capital").disabled=!b.canEditCapital,D||It(b.feeConfig),c("paper-fee-version").textContent=`\\u8D39\\u7528\\u914D\\u7F6E v${t.feeConfigVersion||0}`,c("paper-fee-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${a?.feeConfig?Wt(a.feeConfig):"\\u65E7\\u7248\\u56FA\\u5B9A\\u8D39\\u7528"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,D||Mt(b.riskLimits),c("paper-risk-version").textContent=`\\u98CE\\u63A7\\u914D\\u7F6E v${t.riskLimitsVersion||0}`,c("paper-risk-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${a?.riskLimits?Kt(a.riskLimits):"\\u9ED8\\u8BA4\\u98CE\\u63A7"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,D||(c("paper-improvement-mode").value=t.improvementMode||"auto"),D||(c("paper-benchmark").value=t.benchmarkCode||$t),c("paper-config-note").textContent=b.canEditCapital?"\\u4EA4\\u6613\\u8BA1\\u5212\\u5F00\\u59CB\\u6267\\u884C\\u524D\\u53EF\\u81EA\\u5B9A\\u4E49\\u521D\\u59CB\\u8D44\\u91D1\\uFF1B\\u8D39\\u7528\\u4E0E\\u98CE\\u63A7\\u968F\\u65F6\\u53EF\\u8C03\\u6574\\u3002":"\\u521D\\u59CB\\u8D44\\u91D1\\u4F5C\\u4E3A\\u6536\\u76CA\\u57FA\\u51C6\\u5DF2\\u51BB\\u7ED3\\uFF1B\\u8D39\\u7528\\u4E0E\\u98CE\\u63A7\\u4ECD\\u53EF\\u81EA\\u5B9A\\u4E49\\uFF0C\\u9002\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212\\u3002",document.querySelectorAll("[data-activate]").forEach(o=>o.onclick=()=>U(async()=>(await j("/api/paper/activate",{id:o.dataset.activate})).activated?"\\u65B0\\u7248\\u672C\\u5DF2\\u542F\\u7528\\uFF0C\\u5C06\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212":"\\u8D26\\u6237\\u540C\\u65F6\\u66F4\\u65B0\\uFF0C\\u8BF7\\u91CD\\u8BD5"))}async function V(){try{b=await j("/api/paper"),Zt()}catch(t){q(t.message)}}async function U(t){if(!nt){nt=!0,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!0),q("\\u6B63\\u5728\\u5904\\u7406\\uFF0C\\u7ED3\\u679C\\u5C06\\u4FDD\\u5B58\\u5230\\u8D26\\u672C\\u2026");try{let e=await t();await V(),q(e)}catch(e){q(e.message)}finally{nt=!1,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!1)}}}function Rt(){return c("paper-config-form").addEventListener("input",()=>{D=!0}),c("paper-fee-controls").innerHTML=B.map(({key:t,label:e,unit:a,direction:i})=>`<label for="fee-${t}">${e}\\uFF08${a}\\uFF09<input id="fee-${t}" type="number" min="0" max="${t==="commission_min"?1e4:100}" step="${t==="commission_min"?"0.01":"0.001"}" value="${vt(t,ht[t])}" required><span>${i}</span></label>`).join(""),c("paper-risk-controls").innerHTML=_.map(({key:t,label:e,unit:a,percent:i,hint:s})=>`<label for="risk-${t}" title="${h(s)}">${e}\\uFF08${a}\\uFF09<input id="risk-${t}" type="number" min="${i?.01:0}" max="${i?100:200}" step="${i?"0.01":"1"}" value="${yt(t,gt[t])}" required></label>`).join(""),c("paper-benchmark").innerHTML=tt.map(({code:t,name:e})=>`<option value="${t}">${e}</option>`).join(""),c("paper-fee-defaults").onclick=()=>{It(ht),D=!0,q("\\u5DF2\\u586B\\u5165\\u56FE\\u4E2D\\u9ED8\\u8BA4\\u8D39\\u7528\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},c("paper-risk-defaults").onclick=()=>{Mt(gt),D=!0,q("\\u5DF2\\u586B\\u5165\\u9ED8\\u8BA4\\u98CE\\u63A7\\u7EA6\\u675F\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},c("paper-run").onclick=()=>U(async()=>{let t=await j("/api/run-daily",{});return window.dispatchEvent(new Event("paper-updated")),t.paper?.reason||t.snapshot?.reason||"\\u5DF2\\u5B8C\\u6210\\u76D8\\u540E\\u66F4\\u65B0"}),c("paper-verify").onclick=()=>U(async()=>{let t=await j("/api/paper/verify");return t.passed?`\\u5B8C\\u6574\\u91CD\\u653E\\u901A\\u8FC7\\uFF1A${t.days} \\u4E2A\\u7ED3\\u7B97\\u65E5\\u3001${t.fills} \\u7B14\\u6210\\u4EA4\\uFF0C\\u8D44\\u91D1\\u3001\\u8D39\\u7528\\u4E0E\\u6536\\u76CA\\u5747\\u4E00\\u81F4\\u3002`:"\\u9A8C\\u8BC1\\u672A\\u901A\\u8FC7\\uFF0C\\u8BF7\\u68C0\\u67E5\\u5BFC\\u51FA\\u8BB0\\u5F55\\u4E0E\\u884C\\u60C5\\u5B8C\\u6574\\u5EA6\\u3002"}),c("paper-improve").onclick=()=>U(async()=>{let t=await j("/api/paper/improve",{});return t.reason||`AI \\u6539\\u8FDB\\u72B6\\u6001\\uFF1A${Dt[t.status]||t.status}`}),c("paper-config-form").onsubmit=t=>{t.preventDefault(),U(async()=>(await j("/api/paper/settings",{...b?.canEditCapital?{initialCapital:Number(c("paper-initial-capital").value)}:{},improvementMode:c("paper-improvement-mode").value,benchmarkCode:c("paper-benchmark").value||$t,fees:Object.fromEntries(B.map(({key:e})=>[e,e==="commission_min"?Number(c(`fee-${e}`).value):Number(c(`fee-${e}`).value)/1e4])),riskLimits:Object.fromEntries(_.map(({key:e,percent:a})=>[e,a?Number(c(`risk-${e}`).value)/100:Number(c(`risk-${e}`).value)]))}),D=!1,"\\u8D44\\u91D1\\u3001\\u8D39\\u7528\\u4E0E\\u98CE\\u63A7\\u8BBE\\u7F6E\\u5DF2\\u4FDD\\u5B58\\uFF1B\\u65B0\\u8BA1\\u5212\\u91C7\\u7528\\u65B0\\u914D\\u7F6E\\uFF0C\\u5DF2\\u6267\\u884C\\u8BB0\\u5F55\\u4FDD\\u7559\\u539F\\u914D\\u7F6E\\u3002"))},window.addEventListener("paper-updated",V),setInterval(()=>{!document.hidden&&!nt&&V()},15e3),V(),{refresh:V}}var O={status:null,detailId:null,initialized:!1};async function Ct(t,e={}){let a=await fetch(t,{headers:{"Content-Type":"application/json"},...e}),i=await a.json().catch(()=>({}));if(!a.ok)throw new Error(i.error||"\\u8BF7\\u6C42\\u5931\\u8D25");return i}var Nt=t=>t==null?"\\u2014":`${(t*100).toFixed(2)}%`,Jt=t=>t==null?"\\u2014":(t/100).toLocaleString("zh-CN",{maximumFractionDigits:2}),st={RESERVED:"\\u5DF2\\u9884\\u7559",PROPOSING:"\\u5019\\u9009\\u751F\\u6210\\u4E2D",FROZEN:"\\u5019\\u9009\\u5DF2\\u51BB\\u7ED3",HISTORICAL_CHECK:"\\u5386\\u53F2\\u7B5B\\u67E5\\u4E2D",SCHEDULED:"\\u5DF2\\u6392\\u671F",RUNNING:"\\u524D\\u77BB\\u8FD0\\u884C\\u4E2D",EVALUATING:"\\u8BC4\\u4F30\\u4E2D",CLOSED:"\\u5DF2\\u7ED3\\u675F",ELIGIBLE:"\\u7B26\\u5408\\u664B\\u7EA7\\u6761\\u4EF6",PROMOTED:"\\u5DF2\\u542F\\u7528",REJECTED:"\\u5386\\u53F2\\u7B5B\\u67E5\\u672A\\u901A\\u8FC7",ERROR:"\\u51FA\\u9519",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u5DF2\\u5931\\u6548"};function T(t){return document.getElementById(t)}function Qt(){let{status:t}=O,e=T("strategies-status");if(!t){e.innerHTML="<p>\\u5C1A\\u672A\\u83B7\\u53D6\\u6279\\u6B21\\u72B6\\u6001\\u3002</p>";return}let a=t.activeCohort;e.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u6D3B\\u52A8\\u6279\\u6B21</span><strong>${a?`${a.id.slice(0,18)}\\u2026`:"\\u65E0"}</strong><small>${a?st[a.stage]??a.stage:"\\u53EF\\u53D1\\u8D77\\u65B0\\u6279\\u6B21"}</small></div>\n      <div><span class="mini-label">\\u5019\\u9009\\u4E0A\\u9650</span><strong>${t.policy.maxCandidates}</strong><small>\\u6BCF\\u6708\\u751F\\u6210\\u6279\\u6B21 ${t.policy.monthlyGenerationLimit} \\u6B21</small></div>\n      <div><span class="mini-label">\\u524D\\u77BB\\u7A97\\u53E3</span><strong>${t.policy.forwardDays} \\u4EA4\\u6613\\u65E5</strong><small>\\u5B8C\\u6574\\u8F6E\\u6B21\\u95E8\\u69DB ${t.policy.minimumCompletedRounds}</small></div>\n      <div><span class="mini-label">\\u5F53\\u524D\\u7B56\\u7565</span><strong>${a?.parentVersion??"baseline-v1"}</strong><small>${a?"\\u8D5B\\u9A6C\\u671F\\u95F4\\u4FDD\\u6301\\u7236\\u7B56\\u7565":"\\u7B49\\u5F85\\u6279\\u6B21\\u7ED3\\u8BBA"}</small></div>\n    </div>\n    <p class="panel-footnote">${t.note??""}</p>`}function te(){let{status:t,detailId:e}=O,a=(t?.cohorts??[]).map(i=>`\n      <tr data-cohort="${i.id}" class="${i.id===e?"active":""}">\n        <td>${i.id.slice(0,22)}\\u2026</td>\n        <td>${st[i.stage]??i.stage}</td>\n        <td>${i.parentVersion}</td>\n        <td>${i.maxCandidates}</td>\n        <td>${(i.createdAt??"").replace("T"," ").slice(0,16)}</td>\n      </tr>`).join("");T("strategies-cohort-rows").innerHTML=a||\'<tr><td colspan="5">\\u5C1A\\u65E0\\u6279\\u6B21\\u8BB0\\u5F55</td></tr>\',T("strategies-cohort-rows").querySelectorAll("tr[data-cohort]").forEach(i=>{i.onclick=()=>{O.detailId=i.dataset.cohort,bt()}})}async function ee(){let t=T("strategies-detail"),{detailId:e}=O;if(!e){t.innerHTML="<p class=\'panel-footnote\'>\\u70B9\\u51FB\\u4E0A\\u65B9\\u6279\\u6B21\\u67E5\\u770B\\u56FA\\u5B9A\\u6210\\u5458\\u3001\\u51C0\\u503C\\u4E0E\\u8D44\\u683C\\u3002</p>";return}let a;try{a=await Ct(`/api/strategies/cohorts/${e}`)}catch(d){t.innerHTML=`<p>${d.message}</p>`;return}let i=(a.members??[]).map(d=>`\n      <tr>\n        <td>${d.memberId}</td>\n        <td>${st[d.stage]??d.stage}</td>\n        <td>${d.k}</td>\n        <td>${d.strategyVersion?`${d.strategyVersion.slice(0,18)}\\u2026`:"\\u2014"}</td>\n        <td>${d.paramsDistance??"\\u2014"}</td>\n        <td>${d.failureReason??"\\u2014"}</td>\n      </tr>`).join(""),s=(a.accounts??[]).map(d=>`\n      <tr>\n        <td>${d.kind}</td>\n        <td>${d.memberId??"\\u2014"}</td>\n        <td>${Jt(d.book?.equityCents)}</td>\n        <td>${d.cursor?.date??"\\u2014"} #${d.cursor?.sequence??0}</td>\n        <td>${d.book?.lastDate??"\\u2014"}</td>\n      </tr>`).join(""),p=a.evaluation,l=(p?.verdicts??[]).map(d=>`\n      <tr>\n        <td>${d.memberId}</td>\n        <td>${st[d.stage]??d.stage}</td>\n        <td>${Nt(d.metrics?.netReturn)}</td>\n        <td>${Nt(d.metrics?.windowDrawdown)}</td>\n        <td>${d.rounds?.rounds??"\\u2014"}</td>\n        <td>${d.checks?.statistics?"\\u901A\\u8FC7":d.checks?"\\u672A\\u901A\\u8FC7/\\u672A\\u8BC4\\u4F30":"\\u2014"}</td>\n      </tr>`).join("");t.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u51A0\\u519B</span><strong>${p?.champion?.memberId??"\\u65E0"}</strong><small>${p?.promotion?.promoted?`\\u5DF2\\u542F\\u7528\\uFF0C\\u751F\\u6548\\u65E5 ${p.promotion.effectiveTradeDate??"\\u5F85\\u5B9A"}`:"\\u4EC5\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528"}</small></div>\n      <div><span class="mini-label">\\u7A97\\u53E3</span><strong>${a.cohort.forwardManifest?.tradingDates?.length??0}/${a.cohort.forwardDays}</strong><small>\\u6355\\u83B7\\u65E5 ${a.cohort.forwardManifest?.captureDate??"\\u2014"}</small></div>\n      <div><span class="mini-label">\\u62A5\\u544A\\u6458\\u8981</span><strong>${a.evaluationDigest?"\\u5DF2\\u51BB\\u7ED3":"\\u7B49\\u5F85\\u8BC4\\u4F30"}</strong><small>\\u95F8\\u95E8\\u4E0E\\u7EDF\\u8BA1\\u53EF\\u91CD\\u653E</small></div>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u6210\\u5458</th><th>\\u72B6\\u6001</th><th>\\u5C1D\\u8BD5\\u5E8F\\u53F7 k</th><th>\\u7B56\\u7565\\u7248\\u672C</th><th>\\u53C2\\u6570\\u8DDD\\u79BB</th><th>\\u5931\\u8D25\\u539F\\u56E0</th></tr></thead>\n        <tbody>${i||"<tr><td colspan=\'6\'>\\u65E0\\u6210\\u5458</td></tr>"}</tbody>\n      </table>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u8D26\\u6237</th><th>\\u89D2\\u8272</th><th>\\u671F\\u672B\\u6743\\u76CA\\uFF08\\u5206\\uFF09</th><th>\\u6D88\\u8D39\\u6E38\\u6807</th><th>\\u5DF2\\u7ED3\\u7B97\\u65E5</th></tr></thead>\n        <tbody>${s||"<tr><td colspan=\'5\'>\\u5C1A\\u65E0\\u5339\\u914D\\u8D26\\u6237</td></tr>"}</tbody>\n      </table>\n    </div>\n    ${l?`<div class="table-scroll">\n        <table>\n          <thead><tr><th>\\u6210\\u5458</th><th>\\u7ED3\\u8BBA</th><th>\\u671F\\u95F4\\u51C0\\u6536\\u76CA</th><th>\\u7A97\\u53E3\\u56DE\\u64A4</th><th>\\u5B8C\\u6574\\u8F6E\\u6B21</th><th>\\u7EDF\\u8BA1\\u68C0\\u9A8C</th></tr></thead>\n          <tbody>${l}</tbody>\n        </table>\n      </div>`:""}\n    <p class="panel-footnote">\\u6536\\u76CA\\u4E0D\\u5728\\u72EC\\u7ACB\\u5019\\u9009\\u4E4B\\u95F4\\u6C42\\u548C\\uFF1B\\u7EB8\\u9762\\u9886\\u5148\\u4E0D\\u7B49\\u4E8E\\u53EF\\u542F\\u7528\\u8D44\\u683C\\u3002</p>\n    <a class="secondary" href="/api/strategies/cohorts/${e}/export" download>\\u5BFC\\u51FA\\u6279\\u6B21\\u68C0\\u67E5\\u70B9</a>`}async function bt(){try{O.status=await Ct("/api/strategies/cohorts"),Qt(),te(),await ee()}catch(t){T("strategies-status").innerHTML=`<p>${t.message}</p>`}}function Ot(){O.initialized||(O.initialized=!0,T("strategies-reserve").onclick=async()=>{let t=T("strategies-reserve");t.disabled=!0,T("strategies-status-note").textContent="\\u6B63\\u5728\\u9884\\u7559\\u6279\\u6B21\\u5E76\\u8C03\\u7528\\u6A21\\u578B\\u751F\\u6210\\u5019\\u9009\\u2026";try{let e=await Ct("/api/strategies/cohorts",{method:"POST",body:"{}"});T("strategies-status-note").textContent=e.reason??e.status??"\\u6279\\u6B21\\u5DF2\\u9884\\u7559"}catch(e){T("strategies-status-note").textContent=e.message}finally{t.disabled=!1,await bt()}},bt())}var w={initialized:!1,cursor:0,status:null},v=t=>document.getElementById(t),G=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]);async function K(t,e={}){let a=await fetch(t,{headers:{"content-type":"application/json"},...e,body:e.body?JSON.stringify(e.body):void 0}),i=await a.json().catch(()=>({}));if(!a.ok)throw new Error(i.error||`\\u8BF7\\u6C42\\u5931\\u8D25\\uFF08${a.status}\\uFF09`);return i}function P(t){return t?t.replace("T"," ").slice(0,19):"\\u2014"}var ae={RUNNER_STALLED:"\\u6267\\u884C\\u5FAA\\u73AF\\u505C\\u6EDE",LOOP_FAILED:"\\u5FAA\\u73AF\\u8FDE\\u7EED\\u5931\\u8D25",SESSION_BLOCKED:"\\u4F1A\\u8BDD\\u88AB\\u963B\\u585E",REQUIRED_QUOTE_STALE:"\\u5173\\u952E\\u62A5\\u4EF7\\u9648\\u65E7",DRAWDOWN_TRIPPED:"\\u56DE\\u64A4\\u89E6\\u53CA\\u786C\\u7EA6\\u675F",PROTECTIVE_EXIT_BLOCKED:"\\u4FDD\\u62A4\\u9000\\u51FA\\u65E0\\u6CD5\\u6210\\u4EA4",T_RECOVERY_INCOMPLETE:"\\u505A T \\u7B2C\\u4E8C\\u817F\\u672A\\u6062\\u590D",SETTLEMENT_LATE:"\\u76D8\\u540E\\u7ED3\\u7B97\\u8FDF\\u5EF6",LEDGER_INVARIANT_FAILED:"\\u8D26\\u672C\\u4E0D\\u53D8\\u5F0F\\u5F02\\u5E38",ALERT_PIPELINE_STALLED:"\\u544A\\u8B66\\u5206\\u53D1\\u505C\\u6EDE",AI_OR_RESEARCH_FAILED:"AI/\\u7814\\u7A76\\u4EFB\\u52A1\\u5931\\u8D25"};function ne(){let{status:t}=w;if(!t)return;v("alerts-enabled-tag").textContent=t.enabled?"\\u5DF2\\u542F\\u7528":"\\u672A\\u542F\\u7528",v("alerts-status-note").textContent=t.note??"";let e=t.channels.map(i=>`<div><span class="outline-tag">${G(i.name)}</span><div class="panel-metric-value">${i.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E\\uFF08\\u670D\\u52A1\\u7AEF .env\\uFF09"}</div></div>`).join(""),a=t.watchdog??{};v("alerts-channel-list").innerHTML=e+`<div><span class="outline-tag">\\u5916\\u90E8\\u76D1\\u6D4B</span><div class="panel-metric-value"><span>${a.progressConfigured?`\\u8FDB\\u5EA6\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E${a.lastProgressAt?`\\uFF0C\\u6700\\u8FD1 ${P(a.lastProgressAt)}`:""}`:"\\u672A\\u914D\\u7F6E\\uFF08WATCHDOG_PROGRESS_URL\\uFF09"}</span><span>${a.pipelineConfigured?"\\u7BA1\\u9053\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E":"\\u7BA1\\u9053\\u4FE1\\u53F7\\u672A\\u914D\\u7F6E"}</span></div></div>\n    <div><span class="outline-tag">\\u53D1\\u9001\\u961F\\u5217</span><div class="panel-metric-value">\\u5F85\\u53D1\\u9001 ${t.outbox?.pending??0}\\uFF0C\\u903E\\u671F\\u672A\\u9886 ${t.outbox?.overdue??0}\\uFF0C\\u5DF2\\u53D1\\u9001 ${t.outbox?.sent??0}\\uFF0C\\u8FC7\\u671F ${t.outbox?.expired??0}</div></div>`}function se(t){let e=w.incidents??[];v("alerts-incident-rows").innerHTML=e.map(a=>`<tr>\n      <td>${G(ae[a.ruleType]??a.ruleType)}<small class="small-muted"> ${G(a.fingerprint)}</small></td>\n      <td>${a.severity==="CRITICAL"?"\\u4E25\\u91CD":"\\u8B66\\u544A"}</td>\n      <td>${a.status==="RESOLVED"?`\\u5DF2\\u6062\\u590D ${P(a.resolvedAt)}`:a.status==="OPEN"?"\\u672A\\u6062\\u590D":G(a.status)}${a.ackUntil&&a.ackUntil>new Date().toISOString()?`\\uFF08\\u786E\\u8BA4\\u81F3 ${P(a.ackUntil)}\\uFF09`:""}</td>\n      <td>${P(a.firstSeen)}</td>\n      <td>${P(a.lastSeen)}</td>\n      <td>${a.status!=="RESOLVED"?`<button class="text-button" data-ack="${G(a.id)}">\\u786E\\u8BA4 2 \\u5C0F\\u65F6</button>`:""}</td>\n    </tr>`).join("");for(let a of v("alerts-incident-rows").querySelectorAll("[data-ack]"))a.onclick=async()=>{a.disabled=!0;try{await K(`/api/alerts/incidents/${a.dataset.ack}/ack`,{method:"POST",body:{hours:2}})}catch(i){v("alerts-list-status").textContent=i.message}await W(!0)};v("alerts-more").hidden=!w.nextCursor,v("alerts-list-status").textContent=t?`\\u5171 ${e.length} \\u6761${w.nextCursor?"\\uFF08\\u53EF\\u52A0\\u8F7D\\u66F4\\u591A\\uFF09":""}`:v("alerts-list-status").textContent}async function W(t=!1){try{w.status=await K("/api/alerts/status"),ne(),t&&(w.cursor=0);let e=await K(`/api/alerts/incidents?cursor=${w.cursor}&active=${v("alerts-active-only").checked}`);w.incidents=t?e.incidents:[...w.incidents??[],...e.incidents],w.nextCursor=e.nextCursor,se(t)}catch(e){v("alerts-list-status").textContent=e.message}}function _t(){w.initialized||(w.initialized=!0,v("alerts-refresh").onclick=()=>W(!0),v("alerts-active-only").onchange=()=>W(!0),v("alerts-more").onclick=()=>{w.cursor=w.nextCursor,W(!1)},v("alerts-test").onclick=async()=>{let t=v("alerts-test");t.disabled=!0,v("alerts-status-note").textContent="\\u6B63\\u5728\\u53D1\\u9001\\u6D4B\\u8BD5\\u901A\\u77E5\\u2026";try{await K("/api/alerts/test",{method:"POST",body:{}}),v("alerts-status-note").textContent="\\u6D4B\\u8BD5\\u901A\\u77E5\\u5DF2\\u53D1\\u9001\\uFF0C\\u8BF7\\u5728\\u98DE\\u4E66\\u67E5\\u6536"}catch(e){v("alerts-status-note").textContent=e.message}finally{t.disabled=!1}},v("alerts-maintenance").onclick=async()=>{let t=Number(prompt("\\u7EF4\\u62A4\\u7A97\\u53E3\\u5206\\u949F\\u6570\\uFF0815\\u20131440\\uFF09\\uFF1A","60"));if(!Number.isInteger(t))return;let e=prompt("\\u7EF4\\u62A4\\u539F\\u56E0\\uFF08\\u53EF\\u9009\\uFF09\\uFF1A","")??"";try{let a=await K("/api/alerts/maintenance",{method:"POST",body:{minutes:t,reason:e}});v("alerts-status-note").textContent=`\\u7EF4\\u62A4\\u7A97\\u53E3\\u81F3 ${P(a.until)}`}catch(a){v("alerts-status-note").textContent=a.message}},W(!0))}var r=t=>document.getElementById(t),$=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),jt={dashboard:\'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>\',chart:\'<path d="M4 3v17h17M8 15l4-6 4 3 5-7"/>\',grid:\'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 11h18M11 4v16"/>\',sliders:\'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/>\',database:\'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/>\',calendar:\'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>\',refresh:\'<path d="M20 7a8 8 0 0 0-14-2L3 8m0-5v5h5M4 17a8 8 0 0 0 14 2l3-3m0 5v-5h-5"/>\',search:\'<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>\',info:\'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>\',close:\'<path d="m6 6 12 12M6 18 18 6"/>\',flame:\'<path d="M12 3c1 6 7 6 7 12a7 7 0 0 1-14 0c0-3 2-5 4-7 0 3 1 3 2 4 2-3 2-6 1-9Z"/>\',shield:\'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>\'};function Y(t){return`<svg viewBox="0 0 24 24" aria-hidden="true">${jt[t]||jt.chart}</svg>`}document.querySelectorAll("[data-icon]").forEach(t=>t.innerHTML=Y(t.dataset.icon));var n={view:"overview",height:"all",weights:[...N.balanced],payload:null,analysis:null,loading:!0,error:null,demo:!1,request:0,review:null,ai:null,aiConfig:{configured:!1},history:null,reviewBusy:!1,reviewMessage:"",storageAvailable:!1};try{let t=JSON.parse(localStorage.getItem("limitLensWeights"));Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)&&(n.weights=t)}catch{}var X=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date);r("trade-date").value=X;r("trade-date").max=X;var ie=Rt(),it={paper:["\\u6A21\\u62DF\\u4EA4\\u6613","\\u8BA9\\u8BC4\\u5206\\u63A5\\u53D7\\u8D26\\u6237\\u68C0\\u9A8C","\\u5236\\u5B9A\\u8BA1\\u5212\\u3001\\u6A21\\u62DF\\u6267\\u884C\\u3001\\u6838\\u5BF9\\u6536\\u76CA\\uFF0C\\u7528\\u771F\\u5B9E\\u7ED3\\u679C\\u6539\\u8FDB\\u7B56\\u7565\\u3002"],overview:["\\u603B\\u89C8\\u590D\\u76D8","\\u6BCF\\u65E5\\u6DA8\\u505C\\u590D\\u76D8","\\u628A\\u6DA8\\u505C\\u62C6\\u6210\\u4FE1\\u53F7\\uFF0C\\u628A\\u5224\\u65AD\\u5EFA\\u7ACB\\u5728\\u6570\\u636E\\u4E0A\\u3002"],stocks:["\\u4E2A\\u80A1\\u5206\\u6790","\\u6DA8\\u505C\\u4E2A\\u80A1\\u5206\\u6790","\\u62C6\\u89E3\\u5C01\\u677F\\u8868\\u73B0\\uFF0C\\u6BD4\\u8F83\\u5F3A\\u5EA6\\u4E0E\\u98CE\\u9669\\u3002"],sectors:["\\u677F\\u5757\\u7814\\u7A76","\\u884C\\u4E1A\\u677F\\u5757\\u7814\\u7A76","\\u4ECE\\u6DA8\\u505C\\u96C6\\u805A\\u4E0E\\u8FDE\\u677F\\u68AF\\u961F\\uFF0C\\u89C2\\u5BDF\\u8D44\\u91D1\\u7684\\u5171\\u540C\\u65B9\\u5411\\u3002"],review:["\\u6628\\u65E5\\u53CD\\u9988","\\u8BA9\\u6628\\u65E5\\u5224\\u65AD\\u63A5\\u53D7\\u68C0\\u9A8C","\\u4FDD\\u5B58\\u5F53\\u65F6\\u7684\\u5224\\u65AD\\uFF0C\\u7528\\u5B9E\\u9645\\u8868\\u73B0\\u68C0\\u9A8C\\uFF0C\\u518D\\u7531 AI \\u5BA1\\u89C6\\u3002"],model:["\\u8BC4\\u5206\\u6A21\\u578B","\\u53EF\\u89E3\\u91CA\\u7684\\u8BC4\\u5206\\u6A21\\u578B","\\u6BCF\\u4E00\\u5206\\u90FD\\u6709\\u4F9D\\u636E\\uFF0C\\u6BCF\\u4E00\\u9879\\u6743\\u91CD\\u90FD\\u53EF\\u4EE5\\u8C03\\u6574\\u3002"],strategies:["\\u7B56\\u7565\\u8D5B\\u9A6C","\\u591A\\u7B56\\u7565\\u5E76\\u884C\\u8D5B\\u9A6C\\u4E0E\\u53D7\\u63A7\\u664B\\u7EA7","\\u540C\\u4E00\\u4EFD\\u884C\\u60C5\\u3001\\u540C\\u4E00\\u51BB\\u7ED3\\u8D77\\u70B9\\uFF0C\\u56FA\\u5B9A\\u7A97\\u53E3\\u5185\\u6BD4\\u8F83\\uFF0C\\u53EA\\u6709\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528\\u3002"],alerts:["\\u8FD0\\u7EF4\\u544A\\u8B66","\\u5E38\\u9A7B\\u6267\\u884C\\u4E0D\\u9759\\u9ED8\\u5931\\u8054","\\u6267\\u884C\\u9519\\u8BEF\\u3001\\u98CE\\u9669\\u5904\\u7F6E\\u4E0E\\u76D8\\u540E\\u5931\\u8D25\\u4E3B\\u52A8\\u901A\\u77E5\\uFF1B\\u6574\\u673A\\u79BB\\u7EBF\\u7531\\u5916\\u90E8\\u76D1\\u6D4B\\u53D1\\u73B0\\u3002"]};function ct(t){it[t]&&(n.view=t,document.querySelectorAll("[data-view]").forEach(e=>{e.classList.toggle("active",e.dataset.view===t),e.setAttribute("aria-current",e.dataset.view===t?"page":"false")}),r("crumb").textContent=it[t][0],r("page-title").textContent=it[t][1],r("page-subtitle").textContent=it[t][2],r("overview-content").hidden=!["overview","stocks"].includes(t),r("sectors-view").hidden=t!=="sectors",r("model-view").hidden=t!=="model",r("review-view").hidden=t!=="review",r("summary").hidden=["model","review","paper","strategies","alerts"].includes(t),r("paper-view").hidden=t!=="paper",r("strategies-view").hidden=t!=="strategies",r("alerts-view").hidden=t!=="alerts",document.querySelector(".heading-actions").hidden=t==="paper"||t==="strategies"||t==="alerts",document.querySelector(".data-strip").hidden=t==="paper"||t==="strategies"||t==="alerts",t==="paper"&&ie.refresh(),t==="strategies"&&Ot(),t==="alerts"&&_t(),document.querySelector(".right-column").hidden=t==="stocks",r("overview-content").style.gridTemplateColumns=t==="stocks"?"minmax(0,1fr)":"",F(),I())}document.querySelectorAll("[data-view]").forEach(t=>t.onclick=()=>ct(t.dataset.view));document.querySelector(".brand").onclick=t=>{t.preventDefault(),ct("overview")};function S(t,e=1){return t==null?"\\u2014":Number(t).toFixed(e)}function xt(t){return t==null?"\\u2014":t>=1e8?`${(t/1e8).toFixed(2)} \\u4EBF`:`${(t/1e4).toFixed(0)} \\u4E07`}function oe(t){return t>=80?"":t>=60?"mid":"low"}function rt(t){return`<div class="score-cell"><span class="score-number ${oe(t)}">${t??"\\u2014"}</span><span class="score-track"><i style="width:${t??0}%"></i></span></div>`}function Et(){n.analysis=n.payload?.archived?structuredClone(n.payload.analysis):n.payload?St(n.payload.rows.map(mt),n.payload.broken,n.payload.previous?.map(mt)||null,n.weights):null}function F(){let t=n.analysis,e=t!==null,a=n.loading,i=[{name:"\\u6DA8\\u505C\\u5BB6\\u6570",value:e?t.count:"\\u2014",unit:"\\u5BB6",caption:e?`\\u9996\\u677F ${t.first} \\u5BB6 \\xB7 \\u8FDE\\u677F ${t.relay} \\u5BB6`:"\\u9996\\u677F\\u4E0E\\u8FDE\\u677F\\u5206\\u5E03",icon:"flame",pct:e?Math.min(t.count/80*100,100):0},{name:"\\u5C01\\u677F\\u7387",value:e?S(t.sealRate):"\\u2014",unit:"%",caption:e?n.payload.broken===null?"\\u70B8\\u677F\\u6C60\\u6570\\u636E\\u6682\\u7F3A":`\\u70B8\\u677F ${n.payload.broken} \\u5BB6 \\xB7 \\u5F53\\u524D\\u672A\\u5C01\\u4F4F`:"\\u6DA8\\u505C /\\uFF08\\u6DA8\\u505C + \\u70B8\\u677F\\uFF09",icon:"shield",pct:e?t.sealRate??0:0},{name:"\\u6700\\u9AD8\\u8FDE\\u677F",value:e?t.height:"\\u2014",unit:"\\u677F",caption:e?`\\u8FDE\\u677F\\u80A1\\u5360\\u6BD4 ${t.count?S(t.relay/t.count*100):"\\u2014"}%`:"\\u8861\\u91CF\\u5F53\\u65E5\\u5E02\\u573A\\u9AD8\\u5EA6",icon:"chart",pct:e?Math.min(t.height/7*100,100):0,amber:!0},{name:"\\u60C5\\u7EEA\\u5F3A\\u5EA6",value:e?t.emotion??"\\u2014":"\\u2014",unit:"/ 100",caption:e?t.emotion===null?"\\u5F53\\u65E5\\u65E0\\u6709\\u6548\\u8BC4\\u5206\\u6837\\u672C":`${t.emotion>=75?"\\u5F3A\\u5EA6\\u8F83\\u9AD8":t.emotion>=45?"\\u5F3A\\u5EA6\\u4E2D\\u7B49":"\\u5F3A\\u5EA6\\u8F83\\u4F4E"} \\xB7 ${t.emotionCoverage==null?"\\u5DF2\\u5F52\\u6863\\u7684\\u6536\\u76D8\\u5224\\u65AD":`\\u6570\\u636E\\u8986\\u76D6 ${t.emotionCoverage}%`}`:"\\u6DA8\\u505C\\u89C4\\u6A21 \\xB7 \\u5C01\\u677F\\u7387 \\xB7 \\u9AD8\\u5EA6",icon:"dashboard",pct:e?t.emotion??0:0,accent:!0}];r("summary").innerHTML=i.map(s=>`<article class="metric ${a?"loading":""}"><div class="metric-head">${s.name}${Y(s.icon)}</div><div class="metric-value ${s.accent?"accent":""}">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div><div class="metric-line ${s.amber?"amber":""}"><i style="width:${s.pct}%"></i></div></article>`).join(""),r("pool-count").textContent=e?t.count:"\\u2014",Z(),le(),ce()}function re(){let t=n.analysis?.stocks||[],e=r("search").value.trim().toLowerCase(),a=r("sector-filter").value;t=t.filter(s=>(!e||s.name.toLowerCase().includes(e)||s.code.includes(e))&&(!a||s.sector===a)&&(n.height==="all"||(n.height==="first"?s.height===1:s.height>1)));let i=r("sort").value;return t.slice().sort(i==="height"?(s,p)=>(p.height??0)-(s.height??0):i==="seal"?(s,p)=>(p.seal??-1)-(s.seal??-1):i==="first"?(s,p)=>(s.first??999999)-(p.first??999999):(s,p)=>(p.score??-1)-(s.score??-1))}function Z(){let t=re(),e=n.analysis!==null,a=n.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u884C\\u60C5":e?"\\u6CA1\\u6709\\u7B26\\u5408\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1":"\\u6682\\u65E0\\u53EF\\u7528\\u884C\\u60C5",i=n.loading?"\\u6B63\\u5728\\u8BFB\\u53D6\\u516C\\u5F00\\u6DA8\\u505C\\u6C60\\u3001\\u70B8\\u677F\\u6C60\\u4E0E\\u6628\\u65E5\\u6DA8\\u505C\\u6C60\\u2026":e?"\\u5C1D\\u8BD5\\u8C03\\u6574\\u641C\\u7D22\\u3001\\u884C\\u4E1A\\u6216\\u8FDE\\u677F\\u7B5B\\u9009\\u3002":"\\u5207\\u6362\\u8FD1\\u671F\\u4EA4\\u6613\\u65E5\\u671F\\u6216\\u7A0D\\u540E\\u5237\\u65B0\\uFF0C\\u4E5F\\u53EF\\u4EE5\\u67E5\\u770B\\u660E\\u786E\\u6807\\u6CE8\\u7684\\u6F14\\u793A\\u3002";r("stock-rows").innerHTML=t.length?t.map(s=>`<tr><td><button class="stock-name" data-stock="${$(s.code)}">${$(s.name)}</button><span class="stock-code">${$(s.code)}</span></td><td>${rt(s.score)}</td><td><span class="sector-tag">${$(s.sector)}</span></td><td><span class="height-tag ${s.height>=4?"high":""}">${s.height===1?"\\u9996\\u677F":s.height?`${s.height} \\u677F`:"\\u2014"}</span></td><td class="money">${Q(s.first)}</td><td class="money">${xt(s.seal)}</td><td class="money">${S(s.turnover)}%</td><td class="money">${s.breaks??"\\u2014"}</td></tr>`).join(""):`<tr><td colspan="8"><div class="empty"><strong>${a}</strong>${i}</div></td></tr>`,document.querySelectorAll("[data-stock]").forEach(s=>s.onclick=()=>de(s.dataset.stock)),r("table-status").textContent=e?`\\u663E\\u793A ${t.length} / ${n.analysis.count} \\u5BB6${n.analysis.excluded?` \\xB7 \\u5DF2\\u5254\\u9664 ${n.analysis.excluded} \\u5BB6 ST / \\u9000\\u5E02\\u6807\\u8BC6\\u4E2A\\u80A1`:""}`:n.loading?"\\u516C\\u5F00\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":"\\u7B49\\u5F85\\u6709\\u6548\\u6570\\u636E"}function le(){let t=n.analysis?.sectors||[];r("sector-rank").innerHTML=t.length?t.slice(0,5).map((e,a)=>`<button class="sector-row" data-sector="${$(e.name)}"><div class="sector-row-label"><div><span class="rank-index">0${a+1}</span>${$(e.name)}</div><span class="sector-score">${e.score}</span></div><div class="sector-bar"><i style="width:${e.score}%"></i></div><div class="sector-row-meta">${e.count} \\u5BB6\\u6DA8\\u505C \\xB7 \\u6700\\u9AD8 ${e.height} \\u677F</div></button>`).join(""):\'<div class="empty compact">\\u6709\\u6548\\u884C\\u60C5\\u5230\\u8FBE\\u540E\\uFF0C\\u663E\\u793A\\u884C\\u4E1A\\u5F3A\\u5EA6\\u6392\\u540D\\u3002</div>\',r("sector-rows").innerHTML=t.length?t.map(e=>`<tr><td><button class="stock-name" data-sector="${$(e.name)}">${$(e.name)}</button></td><td>${rt(e.score)}</td><td>${e.count}</td><td>${e.height} \\u677F</td><td>${S(e.quality)} / 100</td><td>${S(e.components[3].value)}%</td><td>${xt(e.amount)}</td></tr>`).join(""):\'<tr><td colspan="7"><div class="empty"><strong>\\u6682\\u65E0\\u677F\\u5757\\u8BC4\\u5206</strong>\\u8BF7\\u5148\\u83B7\\u53D6\\u6709\\u6548\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3002</div></td></tr>\',document.querySelectorAll("[data-sector]").forEach(e=>e.onclick=()=>{r("sector-filter").value=e.dataset.sector,ct("stocks")})}function ce(){let t=n.analysis,e=[{name:"5\\u677F+",count:t?t.stocks.filter(i=>i.height>=5).length:0},{name:"4\\u677F",count:t?t.stocks.filter(i=>i.height===4).length:0},{name:"3\\u677F",count:t?t.stocks.filter(i=>i.height===3).length:0},{name:"2\\u677F",count:t?t.stocks.filter(i=>i.height===2).length:0},{name:"\\u9996\\u677F",count:t?t.first:0}],a=Math.max(1,...e.map(i=>i.count));r("ladder-chart").innerHTML=e.map(i=>`<div class="ladder-row"><span class="label">${i.name}</span><div class="ladder-track"><i style="width:${i.count/a*100}%"></i></div><span class="ladder-count">${t?i.count:"\\u2014"}</span></div>`).join(""),r("ladder-insight").textContent=t?`\\u4E0A\\u4E00\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u80A1\\u664B\\u7EA7\\u7387\\uFF1A${t.promotion==null?"\\u6682\\u7F3A":`${S(t.promotion)}%`}${t.previousCount!==null?`\\uFF08\\u6837\\u672C ${t.previousCount} \\u5BB6\\uFF09`:"\\uFF0C\\u6628\\u65E5\\u6570\\u636E\\u6682\\u7F3A"}${n.payload?.promotionBackfilled?"\\uFF0C\\u6309\\u5F52\\u6863\\u6837\\u672C\\u8865\\u7B97":""}\\u3002\\u8FDE\\u677F\\u68AF\\u961F\\u4EC5\\u53CD\\u6620\\u5F53\\u65E5\\u7ED3\\u6784\\u3002`:"\\u7528\\u9996\\u677F\\u4F9B\\u7ED9\\u4E0E\\u8FDE\\u677F\\u9AD8\\u5EA6\\u5171\\u540C\\u89C2\\u5BDF\\u63A5\\u529B\\u7ED3\\u6784\\u3002"}function lt(){let t=n.payload;r("source-tag").className=`source-tag ${n.demo?"demo":n.error?"unavailable":""}`,r("source-tag").textContent=n.loading?"\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":n.demo?"\\u6F14\\u793A\\u6570\\u636E":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863":"\\u516C\\u5F00\\u884C\\u60C5":"\\u6570\\u636E\\u6682\\u4E0D\\u53EF\\u7528",r("data-time").textContent=n.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u6240\\u9009\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u6C60":t?n.demo?"\\u865A\\u6784\\u6837\\u672C\\uFF0C\\u4EC5\\u7528\\u4E8E\\u4F53\\u9A8C\\u8BC4\\u5206\\u548C\\u4EA4\\u4E92":t.archived?`${t.date} \\xB7 ${t.source} \\xB7 \\u5F52\\u6863\\u4E8E ${new Date(t.archivedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09`:`${t.date} \\xB7 ${t.source} \\xB7 \\u83B7\\u53D6\\u4E8E ${new Date(t.fetchedAt).toLocaleTimeString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09${t.cached?" \\xB7 2 \\u5206\\u949F\\u7F13\\u5B58":""}`:"\\u672A\\u4F7F\\u7528\\u6F14\\u793A\\u6570\\u636E\\u66FF\\u4EE3\\u771F\\u5B9E\\u884C\\u60C5",r("sidebar-source").textContent=n.demo?"\\u6F14\\u793A\\u6A21\\u5F0F":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863 \\xB7 \\u5DF2\\u8BFB\\u53D6":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u5DF2\\u63A5\\u5165":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u7B49\\u5F85\\u6570\\u636E",r("demo-btn").textContent=n.demo?"\\u8FD4\\u56DE\\u516C\\u5F00\\u884C\\u60C5":"\\u67E5\\u770B\\u6F14\\u793A",r("notice").hidden=!n.error&&!n.demo&&!t?.warnings?.length,r("notice").textContent=n.error||(n.demo?"\\u5F53\\u524D\\u4E3A\\u865A\\u6784\\u6F14\\u793A\\u6837\\u672C\\uFF0C\\u6240\\u6709\\u4E2A\\u80A1\\u3001\\u65E5\\u671F\\u5173\\u8054\\u4E0E\\u5F97\\u5206\\u5747\\u4E0D\\u4EE3\\u8868\\u5B9E\\u9645\\u884C\\u60C5\\u3002":t?.warnings?.join(" "))||"",r("refresh-btn").disabled=n.loading,r("refresh-btn").innerHTML=`${Y("refresh")}${n.loading?"\\u83B7\\u53D6\\u4E2D\\u2026":"\\u5237\\u65B0\\u884C\\u60C5"}`}async function J(){let t=++n.request,e=r("trade-date").value;n.demo=!1,n.loading=!0,n.error=null,n.payload=null,n.analysis=null,n.review=null,n.ai=null,n.reviewMessage="\\u6B63\\u5728\\u68C0\\u67E5\\u5386\\u53F2\\u53CD\\u9988",lt(),F(),I();try{let a=await fetch(`/api/market?date=${encodeURIComponent(e)}`,{signal:AbortSignal.timeout(2e4)}),i=await a.json();if(t!==n.request)return;let s=i.archived===!0&&Array.isArray(i.analysis?.stocks)&&Array.isArray(i.analysis?.sectors);if(!a.ok||!Array.isArray(i.rows)&&!s)throw new Error(i.error||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25");if(i.date!==e)throw new Error("\\u8FD4\\u56DE\\u7684\\u6570\\u636E\\u65E5\\u671F\\u4E0E\\u6240\\u9009\\u65E5\\u671F\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u91CD\\u65B0\\u5237\\u65B0");n.payload=i,Et()}catch(a){if(t!==n.request)return;n.error=a.name==="TimeoutError"?"\\u884C\\u60C5\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u8BF7\\u7A0D\\u540E\\u5237\\u65B0\\u3002":a.message||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25"}finally{t===n.request&&(n.loading=!1,Pt(),lt(),wt(),F(),n.payload?.date===X&&!n.payload.archived&&n.storageAvailable?zt(t):Ht(t))}}function Pt(){let t=r("sector-filter").value;r("sector-filter").innerHTML=\'<option value="">\\u5168\\u90E8\\u884C\\u4E1A</option>\'+(n.analysis?.sectors||[]).map(e=>`<option value="${$(e.name)}">${$(e.name)}</option>`).join(""),n.analysis?.sectors.some(e=>e.name===t)&&(r("sector-filter").value=t)}function de(t){let e=n.analysis?.stocks.find(l=>l.code===t);if(!e)return;let a=n.analysis.sectors.find(l=>l.name===e.sector),i=e.factors.filter(l=>l.value!==null).sort((l,d)=>d.value-l.value)[0],s=e.factors.filter(l=>l.value!==null).sort((l,d)=>l.value-d.value)[0],p=`${e.name}\\u4E3A${e.height===1?"\\u9996\\u677F":e.height?`${e.height}\\u8FDE\\u677F`:"\\u8FDE\\u677F\\u9AD8\\u5EA6\\u6682\\u7F3A"}\\uFF0C${Q(e.first)}\\u9996\\u6B21\\u5C01\\u677F${e.breaks!==null?`\\uFF0C\\u76D8\\u4E2D\\u70B8\\u677F ${e.breaks} \\u6B21`:""}\\u3002${i?`${i.name}\\u662F\\u5F53\\u524D\\u8F83\\u5F3A\\u6307\\u6807\\uFF08${Math.round(i.value)} \\u5206\\uFF09\\u3002`:""}${s&&s!==i?`${s.name}\\u76F8\\u5BF9\\u504F\\u5F31\\uFF08${Math.round(s.value)} \\u5206\\uFF09\\u3002`:""}\\u6240\\u5C5E\\u884C\\u4E1A ${a?.count||0} \\u5BB6\\u6DA8\\u505C\\uFF0C\\u677F\\u5757\\u5F97\\u5206 ${a?.score??"\\u2014"}\\u3002`;r("stock-detail").innerHTML=`<div class="detail-head"><div><h2>${$(e.name)}</h2><span class="stock-code">${$(e.code)}${n.demo?" \\xB7 \\u6F14\\u793A\\u6837\\u672C":""}</span><div class="detail-tags"><span class="sector-tag">${$(e.sector)}</span><span class="height-tag">${e.height===1?"\\u9996\\u677F":`${e.height??"\\u2014"} \\u677F`}</span></div></div><div class="detail-score">${e.score??"\\u2014"}<small>\\u7EFC\\u5408\\u8BC4\\u5206 / 100</small></div></div><div class="detail-facts"><div><label>\\u5C01\\u5355\\u91D1\\u989D</label><strong>${xt(e.seal)}</strong></div><div><label>\\u5C01\\u5355 / \\u6210\\u4EA4\\u989D</label><strong>${e.sealRatio===null?"\\u2014":S(e.sealRatio*100)}%</strong></div><div><label>\\u6362\\u624B\\u7387</label><strong>${S(e.turnover)}%</strong></div><div><label>\\u6700\\u540E\\u5C01\\u677F</label><strong>${Q(e.last)}</strong></div></div><div class="detail-section"><h3>\\u516D\\u7EF4\\u8BC4\\u5206\\u62C6\\u89E3</h3>${e.factors.map(l=>`<div class="factor-row"><span>${l.name}</span><span class="factor-track"><i style="width:${l.value??0}%"></i></span><strong>${l.value===null?"\\u2014":Math.round(l.value)}</strong><span class="weight">\\u6743\\u91CD ${l.weight}</span></div>`).join("")}<p class="detail-footnote">\\u6709\\u6548\\u6307\\u6807\\u5747\\u5206 ${S(e.rawScore)} \\u2212 \\u98CE\\u9669\\u6263\\u5206 ${e.deduction} = ${e.score??"\\u2014"} \\u5206 \\xB7 \\u8986\\u76D6\\u7387 ${e.coverage}%</p></div><div class="detail-section"><h3>\\u98CE\\u9669\\u89C2\\u5BDF</h3>${e.risks.length?e.risks.map(l=>`<div class="risk-row"><strong>${l.text} \\u2212${l.penalty}</strong><span>${l.detail}</span></div>`).join(""):\'<p class="detail-footnote">\\u5F53\\u524D\\u5B57\\u6BB5\\u672A\\u89E6\\u53D1\\u6A21\\u578B\\u98CE\\u9669\\u6263\\u5206\\u9879\\uFF1B\\u516C\\u544A\\u3001\\u57FA\\u672C\\u9762\\u4E0E\\u9898\\u6750\\u98CE\\u9669\\u4ECD\\u9700\\u5355\\u72EC\\u6838\\u5B9E\\u3002</p>\'}</div><div class="detail-section"><h3>\\u76D8\\u540E\\u8BCA\\u65AD</h3><p class="detail-text">${$(p)}</p></div><p class="detail-footnote">\\u6B21\\u65E5\\u89C2\\u5BDF\\uFF1A\\u7ADE\\u4EF7\\u662F\\u5426\\u6709\\u627F\\u63A5\\u3001\\u540C\\u677F\\u5757\\u662F\\u5426\\u5F62\\u6210\\u5408\\u529B\\u3001\\u5F00\\u677F\\u540E\\u80FD\\u5426\\u56DE\\u5C01\\u3002\\u5F53\\u524D\\u89C4\\u5219\\u5206\\u6570\\u5C1A\\u672A\\u7ECF\\u8FC7\\u5386\\u53F2\\u6536\\u76CA\\u6821\\u51C6\\uFF0C\\u4E0D\\u4EE3\\u8868\\u4E0A\\u6DA8\\u6982\\u7387\\u3002</p>`,r("stock-dialog").showModal()}document.querySelectorAll(".close-dialog").forEach(t=>t.onclick=()=>t.closest("dialog").close());document.querySelectorAll("dialog").forEach(t=>t.onclick=e=>{if(e.target===t){let a=t.getBoundingClientRect();(e.clientX<a.left||e.clientX>a.right||e.clientY<a.top||e.clientY>a.bottom)&&t.close()}});r("help-btn").onclick=()=>r("help-dialog").showModal();r("all-sectors").onclick=()=>ct("sectors");r("refresh-btn").onclick=J;r("trade-date").onchange=J;r("search").oninput=Z;r("sector-filter").onchange=Z;r("sort").onchange=Z;document.querySelectorAll("[data-height]").forEach(t=>t.onclick=()=>{n.height=t.dataset.height,document.querySelectorAll("[data-height]").forEach(e=>e.classList.toggle("active",e===t)),Z()});function dt(){r("weight-controls").innerHTML=pt.map((t,e)=>`<div class="weight-item"><div class="weight-heading"><label for="weight-${e}">${t.name}</label><output id="weight-output-${e}" for="weight-${e}">${n.weights[e]}%</output></div><input id="weight-${e}" data-weight="${e}" type="range" min="0" max="50" step="1" value="${n.weights[e]}" aria-describedby="weight-desc-${e}"><p id="weight-desc-${e}">${t.description}</p></div>`).join(""),document.querySelectorAll("[data-weight]").forEach(t=>t.oninput=()=>{let e=[...n.weights];if(e[Number(t.dataset.weight)]=Number(t.value),!e.some(a=>a>0)){t.value=n.weights[Number(t.dataset.weight)],r("model-status").textContent="\\u81F3\\u5C11\\u4FDD\\u7559\\u4E00\\u9879\\u6709\\u6548\\u6743\\u91CD";return}n.weights=e,r(`weight-output-${t.dataset.weight}`).textContent=`${t.value}%`,kt()}),wt()}function wt(){let t=n.weights.reduce((e,a)=>e+a,0);r("weight-total").textContent=`\\u5408\\u8BA1 ${t}%`,r("model-status").textContent=n.payload?.archived?"\\u5F53\\u524D\\u5C55\\u793A\\u5F53\\u5929\\u51BB\\u7ED3\\u8BC4\\u5206\\uFF1B\\u4FEE\\u6539\\u6743\\u91CD\\u4E0D\\u4F1A\\u91CD\\u7B97\\u5386\\u53F2\\u5F52\\u6863":t===100?"\\u5DF2\\u5373\\u65F6\\u91CD\\u7B97 \\xB7 \\u5373\\u65F6\\u91CD\\u7B97":`\\u5408\\u8BA1 ${t}%\\uFF0C\\u8BA1\\u7B97\\u65F6\\u81EA\\u52A8\\u5F52\\u4E00\\u5316`,document.querySelectorAll("[data-preset]").forEach(e=>e.classList.toggle("active",N[e.dataset.preset].every((a,i)=>a===n.weights[i])))}var qt;function kt(){try{localStorage.setItem("limitLensWeights",JSON.stringify(n.weights))}catch{}wt(),Et(),F(),clearTimeout(qt),qt=setTimeout(async()=>{try{let t=await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({weights:n.weights})}),e=await t.json();if(!t.ok)throw new Error(e.error);r("model-status").textContent="\\u6743\\u91CD\\u5DF2\\u4FDD\\u5B58 \\xB7 \\u5DF2\\u5F52\\u6863\\u8BC4\\u5206\\u4FDD\\u6301\\u539F\\u6837"}catch{r("model-status").textContent="\\u670D\\u52A1\\u5668\\u4FDD\\u5B58\\u5931\\u8D25\\uFF0C\\u5F53\\u524D\\u8C03\\u6574\\u4ECD\\u53EF\\u4F7F\\u7528\\uFF0C\\u8BF7\\u7A0D\\u540E\\u91CD\\u8BD5\\u3002"}},500)}document.querySelectorAll("[data-preset]").forEach(t=>t.onclick=()=>{n.weights=[...N[t.dataset.preset]],kt(),dt()});r("reset-model").onclick=()=>{n.weights=[...N.balanced],kt(),dt()};function ue(){let t=["\\u793A\\u4F8B\\xB7\\u8F6F\\u4EF6\\u670D\\u52A1","\\u793A\\u4F8B\\xB7\\u7535\\u5B50\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u673A\\u68B0\\u5236\\u9020","\\u793A\\u4F8B\\xB7\\u7535\\u529B\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u533B\\u836F\\u5236\\u9020"];return Array.from({length:22},(e,a)=>({c:`DEMO${String(a+1).padStart(3,"0")}`,n:`\\u793A\\u4F8B\\u4E2A\\u80A1 ${String(a+1).padStart(2,"0")}`,hybk:t[Math.min(4,Math.floor(a/5))],p:(12+a)*1e3,zdp:a%4===0?20:10,amount:(2+a%6)*1e8,ltsz:(18+a)*1e8,fund:(.3+(21-a)/10)*1e8,hs:4+a%16,lbc:a===0?6:a===1?4:a<5?3:a<9?2:1,fbt:a%6===0?92500:93e3+a*700,lbt:a===0?145500:1e5+a*800,zbc:a%5===0?3:a%3===0?1:0,zttj:{days:3,ct:1}}))}r("demo-btn").onclick=()=>{if(n.demo){J();return}++n.request,n.loading=!1,n.demo=!0,n.error=null,n.review=null,n.ai=null,n.reviewMessage="\\u6F14\\u793A\\u6837\\u672C\\u4E0D\\u4F1A\\u4FDD\\u5B58\\u8BC4\\u5206\\u6216\\u751F\\u6210\\u5E02\\u573A\\u53CD\\u9988\\u3002",n.payload={date:"\\u6F14\\u793A",source:"\\u865A\\u6784\\u6837\\u672C",fetchedAt:new Date().toISOString(),rows:ue(),broken:6,previous:null,warnings:[]},Et(),Pt(),lt(),F(),I()};function Ft(t){return t==null?"\\u2014":`${t>0?"+":""}${Number(t).toFixed(2)}%`}function ot(t){return`<span class="${t>0?"up":t<0?"down":""}">${Ft(t)}</span>`}function I(){let t=n.review,e=n.ai;r("review-date-label").textContent=t?`${t.snapshotDate} \\u8BC4\\u5206 \\u2192 ${t.date} \\u8868\\u73B0`:"\\u7B49\\u5F85\\u9996\\u4E2A\\u53CD\\u9988\\u65E5",r("review-status").textContent=n.reviewBusy?"\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C\\u6536\\u76D8\\u7ED3\\u679C\\u2026":n.reviewMessage||"\\u5F53\\u5929\\u6536\\u76D8\\u540E\\u4FDD\\u5B58\\u539F\\u59CB\\u8BC4\\u5206\\uFF0C\\u4E0B\\u4E00\\u4E2A\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5E02\\u573A\\u8868\\u73B0\\u3002",r("run-review").disabled=n.reviewBusy||n.demo,r("review-coverage").textContent=t?`${t.validCount} / ${t.total} \\u5BB6\\u6709\\u6548`:"\\u7B49\\u5F85\\u6837\\u672C";let a=[{name:"\\u7CFB\\u7EDF\\u5BA2\\u89C2\\u53CD\\u9988\\u5206",value:t?.systemScore??"\\u2014",unit:"/ 100",caption:"\\u5355\\u65E5\\u6392\\u5E8F\\u4E0E\\u76F8\\u5BF9\\u8868\\u73B0\\uFF0C\\u89C4\\u5219\\u8BA1\\u7B97"},{name:"\\u9AD8\\u5206\\u7EC4\\u6B21\\u65E5\\u6536\\u76CA",value:t?.topMean===null||!t?"\\u2014":S(t.topMean,2),unit:"%",caption:t?`\\u6709\\u6548 ${t.topValid} \\u5BB6 \\xB7 \\u8BC4\\u5206\\u524D 20%`:"\\u6309\\u6628\\u65E5\\u8BC4\\u5206\\u56FA\\u5B9A\\u89C2\\u5BDF\\u7EC4"},{name:"\\u76F8\\u5BF9\\u6837\\u672C\\u8D85\\u989D",value:t?.excess===null||!t?"\\u2014":S(t.excess,2),unit:"\\u767E\\u5206\\u70B9",caption:t?`\\u5168\\u6837\\u672C\\u5747\\u503C ${Ft(t.allMean)}`:"\\u9AD8\\u5206\\u7EC4\\u5747\\u503C \\u2212 \\u5168\\u6837\\u672C\\u5747\\u503C"},{name:"\\u8BC4\\u5206\\u4E0E\\u8868\\u73B0\\u76F8\\u5173",value:t?.rho===null||!t?"\\u2014":S(t.rho,2),unit:"\\u03C1",caption:"Spearman \\u79E9\\u76F8\\u5173\\uFF0C\\u8303\\u56F4 \\u22121 \\u81F3 1"}];r("review-metrics").innerHTML=a.map(s=>`<article class="metric"><div class="metric-head">${s.name}${Y("shield")}</div><div class="metric-value">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div></article>`).join(""),r("review-conclusion").hidden=!t,r("review-conclusion").textContent=t?.conclusion||"",r("review-rows").innerHTML=t?t.rows.map((s,p)=>`<tr><td><strong class="review-stock">${$(s.name)}${p<t.topSize?\'<span class="top-group">\\u9AD8\\u5206\\u7EC4</span>\':""}</strong><span class="stock-code">${$(s.code)}</span></td><td>${rt(s.score)}</td><td>${s.available?ot(s.openReturn):"\\u2014"}</td><td>${s.available?ot(s.closeReturn):"\\u2014"}</td><td>${s.available?ot(s.lowReturn):"\\u2014"}</td><td>${s.available?s.continued?\'<span class="height-tag high">\\u662F</span>\':"\\u5426":`<span class="small-muted" title="${$(s.reason)}">\\u4E0D\\u53EF\\u6BD4</span>`}</td></tr>`).join(""):\'<tr><td colspan="6"><div class="empty"><strong>\\u5148\\u4FDD\\u5B58\\u5224\\u65AD\\uFF0C\\u518D\\u68C0\\u9A8C\\u7ED3\\u679C</strong>\\u6536\\u76D8\\u540E\\u8BBF\\u95EE\\u5DE5\\u4F5C\\u53F0\\u4F1A\\u81EA\\u52A8\\u4FDD\\u5B58\\u5F53\\u65E5\\u8BC4\\u5206\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u7684\\u771F\\u5B9E\\u53CD\\u9988\\u5230\\u8FBE\\u524D\\uFF0C\\u6B64\\u5904\\u4FDD\\u6301\\u7A7A\\u767D\\u3002</div></td></tr>\',r("review-sector-rows").innerHTML=t?t.sectors.map(s=>`<tr><td>${$(s.name)}</td><td>${rt(s.score)}</td><td>${s.available} / ${s.count}</td><td>${ot(s.averageReturn)}</td><td>${s.continuationRate===null?"\\u2014":S(s.continuationRate*100)}%</td></tr>`).join(""):\'<tr><td colspan="5"><div class="empty compact">\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5DF2\\u4FDD\\u5B58\\u7684\\u677F\\u5757\\u8BC4\\u5206\\u3002</div></td></tr>\',r("ai-status-tag").textContent=n.aiConfig.configured?"\\u5DF2\\u8FDE\\u63A5":"\\u5F85\\u914D\\u7F6E",r("model-ai-status").textContent=n.aiConfig.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E",r("model-ai-detail").textContent=n.aiConfig.configured?`\\u5DF2\\u914D\\u7F6E ${n.aiConfig.model}\\u3002\\u53EA\\u5411\\u6A21\\u578B\\u53D1\\u9001\\u51BB\\u7ED3\\u8BC4\\u5206\\u3001\\u6838\\u9A8C\\u7ED3\\u679C\\u4E0E\\u8FD1\\u671F\\u5BA2\\u89C2\\u6307\\u6807\\uFF08\\u4E0D\\u542B\\u8FC7\\u5F80AI\\u610F\\u89C1\\uFF09\\uFF0C\\u8BC4\\u4EF7\\u4F1A\\u4E0E\\u539F\\u59CB\\u6570\\u636E\\u4E00\\u5E76\\u4FDD\\u5B58\\u3002`:"\\u670D\\u52A1\\u7AEF\\u914D\\u7F6E\\u5BC6\\u94A5\\u3001\\u63A5\\u53E3\\u5730\\u5740\\u548C\\u6A21\\u578B\\u540E\\uFF0CAI \\u4F1A\\u6839\\u636E\\u51BB\\u7ED3\\u8BC4\\u5206\\u3001\\u5DF2\\u6838\\u9A8C\\u5E02\\u573A\\u7ED3\\u679C\\u4E0E\\u8FD1\\u671F\\u5BA2\\u89C2\\u6307\\u6807\\u8D8B\\u52BF\\u751F\\u6210\\u8BC4\\u4EF7\\u3002\\u5BC6\\u94A5\\u4E0D\\u8FDB\\u5165\\u6D4F\\u89C8\\u5668\\u3002",r("ai-content").innerHTML=e?`<div class="ai-score"><strong>${e.score}</strong><span>AI \\u4E3B\\u89C2\\u8BC4\\u4EF7 / 100<small>${$(e.model)} \\xB7 ${e.confidence==="high"?"\\u8F83\\u9AD8":e.confidence==="medium"?"\\u4E2D\\u7B49":"\\u8F83\\u4F4E"}\\u7F6E\\u4FE1\\u5EA6</small></span></div><p class="ai-summary">${$(e.summary)}</p><h3>\\u8BC4\\u4EF7\\u4F9D\\u636E</h3><ul>${e.evidence.map(s=>`<li>${$(s)}</li>`).join("")}</ul>${e.failures.length?`<h3>\\u5224\\u65AD\\u4E0D\\u8DB3</h3><ul>${e.failures.map(s=>`<li>${$(s)}</li>`).join("")}</ul>`:""}${e.suggestions.length?`<h3>\\u6539\\u8FDB\\u5EFA\\u8BAE</h3><ul>${e.suggestions.map(s=>`<li>${$(s)}</li>`).join("")}</ul>`:""}<p class="ai-note">AI \\u8BC4\\u4EF7\\u4E0E\\u89C4\\u5219\\u53CD\\u9988\\u5206\\u5206\\u522B\\u4FDD\\u7559\\u3002\\u5EFA\\u8BAE\\u4E0D\\u4F1A\\u81EA\\u52A8\\u6539\\u5199\\u6A21\\u578B\\u3002</p>`:`<div class="ai-empty"><span class="ai-symbol">${Y("sliders")}</span><h3>${n.aiConfig.configured?"\\u7B49\\u5F85\\u5DF2\\u6838\\u9A8C\\u7ED3\\u679C":"\\u5927\\u6A21\\u578B\\u5C1A\\u672A\\u914D\\u7F6E"}</h3><p>${n.aiConfig.configured?"\\u79EF\\u7D2F\\u4E8B\\u524D\\u5FEB\\u7167\\u5E76\\u53D6\\u5F97\\u6B21\\u65E5\\u6536\\u76D8\\u7ED3\\u679C\\u540E\\uFF0CAI \\u624D\\u5BF9\\u7CFB\\u7EDF\\u8BC4\\u4EF7\\u3002":"\\u5DF2\\u9884\\u7559 DeepSeek\\u3001OpenAI\\u3001\\u901A\\u4E49\\u517C\\u5BB9\\u63A5\\u53E3\\u3002\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5BC6\\u94A5\\u540E\\u542F\\u7528\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6A21\\u62DF AI \\u7ED3\\u8BBA\\u66FF\\u4EE3\\u771F\\u5B9E\\u8C03\\u7528\\u3002"}</p><div class="ai-process">\\u51BB\\u7ED3\\u6628\\u65E5\\u8BC4\\u5206<span>\\u2193</span>\\u6838\\u9A8C\\u4ECA\\u65E5\\u5E02\\u573A\\u7ED3\\u679C<span>\\u2193</span>AI \\u8BC4\\u5206\\u3001\\u8BC1\\u636E\\u4E0E\\u6539\\u8FDB\\u5EFA\\u8BAE</div></div>`,r("ai-grade-btn").disabled=n.demo||n.reviewBusy||!n.aiConfig.configured||!t||!!e,r("ai-grade-btn").textContent=e?"\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58":"\\u751F\\u6210 AI \\u8BC4\\u4EF7";let i=n.history?.reviews||[];r("review-history").innerHTML=i.length?`<div class="history-list">${i.map(s=>`<button data-history="${$(s.date)}"><span>${$(s.snapshotDate)} \\u2192 ${$(s.date)}</span><span>\\u5BA2\\u89C2 ${s.systemScore??"\\u2014"} \\u5206 \\xB7 AI ${s.aiScore??"\\u2014"} \\u5206</span></button>`).join("")}</div>`:\'<div class="empty compact">\\u5C1A\\u65E0\\u53CD\\u9988\\u8BB0\\u5F55\\u3002\\u5FEB\\u7167\\u4E0E\\u53CD\\u9988\\u4F1A\\u4FDD\\u5B58\\u5230\\u670D\\u52A1\\u7AEF\\uFF0C\\u8DE8\\u8BBE\\u5907\\u53EF\\u67E5\\u770B\\u3002</div>\',document.querySelectorAll("[data-history]").forEach(s=>s.onclick=()=>{r("trade-date").value=s.dataset.history,J()})}async function Ht(t=n.request){try{let[e,a]=await Promise.all([fetch(`/api/review?date=${encodeURIComponent(r("trade-date").value)}`),fetch("/api/history")]),i=await e.json(),s=await a.json();if(t!==n.request||n.demo)return;if(!e.ok)throw new Error(i.error);n.review=i.review,n.ai=i.ai,n.aiConfig=i.aiStatus||n.aiConfig,n.history=a.ok?s:n.history,n.reviewMessage=i.reason||"\\u5DF2\\u52A0\\u8F7D\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5B9E\\u9645\\u7ED3\\u679C\\u3002"}catch(e){t===n.request&&(n.reviewMessage=e.message||"\\u5386\\u53F2\\u53CD\\u9988\\u6682\\u65F6\\u4E0D\\u53EF\\u7528")}t===n.request&&I()}async function zt(t=n.request){if(!(n.demo||n.reviewBusy)){n.reviewBusy=!0,n.reviewMessage="\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C",I();try{let e=await fetch("/api/run-daily",{method:"POST",signal:AbortSignal.timeout(13e4)}),a=await e.json();if(t!==n.request||n.demo)return;if(!e.ok)throw new Error(a.error);n.review=a.review,n.ai=a.ai||null,n.aiConfig=a.aiStatus||n.aiConfig,n.history=a.history||n.history,n.reviewMessage=a.aiError||a.reason||(a.review?"\\u5DF2\\u5B8C\\u6210\\u6628\\u65E5\\u5224\\u65AD\\u6838\\u9A8C\\uFF1B\\u539F\\u59CB\\u8BC4\\u5206\\u4E0E\\u7ED3\\u679C\\u5747\\u5DF2\\u4FDD\\u5B58\\u3002":"\\u4ECA\\u65E5\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863\\uFF0C\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u751F\\u6210\\u53CD\\u9988\\u3002"),r("snapshot-status").textContent=a.snapshot?.saved?`${a.snapshot.date} \\u539F\\u59CB\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863`:a.snapshot?.reason||"\\u7B49\\u5F85\\u6536\\u76D8\\u540E\\u4FDD\\u5B58"}catch(e){t===n.request&&(n.reviewMessage=e.name==="TimeoutError"?"\\u53CD\\u9988\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u53EF\\u5237\\u65B0\\u8BFB\\u53D6\\u5DF2\\u4FDD\\u5B58\\u7684\\u8FDB\\u5EA6\\u3002":e.message,r("snapshot-status").textContent="\\u5F52\\u6863\\u6682\\u4E0D\\u53EF\\u7528\\uFF0C\\u53EF\\u7A0D\\u540E\\u91CD\\u8BD5")}finally{n.reviewBusy=!1,I(),window.dispatchEvent(new Event("paper-updated"))}}}r("run-review").onclick=()=>{r("trade-date").value===X?zt():Ht()};r("ai-grade-btn").onclick=async()=>{if(!n.review)return;let t=n.review.date;n.reviewBusy=!0,I(),r("ai-action-status").textContent="\\u6A21\\u578B\\u6B63\\u5728\\u8BC4\\u4EF7\\u2026";try{let e=await fetch("/api/ai-grade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:t}),signal:AbortSignal.timeout(55e3)}),a=await e.json();if(!e.ok)throw new Error(a.error);n.review?.date===t&&(n.ai=a.ai),r("ai-action-status").textContent="\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58"}catch(e){r("ai-action-status").textContent=e.message||"AI \\u8C03\\u7528\\u5931\\u8D25"}finally{n.reviewBusy=!1,I()}};async function pe(){try{let t=await fetch("/api/market/latest-date",{signal:AbortSignal.timeout(6e3)}),e=await t.json();t.ok&&/^\\d{4}-\\d{2}-\\d{2}$/.test(e.date)&&e.date<=X&&(r("trade-date").value=e.date)}catch{}}async function me(){let t=fetch("/api/settings",{signal:AbortSignal.timeout(5e3)}).then(async a=>a.ok?a.json():null).catch(()=>null),[e]=await Promise.all([t,pe()]);e&&(n.storageAvailable=!0,he(e.weights)&&(n.weights=e.weights),n.aiConfig=e.ai,dt()),await J()}function he(t){return Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)}dt();lt();F();I();me();if(document.modelContext?.registerTool){let t=new AbortController;try{Promise.resolve(document.modelContext.registerTool({name:"read_limit_up_analysis",title:"\\u8BFB\\u53D6\\u6DA8\\u505C\\u5206\\u6790",description:"\\u8BFB\\u53D6\\u5F53\\u524D\\u4EA4\\u6613\\u65E5\\u7684\\u4E2A\\u80A1\\u4E0E\\u884C\\u4E1A\\u8BC4\\u5206\\uFF0C\\u5E76\\u660E\\u786E\\u8FD4\\u56DE\\u771F\\u5B9E\\u6216\\u6F14\\u793A\\u6570\\u636E\\u72B6\\u6001\\u3002",inputSchema:{type:"object",properties:{},additionalProperties:!1},annotations:{readOnlyHint:!0,untrustedContentHint:!0},execute(e){if(e===null||typeof e!="object"||Array.isArray(e)||Object.keys(e).length)throw new Error("\\u8F93\\u5165\\u5FC5\\u987B\\u662F\\u7A7A\\u5BF9\\u8C61");return{date:n.payload?.date??null,mode:n.demo?"demo":"public",loading:n.loading,error:n.error,stocks:n.analysis?.stocks.map(a=>({code:a.code,name:a.name,sector:a.sector,score:a.score,coverage:a.coverage,risks:a.risks.map(i=>i.text)}))||[],sectors:n.analysis?.sectors.map(a=>({name:a.name,score:a.score,count:a.count}))||[]}}},{signal:t.signal})).catch(()=>{}),window.addEventListener("pagehide",()=>t.abort(),{once:!0})}catch{}}\n', "type": "text/javascript; charset=utf-8" }, "/assets/styles.css": { "body": '* {\n  box-sizing: border-box;\n}\n:root {\n  --navy: #101e2e;\n  --ink: #1b2c3f;\n  --muted: #7c8795;\n  --line: #e7ebf0;\n  --bg: #f4f6f9;\n  --teal: #148775;\n  --red: #db5a55;\n  --green: #309477;\n  --amber: #c18a31;\n}\nbody {\n  margin: 0;\n  background: var(--bg);\n  color: var(--ink);\n  font:\n    14px/1.55 -apple-system,\n    BlinkMacSystemFont,\n    "Segoe UI",\n    "PingFang SC",\n    "Microsoft YaHei",\n    sans-serif;\n}\nbutton,\ninput,\nselect {\n  font: inherit;\n}\nbutton,\na,\ninput,\nselect {\n  touch-action: manipulation;\n}\nbutton {\n  cursor: pointer;\n}\nbutton {\n  border: 0;\n}\nbutton:focus-visible,\na:focus-visible,\ninput:focus-visible,\nselect:focus-visible {\n  outline: 3px solid #66c5ba;\n  outline-offset: 3px;\n}\nbutton:disabled {\n  opacity: 0.65;\n  cursor: wait;\n}\na {\n  text-decoration: none;\n  color: inherit;\n}\n[hidden] {\n  display: none !important;\n}\nh1,\nh2,\nh3,\np {\n  margin: 0;\n}\nh2 {\n  font-size: 16px;\n  font-weight: 650;\n}\nh3 {\n  font-size: 14px;\n}\nsvg {\n  width: 19px;\n  height: 19px;\n  display: block;\n  fill: none;\n  stroke: currentColor;\n  stroke-width: 1.6;\n  stroke-linecap: round;\n  stroke-linejoin: round;\n}\n.shell {\n  display: flex;\n  min-height: 100vh;\n}\n.sidebar {\n  width: 222px;\n  position: fixed;\n  inset: 0 auto 0 0;\n  background: var(--navy);\n  color: #b4c0cd;\n  padding: 32px 18px;\n  display: flex;\n  flex-direction: column;\n}\n.brand {\n  display: flex;\n  gap: 12px;\n  align-items: center;\n  color: #fff;\n  font-size: 19px;\n  font-weight: 650;\n  padding: 0 10px;\n}\n.brand small {\n  display: block;\n  font-size: 10px;\n  letter-spacing: 2.8px;\n  font-weight: 450;\n  color: #7e93aa;\n  margin-top: 3px;\n}\n.brand-mark {\n  display: flex;\n  gap: 4px;\n  align-items: flex-end;\n  width: 29px;\n  height: 29px;\n}\n.brand-mark i {\n  display: block;\n  background: #55c9b0;\n  width: 6px;\n  border-radius: 2px;\n}\n.brand-mark i:nth-child(1) {\n  height: 12px;\n}\n.brand-mark i:nth-child(2) {\n  height: 20px;\n}\n.brand-mark i:nth-child(3) {\n  height: 29px;\n}\n.nav-label {\n  font-size: 12px;\n  color: #718398;\n  letter-spacing: 1px;\n  margin: 46px 16px 13px;\n}\n.nav-item {\n  background: transparent;\n  color: #91a4b8;\n  display: flex;\n  gap: 13px;\n  align-items: center;\n  padding: 13px 16px;\n  width: 100%;\n  text-align: left;\n  margin-bottom: 7px;\n  border-radius: 7px;\n  font-size: 14px;\n}\n.nav-item.active {\n  background: #223847;\n  color: #70d6c2;\n}\n.nav-item:hover {\n  background: #1d3042;\n}\n.sidebar-note {\n  margin-top: auto;\n  background: #152738;\n  border: 1px solid #293b4e;\n  padding: 19px 15px;\n  border-radius: 8px;\n}\n.mini-label {\n  display: block;\n  color: #6d8b9d;\n  font-size: 12px;\n  margin-bottom: 9px;\n}\n.sidebar-note strong {\n  font-size: 14px;\n  color: #d5dee7;\n  font-weight: 500;\n}\n.sidebar-note p {\n  font-size: 12px;\n  color: #8a9bae;\n  margin: 9px 0 15px;\n  line-height: 1.8;\n}\n.note-line {\n  height: 1px;\n  background: #2b3b4d;\n  margin-bottom: 12px;\n}\n.sidebar-note > span:last-child {\n  font-size: 12px;\n  color: #90a3b7;\n}\n.sidebar-footer {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  margin: 22px 12px 0;\n  font-size: 12px;\n}\n.sidebar-footer small {\n  display: block;\n  color: #60768c;\n  font-size: 12px;\n}\n.workspace {\n  margin-left: 222px;\n  width: calc(100% - 222px);\n}\n.topbar {\n  height: 68px;\n  background: #fff;\n  border-bottom: 1px solid var(--line);\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 0 35px;\n}\n.breadcrumb {\n  font-size: 13px;\n  color: #8a95a2;\n  display: flex;\n  gap: 14px;\n}\n.breadcrumb strong {\n  color: #526073;\n  font-weight: 500;\n}\n.topbar-right {\n  display: flex;\n  align-items: center;\n  gap: 24px;\n}\n.session-label {\n  font-size: 13px;\n  color: #7d8897;\n}\n.icon-button {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  background: transparent;\n  width: 32px;\n  height: 32px;\n  color: #8b98a6;\n  border-radius: 5px;\n}\n.icon-button:hover {\n  background: #eef4f4;\n  color: var(--teal);\n}\nmain {\n  max-width: 1680px;\n  margin: auto;\n  padding: 31px 35px 20px;\n}\n.page-heading {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 20px;\n  margin-bottom: 25px;\n}\n.eyebrow {\n  font-size: 11px;\n  letter-spacing: 1.9px;\n  color: #8290a0;\n  font-weight: 650;\n}\n.page-heading h1 {\n  font-size: 28px;\n  letter-spacing: -0.7px;\n  font-weight: 650;\n  margin-top: 5px;\n}\n.page-heading p {\n  font-size: 14px;\n  color: #86909d;\n  margin-top: 6px;\n}\n.heading-actions {\n  display: flex;\n  gap: 12px;\n  align-items: center;\n}\n.date-control {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  background: #fff;\n  border: 1px solid #e0e5ec;\n  padding: 9px 12px;\n  border-radius: 6px;\n  color: #8391a0;\n}\n.date-control input {\n  border: 0;\n  outline: 0;\n  color: #536276;\n  width: 130px;\n  background: transparent;\n}\n.primary,\n.secondary {\n  padding: 10px 16px;\n  border-radius: 6px;\n  font-weight: 550;\n  display: flex;\n  align-items: center;\n  gap: 9px;\n  white-space: nowrap;\n}\n.primary {\n  background: var(--teal);\n  color: #fff;\n}\n.primary:hover {\n  background: #106f62;\n}\n.secondary {\n  background: #f3f5f8;\n  color: #4f6275;\n  border: 1px solid var(--line);\n}\n.data-strip {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 21px;\n  gap: 12px;\n  color: #8a96a3;\n  font-size: 12px;\n}\n.data-strip > div {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  flex-wrap: wrap;\n}\n.source-tag {\n  display: inline-flex;\n  background: #e5f1ed;\n  color: #3b8b7b;\n  font-size: 12px;\n  border-radius: 4px;\n  padding: 3px 8px;\n}\n.source-tag.unavailable {\n  background: #fff1df;\n  color: #a27428;\n}\n.source-tag.demo {\n  background: #edf0f7;\n  color: #6e7ba1;\n}\n.text-button {\n  background: transparent;\n  color: #74839b;\n  font-size: 12px;\n  white-space: nowrap;\n  padding: 4px;\n}\n.text-button:hover {\n  color: var(--teal);\n}\n.notice {\n  padding: 13px 17px;\n  background: #fff8ed;\n  border: 1px solid #eedfc6;\n  color: #91703b;\n  border-radius: 6px;\n  margin-bottom: 19px;\n  font-size: 14px;\n}\n.metrics {\n  display: grid;\n  grid-template-columns: repeat(4, minmax(0, 1fr));\n  gap: 17px;\n  margin-bottom: 24px;\n}\n.metric {\n  background: white;\n  border: 1px solid var(--line);\n  border-radius: 8px;\n  padding: 20px 21px;\n  position: relative;\n  overflow: hidden;\n}\n.metric-head {\n  color: #7c8999;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  font-size: 13px;\n}\n.metric-head svg {\n  width: 17px;\n  height: 17px;\n  color: #aab4c1;\n}\n.metric-value {\n  font-size: 36px;\n  font-family: ui-sans-serif, system-ui, sans-serif;\n  font-weight: 600;\n  letter-spacing: -1.7px;\n  margin-top: 8px;\n  line-height: 1.25;\n}\n.metric-value small {\n  font-size: 14px;\n  color: #94a0ae;\n  font-weight: 400;\n  letter-spacing: 0;\n  margin-left: 5px;\n}\n.metric-caption {\n  font-size: 12px;\n  color: #8a96a4;\n  margin-top: 10px;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n}\n.metric-line {\n  height: 3px;\n  background: #edf2f3;\n  border-radius: 3px;\n  margin-top: 15px;\n}\n.metric-line i {\n  display: block;\n  height: 100%;\n  border-radius: 3px;\n  background: #80bfad;\n}\n.metric-line.amber i {\n  background: #e0b065;\n}\n.metric-value.accent {\n  color: var(--teal);\n}\n.overview-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) 300px;\n  gap: 22px;\n  align-items: start;\n}\n.panel {\n  --panel-inline-padding: 22px;\n  background: #fff;\n  border: 1px solid var(--line);\n  border-radius: 8px;\n  overflow: hidden;\n}\n.panel-heading {\n  padding: 21px var(--panel-inline-padding) 17px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n}\n.panel-heading h2 {\n  display: flex;\n  align-items: center;\n  gap: 9px;\n}\n.panel-heading p {\n  font-size: 12px;\n  color: #929ca9;\n  margin-top: 5px;\n}\n.count-chip {\n  font-size: 11px;\n  font-weight: 500;\n  background: #eef3f6;\n  padding: 0 7px;\n  line-height: 20px;\n  border-radius: 4px;\n  color: #7990a2;\n}\n.small-muted {\n  font-size: 12px;\n  color: #9ca6b0;\n  white-space: nowrap;\n}\n.filters {\n  display: flex;\n  gap: 12px;\n  padding: 0 22px 17px;\n}\n.search-control {\n  display: flex;\n  gap: 9px;\n  align-items: center;\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  padding: 8px 10px;\n  flex: 1;\n  min-width: 100px;\n  color: #9ca8b5;\n  background: #fcfdfe;\n}\n.search-control svg {\n  width: 15px;\n  height: 15px;\n}\n.search-control input {\n  border: 0;\n  background: transparent;\n  outline: 0;\n  width: 100%;\n  min-width: 0;\n  font-size: 13px;\n  color: var(--ink);\n}\ninput::placeholder {\n  color: #a1aab6;\n}\nselect {\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  color: #6b798b;\n  padding: 7px 9px;\n  background: #fff;\n  max-width: 180px;\n  font-size: 13px;\n}\n.table-subnav {\n  padding: 0 22px 13px;\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n  align-items: center;\n}\n.segments {\n  display: flex;\n  gap: 6px;\n}\n.segments button {\n  background: transparent;\n  color: #8c97a4;\n  padding: 5px 12px;\n  font-size: 13px;\n  border-radius: 4px;\n}\n.segments button.active {\n  background: #e8f3ef;\n  color: var(--teal);\n  font-weight: 550;\n}\n.sort-control {\n  display: flex;\n  gap: 8px;\n  align-items: center;\n  font-size: 12px;\n  color: #9aa4af;\n}\n.sort-control select {\n  border: 0;\n  padding: 4px;\n  font-size: 12px;\n}\n.table-scroll {\n  overflow-x: auto;\n}\ntable {\n  border-collapse: collapse;\n  width: 100%;\n  white-space: nowrap;\n  font-size: 13px;\n  text-align: left;\n}\nth {\n  padding: 11px 16px;\n  background: #f8fafc;\n  font-size: 12px;\n  font-weight: 500;\n  color: #8b97a5;\n  border-block: 1px solid #edf0f3;\n}\ntd {\n  padding: 17px 16px;\n  border-bottom: 1px solid #eef1f5;\n  vertical-align: middle;\n}\ntd:first-child,\nth:first-child {\n  padding-left: 22px;\n}\ntd:last-child,\nth:last-child {\n  padding-right: 22px;\n}\ntbody tr:hover {\n  background: #f8fbfa;\n}\n.stock-name {\n  background: transparent;\n  text-align: left;\n  display: block;\n  padding: 0;\n  color: #253a4d;\n  font-size: 14px;\n  font-weight: 550;\n  max-width: 145px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n.stock-name:hover {\n  color: var(--teal);\n}\n.stock-code {\n  font-size: 11px;\n  color: #9ba5b0;\n  display: block;\n  margin-top: 3px;\n  font-variant-numeric: tabular-nums;\n  letter-spacing: 0.3px;\n}\n.score-cell {\n  display: flex;\n  align-items: center;\n  gap: 7px;\n}\n.score-number {\n  font-size: 18px;\n  font-weight: 650;\n  color: var(--teal);\n  font-variant-numeric: tabular-nums;\n}\n.score-number.mid {\n  color: #b18745;\n}\n.score-number.low {\n  color: #8695a5;\n}\n.score-track {\n  height: 3px;\n  background: #eaf1ee;\n  width: 36px;\n  border-radius: 2px;\n}\n.score-track i {\n  height: 100%;\n  display: block;\n  background: #78bda9;\n  border-radius: 2px;\n}\n.sector-tag {\n  background: #f4f6f9;\n  color: #7b8da0;\n  padding: 4px 7px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n.height-tag {\n  color: #61758a;\n  background: #edf2f8;\n  padding: 3px 7px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n.height-tag.high {\n  color: #b38742;\n  background: #fbf1df;\n}\n.money {\n  font-variant-numeric: tabular-nums;\n  color: #556a7d;\n}\n.table-footer {\n  font-size: 12px;\n  color: #9aa4b0;\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n  padding: 15px 22px;\n}\n.right-column {\n  display: flex;\n  flex-direction: column;\n  gap: 20px;\n}\n.sector-row {\n  display: block;\n  background: transparent;\n  width: 100%;\n  padding: 10px 22px;\n  text-align: left;\n}\n.sector-row:hover {\n  background: #f6faf8;\n}\n.sector-row-label {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  font-size: 14px;\n  color: #4e6478;\n}\n.sector-row-label > div {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.rank-index {\n  color: #a8b3bf;\n  font:\n    12px/1 ui-monospace,\n    monospace;\n}\n.sector-score {\n  color: #3d8474;\n  font-weight: 650;\n  font-size: 17px;\n}\n.sector-bar {\n  height: 5px;\n  border-radius: 2px;\n  background: #f1f4f7;\n  margin: 9px 0 4px 25px;\n}\n.sector-bar i {\n  height: 100%;\n  display: block;\n  border-radius: 2px;\n  background: #71b7a3;\n}\n.sector-row:nth-child(2) .sector-bar i {\n  background: #8fc4b5;\n}\n.sector-row:nth-child(n + 3) .sector-bar i {\n  background: #b3d6cc;\n}\n.sector-row-meta {\n  font-size: 11px;\n  color: #a0aab5;\n  margin-left: 25px;\n}\n.panel-footnote {\n  font-size: 11px;\n  color: #9da7b1;\n  border-top: 1px solid #f0f2f5;\n  margin-top: 15px;\n  padding: 12px var(--panel-inline-padding);\n  overflow-wrap: anywhere;\n}\n.outline-tag {\n  font-size: 11px;\n  color: #8e9dac;\n  border: 1px solid #e5eaf0;\n  border-radius: 4px;\n  padding: 2px 7px;\n  white-space: nowrap;\n}\n#ladder-chart {\n  padding: 0 22px 10px;\n}\n.ladder-row {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  padding: 8px 0;\n  font-size: 12px;\n  color: #8b99a8;\n}\n.ladder-row .label {\n  width: 38px;\n}\n.ladder-track {\n  background: #f3f5f8;\n  height: 18px;\n  flex: 1;\n  border-radius: 3px;\n  overflow: hidden;\n}\n.ladder-track i {\n  display: block;\n  height: 100%;\n  background: #b8c9d7;\n  border-radius: 3px;\n  min-width: 0;\n}\n.ladder-row:first-child .ladder-track i {\n  background: #dbb879;\n}\n.ladder-row:last-child .ladder-track i {\n  background: #81bba9;\n}\n.ladder-count {\n  width: 21px;\n  text-align: right;\n  color: #61778c;\n}\n.insight {\n  margin: 8px 22px 19px;\n  padding: 12px;\n  background: #f5f8fa;\n  border-radius: 5px;\n  color: #7a8a9a;\n  font-size: 12px;\n  line-height: 1.8;\n}\n.empty {\n  padding: 60px 24px;\n  text-align: center;\n  color: #8b9baa;\n  font-size: 14px;\n  white-space: normal;\n}\n.empty strong {\n  display: block;\n  font-size: 16px;\n  font-weight: 500;\n  color: #596d80;\n  margin-bottom: 8px;\n}\n.empty.compact {\n  padding: 27px 20px;\n  font-size: 12px;\n}\n.page-footer {\n  display: flex;\n  justify-content: space-between;\n  gap: 20px;\n  font-size: 11px;\n  color: #a0aab5;\n  margin-top: 25px;\n}\n.page-footer > span:first-child {\n  white-space: nowrap;\n  letter-spacing: 0.5px;\n}\n.page-footer i {\n  margin: 0 5px;\n  font-style: normal;\n}\n.sector-formula {\n  padding: 13px 22px;\n  background: #f5faf8;\n  color: #6b8d80;\n  font-size: 13px;\n}\n.sector-formula span {\n  margin: 0 9px;\n  color: #b2c6bd;\n}\n.model-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);\n  gap: 22px;\n}\n.preset-buttons {\n  display: flex;\n  gap: 9px;\n  padding: 0 22px 22px;\n}\n.preset-buttons button {\n  font-size: 13px;\n  padding: 8px 13px;\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  background: #fff;\n  color: #8897a5;\n}\n.preset-buttons button.active {\n  background: #edf6f2;\n  color: var(--teal);\n  border-color: #c9e3d9;\n}\n.weight-item {\n  padding: 17px 22px;\n  border-top: 1px solid #eff2f5;\n}\n.weight-heading {\n  display: flex;\n  justify-content: space-between;\n  font-size: 14px;\n  margin-bottom: 10px;\n}\n.weight-heading output {\n  font-weight: 600;\n  color: var(--teal);\n}\n.weight-item input {\n  width: 100%;\n  accent-color: var(--teal);\n  height: 5px;\n}\n.weight-item p {\n  color: #96a2ae;\n  font-size: 12px;\n  margin-top: 10px;\n}\n.model-actions {\n  padding: 18px 22px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  border-top: 1px solid var(--line);\n}\n.model-actions span {\n  color: #8b9aa7;\n  font-size: 12px;\n}\n.model-explain {\n  padding-bottom: 22px;\n}\n.formula-box {\n  padding: 20px 22px;\n  background: #f1f7f4;\n  margin: 0 22px 22px;\n  color: #4d8e79;\n  font-size: 16px;\n  font-weight: 550;\n  line-height: 1.9;\n  border-radius: 6px;\n}\n.formula-box span {\n  font-size: 13px;\n  font-weight: 400;\n}\n.model-explain h3 {\n  margin: 18px 22px 9px;\n}\n.model-explain p {\n  margin: 0 22px;\n  color: #8898a6;\n  line-height: 1.8;\n}\n.model-explain dl {\n  margin: 0 22px;\n}\n.model-explain dl div {\n  display: flex;\n  justify-content: space-between;\n  padding: 8px 0;\n  color: #6d7d8d;\n  font-size: 13px;\n  border-bottom: 1px solid #f1f3f6;\n}\n.model-explain dd {\n  color: var(--amber);\n}\n.model-explain .model-limit {\n  margin-top: 22px;\n  font-size: 12px;\n}\n.detail-dialog,\n.help-dialog {\n  border: 1px solid var(--line);\n  border-radius: 12px;\n  box-shadow: 0 20px 80px #10213540;\n  width: min(720px, calc(100vw - 32px));\n  padding: 25px 29px;\n  max-height: 90vh;\n  color: var(--ink);\n}\ndialog::backdrop {\n  background: #10213580;\n  backdrop-filter: blur(3px);\n}\n.dialog-top {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  margin-bottom: 20px;\n}\n.detail-head {\n  display: flex;\n  justify-content: space-between;\n  gap: 20px;\n  align-items: center;\n}\n.detail-head h2 {\n  font-size: 26px;\n}\n.detail-head .stock-code {\n  font-size: 13px;\n  margin-top: 6px;\n}\n.detail-score {\n  font-size: 54px;\n  line-height: 1;\n  color: var(--teal);\n  font-weight: 600;\n  letter-spacing: -2px;\n}\n.detail-score small {\n  display: block;\n  font-size: 12px;\n  letter-spacing: 0;\n  font-weight: 400;\n  color: #94a4b0;\n  text-align: right;\n  margin-top: 8px;\n}\n.detail-tags {\n  display: flex;\n  gap: 8px;\n  margin-top: 15px;\n}\n.detail-facts {\n  display: grid;\n  grid-template-columns: repeat(4, 1fr);\n  gap: 15px;\n  background: #f6f8fa;\n  padding: 18px;\n  margin: 22px 0;\n  border-radius: 6px;\n}\n.detail-facts label {\n  display: block;\n  color: #91a0ae;\n  font-size: 12px;\n  margin-bottom: 5px;\n}\n.detail-facts strong {\n  font-size: 16px;\n  font-weight: 550;\n}\n.factor-row {\n  display: grid;\n  grid-template-columns: 90px 1fr 40px 56px;\n  gap: 12px;\n  align-items: center;\n  margin: 14px 0;\n  font-size: 13px;\n}\n.factor-row .factor-track {\n  height: 7px;\n  background: #edf2f4;\n  border-radius: 4px;\n}\n.factor-track i {\n  display: block;\n  height: 100%;\n  border-radius: 4px;\n  background: #7dbda9;\n}\n.factor-row .weight {\n  font-size: 12px;\n  color: #97a6b3;\n  text-align: right;\n}\n.detail-section h3 {\n  font-size: 15px;\n  margin: 23px 0 13px;\n}\n.risk-row {\n  display: flex;\n  gap: 10px;\n  align-items: flex-start;\n  font-size: 13px;\n  line-height: 1.8;\n  margin: 10px 0;\n  color: #8593a0;\n}\n.risk-row strong {\n  color: #b18442;\n  font-size: 12px;\n  white-space: nowrap;\n  background: #fbf2e4;\n  padding: 2px 6px;\n  border-radius: 4px;\n}\n.detail-text {\n  padding: 15px 18px;\n  background: #f4f8f7;\n  color: #6e8a81;\n  font-size: 14px;\n  line-height: 1.9;\n  border-radius: 6px;\n}\n.detail-footnote {\n  font-size: 12px;\n  color: #97a5b2;\n  margin-top: 18px;\n  line-height: 1.8;\n}\n.help-content p {\n  margin: 15px 0;\n  font-size: 14px;\n  line-height: 1.9;\n  color: #6c7f90;\n}\n.loading {\n  animation: pulse 1.5s ease-in-out infinite;\n}\n@keyframes pulse {\n  50% {\n    opacity: 0.4;\n  }\n}\n@media (min-width: 1500px) {\n  .overview-grid {\n    grid-template-columns: minmax(0, 1fr) 330px;\n  }\n  td {\n    padding: 19px 18px;\n  }\n  main {\n    padding: 38px 42px;\n  }\n  .metric {\n    padding: 23px 26px;\n  }\n}\n@media (max-width: 1200px) {\n  .sidebar {\n    width: 190px;\n    padding-inline: 12px;\n  }\n  .workspace {\n    margin-left: 190px;\n    width: calc(100% - 190px);\n  }\n  main {\n    padding: 25px 24px;\n  }\n  .topbar {\n    padding-inline: 24px;\n  }\n  .overview-grid {\n    grid-template-columns: minmax(0, 1fr) 270px;\n    gap: 17px;\n  }\n  .metric {\n    padding: 17px;\n  }\n  .metric-value {\n    font-size: 31px;\n  }\n  .brand {\n    font-size: 17px;\n    padding: 0 5px;\n  }\n  .brand small {\n    font-size: 9px;\n  }\n  .metric-caption {\n    font-size: 11px;\n  }\n  .heading-actions {\n    gap: 8px;\n  }\n  .primary {\n    padding-inline: 13px;\n  }\n  .page-footer {\n    font-size: 10px;\n  }\n}\n@media (max-width: 1000px) {\n  .overview-grid {\n    grid-template-columns: 1fr;\n  }\n  .right-column {\n    display: grid;\n    grid-template-columns: 1fr 1fr;\n  }\n  .model-grid {\n    grid-template-columns: 1fr;\n  }\n  .sidebar {\n    width: 175px;\n  }\n  .workspace {\n    margin-left: 175px;\n    width: calc(100% - 175px);\n  }\n  .page-heading {\n    align-items: flex-start;\n    flex-wrap: wrap;\n  }\n  .metric-caption {\n    flex-direction: column;\n    align-items: flex-start;\n    gap: 2px;\n  }\n  .metric-head {\n    font-size: 12px;\n  }\n  .metric-value {\n    font-size: 28px;\n  }\n  .page-footer {\n    flex-direction: column;\n    gap: 6px;\n  }\n}\n@media (max-width: 720px) {\n  .shell {\n    display: block;\n  }\n  .sidebar {\n    position: static;\n    width: 100%;\n    padding: 18px 20px 0;\n  }\n  .brand {\n    font-size: 18px;\n  }\n  .brand small {\n    font-size: 9px;\n  }\n  .brand-mark {\n    height: 25px;\n  }\n  .brand-mark i:nth-child(3) {\n    height: 25px;\n  }\n  .nav-label,\n  .sidebar-note,\n  .sidebar-footer {\n    display: none;\n  }\n  .sidebar nav {\n    display: flex;\n    margin-top: 17px;\n    gap: 6px;\n  }\n  .nav-item {\n    padding: 11px 8px;\n    font-size: 13px;\n    justify-content: center;\n    gap: 7px;\n    margin: 0;\n    border-radius: 6px 6px 0 0;\n  }\n  .nav-item svg {\n    width: 15px;\n    height: 15px;\n  }\n  .workspace {\n    width: 100%;\n    margin: 0;\n  }\n  .topbar {\n    height: 48px;\n    padding-inline: 20px;\n  }\n  .session-label {\n    font-size: 11px;\n  }\n  .topbar-right {\n    gap: 10px;\n  }\n  .breadcrumb {\n    font-size: 12px;\n    gap: 10px;\n  }\n  main {\n    padding: 23px 18px 18px;\n  }\n  .page-heading {\n    gap: 17px;\n    margin-bottom: 20px;\n  }\n  .page-heading h1 {\n    font-size: 25px;\n  }\n  .page-heading p {\n    font-size: 13px;\n  }\n  .eyebrow {\n    font-size: 10px;\n  }\n  .heading-actions {\n    width: 100%;\n    justify-content: space-between;\n  }\n  .date-control {\n    flex: 1;\n    max-width: 225px;\n  }\n  .date-control input {\n    width: 100%;\n  }\n  .data-strip {\n    font-size: 11px;\n    align-items: flex-start;\n  }\n  .data-strip > div {\n    gap: 6px;\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  .metrics {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 12px;\n    margin-bottom: 17px;\n  }\n  .metric {\n    padding: 16px;\n  }\n  .metric-head {\n    font-size: 13px;\n  }\n  .metric-value {\n    font-size: 32px;\n  }\n  .metric-caption {\n    font-size: 12px;\n  }\n  .right-column {\n    grid-template-columns: 1fr;\n  }\n  .panel {\n    --panel-inline-padding: 17px;\n  }\n  .panel-heading {\n    padding: 19px var(--panel-inline-padding) 15px;\n  }\n  .filters {\n    padding-inline: 17px;\n    gap: 8px;\n  }\n  .filters select {\n    max-width: 130px;\n  }\n  .table-subnav {\n    padding-inline: 17px;\n  }\n  .table-footer {\n    padding-inline: 17px;\n  }\n  .table-footer span:last-child {\n    display: none;\n  }\n  .small-muted {\n    font-size: 11px;\n  }\n  .detail-dialog,\n  .help-dialog {\n    padding: 20px;\n  }\n  .detail-facts {\n    grid-template-columns: 1fr 1fr;\n  }\n  .detail-head h2 {\n    font-size: 22px;\n  }\n  .detail-score {\n    font-size: 45px;\n  }\n  .factor-row {\n    grid-template-columns: 76px 1fr 26px 42px;\n    gap: 8px;\n    font-size: 12px;\n  }\n  .sector-formula {\n    line-height: 2;\n  }\n  .model-actions {\n    flex-wrap: wrap;\n  }\n  .preset-buttons {\n    padding-inline: 17px;\n    gap: 6px;\n  }\n  .preset-buttons button {\n    padding-inline: 11px;\n  }\n  .detail-facts strong {\n    font-size: 16px;\n  }\n  .page-footer {\n    font-size: 11px;\n  }\n  .sidebar .brand small {\n    font-size: 10px;\n  }\n}\n@media (prefers-reduced-motion: reduce) {\n  * {\n    animation: none !important;\n    scroll-behavior: auto !important;\n  }\n}\n.review-intro {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 22px;\n  gap: 20px;\n}\n.review-intro p {\n  font-size: 14px;\n  color: #8395a3;\n  margin-top: 9px;\n}\n.review-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);\n  gap: 22px;\n  align-items: start;\n}\n.review-conclusion {\n  background: #eff7f3;\n  color: #628b79;\n  padding: 12px 22px;\n  font-size: 13px;\n}\n.review-stock {\n  font-weight: 500;\n  font-size: 14px;\n}\n.top-group {\n  color: #b58d48;\n  background: #fbf3e5;\n  font-size: 10px;\n  padding: 2px 5px;\n  margin-left: 7px;\n  border-radius: 3px;\n}\n.up {\n  color: var(--red);\n  font-variant-numeric: tabular-nums;\n}\n.down {\n  color: var(--green);\n  font-variant-numeric: tabular-nums;\n}\n.ai-content {\n  padding: 0 22px;\n}\n.ai-empty {\n  text-align: center;\n  padding: 17px 25px 20px;\n  color: #8b9aa8;\n}\n.ai-symbol {\n  display: flex;\n  justify-content: center;\n  width: 45px;\n  height: 45px;\n  align-items: center;\n  background: #eef5f2;\n  color: #69a991;\n  border-radius: 12px;\n  margin: 0 auto 15px;\n}\n.ai-symbol svg {\n  width: 25px;\n  height: 25px;\n}\n.ai-empty h3 {\n  font-size: 16px;\n  color: #617587;\n  font-weight: 500;\n  margin-bottom: 9px;\n}\n.ai-empty p {\n  font-size: 13px;\n  line-height: 1.9;\n}\n.ai-process {\n  font-size: 12px;\n  background: #f7f9fb;\n  padding: 16px;\n  margin-top: 23px;\n  color: #9aabba;\n}\n.ai-process span {\n  display: block;\n  color: #c0ccd5;\n  line-height: 1.8;\n}\n.ai-actions {\n  padding: 17px 22px;\n  border-top: 1px solid var(--line);\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 13px;\n}\n.ai-actions button {\n  font-size: 13px;\n}\n.ai-actions > span {\n  font-size: 12px;\n  color: #9b8a6b;\n}\n.ai-score {\n  display: flex;\n  align-items: center;\n  gap: 14px;\n  padding: 8px 22px 16px;\n}\n.ai-score strong {\n  font-size: 48px;\n  color: #588b79;\n  line-height: 1.1;\n}\n.ai-score > span {\n  font-size: 13px;\n  color: #789285;\n}\n.ai-score small {\n  display: block;\n  font-size: 11px;\n  color: #9aa9a1;\n  margin-top: 4px;\n}\n.ai-summary {\n  padding: 0 22px;\n  font-size: 14px;\n  line-height: 1.9;\n  color: #637889;\n}\n.ai-panel h3 {\n  margin: 20px 22px 10px;\n  font-size: 14px;\n}\n.ai-panel ul {\n  padding: 0 22px 0 38px;\n  color: #8192a1;\n  font-size: 13px;\n  line-height: 1.9;\n}\n.ai-panel li {\n  margin-bottom: 8px;\n}\n.ai-note {\n  padding: 10px 22px 20px;\n  font-size: 12px;\n  color: #9ba8b2;\n}\n.review-sector-panel,\n.history-panel,\n.model-connection {\n  margin-top: 22px;\n}\n.history-list {\n  padding: 0 22px 18px;\n}\n.history-list button {\n  display: flex;\n  justify-content: space-between;\n  gap: 14px;\n  padding: 12px;\n  width: 100%;\n  background: #f8fafb;\n  color: #718699;\n  border-bottom: 1px solid #e8eef1;\n  text-align: left;\n  font-size: 13px;\n}\n.history-list button:hover {\n  background: #eef6f1;\n}\n.model-connection > p {\n  font-size: 14px;\n  line-height: 1.9;\n  color: #81929f;\n  margin: 0 22px 14px;\n}\n.model-connection > p:last-child {\n  font-size: 12px;\n  margin-bottom: 22px;\n}\n@media (max-width: 1200px) {\n  .review-grid {\n    grid-template-columns: 1fr;\n  }\n  .ai-panel {\n    max-width: none;\n  }\n}\n@media (max-width: 720px) {\n  .sidebar nav {\n    overflow-x: auto;\n  }\n  .nav-item {\n    min-width: 83px;\n    flex-shrink: 0;\n  }\n  .review-intro {\n    flex-wrap: wrap;\n    gap: 12px;\n  }\n  .history-list button {\n    flex-direction: column;\n    gap: 4px;\n  }\n  .top-group {\n    display: none;\n  }\n  .review-intro p {\n    font-size: 13px;\n  }\n  .review-grid {\n    gap: 17px;\n  }\n}\n.pool-panel .table-scroll {\n  max-height: 650px;\n}\n.pool-panel th {\n  position: sticky;\n  top: 0;\n  z-index: 1;\n}\n.stock-code,\n.sector-row-meta,\n.panel-footnote,\n.outline-tag,\n.page-footer,\n.sidebar-note p,\n.sidebar-footer small {\n  font-size: 12px;\n}\ntable {\n  font-size: 14px;\n}\n.sector-tag,\n.height-tag {\n  font-size: 12px;\n}\n.page-footer {\n  line-height: 1.7;\n}\n@media (max-width: 720px) {\n  .pool-panel .table-scroll {\n    max-height: 560px;\n  }\n}\n\n/* Paper account uses the same research workspace visual language. */\n.paper-toolbar {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 14px;\n  flex-wrap: wrap;\n}\n.paper-toolbar > div {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  flex-wrap: wrap;\n}\n.paper-toolbar a {\n  text-decoration: none;\n  font-size: 12px;\n  display: inline-flex;\n  align-items: center;\n}\n.paper-message {\n  font-size: 12px;\n  color: var(--muted);\n  min-height: 18px;\n  margin: 12px 0 20px;\n}\n.paper-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);\n  gap: 20px;\n  align-items: start;\n}\n.paper-panel {\n  margin-top: 20px;\n}\n.equity-chart {\n  display: block;\n  width: 100%;\n  height: auto;\n  padding: 4px 18px 0;\n}\n.chart-axis {\n  font-size: 11px;\n  fill: #758396;\n}\n.chart-legend {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 14px;\n  padding: 0 24px 18px;\n  font-size: 11px;\n  color: #758396;\n}\n.chart-legend i {\n  display: inline-block;\n  width: 12px;\n  height: 3px;\n  vertical-align: middle;\n  background: #13977e;\n  margin-right: 6px;\n}\n.chart-legend i.benchmark {\n  background: #acb6c4;\n}\n.verified {\n  color: #14846f;\n  border-color: #bfe5d9;\n  background: #f0faf6;\n}\n.action-tag {\n  background: #edf4f8;\n  color: #405c73;\n  border-radius: 5px;\n  padding: 5px 8px;\n  font-size: 11px;\n  white-space: nowrap;\n}\n.plan-reason {\n  min-width: 220px;\n  max-width: 330px;\n  white-space: normal !important;\n  line-height: 1.7;\n}\n.paper-config {\n  display: flex;\n  align-items: end;\n  gap: 20px;\n  flex-wrap: wrap;\n  padding: 0 24px 24px;\n}\n.paper-config label {\n  display: grid;\n  gap: 9px;\n  font-size: 12px;\n  color: #758396;\n}\n.paper-config input,\n.paper-config select {\n  border: 1px solid #dce3eb;\n  border-radius: 6px;\n  background: #fff;\n  padding: 10px 12px;\n  color: #21384b;\n  min-width: 220px;\n}\n.paper-config input:disabled {\n  background: #f2f5f8;\n  color: #8896a6;\n}\n.paper-outcomes {\n  padding: 0 24px;\n}\n.paper-outcomes summary {\n  cursor: pointer;\n  padding: 16px 0;\n  font-size: 12px;\n  color: #526b80;\n}\n.execution-feedback p {\n  display: flex;\n  gap: 14px;\n  justify-content: space-between;\n  border-top: 1px solid #edf1f5;\n  padding: 12px 0;\n  margin: 0;\n  font-size: 12px;\n}\n.execution-feedback span {\n  color: #758396;\n}\n.strategy-active {\n  display: grid;\n  gap: 8px;\n  padding: 0 24px 16px;\n}\n.strategy-active span {\n  font-size: 11px;\n  color: #758396;\n}\n.strategy-active strong {\n  font-size: 18px;\n  letter-spacing: 0.2px;\n}\n/* In-panel metrics share heading/footer gutters and stack labels above values. */\n.panel-metrics {\n  padding-inline: var(--panel-inline-padding);\n}\n.panel-metrics > div {\n  display: grid;\n  align-content: start;\n  gap: 6px;\n  min-width: 0;\n  overflow-wrap: anywhere;\n}\n.panel-metrics .mini-label {\n  margin-bottom: 0;\n}\n.panel-metrics .outline-tag {\n  justify-self: start;\n  max-width: 100%;\n  white-space: normal;\n}\n.panel-metric-value {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);\n  gap: 4px;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  font-size: 14px;\n  line-height: 1.7;\n  line-break: anywhere;\n}\n.alert-channel-metrics {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n}\n.strategy-metrics strong {\n  font-size: 16px;\n  overflow-wrap: anywhere;\n}\n.strategy-metrics small {\n  font-size: 12px;\n  color: var(--muted);\n  overflow-wrap: anywhere;\n}\n#strategies-status .strategy-metrics {\n  margin-bottom: 0;\n}\n@media (max-width: 720px) {\n  .alert-channel-metrics {\n    grid-template-columns: minmax(0, 1fr);\n  }\n}\n.version-row {\n  margin: 16px 24px;\n  padding: 14px 0;\n  border-top: 1px solid #edf1f5;\n  font-size: 12px;\n}\n.version-row > div {\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n}\n.version-row p {\n  line-height: 1.7;\n  color: #758396;\n}\n.version-row small {\n  line-height: 1.8;\n  color: #758396;\n}\n.version-row button {\n  margin-top: 12px;\n}\n.paper-grid .ai-panel > div > p {\n  padding: 0 24px;\n  color: #758396;\n  font-size: 12px;\n  line-height: 1.8;\n}\n.paper-grid .ai-panel .small-muted {\n  padding: 0 24px 24px;\n}\n.paper-grid .ai-process {\n  margin: 0 24px;\n}\n.paper-grid .ai-note {\n  margin: 14px 0;\n}\n.paper-grid .panel-footnote {\n  line-height: 1.8;\n}\n.paper-panel .panel-footnote {\n  line-height: 1.8;\n}\n.paper-panel td {\n  vertical-align: top;\n}\n.paper-message:empty {\n  display: none;\n}\n@media (max-width: 1100px) {\n  .paper-grid {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .paper-toolbar {\n    align-items: start;\n  }\n  .paper-config {\n    gap: 14px;\n  }\n}\n@media (max-width: 650px) {\n  .paper-toolbar .secondary,\n  .paper-toolbar .primary {\n    font-size: 11px;\n    padding: 9px 10px;\n  }\n  .paper-toolbar > div {\n    gap: 6px;\n  }\n  .paper-config {\n    padding: 0 16px 20px;\n  }\n  .paper-config label,\n  .paper-config input,\n  .paper-config select {\n    width: 100%;\n    min-width: 0;\n  }\n  .execution-feedback p {\n    display: block;\n  }\n  .execution-feedback span {\n    display: block;\n    margin-top: 6px;\n  }\n  .chart-legend {\n    padding: 0 16px 16px;\n    gap: 9px;\n  }\n  .paper-grid {\n    gap: 16px;\n  }\n}\n\n.paper-fee-settings {\n  border: 1px solid #dce3eb;\n  border-radius: 8px;\n  width: 100%;\n  padding: 18px 20px;\n  margin: 0;\n  min-width: 0;\n}\n.paper-fee-settings legend {\n  font-size: 14px;\n  font-weight: 600;\n  color: #21384b;\n  padding: 0 8px;\n}\n.fee-settings-heading {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  flex-wrap: wrap;\n  margin-bottom: 16px;\n}\n.fee-settings-heading p,\n.fee-settings-note {\n  font-size: 12px;\n  color: #758396;\n  line-height: 1.8;\n  margin: 0;\n}\n.paper-fee-controls {\n  display: grid;\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 18px 24px;\n}\n.paper-config .paper-fee-controls input {\n  min-width: 0;\n  width: 100%;\n  font-size: 14px;\n}\n.paper-fee-controls span {\n  font-size: 12px;\n  color: #8896a6;\n}\n.fee-settings-note {\n  margin-top: 18px;\n}\n.paper-fee-settings .text-button {\n  margin-top: 8px;\n}\n.fee-breakdown {\n  max-width: 200px;\n  white-space: normal;\n  line-height: 1.7;\n}\n.fee-breakdown summary {\n  cursor: pointer;\n  white-space: nowrap;\n}\n.fee-breakdown > span {\n  display: block;\n  color: #758396;\n  font-size: 12px;\n  margin-top: 8px;\n  min-width: 160px;\n}\n@media (max-width: 650px) {\n  .paper-fee-settings {\n    padding: 16px 12px;\n  }\n  .paper-fee-controls {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 16px 12px;\n  }\n  .paper-config .paper-fee-controls label {\n    font-size: 12px;\n  }\n  .fee-settings-heading p {\n    max-width: 100%;\n  }\n}\n\n#paper-metrics .metric-value {\n  font-size: clamp(22px, 2.2vw, 32px);\n}\n.plan-price-conditions {\n  min-width: 220px;\n  line-height: 1.65;\n}\n\n@media (max-width: 700px) {\n  .paper-plan-heading {\n    flex-direction: column;\n    align-items: flex-start;\n  }\n  .paper-plan-heading #paper-plan-date {\n    max-width: 100%;\n    white-space: normal;\n  }\n}\n', "type": "text/css; charset=utf-8" } };
+var ASSETS = { "/": { "body": `<!doctype html>\r
+<html lang="zh-CN">\r
+  <head>\r
+    <meta charset="UTF-8" />\r
+    <meta name="viewport" content="width=device-width, initial-scale=1" />\r
+    <meta name="theme-color" content="#101e2e" />\r
+    <title>\u6DA8\u505C\u7814\u7A76\u53F0 \xB7 A \u80A1\u590D\u76D8\u4E0E\u8BC4\u5206</title>\r
+    <meta\r
+      name="description"\r
+      content="\u6BCF\u65E5 A \u80A1\u6DA8\u505C\u590D\u76D8\uFF0C\u67E5\u770B\u53EF\u89E3\u91CA\u7684\u4E2A\u80A1\u8BC4\u5206\u3001\u884C\u4E1A\u677F\u5757\u5F3A\u5EA6\u548C\u5E02\u573A\u60C5\u7EEA\u3002"\r
+    />\r
+    <link\r
+      rel="icon"\r
+      type="image/svg+xml"\r
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101e2e'/%3E%3Cpath d='M7 24V17h4v7m3 0V12h4v12m3 0V7h4v17' stroke='%2356d3b5' stroke-width='3'/%3E%3C/svg%3E"\r
+    />\r
+    <link rel="stylesheet" href="/assets/styles.css" />\r
+  </head>\r
+  <body>\r
+    <div class="shell">\r
+      <aside class="sidebar">\r
+        <a class="brand" href="#overview" aria-label="\u6DA8\u505C\u7814\u7A76\u53F0\u9996\u9875"\r
+          ><span class="brand-mark"><i></i><i></i><i></i></span\r
+          ><span>\u6DA8\u505C\u7814\u7A76\u53F0<small>LIMIT LENS</small></span></a\r
+        >\r
+        <div class="nav-label">\u7814\u7A76\u5DE5\u4F5C\u53F0</div>\r
+        <nav aria-label="\u4E3B\u5BFC\u822A">\r
+          <button data-view="overview" class="nav-item active">\r
+            <span data-icon="dashboard"></span>\u603B\u89C8\u590D\u76D8\r
+          </button>\r
+          <button data-view="stocks" class="nav-item">\r
+            <span data-icon="chart"></span>\u4E2A\u80A1\u5206\u6790\r
+          </button>\r
+          <button data-view="sectors" class="nav-item">\r
+            <span data-icon="grid"></span>\u677F\u5757\u7814\u7A76\r
+          </button>\r
+          <button data-view="review" class="nav-item">\r
+            <span data-icon="shield"></span>\u6628\u65E5\u53CD\u9988\r
+          </button>\r
+          <button data-view="paper" class="nav-item">\r
+            <span data-icon="chart"></span>\u6A21\u62DF\u4EA4\u6613\r
+          </button>\r
+          <button data-view="strategies" class="nav-item">\r
+            <span data-icon="sliders"></span>\u7B56\u7565\u8D5B\u9A6C\r
+          </button>\r
+          <button data-view="alerts" class="nav-item">\r
+            <span data-icon="shield"></span>\u8FD0\u7EF4\u544A\u8B66\r
+          </button>\r
+          <button data-view="model" class="nav-item">\r
+            <span data-icon="sliders"></span>\u8BC4\u5206\u6A21\u578B\r
+          </button>\r
+        </nav>\r
+        <div class="sidebar-note">\r
+          <span class="mini-label">\u590D\u76D8\u95ED\u73AF</span\r
+          ><strong>\u8BC4\u5206 \xB7 \u68C0\u9A8C \xB7 \u6539\u8FDB</strong>\r
+          <p>\u4FDD\u5B58\u5F53\u65F6\u7684\u5224\u65AD\uFF0C\u518D\u7528\u4E0B\u4E00\u4EA4\u6613\u65E5\u7684\u7ED3\u679C\u68C0\u9A8C\u3002</p>\r
+          <div class="note-line"></div>\r
+          <span id="snapshot-status">\u6536\u76D8\u540E\u81EA\u52A8\u4FDD\u5B58\u8BC4\u5206\u5FEB\u7167</span>\r
+        </div>\r
+        <div class="sidebar-footer">\r
+          <span data-icon="database"></span>\r
+          <div>\r
+            \u516C\u5F00\u884C\u60C5\u63A5\u5165<small id="sidebar-source">\u6B63\u5728\u68C0\u67E5\u6570\u636E\u6E90</small>\r
+          </div>\r
+        </div>\r
+      </aside>\r
+      <div class="workspace">\r
+        <header class="topbar">\r
+          <div class="breadcrumb">\r
+            \u7814\u7A76\u5DE5\u4F5C\u53F0 <span>/</span> <strong id="crumb">\u603B\u89C8\u590D\u76D8</strong>\r
+          </div>\r
+          <div class="topbar-right">\r
+            <span class="session-label">A \u80A1 \xB7 \u6CAA\u6DF1\u5E02\u573A</span\r
+            ><button\r
+              class="icon-button"\r
+              id="help-btn"\r
+              aria-label="\u67E5\u770B\u6570\u636E\u53E3\u5F84"\r
+            >\r
+              <span data-icon="info"></span>\r
+            </button>\r
+          </div>\r
+        </header>\r
+        <main>\r
+          <div class="page-heading">\r
+            <div>\r
+              <div class="eyebrow">DAILY MARKET REVIEW</div>\r
+              <h1 id="page-title">\u6BCF\u65E5\u6DA8\u505C\u590D\u76D8</h1>\r
+              <p id="page-subtitle">\u628A\u6DA8\u505C\u62C6\u6210\u4FE1\u53F7\uFF0C\u628A\u5224\u65AD\u5EFA\u7ACB\u5728\u6570\u636E\u4E0A\u3002</p>\r
+            </div>\r
+            <div class="heading-actions">\r
+              <label class="date-control"\r
+                ><span data-icon="calendar"></span\r
+                ><input\r
+                  type="date"\r
+                  id="trade-date"\r
+                  aria-label="\u4EA4\u6613\u65E5\u671F" /></label\r
+              ><button class="primary" id="refresh-btn">\r
+                <span data-icon="refresh"></span>\u5237\u65B0\u884C\u60C5\r
+              </button>\r
+            </div>\r
+          </div>\r
+          <div class="data-strip">\r
+            <div>\r
+              <span class="source-tag" id="source-tag">\u884C\u60C5\u52A0\u8F7D\u4E2D</span\r
+              ><span id="data-time">\u6B63\u5728\u83B7\u53D6\u6240\u9009\u4EA4\u6613\u65E5\u6DA8\u505C\u6C60</span>\r
+            </div>\r
+            <button class="text-button" id="demo-btn">\u67E5\u770B\u6F14\u793A</button>\r
+          </div>\r
+          <div class="notice" id="notice" role="status" hidden></div>\r
+          <section id="summary" class="metrics" aria-label="\u5E02\u573A\u6982\u51B5"></section>\r
+          <div id="overview-content" class="overview-grid">\r
+            <section class="panel pool-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\r
+                    \u6DA8\u505C\u4E2A\u80A1 <span class="count-chip" id="pool-count">\u2014</span>\r
+                  </h2>\r
+                  <p>\u6309\u7EFC\u5408\u8BC4\u5206\u6392\u5E8F\uFF0C\u70B9\u51FB\u4E2A\u80A1\u67E5\u770B\u5B8C\u6574\u8BCA\u65AD</p>\r
+                </div>\r
+                <span class="small-muted" id="coverage-label">\u516D\u7EF4\u8BC4\u5206</span>\r
+              </div>\r
+              <div class="filters">\r
+                <div class="search-control">\r
+                  <span data-icon="search"></span\r
+                  ><input\r
+                    id="search"\r
+                    placeholder="\u641C\u7D22\u540D\u79F0 / \u4EE3\u7801"\r
+                    aria-label="\u641C\u7D22\u6DA8\u505C\u4E2A\u80A1"\r
+                  />\r
+                </div>\r
+                <select id="sector-filter" aria-label="\u7B5B\u9009\u884C\u4E1A\u677F\u5757">\r
+                  <option value="">\u5168\u90E8\u884C\u4E1A</option>\r
+                </select>\r
+              </div>\r
+              <div class="table-subnav">\r
+                <div class="segments" role="group" aria-label="\u8FDE\u677F\u7B5B\u9009">\r
+                  <button data-height="all" class="active">\u5168\u90E8</button\r
+                  ><button data-height="first">\u9996\u677F</button\r
+                  ><button data-height="relay">\u8FDE\u677F</button>\r
+                </div>\r
+                <div class="sort-control">\r
+                  <label for="sort">\u6392\u5E8F</label\r
+                  ><select id="sort">\r
+                    <option value="score">\u7EFC\u5408\u8BC4\u5206</option>\r
+                    <option value="height">\u8FDE\u677F\u9AD8\u5EA6</option>\r
+                    <option value="seal">\u5C01\u5355\u91D1\u989D</option>\r
+                    <option value="first">\u9996\u5C01\u65F6\u95F4</option>\r
+                  </select>\r
+                </div>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u4E2A\u80A1 / \u4EE3\u7801</th>\r
+                      <th>\u7EFC\u5408\u8BC4\u5206</th>\r
+                      <th>\u884C\u4E1A\u677F\u5757</th>\r
+                      <th>\u8FDE\u677F</th>\r
+                      <th>\u9996\u5C01\u65F6\u95F4</th>\r
+                      <th>\u5C01\u5355\u91D1\u989D</th>\r
+                      <th>\u6362\u624B\u7387</th>\r
+                      <th>\u70B8\u677F</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="stock-rows"></tbody>\r
+                </table>\r
+              </div>\r
+              <div class="table-footer">\r
+                <span id="table-status">\u6B63\u5728\u8BFB\u53D6\u516C\u5F00\u884C\u60C5\u2026</span\r
+                ><span>\u8BC4\u5206\u533A\u95F4 0\u2013100</span>\r
+              </div>\r
+            </section>\r
+            <div class="right-column">\r
+              <section class="panel sector-panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u677F\u5757\u5F3A\u5EA6</h2>\r
+                    <p>\u6DA8\u505C\u96C6\u805A \xD7 \u8FDE\u677F\u9AD8\u5EA6 \xD7 \u5C01\u677F\u8868\u73B0</p>\r
+                  </div>\r
+                  <button\r
+                    class="icon-button"\r
+                    id="all-sectors"\r
+                    aria-label="\u67E5\u770B\u5168\u90E8\u884C\u4E1A\u677F\u5757"\r
+                  >\r
+                    <span data-icon="grid"></span>\r
+                  </button>\r
+                </div>\r
+                <div id="sector-rank"></div>\r
+                <div class="panel-footnote">\r
+                  \u884C\u4E1A\u5206\u7C7B\u53E3\u5F84\uFF0C\u4E0D\u7B49\u540C\u4E8E\u6982\u5FF5\u9898\u6750\u70ED\u5EA6\r
+                </div>\r
+              </section>\r
+              <section class="panel ladder-panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u8FDE\u677F\u68AF\u961F</h2>\r
+                    <p>\u89C2\u5BDF\u5E02\u573A\u9AD8\u5EA6\u4E0E\u63A5\u529B\u7ED3\u6784</p>\r
+                  </div>\r
+                  <span class="outline-tag">\u5F53\u65E5</span>\r
+                </div>\r
+                <div id="ladder-chart"></div>\r
+                <div id="ladder-insight" class="insight"></div>\r
+              </section>\r
+            </div>\r
+          </div>\r
+          <section id="sectors-view" class="panel" hidden>\r
+            <div class="panel-heading">\r
+              <div>\r
+                <h2>\u884C\u4E1A\u677F\u5757\u8BC4\u5206</h2>\r
+                <p>\u70B9\u51FB\u677F\u5757\uFF0C\u7B5B\u9009\u5B83\u7684\u6DA8\u505C\u4E2A\u80A1</p>\r
+              </div>\r
+              <span class="outline-tag">\u900F\u660E\u6743\u91CD</span>\r
+            </div>\r
+            <div class="sector-formula">\r
+              \u6DA8\u505C\u96C6\u805A 35% <span>+</span> \u8FDE\u677F\u9AD8\u5EA6 25% <span>+</span> \u5C01\u677F\u7A33\u5B9A\r
+              25% <span>+</span> \u65E9\u76D8\u8054\u52A8 15%\r
+            </div>\r
+            <div class="table-scroll">\r
+              <table>\r
+                <thead>\r
+                  <tr>\r
+                    <th>\u884C\u4E1A\u677F\u5757</th>\r
+                    <th>\u677F\u5757\u5F97\u5206</th>\r
+                    <th>\u6DA8\u505C\u5BB6\u6570</th>\r
+                    <th>\u6700\u9AD8\u8FDE\u677F</th>\r
+                    <th>\u5C01\u677F\u7A33\u5B9A</th>\r
+                    <th>\u65E9\u76D8\u8054\u52A8</th>\r
+                    <th>\u6DA8\u505C\u80A1\u6210\u4EA4\u989D</th>\r
+                  </tr>\r
+                </thead>\r
+                <tbody id="sector-rows"></tbody>\r
+              </table>\r
+            </div>\r
+          </section>\r
+          <section id="review-view" hidden>\r
+            <div class="review-intro">\r
+              <div>\r
+                <span class="outline-tag" id="review-date-label"\r
+                  >\u7B49\u5F85\u9996\u4E2A\u53CD\u9988\u65E5</span\r
+                >\r
+                <p id="review-status">\r
+                  \u5F53\u5929\u6536\u76D8\u540E\u4FDD\u5B58\u539F\u59CB\u8BC4\u5206\uFF0C\u4E0B\u4E00\u4E2A\u4EA4\u6613\u65E5\u6838\u9A8C\u5E02\u573A\u8868\u73B0\u3002\r
+                </p>\r
+              </div>\r
+              <button class="secondary" id="run-review">\r
+                <span data-icon="refresh"></span>\u66F4\u65B0\u53CD\u9988\r
+              </button>\r
+            </div>\r
+            <div id="review-metrics" class="metrics"></div>\r
+            <div class="review-grid">\r
+              <section class="panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u539F\u59CB\u8BC4\u5206\u4E0E\u5B9E\u9645\u8868\u73B0</h2>\r
+                    <p>\u56FA\u5B9A\u6628\u65E5\u6837\u672C\uFF0C\u68C0\u9A8C\u4ECA\u5929\u7684\u8868\u73B0\uFF0C\u907F\u514D\u4E8B\u540E\u6311\u9009\u8D62\u5BB6</p>\r
+                  </div>\r
+                  <span id="review-coverage" class="outline-tag">\u7B49\u5F85\u6837\u672C</span>\r
+                </div>\r
+                <div\r
+                  id="review-conclusion"\r
+                  class="review-conclusion"\r
+                  hidden\r
+                ></div>\r
+                <div class="table-scroll">\r
+                  <table>\r
+                    <thead>\r
+                      <tr>\r
+                        <th>\u6628\u65E5\u6DA8\u505C\u4E2A\u80A1</th>\r
+                        <th>\u539F\u59CB\u8BC4\u5206</th>\r
+                        <th>\u6B21\u65E5\u5F00\u76D8</th>\r
+                        <th>\u6B21\u65E5\u6536\u76D8</th>\r
+                        <th>\u76D8\u4E2D\u6700\u4F4E</th>\r
+                        <th>\u518D\u6B21\u6DA8\u505C</th>\r
+                      </tr>\r
+                    </thead>\r
+                    <tbody id="review-rows"></tbody>\r
+                  </table>\r
+                </div>\r
+                <div class="panel-footnote">\r
+                  \u6536\u76CA\u4EE5\u539F\u59CB\u6536\u76D8\u4EF7\u4E3A\u57FA\u51C6\uFF0C\u672A\u5047\u8BBE\u80FD\u5728\u6DA8\u505C\u4EF7\u6210\u4EA4\uFF1B\u4E0D\u7B49\u540C\u4E8E\u53EF\u5B9E\u73B0\u7B56\u7565\u6536\u76CA\u3002\r
+                </div>\r
+              </section>\r
+              <section class="panel ai-panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>AI \u7CFB\u7EDF\u8BC4\u4F30</h2>\r
+                    <p>\u7528\u5DF2\u6838\u9A8C\u7684\u5E02\u573A\u7ED3\u679C\uFF0C\u5BA1\u89C6\u8BC4\u5206\u8D28\u91CF</p>\r
+                  </div>\r
+                  <span class="outline-tag" id="ai-status-tag">\u68C0\u67E5\u8FDE\u63A5</span>\r
+                </div>\r
+                <div id="ai-content"></div>\r
+                <div class="ai-actions">\r
+                  <button class="primary" id="ai-grade-btn">\u751F\u6210 AI \u8BC4\u4EF7</button\r
+                  ><span id="ai-action-status" role="status"></span>\r
+                </div>\r
+              </section>\r
+            </div>\r
+            <section class="panel review-sector-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u677F\u5757\u5224\u65AD\u53CD\u9988</h2>\r
+                  <p>\u4F7F\u7528\u6628\u65E5\u56FA\u5B9A\u7684\u6DA8\u505C\u6210\u5458\uFF0C\u6BD4\u8F83\u6B21\u65E5\u5E73\u5747\u8868\u73B0</p>\r
+                </div>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u6628\u65E5\u884C\u4E1A\u677F\u5757</th>\r
+                      <th>\u539F\u59CB\u677F\u5757\u5206</th>\r
+                      <th>\u6709\u6548 / \u539F\u59CB\u6837\u672C</th>\r
+                      <th>\u6B21\u65E5\u5E73\u5747\u6536\u76CA</th>\r
+                      <th>\u518D\u6B21\u6DA8\u505C\u6BD4\u4F8B</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="review-sector-rows"></tbody>\r
+                </table>\r
+              </div>\r
+            </section>\r
+            <section class="panel history-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u53CD\u9988\u8BB0\u5F55</h2>\r
+                  <p>\u6301\u7EED\u79EF\u7D2F\u6837\u672C\uFF0C\u518D\u5224\u65AD\u6A21\u578B\u662F\u5426\u7A33\u5B9A\u6709\u6548</p>\r
+                </div>\r
+              </div>\r
+              <div id="review-history"></div>\r
+            </section>\r
+          </section>\r
+          <section id="model-view" hidden>\r
+            <div class="model-grid">\r
+              <section class="panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u4E2A\u80A1\u8BC4\u5206\u6743\u91CD</h2>\r
+                    <p>\u5373\u65F6\u91CD\u7B97\u5E76\u4FDD\u5B58\uFF1B\u5DF2\u5F52\u6863\u7684\u539F\u59CB\u8BC4\u5206\u4E0D\u4F1A\u88AB\u8986\u76D6</p>\r
+                  </div>\r
+                  <span id="weight-total" class="outline-tag">\u5408\u8BA1 100%</span>\r
+                </div>\r
+                <div class="preset-buttons">\r
+                  <button data-preset="balanced" class="active">\u7EFC\u5408\u590D\u76D8</button\r
+                  ><button data-preset="first">\u9996\u677F\u6316\u6398</button\r
+                  ><button data-preset="relay">\u77ED\u7EBF\u63A5\u529B</button>\r
+                </div>\r
+                <div id="weight-controls"></div>\r
+                <div class="model-actions">\r
+                  <button class="secondary" id="reset-model">\r
+                    \u6062\u590D\u7EFC\u5408\u590D\u76D8</button\r
+                  ><span id="model-status" role="status"\r
+                    >\u6743\u91CD\u76F8\u52A0\u540E\u5F52\u4E00\u5316\u8BA1\u7B97</span\r
+                  >\r
+                </div>\r
+              </section>\r
+              <section class="panel model-explain">\r
+                <div class="panel-heading"><h2>\u5206\u6570\u5982\u4F55\u4EA7\u751F</h2></div>\r
+                <div class="formula-box">\r
+                  \u7EFC\u5408\u5206 = \u6709\u6548\u6307\u6807\u52A0\u6743\u5747\u5206<br /><span\r
+                    >\u2212 \u98CE\u9669\u6263\u5206\uFF08\u6700\u591A 20 \u5206\uFF09</span\r
+                  >\r
+                </div>\r
+                <h3>\u6570\u636E\u4E0D\u5B8C\u6574\u65F6</h3>\r
+                <p>\r
+                  \u7F3A\u5931\u6307\u6807\u4E0D\u6309\u96F6\u5206\u8BA1\u5165\uFF0C\u5269\u4F59\u6743\u91CD\u91CD\u65B0\u5F52\u4E00\u5316\u3002\u6570\u636E\u8986\u76D6\u7387\u540C\u65F6\u663E\u793A\uFF0C\u8986\u76D6\u7387\u8F83\u4F4E\u7684\u5F97\u5206\u53EF\u6BD4\u6027\u8F83\u5F31\u3002\r
+                </p>\r
+                <h3>\u98CE\u9669\u6263\u5206</h3>\r
+                <dl>\r
+                  <div>\r
+                    <dt>5 \u677F\u53CA\u4EE5\u4E0A</dt>\r
+                    <dd>\u22128</dd>\r
+                  </div>\r
+                  <div>\r
+                    <dt>\u6362\u624B\u7387 > 40%</dt>\r
+                    <dd>\u22128</dd>\r
+                  </div>\r
+                  <div>\r
+                    <dt>\u70B8\u677F \u2265 3 \u6B21</dt>\r
+                    <dd>\u22125</dd>\r
+                  </div>\r
+                  <div>\r
+                    <dt>\u4F4E\u6362\u624B\u7ADE\u4EF7\u5C01\u677F\u7279\u5F81</dt>\r
+                    <dd>\u221210</dd>\r
+                  </div>\r
+                  <div>\r
+                    <dt>14:50 \u540E\u56DE\u5C01</dt>\r
+                    <dd>\u22124</dd>\r
+                  </div>\r
+                </dl>\r
+                <p class="model-limit">\r
+                  \u6B64\u6A21\u578B\u662F\u89C4\u5219\u8BC4\u5206\uFF0C\u5C1A\u672A\u8FDB\u884C\u5386\u53F2\u6536\u76CA\u6821\u51C6\u3002\u5206\u6570\u8861\u91CF\u89C2\u5BDF\u6307\u6807\uFF0C\u4E0D\u4EE3\u8868\u6B21\u65E5\u4E0A\u6DA8\u6982\u7387\u3002\r
+                </p>\r
+              </section>\r
+            </div>\r
+            <section class="panel model-connection">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u5927\u6A21\u578B\u8FDE\u63A5</h2>\r
+                  <p>DeepSeek\u3001OpenAI\u3001\u901A\u4E49\u517C\u5BB9\u63A5\u53E3</p>\r
+                </div>\r
+                <span class="outline-tag" id="model-ai-status">\u672A\u914D\u7F6E</span>\r
+              </div>\r
+              <p id="model-ai-detail">\r
+                \u670D\u52A1\u7AEF\u914D\u7F6E\u5BC6\u94A5\u3001\u63A5\u53E3\u5730\u5740\u548C\u6A21\u578B\u540E\uFF0CAI\r
+                \u4F1A\u6839\u636E\u51BB\u7ED3\u8BC4\u5206\u4E0E\u5DF2\u6838\u9A8C\u5E02\u573A\u7ED3\u679C\u751F\u6210\u8BC4\u4EF7\u3002\u5BC6\u94A5\u4E0D\u8FDB\u5165\u6D4F\u89C8\u5668\u3002\r
+              </p>\r
+              <p>\r
+                AI\r
+                \u7ED9\u51FA\u8BC1\u636E\u3001\u5224\u65AD\u5931\u8BEF\u4E0E\u53C2\u6570\u5019\u9009\uFF1B\u6A21\u62DF\u4EA4\u6613\u7B56\u7565\u4EC5\u5728\u72EC\u7ACB\u9A8C\u8BC1\u901A\u8FC7\u540E\u542F\u7528\uFF0C\u5386\u53F2\u8BB0\u5F55\u4FDD\u6301\u51BB\u7ED3\u3002\r
+              </p>\r
+            </section>\r
+          </section>\r
+          <section id="paper-view" hidden>\r
+            <div class="paper-toolbar">\r
+              <div>\r
+                <span id="paper-date" class="outline-tag">\u68C0\u67E5\u8D26\u6237</span\r
+                ><span id="paper-audit" class="outline-tag">\u68C0\u67E5\u8D26\u672C</span>\r
+              </div>\r
+              <div>\r
+                <a\r
+                  class="secondary"\r
+                  href="/api/paper/export?format=csv"\r
+                  download\r
+                  >\u6210\u4EA4 CSV</a\r
+                ><a class="secondary" href="/api/paper/export" download\r
+                  >\u5B8C\u6574\u8BB0\u5F55 JSON</a\r
+                ><button\r
+                  id="paper-verify"\r
+                  class="secondary"\r
+                  data-paper-operation\r
+                >\r
+                  \u6838\u9A8C\u6536\u76CA</button\r
+                ><button id="paper-run" class="primary" data-paper-operation>\r
+                  \u66F4\u65B0\u76D8\u540E\u8D26\u6237\r
+                </button>\r
+              </div>\r
+            </div>\r
+            <p class="paper-message" id="paper-message" role="status">\r
+              \u6A21\u62DF\u8D26\u6237\u6309\u4E8B\u524D\u8BA1\u5212\u6267\u884C\uFF0C\u771F\u5B9E\u6570\u636E\u5230\u8FBE\u540E\u66F4\u65B0\u6536\u76CA\u3002\r
+            </p>\r
+            <div id="paper-metrics" class="metrics"></div>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u81EA\u52A8\u6267\u884C\u72B6\u6001</h2>\r
+                  <p id="paper-live-summary">\u68C0\u67E5\u6267\u884C\u5668\u5FC3\u8DF3\u4E0E\u817E\u8BAF\u884C\u60C5</p>\r
+                </div>\r
+                <span class="outline-tag" id="paper-live-tag">\u672A\u8FDE\u63A5</span>\r
+              </div>\r
+              <p class="panel-footnote" id="paper-live-health"></p>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u4E2A\u80A1 / \u52A8\u4F5C</th>\r
+                      <th>\u6267\u884C\u72B6\u6001</th>\r
+                      <th>\u8FDB\u5EA6</th>\r
+                      <th>\u6700\u8FD1\u5904\u7406\u7ED3\u679C</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="paper-live-orders"></tbody>\r
+                </table>\r
+              </div>\r
+            </section>\r
+            <div class="paper-grid">\r
+              <section class="panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>\u8D26\u6237\u6536\u76CA\u8F68\u8FF9</h2>\r
+                    <p>\u6BCF\u65E5\u6743\u76CA\u3001\u6210\u4EA4\u6210\u672C\u4E0E\u6307\u6570\u57FA\u51C6\u5747\u53EF\u91CD\u653E\u9A8C\u8BC1</p>\r
+                  </div>\r
+                  <span class="outline-tag">\u51C0\u6536\u76CA</span>\r
+                </div>\r
+                <div id="paper-chart"></div>\r
+                <div class="panel-footnote" id="paper-risk"></div>\r
+              </section>\r
+              <section class="panel ai-panel">\r
+                <div class="panel-heading">\r
+                  <div>\r
+                    <h2>AI \u7B56\u7565\u6539\u8FDB</h2>\r
+                    <p>\u5728\u5C01\u5B58\u6570\u636E\u4E0A\u9A8C\u8BC1\uFF0C\u518D\u542F\u7528\u65B0\u7248\u672C</p>\r
+                  </div>\r
+                  <span class="outline-tag" id="paper-ai-tag">\u68C0\u67E5\u8FDE\u63A5</span>\r
+                </div>\r
+                <div id="paper-ai-content"></div>\r
+                <div class="ai-actions">\r
+                  <button\r
+                    class="secondary"\r
+                    id="paper-improve"\r
+                    data-paper-operation\r
+                  >\r
+                    \u68C0\u67E5\u6539\u8FDB\u6761\u4EF6\r
+                  </button>\r
+                </div>\r
+                <div id="paper-version-list"></div>\r
+              </section>\r
+            </div>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u5F53\u524D\u6301\u4ED3</h2>\r
+                  <p>\r
+                    \u542B\u4E70\u5165\u8D39\u7528\u7684\u6210\u672C\uFF0CFIFO \u6838\u7B97\u5DF2\u5B9E\u73B0\u76C8\u4E8F\uFF1B\u5F53\u65E5\u65B0\u4E70\u5165\u4EFD\u989D\u4E0D\u53EF\u5356\r
+                  </p>\r
+                </div>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u4E2A\u80A1</th>\r
+                      <th>\u6301\u80A1\u6570\u91CF</th>\r
+                      <th>\u6BCF\u80A1\u6210\u672C</th>\r
+                      <th>\u6700\u65B0\u4F30\u503C\u4EF7</th>\r
+                      <th>\u6301\u4ED3\u5E02\u503C</th>\r
+                      <th>\u6D6E\u52A8\u76C8\u4E8F</th>\r
+                      <th>\u6301\u4ED3\u65F6\u95F4</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="paper-position-rows"></tbody>\r
+                </table>\r
+              </div>\r
+            </section>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading paper-plan-heading">\r
+                <div>\r
+                  <h2>\u4E0B\u4E00\u4EA4\u6613\u65E5\u8BA1\u5212</h2>\r
+                  <p id="paper-plan-meta">\r
+                    \u76D8\u540E\u51BB\u7ED3\u6570\u91CF\u4E0E\u4EF7\u683C\u6761\u4EF6\uFF0C\u4E0B\u4E00\u4EA4\u6613\u65E5\u6309\u5B9E\u65F6\u884C\u60C5\u81EA\u52A8\u6A21\u62DF\u6210\u4EA4\r
+                  </p>\r
+                </div>\r
+                <span class="outline-tag" id="paper-plan-date">\u7B49\u5F85\u8BC4\u5206</span>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u4E2A\u80A1 / \u677F\u5757</th>\r
+                      <th>\u52A8\u4F5C</th>\r
+                      <th>\u7B56\u7565\u8BC4\u5206</th>\r
+                      <th>\u8BA1\u5212\u6570\u91CF</th>\r
+                      <th>\u4E8B\u524D\u4EF7\u683C\u6761\u4EF6</th>\r
+                      <th>\u89C4\u5212\u4F9D\u636E</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="paper-plan-rows"></tbody>\r
+                </table>\r
+              </div>\r
+              <div id="paper-selection-audit" class="paper-outcomes"></div>\r
+              <div id="paper-outcomes" class="paper-outcomes"></div>\r
+              <div class="panel-footnote">\r
+                \u5B9E\u65F6\u8F6E\u8BE2\u6309\u5DF2\u89C2\u5BDF\u5230\u7684\u62A5\u4EF7\u5148\u540E\u6267\u884C\u505A T\uFF1B14:50\r
+                \u8D77\u5C1D\u8BD5\u6062\u590D\u7B2C\u4E8C\u817F\uFF0C\u672A\u5B8C\u6210\u90E8\u5206\u4FDD\u7559\u4ED3\u4F4D\u5E76\u5EF6\u7EED\u5230\u4E0B\u4E00\u4EA4\u6613\u65E5\u3002\u4FDD\u62A4\u9000\u51FA\u9075\u5B88\r
+                T+1\uFF1B\u6DA8\u8DCC\u505C\u6216\u7F3A\u5C11\u884C\u60C5\u65F6\u53EF\u80FD\u65E0\u6CD5\u6210\u4EA4\u3002\u6240\u6709\u6301\u4ED3\u6301\u7EED\u83B7\u53D6\u884C\u60C5\uFF0C\u5373\u4F7F\u4E0D\u518D\u51FA\u73B0\u5728\u6DA8\u505C\u6C60\u4E2D\u3002\r
+              </div>\r
+            </section>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u9010\u7B14\u6210\u4EA4\u8D26\u672C</h2>\r
+                  <p>\r
+                    \u5C55\u793A\u6700\u8FD1 100\r
+                    \u7B14\uFF1B\u5B8C\u6574\u5BFC\u51FA\u5305\u542B\u5168\u90E8\u6210\u4EA4\u3001\u8BA1\u5212\u3001\u884C\u60C5\u3001\u8D39\u7528\u4E0E\u6821\u9A8C\u503C\r
+                  </p>\r
+                </div>\r
+                <span class="outline-tag">\u8D39\u7528\u4E0E\u6ED1\u70B9\u5DF2\u8BA1\u5165</span>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u65E5\u671F / \u65F6\u95F4</th>\r
+                      <th>\u4E2A\u80A1</th>\r
+                      <th>\u52A8\u4F5C / \u65B9\u5411</th>\r
+                      <th>\u80A1\u6570</th>\r
+                      <th>\u6210\u4EA4\u4EF7</th>\r
+                      <th>\u8D39\u7528</th>\r
+                      <th>\u73B0\u91D1\u53D8\u52A8</th>\r
+                      <th>\u6210\u4EA4\u6A21\u578B</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="paper-ledger-rows"></tbody>\r
+                </table>\r
+              </div>\r
+              <div class="panel-footnote">\r
+                \u5206\u949F\u91C7\u6837\u4EF7\u683C\u52A0\u5165 10 bps \u6ED1\u70B9\u30011%\r
+                \u5206\u949F\u6210\u4EA4\u91CF\u53C2\u4E0E\u7387\uFF1B\u7F3A\u5C11\u5206\u949F\u884C\u60C5\u65F6\u4EC5\u4F7F\u7528\u660E\u786E\u6807\u8BB0\u7684\u5F00\u76D8\u6210\u4EA4\u5047\u8BBE\u3002\u65E0\u6CD5\u8FD8\u539F\u9010\u7B14\u6392\u961F\uFF0C\u4E0D\u7B49\u540C\u4E8E\u5B9E\u76D8\u6210\u4EA4\u3002\r
+              </div>\r
+            </section>\r
+            <section class="panel paper-panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u8D26\u6237\u8BBE\u7F6E</h2>\r
+                  <p id="paper-config-note">\u521D\u59CB\u8D44\u91D1\u4E0E\u6BCF\u9879\u8D39\u7528\u5747\u53EF\u81EA\u5B9A\u4E49</p>\r
+                </div>\r
+              </div>\r
+              <form id="paper-config-form" class="paper-config">\r
+                <label\r
+                  >\u521D\u59CB\u6A21\u62DF\u8D44\u91D1\uFF08\u5143\uFF09<input\r
+                    id="paper-initial-capital"\r
+                    type="number"\r
+                    min="10000"\r
+                    max="100000000"\r
+                    step="1000"\r
+                    value="1000000"\r
+                    required /></label\r
+                ><label\r
+                  >AI \u9A8C\u8BC1\u901A\u8FC7\u540E<select id="paper-improvement-mode">\r
+                    <option value="auto">\u81EA\u52A8\u542F\u7528\u65B0\u7B56\u7565</option>\r
+                    <option value="manual">\u4EBA\u5DE5\u9009\u62E9\u542F\u7528</option>\r
+                  </select></label\r
+                ><label\r
+                  >\u6536\u76CA\u57FA\u51C6\u6307\u6570<select id="paper-benchmark"></select\r
+                ></label>\r
+                <fieldset class="paper-fee-settings">\r
+                  <legend>\u8D39\u7528\u6784\u6210\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>\r
+                  <div class="fee-settings-heading">\r
+                    <p>\u8D39\u7387\u6309\u4E07\u5206\u4E4B\u8F93\u5165\uFF0C\u5206\u9879\u76F8\u52A0\uFF1B\u6700\u4F4E\u4F63\u91D1\u4EC5\u9002\u7528\u4E8E\u4F63\u91D1\u9879\u3002</p>\r
+                    <span class="outline-tag" id="paper-fee-version"\r
+                      >\u8D39\u7528\u914D\u7F6E v1</span\r
+                    >\r
+                  </div>\r
+                  <div id="paper-fee-controls" class="paper-fee-controls"></div>\r
+                  <p id="paper-fee-summary" class="fee-settings-note"></p>\r
+                  <button\r
+                    type="button"\r
+                    id="paper-fee-defaults"\r
+                    class="text-button"\r
+                  >\r
+                    \u6062\u590D\u56FE\u4E2D\u9ED8\u8BA4\u8D39\u7528\r
+                  </button>\r
+                </fieldset>\r
+                <fieldset class="paper-fee-settings">\r
+                  <legend>\u98CE\u63A7\u7EA6\u675F\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>\r
+                  <div class="fee-settings-heading">\r
+                    <p>\r
+                      \u5355\u80A1\u4E0E\u603B\u4ED3\u4F4D\u4E0A\u9650\u7EA6\u675F\u4E70\u5165\u89C4\u6A21\uFF0C\u56DE\u64A4\u7194\u65AD\u7EBF\u89E6\u53D1\u6E05\u4ED3\u5E76\u6682\u505C\u4E70\u5165\uFF1B\u6BD4\u4F8B\u6309\r
+                      % \u8F93\u5165\u3002\u65B0\u8BBE\u7F6E\u968F\u4E0B\u4E00\u8BA1\u5212\u51BB\u7ED3\uFF0C\u5386\u53F2\u6210\u4EA4\u6309\u5F53\u65F6\u914D\u7F6E\u6838\u9A8C\u3002\r
+                    </p>\r
+                    <span class="outline-tag" id="paper-risk-version"\r
+                      >\u98CE\u63A7\u914D\u7F6E v1</span\r
+                    >\r
+                  </div>\r
+                  <div\r
+                    id="paper-risk-controls"\r
+                    class="paper-fee-controls"\r
+                  ></div>\r
+                  <p id="paper-risk-summary" class="fee-settings-note"></p>\r
+                  <button\r
+                    type="button"\r
+                    id="paper-risk-defaults"\r
+                    class="text-button"\r
+                  >\r
+                    \u6062\u590D\u9ED8\u8BA4\u98CE\u63A7\r
+                  </button>\r
+                </fieldset>\r
+                <fieldset class="paper-fee-settings">\r
+                  <legend>\u7B56\u7565\u53C2\u6570\u4E0E\u60C5\u7EEA\u6863\u4F4D</legend>\r
+                  <div class="fee-settings-heading">\r
+                    <p>\r
+                      \u4FDD\u5B58\u540E\u767B\u8BB0\u4E3A\u65B0\u7B56\u7565\u7248\u672C\u5E76\u7528\u4E8E\u4E0B\u4E00\u4EFD\u8BA1\u5212\uFF0C\u5DF2\u51BB\u7ED3\u8BA1\u5212\u4FDD\u6301\u539F\u53C2\u6570\uFF1B\u56E0\u5B50\u6743\u91CD\u4E3A\u4EA4\u6613\u51B3\u7B56\u6743\u91CD\uFF0C\u72EC\u7ACB\u4E8E\u7814\u7A76\u9875\u89C2\u5BDF\u6743\u91CD\u3002\u60C5\u7EEA\u9608\u503C\u540C\u65F6\u51B3\u5B9A\u76EE\u6807\u655E\u53E3\u4E0E\u52A0\u4ED3\u3001\u505A\r
+                      T\u3001\u5F00\u65B0\u4ED3\u3001\u51CF\u4ED3\u95F8\u95E8\u3002\r
+                    </p>\r
+                    <span class="outline-tag" id="paper-strategy-version"\r
+                      >\u7B56\u7565 baseline-v1</span\r
+                    >\r
+                  </div>\r
+                  <div\r
+                    id="paper-strategy-controls"\r
+                    class="paper-fee-controls"\r
+                  ></div>\r
+                  <p id="paper-strategy-summary" class="fee-settings-note"></p>\r
+                  <button\r
+                    type="button"\r
+                    id="paper-strategy-defaults"\r
+                    class="text-button"\r
+                  >\r
+                    \u6062\u590D\u9ED8\u8BA4\u7B56\u7565\u53C2\u6570\r
+                  </button>\r
+                </fieldset>\r
+                <button class="secondary" type="submit" data-paper-operation>\r
+                  \u4FDD\u5B58\u8BBE\u7F6E\r
+                </button>\r
+              </form>\r
+            </section>\r
+          </section>\r
+          <section id="strategies-view" hidden>\r
+            <div class="paper-toolbar">\r
+              <div>\r
+                <span id="strategies-status-note" class="outline-tag"\r
+                  >\u540C\u4E00\u51BB\u7ED3\u6279\u6B21\u5185\u56FA\u5B9A\u5019\u9009\u5E76\u884C\u524D\u77BB\uFF1B\u6279\u6B21\u7ED3\u675F\u81F3\u591A\u542F\u7528\u4E00\u4E2A\u5019\u9009</span\r
+                >\r
+              </div>\r
+              <div>\r
+                <button id="strategies-reserve" class="primary">\r
+                  \u53D1\u8D77\u65B0\u6279\u6B21\r
+                </button>\r
+              </div>\r
+            </div>\r
+            <section class="panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u6279\u6B21\u4E0E\u653F\u7B56</h2>\r
+                  <p>\u7EDF\u4E00\u7814\u7A76\u7A97\u53E3\u9501\u3001\u751F\u6210\u9884\u7B97\u4E0E\u7EDF\u8BA1\u9884\u7B97\uFF1B\u5931\u8D25\u6279\u6B21\u540C\u6837\u53EF\u67E5</p>\r
+                </div>\r
+                <span class="outline-tag">\u53D7\u63A7\u664B\u7EA7</span>\r
+              </div>\r
+              <div id="strategies-status"></div>\r
+            </section>\r
+            <section class="panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u6279\u6B21\u5217\u8868</h2>\r
+                  <p>\u70B9\u51FB\u6279\u6B21\u67E5\u770B\u56FA\u5B9A\u6210\u5458\u3001\u5339\u914D\u8D26\u6237\u51C0\u503C\u4E0E\u8D44\u683C</p>\r
+                </div>\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u6279\u6B21</th>\r
+                      <th>\u9636\u6BB5</th>\r
+                      <th>\u7236\u7B56\u7565</th>\r
+                      <th>\u5019\u9009\u6570</th>\r
+                      <th>\u521B\u5EFA\u65F6\u95F4</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="strategies-cohort-rows"></tbody>\r
+                </table>\r
+              </div>\r
+            </section>\r
+            <section class="panel" id="strategies-detail"></section>\r
+          </section>\r
+          <section id="alerts-view" hidden>\r
+            <div class="paper-toolbar">\r
+              <div>\r
+                <span id="alerts-status-note" class="outline-tag"\r
+                  >\u68C0\u67E5\u544A\u8B66\u914D\u7F6E</span\r
+                >\r
+              </div>\r
+              <div>\r
+                <button id="alerts-test" class="secondary">\u53D1\u9001\u6D4B\u8BD5\u901A\u77E5</button>\r
+                <button id="alerts-maintenance" class="secondary">\r
+                  \u8BBE\u7F6E\u7EF4\u62A4\u7A97\u53E3\r
+                </button>\r
+                <button id="alerts-refresh" class="primary">\u5237\u65B0</button>\r
+              </div>\r
+            </div>\r
+            <section class="panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u901A\u9053\u4E0E\u5916\u90E8\u76D1\u6D4B</h2>\r
+                  <p>\u98DE\u4E66\u673A\u5668\u4EBA\u63A5\u6536\u4E1A\u52A1\u544A\u8B66\uFF1B\u5916\u90E8\u76D1\u6D4B\u53D1\u73B0\u6574\u673A\u79BB\u7EBF</p>\r
+                </div>\r
+                <span class="outline-tag" id="alerts-enabled-tag">\u672A\u542F\u7528</span>\r
+              </div>\r
+              <div\r
+                id="alerts-channel-list"\r
+                class="metrics panel-metrics alert-channel-metrics"\r
+              ></div>\r
+              <p class="panel-footnote">\r
+                \u5BC6\u94A5\uFF08FEISHU_WEBHOOK_URL / FEISHU_SECRET /\r
+                WATCHDOG_*_URL\uFF09\u53EA\u4FDD\u5B58\u5728\u670D\u52A1\u7AEF\r
+                .env\uFF0C\u9875\u9762\u53EA\u663E\u793A\u914D\u7F6E\u72B6\u6001\u3002\u65AD\u7535\u6216\u65AD\u7F51\u65F6\u672C\u673A\u65E0\u6CD5\u53D1\u6D88\u606F\uFF0C\u7531\u5916\u90E8\u76D1\u6D4B\u6309\u7F3A\u5931\u4FE1\u53F7\u544A\u8B66\u3002\r
+              </p>\r
+            </section>\r
+            <section class="panel">\r
+              <div class="panel-heading">\r
+                <div>\r
+                  <h2>\u544A\u8B66\u4E8B\u4EF6</h2>\r
+                  <p>\u6309\u6301\u7EED\u65F6\u95F4\u53BB\u91CD\u4E0E\u5347\u7EA7\uFF1B\u786E\u8BA4\u53EA\u9759\u9ED8\u63D0\u9192\uFF0C\u4E0D\u63A9\u76D6\u672A\u6062\u590D</p>\r
+                </div>\r
+                <label class="text-button"\r
+                  ><input\r
+                    type="checkbox"\r
+                    id="alerts-active-only"\r
+                  />\u53EA\u770B\u672A\u6062\u590D</label\r
+                >\r
+              </div>\r
+              <div class="table-scroll">\r
+                <table>\r
+                  <thead>\r
+                    <tr>\r
+                      <th>\u89C4\u5219</th>\r
+                      <th>\u7EA7\u522B</th>\r
+                      <th>\u72B6\u6001</th>\r
+                      <th>\u9996\u6B21\u53D1\u751F</th>\r
+                      <th>\u6700\u8FD1\u53D1\u751F</th>\r
+                      <th>\u64CD\u4F5C</th>\r
+                    </tr>\r
+                  </thead>\r
+                  <tbody id="alerts-incident-rows"></tbody>\r
+                </table>\r
+              </div>\r
+              <div class="table-footer">\r
+                <span id="alerts-list-status">\u6B63\u5728\u8BFB\u53D6\u2026</span>\r
+                <button class="text-button" id="alerts-more" hidden>\r
+                  \u52A0\u8F7D\u66F4\u591A\r
+                </button>\r
+              </div>\r
+            </section>\r
+          </section>\r
+          <footer class="page-footer">\r
+            <span>LIMIT LENS <i>\xB7</i> \u6BCF\u65E5\u6DA8\u505C\u7814\u7A76</span\r
+            ><span\r
+              >\u7814\u7A76\u8BC4\u5206\u7528\u4E8E\u8F85\u52A9\u590D\u76D8\uFF1B\u5B9E\u76D8\u5224\u65AD\u9700\u7ED3\u5408\u516C\u544A\u3001\u9898\u6750\u4E0E\u6B21\u65E5\u627F\u63A5\u3002</span\r
+            >\r
+          </footer>\r
+        </main>\r
+      </div>\r
+    </div>\r
+    <dialog id="stock-dialog" class="detail-dialog">\r
+      <div class="dialog-top">\r
+        <span class="eyebrow">STOCK DIAGNOSTICS</span\r
+        ><button class="icon-button close-dialog" aria-label="\u5173\u95ED\u4E2A\u80A1\u8BCA\u65AD">\r
+          <span data-icon="close"></span>\r
+        </button>\r
+      </div>\r
+      <div id="stock-detail"></div>\r
+    </dialog>\r
+    <dialog id="help-dialog" class="help-dialog">\r
+      <div class="dialog-top">\r
+        <h2>\u6570\u636E\u4E0E\u8BA1\u7B97\u53E3\u5F84</h2>\r
+        <button class="icon-button close-dialog" aria-label="\u5173\u95ED\u6570\u636E\u8BF4\u660E">\r
+          <span data-icon="close"></span>\r
+        </button>\r
+      </div>\r
+      <div class="help-content">\r
+        <p>\r
+          \u6DA8\u505C\u6C60\u4F18\u5148\u8BFB\u53D6\u4E1C\u65B9\u8D22\u5BCC\u516C\u5F00\u884C\u60C5\uFF1B\u6307\u6570\u8BFB\u53D6\u817E\u8BAF\u516C\u5F00\u884C\u60C5\u3002\u9875\u9762\u4F1A\u6807\u660E\u5B9E\u9645\u6765\u6E90\u3001\u8BF7\u6C42\u65F6\u95F4\u548C\u4EA4\u6613\u65E5\u671F\u3002\u516C\u5F00\u63A5\u53E3\u53EF\u80FD\u9650\u6D41\u3001\u5EF6\u8FDF\u6216\u505C\u6B62\u670D\u52A1\u3002\r
+        </p>\r
+        <p>\r
+          \u6DA8\u505C\u6C60\u4EE5\u6765\u6E90\u7684\u6CAA\u6DF1\u6536\u76D8\u5C01\u677F\u5217\u8868\u4E3A\u51C6\u3002ST\r
+          \u4E0E\u9000\u5E02\u6807\u8BC6\u80A1\u7968\u4ECE\u8BC4\u5206\u4E2D\u5254\u9664\uFF1B\u5F53\u524D\u6765\u6E90\u4E0D\u542B\u79D1\u521B\u677F\u3001\u5317\u4EA4\u6240\u53CA\u672A\u4E2D\u65AD\u8FDE\u7EED\u4E00\u5B57\u6DA8\u505C\u7684\u65B0\u80A1\u3002\r
+        </p>\r
+        <p>\r
+          \u5C01\u5355\u989D\u4F7F\u7528\u5F53\u524D\u5C01\u5355\u91D1\u989D\uFF0C\u5C01\u5355\u6BD4\u4E3A\u5C01\u5355\u989D \xF7\r
+          \u5F53\u65E5\u6210\u4EA4\u989D\uFF1B\u9996\u5C01\u548C\u6700\u540E\u5C01\u677F\u65F6\u95F4\u6765\u81EA\u884C\u60C5\u5B57\u6BB5\uFF0C\u4E24\u8005\u7684\u95F4\u9694\u4E0D\u80FD\u89E3\u91CA\u4E3A\u5B9E\u9645\u5F00\u677F\u65F6\u957F\u3002\r
+        </p>\r
+        <p>\r
+          \u677F\u5757\u4EC5\u6309\u884C\u60C5\u63D0\u4F9B\u7684\u884C\u4E1A\u5206\u7C7B\u805A\u5408\uFF0C\u4E0D\u63A8\u65AD\u65B0\u95FB\u9898\u6750\u3002\u677F\u5757\u6DA8\u505C\u6570\u91CF\u672A\u9664\u4EE5\u884C\u4E1A\u603B\u6210\u5206\u6570\uFF0C\u56E0\u6B64\u5206\u6570\u4F1A\u53D7\u884C\u4E1A\u89C4\u6A21\u5F71\u54CD\u3002\r
+        </p>\r
+        <p>\r
+          \u5C01\u677F\u7387 = \u6DA8\u505C\u6C60\u5BB6\u6570 \xF7\uFF08\u6DA8\u505C\u6C60\u5BB6\u6570 +\r
+          \u6536\u76D8\u672A\u5C01\u4F4F\u7684\u70B8\u677F\u6C60\u5BB6\u6570\uFF09\u3002\u60C5\u7EEA\u5F3A\u5EA6\u7531\u6DA8\u505C\u5BB6\u6570\uFF0840%\uFF09\u3001\u5C01\u677F\u7387\uFF0835%\uFF09\u3001\u5E02\u573A\u9AD8\u5EA6\uFF0825%\uFF09\u6784\u6210\uFF1B\u6570\u636E\u7F3A\u5931\u4F1A\u91CD\u65B0\u5F52\u4E00\u5316\u3002\r
+        </p>\r
+        <p>\r
+          \u664B\u7EA7\u7387\u9700\u8981\u4E0A\u4E00\u53EF\u7528\u4EA4\u6613\u65E5\u6DA8\u505C\u5217\u8868\uFF1B\u6628\u65E5\u6C60\u63A5\u53E3\u7528\u4E8E\u5F53\u65E5\u664B\u7EA7\u7EDF\u8BA1\uFF1B\u8DE8\u65E5\u53CD\u9988\u53E6\u7528\u6307\u6570\u65E5\u671F\u5E8F\u5217\u786E\u8BA4\u76F8\u90BB\u4EA4\u6613\u65E5\u3002\u83B7\u53D6\u4E0D\u5230\u5386\u53F2\u6570\u636E\u65F6\u663E\u793A\u201C\u2014\u201D\u3002\r
+        </p>\r
+        <p>\r
+          \u6A21\u62DF\u4EA4\u6613\u6309\u524D\u4E00\u4EA4\u6613\u65E5\u51BB\u7ED3\u7684\u6570\u91CF\u548C\u4EF7\u683C\u6761\u4EF6\uFF0C\u4EE5\u817E\u8BAF HTTP\r
+          \u5B9E\u65F6\u62A5\u4EF7\u81EA\u52A8\u6267\u884C\u5E76\u8BA1\u5165\u8D39\u7528\uFF1B\u6240\u6709\u6301\u4ED3\u6301\u7EED\u8DDF\u8E2A\uFF0C\u76D8\u540E\u6309\u5B9E\u9645\u6A21\u62DF\u6210\u4EA4\u66F4\u65B0\u6536\u76CA\u3002\u9010\u7B14\u6392\u961F\u3001\u9F99\u864E\u699C\u4E0E\u516C\u544A\u5C1A\u672A\u63A5\u5165\uFF1B\u7CFB\u7EDF\u53EA\u64CD\u4F5C\u6A21\u62DF\u8D26\u6237\u3002\r
+        </p>\r
+      </div>\r
+    </dialog>\r
+    <script type="module" src="/assets/app.js"><\/script>\r
+  </body>\r
+</html>\r
+`, "type": "text/html; charset=utf-8" }, "/assets/app.js": { "body": 'var gt=[{key:"quality",name:"\\u5C01\\u677F\\u8D28\\u91CF",weight:30,description:"100 \\u2212 \\u70B8\\u677F\\u6B21\\u6570 \\xD7 15\\uFF0C\\u6700\\u4F4E 10 \\u5206"},{key:"capital",name:"\\u5C01\\u5355\\u5F3A\\u5EA6",weight:20,description:"\\u5C01\\u5355\\u91D1\\u989D \\xF7 \\u6210\\u4EA4\\u989D \\xF7 10%\\uFF0C\\u4E0A\\u9650 100 \\u5206"},{key:"liquidity",name:"\\u6362\\u624B\\u7ED3\\u6784",weight:15,description:"4\\u201312%\\uFF1A95\\uFF1B12\\u201325%\\uFF1A80\\uFF1B1\\u20134%\\uFF1A65\\uFF1B25\\u201340%\\uFF1A50\\uFF1B\\u5176\\u4F59\\uFF1A30"},{key:"timing",name:"\\u9996\\u5C01\\u65F6\\u70B9",weight:15,description:"09:45 \\u524D 100\\uFF1B10:30 \\u524D 85\\uFF1B11:30 \\u524D 65\\uFF1B14:00 \\u524D 45\\uFF1B\\u5176\\u4F59 25"},{key:"sector",name:"\\u677F\\u5757\\u534F\\u540C",weight:15,description:"\\u4F7F\\u7528\\u540C\\u65E5\\u3001\\u540C\\u4E00\\u884C\\u4E1A\\u7684\\u677F\\u5757\\u8BC4\\u5206"},{key:"ladder",name:"\\u8FDE\\u677F\\u7ED3\\u6784",weight:5,description:"\\u9996\\u677F 75\\uFF1B2\\u20133 \\u677F 100\\uFF1B4 \\u677F 65\\uFF1B5 \\u677F\\u53CA\\u4EE5\\u4E0A 40"}],I={balanced:[30,20,15,15,15,5],first:[30,20,15,20,12,3],relay:[30,20,10,10,20,10]},M=(t,e=0,a=100)=>Math.max(e,Math.min(a,t)),A=t=>t==null||t===""||!Number.isFinite(Number(t))?null:Number(t);function Q(t){if(t==null)return"\\u2014";let e=String(t).padStart(6,"0");return/^\\d{6}$/.test(e)?`${e.slice(0,2)}:${e.slice(2,4)}`:"\\u2014"}function $t(t){return{code:String(t.c||""),name:String(t.n||""),sector:String(t.hybk||"\\u672A\\u5206\\u7C7B"),price:A(t.p)===null?null:Number(t.p)/1e3,change:A(t.zdp),amount:A(t.amount),floatCap:A(t.ltsz),seal:A(t.fund),turnover:A(t.hs),first:A(t.fbt),last:A(t.lbt),breaks:A(t.zbc),height:A(t.lbc)??A(t.ylbc),history:t.zttj?`${t.zttj.days} \\u5929 ${t.zttj.ct} \\u677F`:null}}function Xt(t,e){let a=t.map(i=>i[e]).filter(Number.isFinite);return a.length?a.reduce((i,s)=>i+s,0)/a.length:null}function Zt(t){let e=new Map;return t.forEach(a=>{e.has(a.sector)||e.set(a.sector,[]),e.get(a.sector).push(a)}),[...e].map(([a,i])=>{let s=i.filter(h=>h.breaks!==null),u=s.length?Xt(s.map(h=>({...h,q:M(100-h.breaks*15,10)})),"q"):null,c=Math.max(0,...i.map(h=>h.height||0)),d=[{name:"\\u6DA8\\u505C\\u96C6\\u805A",weight:35,value:M(i.length/6*100)},{name:"\\u8FDE\\u677F\\u9AD8\\u5EA6",weight:25,value:M(c/5*100)},{name:"\\u5C01\\u677F\\u7A33\\u5B9A",weight:25,value:u},{name:"\\u65E9\\u76D8\\u8054\\u52A8",weight:15,value:i.filter(h=>h.first!==null).length?i.filter(h=>h.first!==null&&h.first<103e3).length/i.filter(h=>h.first!==null).length*100:null}],S=d.filter(h=>h.value!==null).reduce((h,p)=>h+p.weight,0),E=Math.round(d.reduce((h,p)=>h+(p.value===null?0:p.value*p.weight),0)/S);return{name:a,count:i.length,height:c,quality:u,score:E,coverage:S,components:d,amount:i.reduce((h,p)=>h+(p.amount||0),0),members:i.map(h=>h.code)}}).sort((a,i)=>i.score-a.score||i.count-a.count)}function Jt(t,e,a=I.balanced){let i={quality:t.breaks===null?null:M(100-t.breaks*15,10),capital:t.seal===null||!t.amount?null:M(t.seal/t.amount/.1*100),liquidity:t.turnover===null?null:t.turnover>=4&&t.turnover<=12?95:t.turnover>12&&t.turnover<=25?80:t.turnover>=1&&t.turnover<4?65:t.turnover>25&&t.turnover<=40?50:30,timing:t.first===null?null:t.first<94500?100:t.first<103e3?85:t.first<113e3?65:t.first<14e4?45:25,sector:e??null,ladder:t.height===null?null:t.height===1?75:t.height<=3?100:t.height===4?65:40},s=[];t.height>=5&&s.push({text:"\\u9AD8\\u4F4D\\u8FDE\\u677F",penalty:8,detail:"5 \\u677F\\u53CA\\u4EE5\\u4E0A\\uFF0C\\u5206\\u6B67\\u4E0E\\u9000\\u6F6E\\u98CE\\u9669\\u4E0A\\u5347\\u3002"}),t.turnover>40&&s.push({text:"\\u9AD8\\u6362\\u624B",penalty:8,detail:"\\u6362\\u624B\\u7387\\u8D85\\u8FC7 40%\\uFF0C\\u7B79\\u7801\\u4EA4\\u6362\\u5267\\u70C8\\u3002"}),t.breaks>=3&&s.push({text:"\\u53CD\\u590D\\u70B8\\u677F",penalty:5,detail:"\\u76D8\\u4E2D\\u81F3\\u5C11 3 \\u6B21\\u5F00\\u677F\\uFF0C\\u5C01\\u677F\\u7A33\\u5B9A\\u6027\\u504F\\u5F31\\u3002"}),t.first===92500&&t.last===92500&&t.turnover!==null&&t.turnover<1&&s.push({text:"\\u4E00\\u5B57\\u7279\\u5F81",penalty:10,detail:"\\u7ADE\\u4EF7\\u5C01\\u677F\\u4E14\\u4F4E\\u6362\\u624B\\uFF0C\\u5B9E\\u9645\\u6210\\u4EA4\\u673A\\u4F1A\\u53EF\\u80FD\\u6709\\u9650\\u3002"}),t.last!==null&&t.last>=145e3&&s.push({text:"\\u5C3E\\u76D8\\u56DE\\u5C01",penalty:4,detail:"\\u6700\\u540E\\u5C01\\u677F\\u65F6\\u95F4\\u63A5\\u8FD1\\u6536\\u76D8\\uFF0C\\u9700\\u89C2\\u5BDF\\u6B21\\u65E5\\u627F\\u63A5\\u3002"});let u=gt.map((p,f)=>({...p,weight:a[f],value:i[p.key]})),c=u.filter(p=>p.value!==null),d=c.reduce((p,f)=>p+f.weight,0),S=a.reduce((p,f)=>p+f,0),E=d?c.reduce((p,f)=>p+f.value*f.weight,0)/d:null,h=Math.min(20,s.reduce((p,f)=>p+f.penalty,0));return{...t,score:E===null?null:Math.round(M(E-h)),rawScore:E,deduction:h,factors:u,risks:s,coverage:S?Math.round(d/S*100):0,sealRatio:t.seal!==null&&t.amount>0?t.seal/t.amount:null}}function Qt(t,e=null){let a=t.filter(u=>u.code&&!/ST|\u9000/.test(u.name)),i=e?new Set(e.map(u=>u.code)):null,s=e?.filter(u=>Number.isInteger(u.height)&&u.height>0);return{promotion:s?.length?s.filter(u=>a.some(c=>c.code===u.code&&Number.isInteger(c.height)&&c.height>u.height)).length/s.length*100:null,previousCount:i?i.size:null}}function Dt(t,e=null,a=null,i=I.balanced){let s=t.filter(g=>g.code&&!/ST|\u9000/.test(g.name)),u=Zt(s),c=new Map(u.map(g=>[g.name,g.score])),d=s.map(g=>Jt(g,c.get(g.sector),i)).sort((g,T)=>(T.score??-1)-(g.score??-1)),S=e===null?null:t.length+e?t.length/(t.length+e)*100:null,E=Math.max(0,...s.map(g=>g.height||0)),h=s.filter(g=>g.height===1).length,p=s.filter(g=>g.height>1).length,f=[{weight:40,value:M(s.length/80*100)},{weight:35,value:S},{weight:25,value:M(E/7*100)}],H=f.filter(g=>g.value!==null).reduce((g,T)=>g+T.weight,0),ht=s.length?Math.round(f.reduce((g,T)=>g+(T.value??0)*T.weight,0)/H):null,{promotion:r,previousCount:x}=Qt(s,a);return{stocks:d,sectors:u,count:s.length,excluded:t.length-s.length,first:h,relay:p,height:E,sealRate:S,emotion:ht,emotionCoverage:H,promotion:r,previousCount:x}}var B=Object.freeze([{key:"commission_rate",label:"\\u4F63\\u91D1\\u7387",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"commission_min",label:"\\u6700\\u4F4E\\u4F63\\u91D1",unit:"\\u5143",direction:"\\u53CC\\u8FB9"},{key:"stamp_tax",label:"\\u5370\\u82B1\\u7A0E",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u4EC5\\u5356\\u51FA"},{key:"handling_fee",label:"\\u7ECF\\u624B\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"regulatory_fee",label:"\\u8BC1\\u7BA1\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"transfer_fee",label:"\\u8FC7\\u6237\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"}]),ft=Object.freeze({commission_rate:5e-5,commission_min:5,stamp_tax:5e-4,handling_fee:341e-7,regulatory_fee:2e-5,transfer_fee:1e-5}),ke=Object.freeze({commission_rate:25e-5,commission_min:5,stamp_tax:5e-4,handling_fee:0,regulatory_fee:0,transfer_fee:1e-5});var yt=Object.freeze({maxPositionWeight:.2,maxGrossExposure:.6,maxDrawdown:.1,maxParticipation:.01,slippageBps:10}),j=Object.freeze([{key:"maxPositionWeight",label:"\\u5355\\u80A1\\u4ED3\\u4F4D\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u5355\\u53EA\\u4E2A\\u80A1\\u5E02\\u503C\\u5360\\u8D26\\u6237\\u6743\\u76CA\\u7684\\u4E0A\\u9650"},{key:"maxGrossExposure",label:"\\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u5168\\u90E8\\u6301\\u4ED3\\u5E02\\u503C\\u5360\\u8D26\\u6237\\u6743\\u76CA\\u7684\\u4E0A\\u9650"},{key:"maxDrawdown",label:"\\u56DE\\u64A4\\u7194\\u65AD\\u7EBF",unit:"%",percent:!0,hint:"\\u6743\\u76CA\\u81EA\\u5CF0\\u503C\\u56DE\\u64A4\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u65F6\\u6E05\\u4ED3\\u5E76\\u6682\\u505C\\u4E70\\u5165"},{key:"maxParticipation",label:"\\u5206\\u949F\\u6210\\u4EA4\\u91CF\\u53C2\\u4E0E\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u65E7\\u6210\\u672C\\u6A21\\u578B\\u4E0B\\u5355\\u5206\\u949F\\u6700\\u591A\\u6D88\\u8017\\u7684\\u6210\\u4EA4\\u91CF\\u6BD4\\u4F8B"},{key:"slippageBps",label:"\\u65E7\\u6A21\\u578B\\u56FA\\u5B9A\\u6ED1\\u70B9",unit:"bps",percent:!1,hint:"\\u65E7\\u6210\\u672C\\u6A21\\u578B\\u6210\\u4EA4\\u4EF7\\u76F8\\u5BF9\\u53C2\\u8003\\u4EF7\\u7684\\u56FA\\u5B9A\\u504F\\u79FB"}]),we=Object.freeze({maxPositionWeight:[.01,1],maxGrossExposure:[.01,1],maxDrawdown:[.005,1],maxParticipation:[1e-4,.1],slippageBps:[0,200]});var vt=Object.freeze({highEmotion:65,midEmotion:40,high:.55,mid:.35,low:.15}),Le=Object.freeze({minScore:[70,95],minSectorScore:[40,80],maxPositions:[2,5],maxHoldDays:[2,10],stopLoss:[.02,.08],takeProfit:[.06,.2],maxBuyGap:[0,.04],tFraction:[.1,.25],tBuyDip:[.01,.04],tSellRise:[.01,.04]}),De=Object.freeze(["minScore","minSectorScore","maxPositions","maxHoldDays"]),tt=Object.freeze([{key:"quality",label:"\\u5C01\\u677F\\u8D28\\u91CF"},{key:"capital",label:"\\u5C01\\u5355\\u5F3A\\u5EA6"},{key:"liquidity",label:"\\u6362\\u624B\\u7ED3\\u6784"},{key:"timing",label:"\\u9996\\u5C01\\u65F6\\u70B9"},{key:"sector",label:"\\u677F\\u5757\\u534F\\u540C"},{key:"ladder",label:"\\u8FDE\\u677F\\u7ED3\\u6784"}]),et=Object.freeze([{key:"maxPositions",label:"\\u6700\\u5927\\u6301\\u4ED3\\u6570",unit:"\\u53EA",percent:!1,min:2,max:5,step:1,hint:"\\u540C\\u65F6\\u6301\\u6709\\u7684\\u80A1\\u7968\\u6570\\u91CF\\u4E0A\\u9650"},{key:"minScore",label:"\\u5EFA\\u4ED3\\u6700\\u4F4E\\u8BC4\\u5206",unit:"\\u5206",percent:!1,min:70,max:95,step:1,hint:"\\u65B0\\u5F00\\u4ED3\\u8981\\u6C42\\u7684\\u7B56\\u7565\\u8BC4\\u5206\\u4E0B\\u9650"},{key:"minSectorScore",label:"\\u5EFA\\u4ED3\\u6700\\u4F4E\\u677F\\u5757\\u5206",unit:"\\u5206",percent:!1,min:40,max:80,step:1,hint:"\\u65B0\\u5F00\\u4ED3\\u8981\\u6C42\\u7684\\u677F\\u5757\\u534F\\u540C\\u8BC4\\u5206\\u4E0B\\u9650"},{key:"maxHoldDays",label:"\\u6700\\u957F\\u6301\\u6709\\u5929\\u6570",unit:"\\u5929",percent:!1,min:2,max:10,step:1,hint:"\\u6301\\u6709\\u8FBE\\u5230\\u8BE5\\u5929\\u6570\\u540E\\u6E05\\u4ED3"},{key:"stopLoss",label:"\\u6B62\\u635F\\u5E45\\u5EA6",unit:"%",percent:!0,min:2,max:8,step:.1,hint:"\\u4E8F\\u635F\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u89E6\\u53D1\\u6E05\\u4ED3"},{key:"takeProfit",label:"\\u5206\\u6279\\u6B62\\u76C8\\u5E45\\u5EA6",unit:"%",percent:!0,min:6,max:20,step:.1,hint:"\\u76C8\\u5229\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u89E6\\u53D1\\u51CF\\u4ED3\\u5151\\u73B0"},{key:"maxBuyGap",label:"\\u5F00\\u76D8\\u4E70\\u5165\\u4E0A\\u9650",unit:"%",percent:!0,min:0,max:4,step:.1,hint:"\\u4E70\\u5165\\u4EF7\\u76F8\\u5BF9\\u6628\\u6536\\u7684\\u6700\\u5927\\u4E0A\\u6D6E\\uFF0C\\u8D85\\u51FA\\u5219\\u653E\\u5F03"},{key:"tFraction",label:"\\u505A T \\u4ED3\\u4F4D\\u6BD4\\u4F8B",unit:"%",percent:!0,min:10,max:25,step:.1,hint:"\\u6BCF\\u6B21\\u505A T \\u4F7F\\u7528\\u5E95\\u4ED3\\u7684\\u6BD4\\u4F8B"},{key:"tBuyDip",label:"\\u505A T \\u4F4E\\u5438\\u4EF7\\u5DEE",unit:"%",percent:!0,min:1,max:4,step:.1,hint:"\\u6B63\\u5411 T \\u7684\\u4E70\\u5165\\u89E6\\u53D1\\u56DE\\u843D\\u5E45\\u5EA6"},{key:"tSellRise",label:"\\u505A T \\u5151\\u73B0\\u4EF7\\u5DEE",unit:"%",percent:!0,min:1,max:4,step:.1,hint:"\\u6B63\\u5411 T \\u7684\\u5356\\u51FA\\u89E6\\u53D1\\u4E0A\\u6D6E\\u5E45\\u5EA6"}]),at=Object.freeze([{key:"highEmotion",label:"\\u9AD8\\u6863\\u60C5\\u7EEA\\u9608\\u503C",unit:"\\u5206",percent:!1,min:0,max:100,step:1,hint:"\\u60C5\\u7EEA\\u8FBE\\u5230\\u8BE5\\u503C\\u8FDB\\u5165\\u9AD8\\u6863\\uFF1A\\u76EE\\u6807\\u655E\\u53E3\\u53D6\\u9AD8\\u6863\\uFF0C\\u5E76\\u5141\\u8BB8\\u52A0\\u4ED3"},{key:"midEmotion",label:"\\u4F4E\\u6863\\u60C5\\u7EEA\\u9608\\u503C",unit:"\\u5206",percent:!1,min:0,max:100,step:1,hint:"\\u60C5\\u7EEA\\u4F4E\\u4E8E\\u8BE5\\u503C\\u8FDB\\u5165\\u9632\\u5B88\\uFF1A\\u76EE\\u6807\\u655E\\u53E3\\u53D6\\u4F4E\\u6863\\uFF0C\\u505C\\u6B62\\u5F00\\u65B0\\u4ED3\\u4E0E\\u505A T \\u5E76\\u51CF\\u4ED3"},{key:"high",label:"\\u9AD8\\u6863\\u76EE\\u6807\\u655E\\u53E3",unit:"%",percent:!0,min:5,max:95,step:.1,hint:"\\u9AD8\\u6863\\u60C5\\u7EEA\\u4E0B\\u7684\\u76EE\\u6807\\u603B\\u4ED3\\u4F4D"},{key:"mid",label:"\\u4E2D\\u6863\\u76EE\\u6807\\u655E\\u53E3",unit:"%",percent:!0,min:5,max:95,step:.1,hint:"\\u4E2D\\u6027\\u60C5\\u7EEA\\u4E0B\\u7684\\u76EE\\u6807\\u603B\\u4ED3\\u4F4D"},{key:"low",label:"\\u4F4E\\u6863\\u76EE\\u6807\\u655E\\u53E3",unit:"%",percent:!0,min:5,max:95,step:.1,hint:"\\u9632\\u5B88\\u60C5\\u7EEA\\u4E0B\\u7684\\u76EE\\u6807\\u603B\\u4ED3\\u4F4D"}]),It=Object.freeze({weights:Object.freeze([...I.balanced]),minScore:80,minSectorScore:55,maxPositions:4,maxHoldDays:5,stopLoss:.06,takeProfit:.12,maxBuyGap:.03,tFraction:.2,tBuyDip:.02,tSellRise:.02,exposureTiers:vt}),Ie=Object.freeze({highEmotion:[0,100],midEmotion:[0,100],high:[.05,.95],mid:[.05,.95],low:[.05,.95]});var bt="sh000001",nt=[{code:"sh000001",name:"\\u4E0A\\u8BC1\\u6307\\u6570"},{code:"sz399001",name:"\\u6DF1\\u8BC1\\u6210\\u6307"},{code:"sh000300",name:"\\u6CAA\\u6DF1300"},{code:"sh000905",name:"\\u4E2D\\u8BC1500"},{code:"sh000852",name:"\\u4E2D\\u8BC11000"},{code:"sz399006",name:"\\u521B\\u4E1A\\u677F\\u6307"},{code:"sh000688",name:"\\u79D1\\u521B50"}],Me=new Set(nt.map(t=>t.code)),Rt=t=>nt.find(e=>e.code===t)?.name||"\\u4E0A\\u8BC1\\u6307\\u6570";var l=t=>document.getElementById(t),m=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),v=t=>(Number(t||0)/100).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2}),xt=t=>Math.abs(t||0)>=1e10?`${(t/1e10).toFixed(2)} \\u4EBF`:Math.abs(t||0)>=1e6?`${(t/1e6).toFixed(2)} \\u4E07`:v(t),C=t=>t==null?"\\u2014":`${t>0?"+":""}${(t*100).toFixed(2)}%`,st=t=>t>0?"up":t<0?"down":"",it={OPEN:"\\u5EFA\\u4ED3",ADD:"\\u52A0\\u4ED3",REDUCE:"\\u51CF\\u4ED3",EXIT:"\\u6E05\\u4ED3",T_FORWARD:"\\u6B63\\u5411 T",T_REVERSE:"\\u53CD\\u5411 T",HOLD:"\\u6301\\u6709"},_t={ACTIVE:"\\u4F7F\\u7528\\u4E2D",VALIDATED:"\\u9A8C\\u8BC1\\u901A\\u8FC7",LEGACY_VALIDATED:"\\u5386\\u53F2\\u901A\\u8FC7\\uFF08\\u65E0\\u542F\\u7528\\u8D44\\u683C\\uFF09",SHADOW_PENDING:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",AWAITING_SHADOW:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",REJECTED:"\\u672A\\u901A\\u8FC7",ERROR:"\\u8C03\\u7528\\u5931\\u8D25",PROPOSING:"\\u6B63\\u5728\\u9A8C\\u8BC1",RETIRED:"\\u5DF2\\u5F52\\u6863",COLLECTING:"\\u6570\\u636E\\u79EF\\u7D2F\\u4E2D",NOT_CONFIGURED:"\\u672A\\u914D\\u7F6E\\u5927\\u6A21\\u578B",BUSY:"\\u5DF2\\u6709\\u8FDB\\u884C\\u4E2D\\u7684\\u5B9E\\u9A8C",BUDGET_EXHAUSTED:"\\u672C\\u6708\\u63D0\\u6848\\u6B21\\u6570\\u5DF2\\u7528\\u5B8C",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u73AF\\u5883\\u53D8\\u5316\\u5DF2\\u5931\\u6548",APPROVED:"\\u5DF2\\u6279\\u51C6\\u5F85\\u6392\\u671F",SCHEDULED:"\\u5DF2\\u6392\\u671F",PROMOTED:"\\u5DF2\\u542F\\u7528"},Mt={PENDING:"\\u7B49\\u5F85\\u89E6\\u53D1",BLOCKED:"\\u53D7\\u7EA6\\u675F\\uFF0C\\u91CD\\u8BD5\\u4E2D",PARTIAL:"\\u90E8\\u5206\\u6210\\u4EA4",FIRST_LEG:"\\u505A T \\u7B2C\\u4E00\\u817F",SECOND_LEG:"\\u6062\\u590D\\u7B2C\\u4E8C\\u817F",FILLED:"\\u5B8C\\u6210",CANCELLED:"\\u5DF2\\u53D6\\u6D88",EXPIRED:"\\u5F53\\u65E5\\u5230\\u671F",EXPIRED_PARTIAL:"\\u90E8\\u5206\\u5B8C\\u6210\\u540E\\u5230\\u671F",INCOMPLETE_T:"\\u7B2C\\u4E8C\\u817F\\u8F6C\\u4E0B\\u65E5",RUNNING:"\\u8F6E\\u8BE2\\u8FD0\\u884C\\u4E2D",STALE_QUOTES:"\\u62A5\\u4EF7\\u9648\\u65E7\\uFF0C\\u6682\\u505C\\u6210\\u4EA4",MARKET_CLOSED:"\\u7B49\\u5F85\\u4EA4\\u6613\\u65F6\\u6BB5",ERROR:"\\u5F02\\u5E38\\uFF0C\\u81EA\\u52A8\\u91CD\\u8BD5",NON_TRADING_DAY:"\\u975E\\u4EA4\\u6613\\u65E5",CONFLICT:"\\u5E76\\u53D1\\u7ED3\\u679C\\u5DF2\\u4E22\\u5F03",SETTLED:"\\u5DF2\\u7ED3\\u7B97"},b=null,rt=!1,L=!1;async function q(t,e){let a=await fetch(t,{...e===void 0?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)},signal:AbortSignal.timeout(13e4)}),i=await a.json();if(!a.ok)throw new Error(i.error||"\\u670D\\u52A1\\u6682\\u4E0D\\u53EF\\u7528");return i}function O(t){l("paper-message").textContent=t}var Et=(t,e)=>t==="commission_min"?e:Number((e*1e4).toFixed(5));function jt(t){for(let{key:e}of B)l(`fee-${e}`).value=Et(e,t[e])}function te(t){return B.map(({key:e,label:a,unit:i})=>`${a} ${Et(e,t[e])}${i==="\\u5143"?" \\u5143":" / \\u4E07"}`).join(" \\xB7 ")}var Ct=(t,e)=>j.find(a=>a.key===t)?.percent?Number((e*100).toFixed(4)):e;function qt(t){for(let{key:e}of j)l(`risk-${e}`).value=Ct(e,t[e])}function ee(t){return j.map(({key:e,label:a,unit:i})=>`${a} ${Ct(e,t[e])}${i}`).join(" \\xB7 ")}var Nt=(t,e)=>t.percent?Number((e*100).toFixed(2)):e;function Ft(t){let e={...vt,...t.exposureTiers};tt.forEach(({key:a},i)=>l(`strat-weight-${a}`).value=t.weights[i]);for(let a of et)l(`strat-${a.key}`).value=Nt(a,t[a.key]);for(let a of at)l(`strat-tier-${a.key}`).value=Nt(a,e[a.key])}function ae(){return{weights:tt.map(({key:t})=>Number(l(`strat-weight-${t}`).value)),...Object.fromEntries(et.map(({key:t,percent:e})=>[t,e?Number(l(`strat-${t}`).value)/100:Number(l(`strat-${t}`).value)])),exposureTiers:Object.fromEntries(at.map(({key:t,percent:e})=>[t,e?Number(l(`strat-tier-${t}`).value)/100:Number(l(`strat-tier-${t}`).value)]))}}function Ot(t){return Object.entries({commission:"\\u4F63\\u91D1",stamp:"\\u5370\\u82B1\\u7A0E",handling:"\\u7ECF\\u624B\\u8D39",regulatory:"\\u8BC1\\u7BA1\\u8D39",transfer:"\\u8FC7\\u6237\\u8D39"}).map(([a,i])=>`${i} \\xA5 ${v(t.feeBreakdown[a]||0)}`).join("\\uFF1B")}function ne(t){let e=`<span class="stock-code">\\u53C2\\u8003\\u4EF7 \\xA5 ${v(t.referenceCents)}</span>`,a=`<span class="stock-code">\\u6B62\\u635F \\u2264 \\xA5 ${v(t.stopCents)}<br>\\u5206\\u6279\\u6B62\\u76C8 \\u2265 \\xA5 ${v(t.takeProfitCents)}</span>`,i=t.side==="PAIR"?`\\u4F4E\\u5438 \\u2264 \\xA5 ${v(t.buyTriggerCents)}<br>\\u5151\\u73B0 \\u2265 \\xA5 ${v(t.sellTriggerCents)}<span class="stock-code">09:35 \\u8D77\\u89E6\\u53D1 \\xB7 14:50 \\u8D77\\u6062\\u590D\\u7B2C\\u4E8C\\u817F</span>`:t.side==="BUY"&&t.recovery?`\\u6062\\u590D\\u4E70\\u56DE \\xB7 \\u53C2\\u8003 \\xA5 ${v(t.referenceCents)}<span class="stock-code">\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u6309\\u5B9E\\u65F6\\u4EF7 + 0.1% \\u6ED1\\u70B9<br>\\u53D7\\u73B0\\u91D1\\u3001\\u4ED3\\u4F4D\\u4E0E\\u6DA8\\u505C\\u8FB9\\u754C\\u9650\\u5236</span>`:t.side==="BUY"?`\\u4E70\\u5165\\u4E0A\\u9650 \\xA5 ${v(t.maxPriceCents)}<span class="stock-code">\\u542B\\u6ED1\\u70B9 \\xB7 09:30\\u201309:35 \\u5185\\u6EE1\\u8DB3\\u65F6\\u6210\\u4EA4</span>`:t.side==="SELL"?`\\u53C2\\u8003\\u5356\\u4EF7 \\xA5 ${v(Math.round(t.referenceCents*.999))}<span class="stock-code">\\u5B9E\\u9645\\u5356\\u4EF7 = \\u5B9E\\u65F6\\u62A5\\u4EF7 \\u2212 0.1% \\u6ED1\\u70B9<br>\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u91CD\\u8BD5\\uFF0C\\u8DCC\\u505C\\u4E0D\\u5047\\u8BBE\\u6210\\u4EA4</span>`:"\\u6301\\u6709\\u5E76\\u76D1\\u63A7\\u4FDD\\u62A4\\u9608\\u503C";return e+i+a}function se(t,e="\\u4E0A\\u8BC1\\u6307\\u6570"){if(!t.length)return\'<div class="empty"><strong>\\u6536\\u76CA\\u66F2\\u7EBF\\u4ECE\\u9996\\u4E2A\\u7ED3\\u7B97\\u65E5\\u5F00\\u59CB</strong>\\u4FDD\\u5B58\\u771F\\u5B9E\\u8BA1\\u5212\\u5E76\\u6267\\u884C\\u540E\\uFF0C\\u9010\\u65E5\\u79EF\\u7D2F\\u51C0\\u503C\\u3002</div>\';let a=760,i=200,s=30,u=[0,...t.map(p=>p.totalReturn),...t.map(p=>p.benchmarkReturn).filter(p=>p!=null)],c=Math.min(...u)-.005,d=Math.max(...u)+.005,S=p=>s+p/Math.max(1,t.length-1)*(a-2*s),E=p=>i-s-(p-c)/(d-c)*(i-s*2),h=p=>t.map((f,H)=>f[p]===null||f[p]===void 0?null:`${S(H)},${E(f[p])}`).filter(Boolean).join(" ");return`<svg class="equity-chart" viewBox="0 0 ${a} ${i}" role="img" aria-label="\\u8D26\\u6237\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387\\u4E0E${m(e)}\\u6536\\u76CA\\u7387"><line x1="${s}" x2="${a-s}" y1="${E(0)}" y2="${E(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${s}" y="18" class="chart-axis">${C(d)}</text><text x="${s}" y="${i-7}" class="chart-axis">${C(c)}</text><polyline points="${h("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${h("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${t.map((p,f)=>`<circle cx="${S(f)}" cy="${E(p.totalReturn)}" r="3" fill="#13977e"><title>${m(p.date)}\\uFF1A\\u8D26\\u6237 ${C(p.totalReturn)}\\uFF1B\\u57FA\\u51C6 ${C(p.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>\\u6A21\\u62DF\\u8D26\\u6237</span><span><i class="benchmark"></i>${m(e)}</span><span>${m(t[0].date)} \\u2014 ${m(t.at(-1).date)} \\xB7 ${t.length} \\u4E2A\\u7ED3\\u7B97\\u65E5</span></div>${t.length===1?\'<p class="panel-footnote">\\u9996\\u6B21\\u7ED3\\u7B97\\u53EA\\u5EFA\\u7ACB\\u6536\\u76CA\\u57FA\\u51C6\\uFF1B\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8D77\\u6267\\u884C\\u4E8B\\u524D\\u8BA1\\u5212\\u3002</p>\':""}`}function ie(){if(!b)return;let{book:t,equity:e,plan:a,run:i,versions:s,riskLimits:u}=b,c=b.realtime,d=c?.health;l("paper-live-tag").textContent=c?.running?"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5DF2\\u8FDE\\u63A5":"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u672A\\u8FDE\\u63A5",l("paper-live-summary").textContent=c?.session?`${c.session.date} \\xB7 ${c.session.sequence} \\u6B21\\u89C2\\u6D4B \\xB7 ${c.session.fillCount} \\u7B14\\u6210\\u4EA4`:"\\u5C1A\\u65E0\\u4ECA\\u65E5\\u5B9E\\u65F6\\u4EA4\\u6613\\u8BB0\\u5F55",l("paper-live-health").textContent=`${d?`${Mt[d.status]||d.status} \\xB7 \\u6700\\u8FD1\\u5FC3\\u8DF3 ${new Date(d.checkedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\xB7 ${d.pollIntervalSeconds} \\u79D2\\u8F6E\\u8BE2\\u3002`:"\\u5C1A\\u672A\\u6536\\u5230\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5FC3\\u8DF3\\u3002"} ${c?.running?"\\u5173\\u95ED\\u7F51\\u9875\\u540E\\u670D\\u52A1\\u7EE7\\u7EED\\u6267\\u884C\\uFF1B\\u76D8\\u540E\\u6309\\u5DF2\\u8BB0\\u5F55\\u6210\\u4EA4\\u7ED3\\u7B97\\u3002":c?.requirement||""}`,l("paper-live-orders").innerHTML=c?.session?.orders.length?c.session.orders.map(r=>`<tr><td><strong>${m(r.name)} \\xB7 ${it[r.action]}</strong><span class="stock-code">${m(r.code)}</span></td><td>${Mt[r.status]||m(r.status)}</td><td>${r.side==="PAIR"?`\\u7B2C\\u4E00\\u817F ${r.firstFilled} / \\u7B2C\\u4E8C\\u817F ${r.secondFilled}`:`${r.filledQuantity} / ${r.quantity}`} \\u80A1</td><td>${m(r.reason)}</td></tr>`).join(""):\'<tr><td colspan="4"><div class="empty compact">\\u7B49\\u5F85\\u5E38\\u9A7B\\u670D\\u52A1\\u5728\\u4EA4\\u6613\\u65F6\\u6BB5\\u6267\\u884C\\u51BB\\u7ED3\\u8BA1\\u5212\\u3002</div></td></tr>\';let S=t.positions.reduce((r,x)=>r+x.lots.reduce((g,T)=>g+T.quantity,0)*x.markCents,0),E=[["\\u8D26\\u6237\\u603B\\u6743\\u76CA",`\\xA5 ${xt(t.equityCents)}`,`\\u521D\\u59CB\\u8D44\\u91D1 \\xA5 ${v(t.initialCashCents)}`,""],["\\u5F53\\u65E5\\u76C8\\u4E8F",`\\xA5 ${xt(e?.dailyPnlCents)}`,`\\u5F53\\u65E5\\u6536\\u76CA ${C(e?.dailyReturn??0)}`,st(e?.dailyPnlCents)],["\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387",C(t.equityCents/t.initialCashCents-1),`\\u5DF2\\u6263\\u8D39\\u7528 \\xA5 ${v(t.feesCents)}`,st(t.equityCents-t.initialCashCents)],["\\u5F53\\u524D\\u6301\\u4ED3\\u6BD4\\u4F8B",C(S/t.equityCents),`\\u53EF\\u7528\\u73B0\\u91D1 \\xA5 ${v(t.cashCents)}`,""]];l("paper-metrics").innerHTML=E.map(([r,x,g,T])=>`<article class="metric"><div class="metric-head">${r}</div><div class="metric-value ${T}">${x}</div><div class="metric-caption">${g}</div></article>`).join(""),l("paper-date").textContent=t.lastDate?`\\u5DF2\\u7ED3\\u7B97\\u81F3 ${t.lastDate}`:"\\u7B49\\u5F85\\u9996\\u6B21\\u76D8\\u540E\\u7ED3\\u7B97",l("paper-audit").textContent=b.audit.passed?"\\u8D44\\u91D1\\u8D26\\u672C\\u4E00\\u81F4":"\\u8D26\\u672C\\u6838\\u5BF9\\u5F02\\u5E38",l("paper-audit").className=`outline-tag ${b.audit.passed?"verified":"down"}`,l("paper-chart").innerHTML=se(b.equities,Rt(b.benchmarkCode||t.benchmarkCode)),l("paper-risk").textContent=`\\u5355\\u80A1\\u4E0A\\u9650 ${C(u.maxPositionWeight)} \\xB7 \\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650 ${C(u.maxGrossExposure)} \\xB7 \\u56DE\\u64A4 ${C(e?.drawdown??0)} / ${C(u.maxDrawdown)} \\xB7 \\u4E0D\\u900F\\u652F`,l("paper-position-rows").innerHTML=t.positions.length?t.positions.map(r=>{let x=r.lots.reduce((N,z)=>N+z.quantity,0),g=r.lots.reduce((N,z)=>N+z.costCents,0),T=r.lots.filter(N=>N.acquiredDate<(c?.session?.date||new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"}))).reduce((N,z)=>N+z.quantity,0);return`<tr><td><strong>${m(r.name)}</strong><span class="stock-code">${m(r.code)}</span></td><td>${x}<span class="stock-code">\\u5F53\\u65E5\\u53EF\\u5356 ${T}</span></td><td>${v(g/x)}</td><td>${v(r.markCents)}</td><td>\\xA5 ${v(x*r.markCents)}</td><td class="${st(x*r.markCents-g)}">\\xA5 ${v(x*r.markCents-g)}</td><td>${r.heldDays} \\u65E5</td></tr>`}).join(""):\'<tr><td colspan="7"><div class="empty compact">\\u5F53\\u524D\\u7A7A\\u4ED3\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6309\\u7167\\u51BB\\u7ED3\\u8BA1\\u5212\\u4E0E\\u5B9E\\u9645\\u6210\\u4EA4\\u6761\\u4EF6\\u6A21\\u62DF\\u6267\\u884C\\u3002</div></td></tr>\',l("paper-plan-date").textContent=a?`${a.signalDate} \\u76D8\\u540E\\u5236\\u5B9A \\u2192 \\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5`:"\\u5C1A\\u672A\\u751F\\u6210\\u8BA1\\u5212",l("paper-plan-meta").textContent=a?`\\u7B56\\u7565 ${a.strategyVersion} \\xB7 \\u9009\\u80A1 ${a.selectionPolicy?.version==="signal-ranking-v2"?"\\u7CBE\\u786E\\u5206 \\u2192 \\u6210\\u4EA4\\u989D \\u2192 \\u4EE3\\u7801":"\\u6574\\u6570\\u5206 \\u2192 \\u4EE3\\u7801"} \\xB7 \\u8D39\\u7528 v${a.feeConfigVersion||0} \\xB7 \\u6210\\u672C ${a.executionCostPolicy?`${a.executionCostPolicy.modelVersion} v${a.executionCostPolicy.version||0}`:"\\u65E7\\u7248\\u56FA\\u5B9A 10bps"}${a.sourceSnapshotMissing?" \\xB7 \\u8BC4\\u5206\\u7F3A\\u5931\\uFF0C\\u4EC5\\u6267\\u884C\\u98CE\\u9669\\u4FDD\\u62A4":""} \\xB7 \\u76EE\\u6807\\u4ED3\\u4F4D ${C(a.targetExposure)} \\xB7 ${new Date(a.createdAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\u51BB\\u7ED3`:"\\u5F53\\u65E5\\u8BC4\\u5206\\u4FDD\\u5B58\\u540E\\uFF0C\\u751F\\u6210\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8BA1\\u5212\\u3002",l("paper-plan-rows").innerHTML=a?.orders.length?a.orders.map(r=>`<tr><td><strong>${m(r.name)}</strong><span class="stock-code">${m(r.code)} \\xB7 ${m(r.sector)}</span></td><td><span class="action-tag">${it[r.action]}</span></td><td>${r.score??"\\u2014"}${Number.isFinite(r.scoreValue)?`<span class="stock-code">\\u7CBE\\u786E ${Number(r.scoreValue.toFixed(6))}</span>`:""}<span class="stock-code">\\u539F\\u59CB ${r.originalScore??"\\u2014"}</span></td><td>${r.quantity||"\\u2014"} \\u80A1</td><td class="plan-price-conditions">${ne(r)}</td><td class="plan-reason">${m(r.reason)}</td></tr>`).join(""):`<tr><td colspan="6"><div class="empty compact">${a?"\\u5F53\\u524D\\u6CA1\\u6709\\u6EE1\\u8DB3\\u5EFA\\u4ED3\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1\\uFF0C\\u4FDD\\u6301\\u7A7A\\u4ED3\\u3002":"\\u7B49\\u5F85\\u6709\\u6548\\u76D8\\u540E\\u8BC4\\u5206\\u3002"}</div></td></tr>`;let h=a?.selectionAudit?.candidates??[],p=l("paper-selection-audit").querySelector("details")?.open??!1;l("paper-selection-audit").innerHTML=h.length?`<details><summary>\\u9009\\u80A1\\u4F9D\\u636E \\xB7 ${h.filter(r=>r.status==="SELECTED").length} \\u53EA\\u5165\\u9009 / ${h.length} \\u53EA\\u5019\\u9009</summary><div class="table-scroll"><table><thead><tr><th>\\u987A\\u5E8F</th><th>\\u4E2A\\u80A1</th><th>\\u7CBE\\u786E\\u8BC4\\u5206</th><th>\\u4FE1\\u53F7\\u65E5\\u6210\\u4EA4\\u989D</th><th>\\u9009\\u62E9\\u7ED3\\u679C</th></tr></thead><tbody>${h.map(r=>`<tr><td>${r.rank}</td><td>${m(r.name)}<span class="stock-code">${m(r.code)}</span></td><td>${Number.isFinite(r.scoreValue)?Number(r.scoreValue.toFixed(6)):"\\u2014"}</td><td>${Number.isFinite(r.liquidityAmountCents)?`\\xA5 ${xt(r.liquidityAmountCents)}`:"\\u672A\\u77E5"}</td><td>${r.status==="SELECTED"?"\\u5DF2\\u5165\\u9009":"\\u672A\\u5165\\u9009"}<span class="stock-code">${m(r.reason)}</span></td></tr>`).join("")}</tbody></table></div><p class="small-muted">\\u6210\\u4EA4\\u989D\\u53D6\\u81EA\\u4FE1\\u53F7\\u65E5\\u51BB\\u7ED3\\u6570\\u636E\\uFF0C\\u4EC5\\u4F5C\\u540C\\u5206\\u51B3\\u80DC\\uFF1B\\u5B9E\\u9645\\u6210\\u4EA4\\u4ECD\\u53D7\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3001\\u8D44\\u91D1\\u53CA\\u5BB9\\u91CF\\u9650\\u5236\\u3002</p></details>`:"";let f=l("paper-selection-audit").querySelector("details");f&&(f.open=p),l("paper-outcomes").innerHTML=i?.outcomes?.length?`<details><summary>\\u6700\\u8FD1\\u6267\\u884C\\u53CD\\u9988 \\xB7 ${m(i.date)}</summary><div class="execution-feedback">${i.outcomes.map(r=>`<p><strong>${m(r.name)} \\xB7 ${it[r.action]}</strong><span>${r.status==="FILLED"?"\\u5DF2\\u6210\\u4EA4":r.status==="PARTIAL"?"\\u90E8\\u5206\\u5B8C\\u6210":"\\u672A\\u6267\\u884C"} ${r.filledQuantity?`${r.filledQuantity} \\u80A1`:""} \\xB7 ${m(r.reason||"")}</span></p>`).join("")}</div></details>`:"",l("paper-ledger-rows").innerHTML=b.ledger.length?[...b.ledger].sort((r,x)=>x.date.localeCompare(r.date)||x.sequence-r.sequence).map(r=>`<tr><td>${m(r.date)}<span class="stock-code">${m(r.time)}</span></td><td><strong>${m(r.name)}</strong><span class="stock-code">${m(r.code)}</span></td><td>${it[r.action]} \\xB7 ${r.side==="BUY"?"\\u4E70":"\\u5356"}</td><td>${r.quantity}</td><td>${v(r.priceCents)}</td><td title="${m(Ot(r))}"><details class="fee-breakdown"><summary>\\xA5 ${v(r.feeCents)}</summary><span>${m(Ot(r))}</span></details><span class="stock-code">\\u8D39\\u7528 v${r.feeConfigVersion||0}</span></td><td class="${st(r.cashDeltaCents)}">${v(r.cashDeltaCents)}</td><td>${r.dataQuality==="realtime_poll"?"\\u5B9E\\u65F6 HTTP \\u8F6E\\u8BE2":r.dataQuality==="minute"?"\\u5386\\u53F2\\u5206\\u949F\\u91C7\\u6837":"\\u5F00\\u76D8\\u5047\\u8BBE"}${r.executionCost?`<span class="stock-code">\\u6ED1\\u70B9 ${r.executionCost.totalBps}bps \\xB7 ${r.executionCost.spreadSource==="BOOK"?"\\u76D8\\u53E3\\u4EF7\\u5DEE":"\\u56DE\\u9000\\u4EF7\\u5DEE"}</span>`:""}</td></tr>`).join(""):\'<tr><td colspan="8"><div class="empty compact">\\u5C1A\\u65E0\\u6210\\u4EA4\\u8BB0\\u5F55\\u3002\\u672A\\u6EE1\\u8DB3\\u6210\\u4EA4\\u6761\\u4EF6\\u7684\\u8BA1\\u5212\\u4E0D\\u4F1A\\u8BB0\\u4E3A\\u6536\\u76CA\\u3002</div></td></tr>\';let ht=i?.improvement?.days??Math.max(0,t.settlementCount-1);l("paper-ai-tag").textContent=b.ai.configured?"\\u5DF2\\u914D\\u7F6E\\u6A21\\u578B":"\\u6A21\\u578B\\u5F85\\u914D\\u7F6E",l("paper-ai-content").innerHTML=`<div class="strategy-active"><span>\\u5F53\\u524D\\u7B56\\u7565</span><strong>${m(t.activeStrategy)}</strong></div><p>${b.ai.configured?`\\u5DF2\\u79EF\\u7D2F ${ht} \\u4E2A\\u53EF\\u9A8C\\u8BC1\\u4EA4\\u6613\\u65E5\\u3002\\u81F3\\u5C11 20 \\u65E5\\u8BAD\\u7EC3 + 10 \\u65E5\\u5C01\\u5B58\\u9A8C\\u8BC1\\u540E\\u63D0\\u51FA\\u65B0\\u5019\\u9009\\u3002`:"\\u5C1A\\u672A\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5927\\u6A21\\u578B\\u5BC6\\u94A5\\u3002\\u89C4\\u5219\\u7B56\\u7565\\u6B63\\u5E38\\u8FD0\\u884C\\uFF1B\\u914D\\u7F6E\\u540E\\u63A5\\u5165\\u771F\\u5B9E AI \\u63D0\\u6848\\u4E0E\\u9A8C\\u8BC1\\u3002"}</p><div class="ai-process">\\u771F\\u5B9E\\u6210\\u4EA4\\u4E0E\\u8D39\\u7528<span>\\u2193</span>AI \\u8BAD\\u7EC3\\u7A97\\u53E3\\u5EFA\\u8BAE<span>\\u2193</span>\\u72EC\\u7ACB\\u9A8C\\u8BC1 \\xB7 \\u6536\\u76CA\\u4E0E\\u56DE\\u64A4<span>\\u2193</span>\\u901A\\u8FC7\\u540E\\u542F\\u7528\\u65B0\\u7248\\u672C</div><p class="ai-note">\\u6BCF\\u4E2A\\u5C01\\u5B58\\u7A97\\u53E3\\u53EA\\u9A8C\\u8BC1\\u4E00\\u4E2A\\u5019\\u9009\\uFF1B\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u548C\\u5386\\u53F2\\u4EA4\\u6613\\u4FDD\\u7559\\u539F\\u7248\\u672C\\u3002</p>`,l("paper-version-list").innerHTML=s.filter(r=>r.id!=="baseline-v1").slice(0,6).map(r=>`<div class="version-row"><div><strong>${m(r.id)}</strong><span>${_t[r.status]||m(r.status)}</span></div><p>${m(r.evidence.rationale||r.evidence.error||"\\u7B49\\u5F85\\u9A8C\\u8BC1\\u7ED3\\u679C")}</p>${r.evidence.baseline?`<small>\\u5C01\\u5B58\\u9A8C\\u8BC1 ${m(r.evidence.validationStart)} \\u2014 ${m(r.evidence.validationEnd)}<br>\\u57FA\\u7EBF ${C(r.evidence.baseline.totalReturn)} \\u2192 \\u5019\\u9009 ${C(r.evidence.candidate.totalReturn)} \\xB7 \\u56DE\\u64A4 ${C(r.evidence.candidate.maxDrawdown)}</small>`:""}${r.status==="VALIDATED"?`<button class="secondary" data-activate="${m(r.id)}">\\u542F\\u7528\\u6B64\\u7248\\u672C</button>`:""}</div>`).join("")||\'<div class="small-muted">\\u5C1A\\u65E0 AI \\u5019\\u9009\\u7248\\u672C\\uFF0C\\u6301\\u7EED\\u79EF\\u7D2F\\u771F\\u5B9E\\u6570\\u636E\\u3002</div>\',L||(l("paper-initial-capital").value=t.initialCashCents/100),l("paper-initial-capital").disabled=!b.canEditCapital,L||jt(b.feeConfig),l("paper-fee-version").textContent=`\\u8D39\\u7528\\u914D\\u7F6E v${t.feeConfigVersion||0}`,l("paper-fee-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${a?.feeConfig?te(a.feeConfig):"\\u65E7\\u7248\\u56FA\\u5B9A\\u8D39\\u7528"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,L||qt(b.riskLimits),l("paper-risk-version").textContent=`\\u98CE\\u63A7\\u914D\\u7F6E v${t.riskLimitsVersion||0}`,l("paper-risk-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${a?.riskLimits?ee(a.riskLimits):"\\u9ED8\\u8BA4\\u98CE\\u63A7"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,L||Ft(b.strategyParams),l("paper-strategy-version").textContent=`\\u7B56\\u7565 ${t.activeStrategy}`,l("paper-strategy-summary").textContent=`\\u5F53\\u524D\\u7248\\u672C ${t.activeStrategy}${a?` \\xB7 \\u4E0B\\u4E00\\u8BA1\\u5212 ${a.strategyVersion}`:""}\\u3002\\u4FDD\\u5B58\\u540E\\u767B\\u8BB0\\u4E3A\\u65B0\\u7248\\u672C\\u5E76\\u7528\\u4E8E\\u4E0B\\u4E00\\u4EFD\\u8BA1\\u5212\\uFF0C\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u4FDD\\u6301\\u539F\\u53C2\\u6570\\u3002`,L||(l("paper-improvement-mode").value=t.improvementMode||"auto"),L||(l("paper-benchmark").value=t.benchmarkCode||bt),l("paper-config-note").textContent=b.canEditCapital?"\\u4EA4\\u6613\\u8BA1\\u5212\\u5F00\\u59CB\\u6267\\u884C\\u524D\\u53EF\\u81EA\\u5B9A\\u4E49\\u521D\\u59CB\\u8D44\\u91D1\\uFF1B\\u8D39\\u7528\\u4E0E\\u98CE\\u63A7\\u968F\\u65F6\\u53EF\\u8C03\\u6574\\u3002":"\\u521D\\u59CB\\u8D44\\u91D1\\u4F5C\\u4E3A\\u6536\\u76CA\\u57FA\\u51C6\\u5DF2\\u51BB\\u7ED3\\uFF1B\\u8D39\\u7528\\u4E0E\\u98CE\\u63A7\\u4ECD\\u53EF\\u81EA\\u5B9A\\u4E49\\uFF0C\\u9002\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212\\u3002",document.querySelectorAll("[data-activate]").forEach(r=>r.onclick=()=>G(async()=>(await q("/api/paper/activate",{id:r.dataset.activate})).activated?"\\u65B0\\u7248\\u672C\\u5DF2\\u542F\\u7528\\uFF0C\\u5C06\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212":"\\u8D26\\u6237\\u540C\\u65F6\\u66F4\\u65B0\\uFF0C\\u8BF7\\u91CD\\u8BD5"))}async function U(){try{b=await q("/api/paper"),ie()}catch(t){O(t.message)}}async function G(t){if(!rt){rt=!0,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!0),O("\\u6B63\\u5728\\u5904\\u7406\\uFF0C\\u7ED3\\u679C\\u5C06\\u4FDD\\u5B58\\u5230\\u8D26\\u672C\\u2026");try{let e=await t();await U(),O(e)}catch(e){O(e.message)}finally{rt=!1,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!1)}}}function Pt(){return l("paper-config-form").addEventListener("input",()=>{L=!0}),l("paper-fee-controls").innerHTML=B.map(({key:t,label:e,unit:a,direction:i})=>`<label for="fee-${t}">${e}\\uFF08${a}\\uFF09<input id="fee-${t}" type="number" min="0" max="${t==="commission_min"?1e4:100}" step="${t==="commission_min"?"0.01":"0.001"}" value="${Et(t,ft[t])}" required><span>${i}</span></label>`).join(""),l("paper-risk-controls").innerHTML=j.map(({key:t,label:e,unit:a,percent:i,hint:s})=>`<label for="risk-${t}" title="${m(s)}">${e}\\uFF08${a}\\uFF09<input id="risk-${t}" type="number" min="${i?.01:0}" max="${i?100:200}" step="${i?"0.01":"1"}" value="${Ct(t,yt[t])}" required></label>`).join(""),l("paper-strategy-controls").innerHTML=[...tt.map(({key:t,label:e})=>`<label for="strat-weight-${t}" title="\\u7B56\\u7565\\u8BC4\\u5206\\u4E2D\\u300C${e}\\u300D\\u56E0\\u5B50\\u7684\\u6743\\u91CD\\uFF0C\\u4E0E\\u7814\\u7A76\\u9875\\u89C2\\u5BDF\\u6743\\u91CD\\u76F8\\u4E92\\u72EC\\u7ACB">${e}\\u6743\\u91CD\\uFF08%\\uFF09<input id="strat-weight-${t}" type="number" min="0" max="50" step="1" required></label>`),...et.map(({key:t,label:e,unit:a,min:i,max:s,step:u,hint:c})=>`<label for="strat-${t}" title="${m(c)}">${e}\\uFF08${a}\\uFF09<input id="strat-${t}" type="number" min="${i}" max="${s}" step="${u}" required></label>`),...at.map(({key:t,label:e,unit:a,min:i,max:s,step:u,hint:c})=>`<label for="strat-tier-${t}" title="${m(c)}">${e}\\uFF08${a}\\uFF09<input id="strat-tier-${t}" type="number" min="${i}" max="${s}" step="${u}" required></label>`)].join(""),l("paper-benchmark").innerHTML=nt.map(({code:t,name:e})=>`<option value="${t}">${e}</option>`).join(""),l("paper-fee-defaults").onclick=()=>{jt(ft),L=!0,O("\\u5DF2\\u586B\\u5165\\u56FE\\u4E2D\\u9ED8\\u8BA4\\u8D39\\u7528\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},l("paper-risk-defaults").onclick=()=>{qt(yt),L=!0,O("\\u5DF2\\u586B\\u5165\\u9ED8\\u8BA4\\u98CE\\u63A7\\u7EA6\\u675F\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},l("paper-strategy-defaults").onclick=()=>{Ft(It),L=!0,O("\\u5DF2\\u586B\\u5165\\u9ED8\\u8BA4\\u7B56\\u7565\\u53C2\\u6570\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u767B\\u8BB0\\u4E3A\\u65B0\\u7248\\u672C\\u5E76\\u7528\\u4E8E\\u4E0B\\u4E00\\u4EFD\\u8BA1\\u5212\\u3002")},l("paper-run").onclick=()=>G(async()=>{let t=await q("/api/run-daily",{});return window.dispatchEvent(new Event("paper-updated")),t.paper?.reason||t.snapshot?.reason||"\\u5DF2\\u5B8C\\u6210\\u76D8\\u540E\\u66F4\\u65B0"}),l("paper-verify").onclick=()=>G(async()=>{let t=await q("/api/paper/verify");return t.passed?`\\u5B8C\\u6574\\u91CD\\u653E\\u901A\\u8FC7\\uFF1A${t.days} \\u4E2A\\u7ED3\\u7B97\\u65E5\\u3001${t.fills} \\u7B14\\u6210\\u4EA4\\uFF0C\\u8D44\\u91D1\\u3001\\u8D39\\u7528\\u4E0E\\u6536\\u76CA\\u5747\\u4E00\\u81F4\\u3002`:"\\u9A8C\\u8BC1\\u672A\\u901A\\u8FC7\\uFF0C\\u8BF7\\u68C0\\u67E5\\u5BFC\\u51FA\\u8BB0\\u5F55\\u4E0E\\u884C\\u60C5\\u5B8C\\u6574\\u5EA6\\u3002"}),l("paper-improve").onclick=()=>G(async()=>{let t=await q("/api/paper/improve",{});return t.reason||`AI \\u6539\\u8FDB\\u72B6\\u6001\\uFF1A${_t[t.status]||t.status}`}),l("paper-config-form").onsubmit=t=>{t.preventDefault(),G(async()=>{let e=await q("/api/paper/settings",{...b?.canEditCapital?{initialCapital:Number(l("paper-initial-capital").value)}:{},improvementMode:l("paper-improvement-mode").value,benchmarkCode:l("paper-benchmark").value||bt,fees:Object.fromEntries(B.map(({key:a})=>[a,a==="commission_min"?Number(l(`fee-${a}`).value):Number(l(`fee-${a}`).value)/1e4])),riskLimits:Object.fromEntries(j.map(({key:a,percent:i})=>[a,i?Number(l(`risk-${a}`).value)/100:Number(l(`risk-${a}`).value)])),strategyParams:ae()});return L=!1,`\\u8BBE\\u7F6E\\u5DF2\\u4FDD\\u5B58\\uFF1B\\u7B56\\u7565\\u53C2\\u6570\\u767B\\u8BB0\\u4E3A ${e.book.activeStrategy}\\uFF0C\\u5C06\\u7528\\u4E8E\\u4E0B\\u4E00\\u4EFD\\u8BA1\\u5212\\uFF0C\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u4FDD\\u6301\\u539F\\u53C2\\u6570\\u3002`})},window.addEventListener("paper-updated",U),setInterval(()=>{!document.hidden&&!rt&&U()},15e3),U(),{refresh:U}}var _={status:null,detailId:null,initialized:!1};async function St(t,e={}){let a=await fetch(t,{headers:{"Content-Type":"application/json"},...e}),i=await a.json().catch(()=>({}));if(!a.ok)throw new Error(i.error||"\\u8BF7\\u6C42\\u5931\\u8D25");return i}var Ht=t=>t==null?"\\u2014":`${(t*100).toFixed(2)}%`,re=t=>t==null?"\\u2014":(t/100).toLocaleString("zh-CN",{maximumFractionDigits:2}),ot={RESERVED:"\\u5DF2\\u9884\\u7559",PROPOSING:"\\u5019\\u9009\\u751F\\u6210\\u4E2D",FROZEN:"\\u5019\\u9009\\u5DF2\\u51BB\\u7ED3",HISTORICAL_CHECK:"\\u5386\\u53F2\\u7B5B\\u67E5\\u4E2D",SCHEDULED:"\\u5DF2\\u6392\\u671F",RUNNING:"\\u524D\\u77BB\\u8FD0\\u884C\\u4E2D",EVALUATING:"\\u8BC4\\u4F30\\u4E2D",CLOSED:"\\u5DF2\\u7ED3\\u675F",ELIGIBLE:"\\u7B26\\u5408\\u664B\\u7EA7\\u6761\\u4EF6",PROMOTED:"\\u5DF2\\u542F\\u7528",REJECTED:"\\u5386\\u53F2\\u7B5B\\u67E5\\u672A\\u901A\\u8FC7",ERROR:"\\u51FA\\u9519",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u5DF2\\u5931\\u6548"};function D(t){return document.getElementById(t)}function oe(){let{status:t}=_,e=D("strategies-status");if(!t){e.innerHTML="<p>\\u5C1A\\u672A\\u83B7\\u53D6\\u6279\\u6B21\\u72B6\\u6001\\u3002</p>";return}let a=t.activeCohort;e.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u6D3B\\u52A8\\u6279\\u6B21</span><strong>${a?`${a.id.slice(0,18)}\\u2026`:"\\u65E0"}</strong><small>${a?ot[a.stage]??a.stage:"\\u53EF\\u53D1\\u8D77\\u65B0\\u6279\\u6B21"}</small></div>\n      <div><span class="mini-label">\\u5019\\u9009\\u4E0A\\u9650</span><strong>${t.policy.maxCandidates}</strong><small>\\u6BCF\\u6708\\u751F\\u6210\\u6279\\u6B21 ${t.policy.monthlyGenerationLimit} \\u6B21</small></div>\n      <div><span class="mini-label">\\u524D\\u77BB\\u7A97\\u53E3</span><strong>${t.policy.forwardDays} \\u4EA4\\u6613\\u65E5</strong><small>\\u5B8C\\u6574\\u8F6E\\u6B21\\u95E8\\u69DB ${t.policy.minimumCompletedRounds}</small></div>\n      <div><span class="mini-label">\\u5F53\\u524D\\u7B56\\u7565</span><strong>${a?.parentVersion??"baseline-v1"}</strong><small>${a?"\\u8D5B\\u9A6C\\u671F\\u95F4\\u4FDD\\u6301\\u7236\\u7B56\\u7565":"\\u7B49\\u5F85\\u6279\\u6B21\\u7ED3\\u8BBA"}</small></div>\n    </div>\n    <p class="panel-footnote">${t.note??""}</p>`}function le(){let{status:t,detailId:e}=_,a=(t?.cohorts??[]).map(i=>`\n      <tr data-cohort="${i.id}" class="${i.id===e?"active":""}">\n        <td>${i.id.slice(0,22)}\\u2026</td>\n        <td>${ot[i.stage]??i.stage}</td>\n        <td>${i.parentVersion}</td>\n        <td>${i.maxCandidates}</td>\n        <td>${(i.createdAt??"").replace("T"," ").slice(0,16)}</td>\n      </tr>`).join("");D("strategies-cohort-rows").innerHTML=a||\'<tr><td colspan="5">\\u5C1A\\u65E0\\u6279\\u6B21\\u8BB0\\u5F55</td></tr>\',D("strategies-cohort-rows").querySelectorAll("tr[data-cohort]").forEach(i=>{i.onclick=()=>{_.detailId=i.dataset.cohort,kt()}})}async function ce(){let t=D("strategies-detail"),{detailId:e}=_;if(!e){t.innerHTML="<p class=\'panel-footnote\'>\\u70B9\\u51FB\\u4E0A\\u65B9\\u6279\\u6B21\\u67E5\\u770B\\u56FA\\u5B9A\\u6210\\u5458\\u3001\\u51C0\\u503C\\u4E0E\\u8D44\\u683C\\u3002</p>";return}let a;try{a=await St(`/api/strategies/cohorts/${e}`)}catch(d){t.innerHTML=`<p>${d.message}</p>`;return}let i=(a.members??[]).map(d=>`\n      <tr>\n        <td>${d.memberId}</td>\n        <td>${ot[d.stage]??d.stage}</td>\n        <td>${d.k}</td>\n        <td>${d.strategyVersion?`${d.strategyVersion.slice(0,18)}\\u2026`:"\\u2014"}</td>\n        <td>${d.paramsDistance??"\\u2014"}</td>\n        <td>${d.failureReason??"\\u2014"}</td>\n      </tr>`).join(""),s=(a.accounts??[]).map(d=>`\n      <tr>\n        <td>${d.kind}</td>\n        <td>${d.memberId??"\\u2014"}</td>\n        <td>${re(d.book?.equityCents)}</td>\n        <td>${d.cursor?.date??"\\u2014"} #${d.cursor?.sequence??0}</td>\n        <td>${d.book?.lastDate??"\\u2014"}</td>\n      </tr>`).join(""),u=a.evaluation,c=(u?.verdicts??[]).map(d=>`\n      <tr>\n        <td>${d.memberId}</td>\n        <td>${ot[d.stage]??d.stage}</td>\n        <td>${Ht(d.metrics?.netReturn)}</td>\n        <td>${Ht(d.metrics?.windowDrawdown)}</td>\n        <td>${d.rounds?.rounds??"\\u2014"}</td>\n        <td>${d.checks?.statistics?"\\u901A\\u8FC7":d.checks?"\\u672A\\u901A\\u8FC7/\\u672A\\u8BC4\\u4F30":"\\u2014"}</td>\n      </tr>`).join("");t.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u51A0\\u519B</span><strong>${u?.champion?.memberId??"\\u65E0"}</strong><small>${u?.promotion?.promoted?`\\u5DF2\\u542F\\u7528\\uFF0C\\u751F\\u6548\\u65E5 ${u.promotion.effectiveTradeDate??"\\u5F85\\u5B9A"}`:"\\u4EC5\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528"}</small></div>\n      <div><span class="mini-label">\\u7A97\\u53E3</span><strong>${a.cohort.forwardManifest?.tradingDates?.length??0}/${a.cohort.forwardDays}</strong><small>\\u6355\\u83B7\\u65E5 ${a.cohort.forwardManifest?.captureDate??"\\u2014"}</small></div>\n      <div><span class="mini-label">\\u62A5\\u544A\\u6458\\u8981</span><strong>${a.evaluationDigest?"\\u5DF2\\u51BB\\u7ED3":"\\u7B49\\u5F85\\u8BC4\\u4F30"}</strong><small>\\u95F8\\u95E8\\u4E0E\\u7EDF\\u8BA1\\u53EF\\u91CD\\u653E</small></div>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u6210\\u5458</th><th>\\u72B6\\u6001</th><th>\\u5C1D\\u8BD5\\u5E8F\\u53F7 k</th><th>\\u7B56\\u7565\\u7248\\u672C</th><th>\\u53C2\\u6570\\u8DDD\\u79BB</th><th>\\u5931\\u8D25\\u539F\\u56E0</th></tr></thead>\n        <tbody>${i||"<tr><td colspan=\'6\'>\\u65E0\\u6210\\u5458</td></tr>"}</tbody>\n      </table>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u8D26\\u6237</th><th>\\u89D2\\u8272</th><th>\\u671F\\u672B\\u6743\\u76CA\\uFF08\\u5206\\uFF09</th><th>\\u6D88\\u8D39\\u6E38\\u6807</th><th>\\u5DF2\\u7ED3\\u7B97\\u65E5</th></tr></thead>\n        <tbody>${s||"<tr><td colspan=\'5\'>\\u5C1A\\u65E0\\u5339\\u914D\\u8D26\\u6237</td></tr>"}</tbody>\n      </table>\n    </div>\n    ${c?`<div class="table-scroll">\n        <table>\n          <thead><tr><th>\\u6210\\u5458</th><th>\\u7ED3\\u8BBA</th><th>\\u671F\\u95F4\\u51C0\\u6536\\u76CA</th><th>\\u7A97\\u53E3\\u56DE\\u64A4</th><th>\\u5B8C\\u6574\\u8F6E\\u6B21</th><th>\\u7EDF\\u8BA1\\u68C0\\u9A8C</th></tr></thead>\n          <tbody>${c}</tbody>\n        </table>\n      </div>`:""}\n    <p class="panel-footnote">\\u6536\\u76CA\\u4E0D\\u5728\\u72EC\\u7ACB\\u5019\\u9009\\u4E4B\\u95F4\\u6C42\\u548C\\uFF1B\\u7EB8\\u9762\\u9886\\u5148\\u4E0D\\u7B49\\u4E8E\\u53EF\\u542F\\u7528\\u8D44\\u683C\\u3002</p>\n    <a class="secondary" href="/api/strategies/cohorts/${e}/export" download>\\u5BFC\\u51FA\\u6279\\u6B21\\u68C0\\u67E5\\u70B9</a>`}async function kt(){try{_.status=await St("/api/strategies/cohorts"),oe(),le(),await ce()}catch(t){D("strategies-status").innerHTML=`<p>${t.message}</p>`}}function zt(){_.initialized||(_.initialized=!0,D("strategies-reserve").onclick=async()=>{let t=D("strategies-reserve");t.disabled=!0,D("strategies-status-note").textContent="\\u6B63\\u5728\\u9884\\u7559\\u6279\\u6B21\\u5E76\\u8C03\\u7528\\u6A21\\u578B\\u751F\\u6210\\u5019\\u9009\\u2026";try{let e=await St("/api/strategies/cohorts",{method:"POST",body:"{}"});D("strategies-status-note").textContent=e.reason??e.status??"\\u6279\\u6B21\\u5DF2\\u9884\\u7559"}catch(e){D("strategies-status-note").textContent=e.message}finally{t.disabled=!1,await kt()}},kt())}var k={initialized:!1,cursor:0,status:null},y=t=>document.getElementById(t),V=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]);async function K(t,e={}){let a=await fetch(t,{headers:{"content-type":"application/json"},...e,body:e.body?JSON.stringify(e.body):void 0}),i=await a.json().catch(()=>({}));if(!a.ok)throw new Error(i.error||`\\u8BF7\\u6C42\\u5931\\u8D25\\uFF08${a.status}\\uFF09`);return i}function F(t){return t?t.replace("T"," ").slice(0,19):"\\u2014"}var de={RUNNER_STALLED:"\\u6267\\u884C\\u5FAA\\u73AF\\u505C\\u6EDE",LOOP_FAILED:"\\u5FAA\\u73AF\\u8FDE\\u7EED\\u5931\\u8D25",SESSION_BLOCKED:"\\u4F1A\\u8BDD\\u88AB\\u963B\\u585E",REQUIRED_QUOTE_STALE:"\\u5173\\u952E\\u62A5\\u4EF7\\u9648\\u65E7",DRAWDOWN_TRIPPED:"\\u56DE\\u64A4\\u89E6\\u53CA\\u786C\\u7EA6\\u675F",PROTECTIVE_EXIT_BLOCKED:"\\u4FDD\\u62A4\\u9000\\u51FA\\u65E0\\u6CD5\\u6210\\u4EA4",T_RECOVERY_INCOMPLETE:"\\u505A T \\u7B2C\\u4E8C\\u817F\\u672A\\u6062\\u590D",SETTLEMENT_LATE:"\\u76D8\\u540E\\u7ED3\\u7B97\\u8FDF\\u5EF6",LEDGER_INVARIANT_FAILED:"\\u8D26\\u672C\\u4E0D\\u53D8\\u5F0F\\u5F02\\u5E38",ALERT_PIPELINE_STALLED:"\\u544A\\u8B66\\u5206\\u53D1\\u505C\\u6EDE",AI_OR_RESEARCH_FAILED:"AI/\\u7814\\u7A76\\u4EFB\\u52A1\\u5931\\u8D25"};function ue(){let{status:t}=k;if(!t)return;y("alerts-enabled-tag").textContent=t.enabled?"\\u5DF2\\u542F\\u7528":"\\u672A\\u542F\\u7528",y("alerts-status-note").textContent=t.note??"";let e=t.channels.map(i=>`<div><span class="outline-tag">${V(i.name)}</span><div class="panel-metric-value">${i.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E\\uFF08\\u670D\\u52A1\\u7AEF .env\\uFF09"}</div></div>`).join(""),a=t.watchdog??{};y("alerts-channel-list").innerHTML=e+`<div><span class="outline-tag">\\u5916\\u90E8\\u76D1\\u6D4B</span><div class="panel-metric-value"><span>${a.progressConfigured?`\\u8FDB\\u5EA6\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E${a.lastProgressAt?`\\uFF0C\\u6700\\u8FD1 ${F(a.lastProgressAt)}`:""}`:"\\u672A\\u914D\\u7F6E\\uFF08WATCHDOG_PROGRESS_URL\\uFF09"}</span><span>${a.pipelineConfigured?"\\u7BA1\\u9053\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E":"\\u7BA1\\u9053\\u4FE1\\u53F7\\u672A\\u914D\\u7F6E"}</span></div></div>\n    <div><span class="outline-tag">\\u53D1\\u9001\\u961F\\u5217</span><div class="panel-metric-value">\\u5F85\\u53D1\\u9001 ${t.outbox?.pending??0}\\uFF0C\\u903E\\u671F\\u672A\\u9886 ${t.outbox?.overdue??0}\\uFF0C\\u5DF2\\u53D1\\u9001 ${t.outbox?.sent??0}\\uFF0C\\u8FC7\\u671F ${t.outbox?.expired??0}</div></div>`}function pe(t){let e=k.incidents??[];y("alerts-incident-rows").innerHTML=e.map(a=>`<tr>\n      <td>${V(de[a.ruleType]??a.ruleType)}<small class="small-muted"> ${V(a.fingerprint)}</small></td>\n      <td>${a.severity==="CRITICAL"?"\\u4E25\\u91CD":"\\u8B66\\u544A"}</td>\n      <td>${a.status==="RESOLVED"?`\\u5DF2\\u6062\\u590D ${F(a.resolvedAt)}`:a.status==="OPEN"?"\\u672A\\u6062\\u590D":V(a.status)}${a.ackUntil&&a.ackUntil>new Date().toISOString()?`\\uFF08\\u786E\\u8BA4\\u81F3 ${F(a.ackUntil)}\\uFF09`:""}</td>\n      <td>${F(a.firstSeen)}</td>\n      <td>${F(a.lastSeen)}</td>\n      <td>${a.status!=="RESOLVED"?`<button class="text-button" data-ack="${V(a.id)}">\\u786E\\u8BA4 2 \\u5C0F\\u65F6</button>`:""}</td>\n    </tr>`).join("");for(let a of y("alerts-incident-rows").querySelectorAll("[data-ack]"))a.onclick=async()=>{a.disabled=!0;try{await K(`/api/alerts/incidents/${a.dataset.ack}/ack`,{method:"POST",body:{hours:2}})}catch(i){y("alerts-list-status").textContent=i.message}await W(!0)};y("alerts-more").hidden=!k.nextCursor,y("alerts-list-status").textContent=t?`\\u5171 ${e.length} \\u6761${k.nextCursor?"\\uFF08\\u53EF\\u52A0\\u8F7D\\u66F4\\u591A\\uFF09":""}`:y("alerts-list-status").textContent}async function W(t=!1){try{k.status=await K("/api/alerts/status"),ue(),t&&(k.cursor=0);let e=await K(`/api/alerts/incidents?cursor=${k.cursor}&active=${y("alerts-active-only").checked}`);k.incidents=t?e.incidents:[...k.incidents??[],...e.incidents],k.nextCursor=e.nextCursor,pe(t)}catch(e){y("alerts-list-status").textContent=e.message}}function Bt(){k.initialized||(k.initialized=!0,y("alerts-refresh").onclick=()=>W(!0),y("alerts-active-only").onchange=()=>W(!0),y("alerts-more").onclick=()=>{k.cursor=k.nextCursor,W(!1)},y("alerts-test").onclick=async()=>{let t=y("alerts-test");t.disabled=!0,y("alerts-status-note").textContent="\\u6B63\\u5728\\u53D1\\u9001\\u6D4B\\u8BD5\\u901A\\u77E5\\u2026";try{await K("/api/alerts/test",{method:"POST",body:{}}),y("alerts-status-note").textContent="\\u6D4B\\u8BD5\\u901A\\u77E5\\u5DF2\\u53D1\\u9001\\uFF0C\\u8BF7\\u5728\\u98DE\\u4E66\\u67E5\\u6536"}catch(e){y("alerts-status-note").textContent=e.message}finally{t.disabled=!1}},y("alerts-maintenance").onclick=async()=>{let t=Number(prompt("\\u7EF4\\u62A4\\u7A97\\u53E3\\u5206\\u949F\\u6570\\uFF0815\\u20131440\\uFF09\\uFF1A","60"));if(!Number.isInteger(t))return;let e=prompt("\\u7EF4\\u62A4\\u539F\\u56E0\\uFF08\\u53EF\\u9009\\uFF09\\uFF1A","")??"";try{let a=await K("/api/alerts/maintenance",{method:"POST",body:{minutes:t,reason:e}});y("alerts-status-note").textContent=`\\u7EF4\\u62A4\\u7A97\\u53E3\\u81F3 ${F(a.until)}`}catch(a){y("alerts-status-note").textContent=a.message}},W(!0))}var o=t=>document.getElementById(t),$=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),Ut={dashboard:\'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>\',chart:\'<path d="M4 3v17h17M8 15l4-6 4 3 5-7"/>\',grid:\'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 11h18M11 4v16"/>\',sliders:\'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/>\',database:\'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/>\',calendar:\'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>\',refresh:\'<path d="M20 7a8 8 0 0 0-14-2L3 8m0-5v5h5M4 17a8 8 0 0 0 14 2l3-3m0 5v-5h-5"/>\',search:\'<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>\',info:\'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>\',close:\'<path d="m6 6 12 12M6 18 18 6"/>\',flame:\'<path d="M12 3c1 6 7 6 7 12a7 7 0 0 1-14 0c0-3 2-5 4-7 0 3 1 3 2 4 2-3 2-6 1-9Z"/>\',shield:\'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>\'};function Y(t){return`<svg viewBox="0 0 24 24" aria-hidden="true">${Ut[t]||Ut.chart}</svg>`}document.querySelectorAll("[data-icon]").forEach(t=>t.innerHTML=Y(t.dataset.icon));var n={view:"overview",height:"all",weights:[...I.balanced],payload:null,analysis:null,loading:!0,error:null,demo:!1,request:0,review:null,ai:null,aiConfig:{configured:!1},history:null,reviewBusy:!1,reviewMessage:"",storageAvailable:!1};try{let t=JSON.parse(localStorage.getItem("limitLensWeights"));Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)&&(n.weights=t)}catch{}var X=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date);o("trade-date").value=X;o("trade-date").max=X;var me=Pt(),lt={paper:["\\u6A21\\u62DF\\u4EA4\\u6613","\\u8BA9\\u8BC4\\u5206\\u63A5\\u53D7\\u8D26\\u6237\\u68C0\\u9A8C","\\u5236\\u5B9A\\u8BA1\\u5212\\u3001\\u6A21\\u62DF\\u6267\\u884C\\u3001\\u6838\\u5BF9\\u6536\\u76CA\\uFF0C\\u7528\\u771F\\u5B9E\\u7ED3\\u679C\\u6539\\u8FDB\\u7B56\\u7565\\u3002"],overview:["\\u603B\\u89C8\\u590D\\u76D8","\\u6BCF\\u65E5\\u6DA8\\u505C\\u590D\\u76D8","\\u628A\\u6DA8\\u505C\\u62C6\\u6210\\u4FE1\\u53F7\\uFF0C\\u628A\\u5224\\u65AD\\u5EFA\\u7ACB\\u5728\\u6570\\u636E\\u4E0A\\u3002"],stocks:["\\u4E2A\\u80A1\\u5206\\u6790","\\u6DA8\\u505C\\u4E2A\\u80A1\\u5206\\u6790","\\u62C6\\u89E3\\u5C01\\u677F\\u8868\\u73B0\\uFF0C\\u6BD4\\u8F83\\u5F3A\\u5EA6\\u4E0E\\u98CE\\u9669\\u3002"],sectors:["\\u677F\\u5757\\u7814\\u7A76","\\u884C\\u4E1A\\u677F\\u5757\\u7814\\u7A76","\\u4ECE\\u6DA8\\u505C\\u96C6\\u805A\\u4E0E\\u8FDE\\u677F\\u68AF\\u961F\\uFF0C\\u89C2\\u5BDF\\u8D44\\u91D1\\u7684\\u5171\\u540C\\u65B9\\u5411\\u3002"],review:["\\u6628\\u65E5\\u53CD\\u9988","\\u8BA9\\u6628\\u65E5\\u5224\\u65AD\\u63A5\\u53D7\\u68C0\\u9A8C","\\u4FDD\\u5B58\\u5F53\\u65F6\\u7684\\u5224\\u65AD\\uFF0C\\u7528\\u5B9E\\u9645\\u8868\\u73B0\\u68C0\\u9A8C\\uFF0C\\u518D\\u7531 AI \\u5BA1\\u89C6\\u3002"],model:["\\u8BC4\\u5206\\u6A21\\u578B","\\u53EF\\u89E3\\u91CA\\u7684\\u8BC4\\u5206\\u6A21\\u578B","\\u6BCF\\u4E00\\u5206\\u90FD\\u6709\\u4F9D\\u636E\\uFF0C\\u6BCF\\u4E00\\u9879\\u6743\\u91CD\\u90FD\\u53EF\\u4EE5\\u8C03\\u6574\\u3002"],strategies:["\\u7B56\\u7565\\u8D5B\\u9A6C","\\u591A\\u7B56\\u7565\\u5E76\\u884C\\u8D5B\\u9A6C\\u4E0E\\u53D7\\u63A7\\u664B\\u7EA7","\\u540C\\u4E00\\u4EFD\\u884C\\u60C5\\u3001\\u540C\\u4E00\\u51BB\\u7ED3\\u8D77\\u70B9\\uFF0C\\u56FA\\u5B9A\\u7A97\\u53E3\\u5185\\u6BD4\\u8F83\\uFF0C\\u53EA\\u6709\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528\\u3002"],alerts:["\\u8FD0\\u7EF4\\u544A\\u8B66","\\u5E38\\u9A7B\\u6267\\u884C\\u4E0D\\u9759\\u9ED8\\u5931\\u8054","\\u6267\\u884C\\u9519\\u8BEF\\u3001\\u98CE\\u9669\\u5904\\u7F6E\\u4E0E\\u76D8\\u540E\\u5931\\u8D25\\u4E3B\\u52A8\\u901A\\u77E5\\uFF1B\\u6574\\u673A\\u79BB\\u7EBF\\u7531\\u5916\\u90E8\\u76D1\\u6D4B\\u53D1\\u73B0\\u3002"]};function pt(t){lt[t]&&(n.view=t,document.querySelectorAll("[data-view]").forEach(e=>{e.classList.toggle("active",e.dataset.view===t),e.setAttribute("aria-current",e.dataset.view===t?"page":"false")}),o("crumb").textContent=lt[t][0],o("page-title").textContent=lt[t][1],o("page-subtitle").textContent=lt[t][2],o("overview-content").hidden=!["overview","stocks"].includes(t),o("sectors-view").hidden=t!=="sectors",o("model-view").hidden=t!=="model",o("review-view").hidden=t!=="review",o("summary").hidden=["model","review","paper","strategies","alerts"].includes(t),o("paper-view").hidden=t!=="paper",o("strategies-view").hidden=t!=="strategies",o("alerts-view").hidden=t!=="alerts",document.querySelector(".heading-actions").hidden=t==="paper"||t==="strategies"||t==="alerts",document.querySelector(".data-strip").hidden=t==="paper"||t==="strategies"||t==="alerts",t==="paper"&&me.refresh(),t==="strategies"&&zt(),t==="alerts"&&Bt(),document.querySelector(".right-column").hidden=t==="stocks",o("overview-content").style.gridTemplateColumns=t==="stocks"?"minmax(0,1fr)":"",P(),R())}document.querySelectorAll("[data-view]").forEach(t=>t.onclick=()=>pt(t.dataset.view));document.querySelector(".brand").onclick=t=>{t.preventDefault(),pt("overview")};function w(t,e=1){return t==null?"\\u2014":Number(t).toFixed(e)}function wt(t){return t==null?"\\u2014":t>=1e8?`${(t/1e8).toFixed(2)} \\u4EBF`:`${(t/1e4).toFixed(0)} \\u4E07`}function he(t){return t>=80?"":t>=60?"mid":"low"}function dt(t){return`<div class="score-cell"><span class="score-number ${he(t)}">${t??"\\u2014"}</span><span class="score-track"><i style="width:${t??0}%"></i></span></div>`}function Tt(){n.analysis=n.payload?.archived?structuredClone(n.payload.analysis):n.payload?Dt(n.payload.rows.map($t),n.payload.broken,n.payload.previous?.map($t)||null,n.weights):null}function P(){let t=n.analysis,e=t!==null,a=n.loading,i=[{name:"\\u6DA8\\u505C\\u5BB6\\u6570",value:e?t.count:"\\u2014",unit:"\\u5BB6",caption:e?`\\u9996\\u677F ${t.first} \\u5BB6 \\xB7 \\u8FDE\\u677F ${t.relay} \\u5BB6`:"\\u9996\\u677F\\u4E0E\\u8FDE\\u677F\\u5206\\u5E03",icon:"flame",pct:e?Math.min(t.count/80*100,100):0},{name:"\\u5C01\\u677F\\u7387",value:e?w(t.sealRate):"\\u2014",unit:"%",caption:e?n.payload.broken===null?"\\u70B8\\u677F\\u6C60\\u6570\\u636E\\u6682\\u7F3A":`\\u70B8\\u677F ${n.payload.broken} \\u5BB6 \\xB7 \\u5F53\\u524D\\u672A\\u5C01\\u4F4F`:"\\u6DA8\\u505C /\\uFF08\\u6DA8\\u505C + \\u70B8\\u677F\\uFF09",icon:"shield",pct:e?t.sealRate??0:0},{name:"\\u6700\\u9AD8\\u8FDE\\u677F",value:e?t.height:"\\u2014",unit:"\\u677F",caption:e?`\\u8FDE\\u677F\\u80A1\\u5360\\u6BD4 ${t.count?w(t.relay/t.count*100):"\\u2014"}%`:"\\u8861\\u91CF\\u5F53\\u65E5\\u5E02\\u573A\\u9AD8\\u5EA6",icon:"chart",pct:e?Math.min(t.height/7*100,100):0,amber:!0},{name:"\\u60C5\\u7EEA\\u5F3A\\u5EA6",value:e?t.emotion??"\\u2014":"\\u2014",unit:"/ 100",caption:e?t.emotion===null?"\\u5F53\\u65E5\\u65E0\\u6709\\u6548\\u8BC4\\u5206\\u6837\\u672C":`${t.emotion>=75?"\\u5F3A\\u5EA6\\u8F83\\u9AD8":t.emotion>=45?"\\u5F3A\\u5EA6\\u4E2D\\u7B49":"\\u5F3A\\u5EA6\\u8F83\\u4F4E"} \\xB7 ${t.emotionCoverage==null?"\\u5DF2\\u5F52\\u6863\\u7684\\u6536\\u76D8\\u5224\\u65AD":`\\u6570\\u636E\\u8986\\u76D6 ${t.emotionCoverage}%`}`:"\\u6DA8\\u505C\\u89C4\\u6A21 \\xB7 \\u5C01\\u677F\\u7387 \\xB7 \\u9AD8\\u5EA6",icon:"dashboard",pct:e?t.emotion??0:0,accent:!0}];o("summary").innerHTML=i.map(s=>`<article class="metric ${a?"loading":""}"><div class="metric-head">${s.name}${Y(s.icon)}</div><div class="metric-value ${s.accent?"accent":""}">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div><div class="metric-line ${s.amber?"amber":""}"><i style="width:${s.pct}%"></i></div></article>`).join(""),o("pool-count").textContent=e?t.count:"\\u2014",Z(),$e(),fe()}function ge(){let t=n.analysis?.stocks||[],e=o("search").value.trim().toLowerCase(),a=o("sector-filter").value;t=t.filter(s=>(!e||s.name.toLowerCase().includes(e)||s.code.includes(e))&&(!a||s.sector===a)&&(n.height==="all"||(n.height==="first"?s.height===1:s.height>1)));let i=o("sort").value;return t.slice().sort(i==="height"?(s,u)=>(u.height??0)-(s.height??0):i==="seal"?(s,u)=>(u.seal??-1)-(s.seal??-1):i==="first"?(s,u)=>(s.first??999999)-(u.first??999999):(s,u)=>(u.score??-1)-(s.score??-1))}function Z(){let t=ge(),e=n.analysis!==null,a=n.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u884C\\u60C5":e?"\\u6CA1\\u6709\\u7B26\\u5408\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1":"\\u6682\\u65E0\\u53EF\\u7528\\u884C\\u60C5",i=n.loading?"\\u6B63\\u5728\\u8BFB\\u53D6\\u516C\\u5F00\\u6DA8\\u505C\\u6C60\\u3001\\u70B8\\u677F\\u6C60\\u4E0E\\u6628\\u65E5\\u6DA8\\u505C\\u6C60\\u2026":e?"\\u5C1D\\u8BD5\\u8C03\\u6574\\u641C\\u7D22\\u3001\\u884C\\u4E1A\\u6216\\u8FDE\\u677F\\u7B5B\\u9009\\u3002":"\\u5207\\u6362\\u8FD1\\u671F\\u4EA4\\u6613\\u65E5\\u671F\\u6216\\u7A0D\\u540E\\u5237\\u65B0\\uFF0C\\u4E5F\\u53EF\\u4EE5\\u67E5\\u770B\\u660E\\u786E\\u6807\\u6CE8\\u7684\\u6F14\\u793A\\u3002";o("stock-rows").innerHTML=t.length?t.map(s=>`<tr><td><button class="stock-name" data-stock="${$(s.code)}">${$(s.name)}</button><span class="stock-code">${$(s.code)}</span></td><td>${dt(s.score)}</td><td><span class="sector-tag">${$(s.sector)}</span></td><td><span class="height-tag ${s.height>=4?"high":""}">${s.height===1?"\\u9996\\u677F":s.height?`${s.height} \\u677F`:"\\u2014"}</span></td><td class="money">${Q(s.first)}</td><td class="money">${wt(s.seal)}</td><td class="money">${w(s.turnover)}%</td><td class="money">${s.breaks??"\\u2014"}</td></tr>`).join(""):`<tr><td colspan="8"><div class="empty"><strong>${a}</strong>${i}</div></td></tr>`,document.querySelectorAll("[data-stock]").forEach(s=>s.onclick=()=>ye(s.dataset.stock)),o("table-status").textContent=e?`\\u663E\\u793A ${t.length} / ${n.analysis.count} \\u5BB6${n.analysis.excluded?` \\xB7 \\u5DF2\\u5254\\u9664 ${n.analysis.excluded} \\u5BB6 ST / \\u9000\\u5E02\\u6807\\u8BC6\\u4E2A\\u80A1`:""}`:n.loading?"\\u516C\\u5F00\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":"\\u7B49\\u5F85\\u6709\\u6548\\u6570\\u636E"}function $e(){let t=n.analysis?.sectors||[];o("sector-rank").innerHTML=t.length?t.slice(0,5).map((e,a)=>`<button class="sector-row" data-sector="${$(e.name)}"><div class="sector-row-label"><div><span class="rank-index">0${a+1}</span>${$(e.name)}</div><span class="sector-score">${e.score}</span></div><div class="sector-bar"><i style="width:${e.score}%"></i></div><div class="sector-row-meta">${e.count} \\u5BB6\\u6DA8\\u505C \\xB7 \\u6700\\u9AD8 ${e.height} \\u677F</div></button>`).join(""):\'<div class="empty compact">\\u6709\\u6548\\u884C\\u60C5\\u5230\\u8FBE\\u540E\\uFF0C\\u663E\\u793A\\u884C\\u4E1A\\u5F3A\\u5EA6\\u6392\\u540D\\u3002</div>\',o("sector-rows").innerHTML=t.length?t.map(e=>`<tr><td><button class="stock-name" data-sector="${$(e.name)}">${$(e.name)}</button></td><td>${dt(e.score)}</td><td>${e.count}</td><td>${e.height} \\u677F</td><td>${w(e.quality)} / 100</td><td>${w(e.components[3].value)}%</td><td>${wt(e.amount)}</td></tr>`).join(""):\'<tr><td colspan="7"><div class="empty"><strong>\\u6682\\u65E0\\u677F\\u5757\\u8BC4\\u5206</strong>\\u8BF7\\u5148\\u83B7\\u53D6\\u6709\\u6548\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3002</div></td></tr>\',document.querySelectorAll("[data-sector]").forEach(e=>e.onclick=()=>{o("sector-filter").value=e.dataset.sector,pt("stocks")})}function fe(){let t=n.analysis,e=[{name:"5\\u677F+",count:t?t.stocks.filter(i=>i.height>=5).length:0},{name:"4\\u677F",count:t?t.stocks.filter(i=>i.height===4).length:0},{name:"3\\u677F",count:t?t.stocks.filter(i=>i.height===3).length:0},{name:"2\\u677F",count:t?t.stocks.filter(i=>i.height===2).length:0},{name:"\\u9996\\u677F",count:t?t.first:0}],a=Math.max(1,...e.map(i=>i.count));o("ladder-chart").innerHTML=e.map(i=>`<div class="ladder-row"><span class="label">${i.name}</span><div class="ladder-track"><i style="width:${i.count/a*100}%"></i></div><span class="ladder-count">${t?i.count:"\\u2014"}</span></div>`).join(""),o("ladder-insight").textContent=t?`\\u4E0A\\u4E00\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u80A1\\u664B\\u7EA7\\u7387\\uFF1A${t.promotion==null?"\\u6682\\u7F3A":`${w(t.promotion)}%`}${t.previousCount!==null?`\\uFF08\\u6837\\u672C ${t.previousCount} \\u5BB6\\uFF09`:"\\uFF0C\\u6628\\u65E5\\u6570\\u636E\\u6682\\u7F3A"}${n.payload?.promotionBackfilled?"\\uFF0C\\u6309\\u5F52\\u6863\\u6837\\u672C\\u8865\\u7B97":""}\\u3002\\u8FDE\\u677F\\u68AF\\u961F\\u4EC5\\u53CD\\u6620\\u5F53\\u65E5\\u7ED3\\u6784\\u3002`:"\\u7528\\u9996\\u677F\\u4F9B\\u7ED9\\u4E0E\\u8FDE\\u677F\\u9AD8\\u5EA6\\u5171\\u540C\\u89C2\\u5BDF\\u63A5\\u529B\\u7ED3\\u6784\\u3002"}function ut(){let t=n.payload;o("source-tag").className=`source-tag ${n.demo?"demo":n.error?"unavailable":""}`,o("source-tag").textContent=n.loading?"\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":n.demo?"\\u6F14\\u793A\\u6570\\u636E":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863":"\\u516C\\u5F00\\u884C\\u60C5":"\\u6570\\u636E\\u6682\\u4E0D\\u53EF\\u7528",o("data-time").textContent=n.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u6240\\u9009\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u6C60":t?n.demo?"\\u865A\\u6784\\u6837\\u672C\\uFF0C\\u4EC5\\u7528\\u4E8E\\u4F53\\u9A8C\\u8BC4\\u5206\\u548C\\u4EA4\\u4E92":t.archived?`${t.date} \\xB7 ${t.source} \\xB7 \\u5F52\\u6863\\u4E8E ${new Date(t.archivedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09`:`${t.date} \\xB7 ${t.source} \\xB7 \\u83B7\\u53D6\\u4E8E ${new Date(t.fetchedAt).toLocaleTimeString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09${t.cached?" \\xB7 2 \\u5206\\u949F\\u7F13\\u5B58":""}`:"\\u672A\\u4F7F\\u7528\\u6F14\\u793A\\u6570\\u636E\\u66FF\\u4EE3\\u771F\\u5B9E\\u884C\\u60C5",o("sidebar-source").textContent=n.demo?"\\u6F14\\u793A\\u6A21\\u5F0F":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863 \\xB7 \\u5DF2\\u8BFB\\u53D6":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u5DF2\\u63A5\\u5165":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u7B49\\u5F85\\u6570\\u636E",o("demo-btn").textContent=n.demo?"\\u8FD4\\u56DE\\u516C\\u5F00\\u884C\\u60C5":"\\u67E5\\u770B\\u6F14\\u793A",o("notice").hidden=!n.error&&!n.demo&&!t?.warnings?.length,o("notice").textContent=n.error||(n.demo?"\\u5F53\\u524D\\u4E3A\\u865A\\u6784\\u6F14\\u793A\\u6837\\u672C\\uFF0C\\u6240\\u6709\\u4E2A\\u80A1\\u3001\\u65E5\\u671F\\u5173\\u8054\\u4E0E\\u5F97\\u5206\\u5747\\u4E0D\\u4EE3\\u8868\\u5B9E\\u9645\\u884C\\u60C5\\u3002":t?.warnings?.join(" "))||"",o("refresh-btn").disabled=n.loading,o("refresh-btn").innerHTML=`${Y("refresh")}${n.loading?"\\u83B7\\u53D6\\u4E2D\\u2026":"\\u5237\\u65B0\\u884C\\u60C5"}`}async function J(){let t=++n.request,e=o("trade-date").value;n.demo=!1,n.loading=!0,n.error=null,n.payload=null,n.analysis=null,n.review=null,n.ai=null,n.reviewMessage="\\u6B63\\u5728\\u68C0\\u67E5\\u5386\\u53F2\\u53CD\\u9988",ut(),P(),R();try{let a=await fetch(`/api/market?date=${encodeURIComponent(e)}`,{signal:AbortSignal.timeout(2e4)}),i=await a.json();if(t!==n.request)return;let s=i.archived===!0&&Array.isArray(i.analysis?.stocks)&&Array.isArray(i.analysis?.sectors);if(!a.ok||!Array.isArray(i.rows)&&!s)throw new Error(i.error||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25");if(i.date!==e)throw new Error("\\u8FD4\\u56DE\\u7684\\u6570\\u636E\\u65E5\\u671F\\u4E0E\\u6240\\u9009\\u65E5\\u671F\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u91CD\\u65B0\\u5237\\u65B0");n.payload=i,Tt()}catch(a){if(t!==n.request)return;n.error=a.name==="TimeoutError"?"\\u884C\\u60C5\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u8BF7\\u7A0D\\u540E\\u5237\\u65B0\\u3002":a.message||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25"}finally{t===n.request&&(n.loading=!1,Vt(),ut(),At(),P(),n.payload?.date===X&&!n.payload.archived&&n.storageAvailable?Yt(t):Kt(t))}}function Vt(){let t=o("sector-filter").value;o("sector-filter").innerHTML=\'<option value="">\\u5168\\u90E8\\u884C\\u4E1A</option>\'+(n.analysis?.sectors||[]).map(e=>`<option value="${$(e.name)}">${$(e.name)}</option>`).join(""),n.analysis?.sectors.some(e=>e.name===t)&&(o("sector-filter").value=t)}function ye(t){let e=n.analysis?.stocks.find(c=>c.code===t);if(!e)return;let a=n.analysis.sectors.find(c=>c.name===e.sector),i=e.factors.filter(c=>c.value!==null).sort((c,d)=>d.value-c.value)[0],s=e.factors.filter(c=>c.value!==null).sort((c,d)=>c.value-d.value)[0],u=`${e.name}\\u4E3A${e.height===1?"\\u9996\\u677F":e.height?`${e.height}\\u8FDE\\u677F`:"\\u8FDE\\u677F\\u9AD8\\u5EA6\\u6682\\u7F3A"}\\uFF0C${Q(e.first)}\\u9996\\u6B21\\u5C01\\u677F${e.breaks!==null?`\\uFF0C\\u76D8\\u4E2D\\u70B8\\u677F ${e.breaks} \\u6B21`:""}\\u3002${i?`${i.name}\\u662F\\u5F53\\u524D\\u8F83\\u5F3A\\u6307\\u6807\\uFF08${Math.round(i.value)} \\u5206\\uFF09\\u3002`:""}${s&&s!==i?`${s.name}\\u76F8\\u5BF9\\u504F\\u5F31\\uFF08${Math.round(s.value)} \\u5206\\uFF09\\u3002`:""}\\u6240\\u5C5E\\u884C\\u4E1A ${a?.count||0} \\u5BB6\\u6DA8\\u505C\\uFF0C\\u677F\\u5757\\u5F97\\u5206 ${a?.score??"\\u2014"}\\u3002`;o("stock-detail").innerHTML=`<div class="detail-head"><div><h2>${$(e.name)}</h2><span class="stock-code">${$(e.code)}${n.demo?" \\xB7 \\u6F14\\u793A\\u6837\\u672C":""}</span><div class="detail-tags"><span class="sector-tag">${$(e.sector)}</span><span class="height-tag">${e.height===1?"\\u9996\\u677F":`${e.height??"\\u2014"} \\u677F`}</span></div></div><div class="detail-score">${e.score??"\\u2014"}<small>\\u7EFC\\u5408\\u8BC4\\u5206 / 100</small></div></div><div class="detail-facts"><div><label>\\u5C01\\u5355\\u91D1\\u989D</label><strong>${wt(e.seal)}</strong></div><div><label>\\u5C01\\u5355 / \\u6210\\u4EA4\\u989D</label><strong>${e.sealRatio===null?"\\u2014":w(e.sealRatio*100)}%</strong></div><div><label>\\u6362\\u624B\\u7387</label><strong>${w(e.turnover)}%</strong></div><div><label>\\u6700\\u540E\\u5C01\\u677F</label><strong>${Q(e.last)}</strong></div></div><div class="detail-section"><h3>\\u516D\\u7EF4\\u8BC4\\u5206\\u62C6\\u89E3</h3>${e.factors.map(c=>`<div class="factor-row"><span>${c.name}</span><span class="factor-track"><i style="width:${c.value??0}%"></i></span><strong>${c.value===null?"\\u2014":Math.round(c.value)}</strong><span class="weight">\\u6743\\u91CD ${c.weight}</span></div>`).join("")}<p class="detail-footnote">\\u6709\\u6548\\u6307\\u6807\\u5747\\u5206 ${w(e.rawScore)} \\u2212 \\u98CE\\u9669\\u6263\\u5206 ${e.deduction} = ${e.score??"\\u2014"} \\u5206 \\xB7 \\u8986\\u76D6\\u7387 ${e.coverage}%</p></div><div class="detail-section"><h3>\\u98CE\\u9669\\u89C2\\u5BDF</h3>${e.risks.length?e.risks.map(c=>`<div class="risk-row"><strong>${c.text} \\u2212${c.penalty}</strong><span>${c.detail}</span></div>`).join(""):\'<p class="detail-footnote">\\u5F53\\u524D\\u5B57\\u6BB5\\u672A\\u89E6\\u53D1\\u6A21\\u578B\\u98CE\\u9669\\u6263\\u5206\\u9879\\uFF1B\\u516C\\u544A\\u3001\\u57FA\\u672C\\u9762\\u4E0E\\u9898\\u6750\\u98CE\\u9669\\u4ECD\\u9700\\u5355\\u72EC\\u6838\\u5B9E\\u3002</p>\'}</div><div class="detail-section"><h3>\\u76D8\\u540E\\u8BCA\\u65AD</h3><p class="detail-text">${$(u)}</p></div><p class="detail-footnote">\\u6B21\\u65E5\\u89C2\\u5BDF\\uFF1A\\u7ADE\\u4EF7\\u662F\\u5426\\u6709\\u627F\\u63A5\\u3001\\u540C\\u677F\\u5757\\u662F\\u5426\\u5F62\\u6210\\u5408\\u529B\\u3001\\u5F00\\u677F\\u540E\\u80FD\\u5426\\u56DE\\u5C01\\u3002\\u5F53\\u524D\\u89C4\\u5219\\u5206\\u6570\\u5C1A\\u672A\\u7ECF\\u8FC7\\u5386\\u53F2\\u6536\\u76CA\\u6821\\u51C6\\uFF0C\\u4E0D\\u4EE3\\u8868\\u4E0A\\u6DA8\\u6982\\u7387\\u3002</p>`,o("stock-dialog").showModal()}document.querySelectorAll(".close-dialog").forEach(t=>t.onclick=()=>t.closest("dialog").close());document.querySelectorAll("dialog").forEach(t=>t.onclick=e=>{if(e.target===t){let a=t.getBoundingClientRect();(e.clientX<a.left||e.clientX>a.right||e.clientY<a.top||e.clientY>a.bottom)&&t.close()}});o("help-btn").onclick=()=>o("help-dialog").showModal();o("all-sectors").onclick=()=>pt("sectors");o("refresh-btn").onclick=J;o("trade-date").onchange=J;o("search").oninput=Z;o("sector-filter").onchange=Z;o("sort").onchange=Z;document.querySelectorAll("[data-height]").forEach(t=>t.onclick=()=>{n.height=t.dataset.height,document.querySelectorAll("[data-height]").forEach(e=>e.classList.toggle("active",e===t)),Z()});function mt(){o("weight-controls").innerHTML=gt.map((t,e)=>`<div class="weight-item"><div class="weight-heading"><label for="weight-${e}">${t.name}</label><output id="weight-output-${e}" for="weight-${e}">${n.weights[e]}%</output></div><input id="weight-${e}" data-weight="${e}" type="range" min="0" max="50" step="1" value="${n.weights[e]}" aria-describedby="weight-desc-${e}"><p id="weight-desc-${e}">${t.description}</p></div>`).join(""),document.querySelectorAll("[data-weight]").forEach(t=>t.oninput=()=>{let e=[...n.weights];if(e[Number(t.dataset.weight)]=Number(t.value),!e.some(a=>a>0)){t.value=n.weights[Number(t.dataset.weight)],o("model-status").textContent="\\u81F3\\u5C11\\u4FDD\\u7559\\u4E00\\u9879\\u6709\\u6548\\u6743\\u91CD";return}n.weights=e,o(`weight-output-${t.dataset.weight}`).textContent=`${t.value}%`,Lt()}),At()}function At(){let t=n.weights.reduce((e,a)=>e+a,0);o("weight-total").textContent=`\\u5408\\u8BA1 ${t}%`,o("model-status").textContent=n.payload?.archived?"\\u5F53\\u524D\\u5C55\\u793A\\u5F53\\u5929\\u51BB\\u7ED3\\u8BC4\\u5206\\uFF1B\\u4FEE\\u6539\\u6743\\u91CD\\u4E0D\\u4F1A\\u91CD\\u7B97\\u5386\\u53F2\\u5F52\\u6863":t===100?"\\u5DF2\\u5373\\u65F6\\u91CD\\u7B97 \\xB7 \\u5373\\u65F6\\u91CD\\u7B97":`\\u5408\\u8BA1 ${t}%\\uFF0C\\u8BA1\\u7B97\\u65F6\\u81EA\\u52A8\\u5F52\\u4E00\\u5316`,document.querySelectorAll("[data-preset]").forEach(e=>e.classList.toggle("active",I[e.dataset.preset].every((a,i)=>a===n.weights[i])))}var Gt;function Lt(){try{localStorage.setItem("limitLensWeights",JSON.stringify(n.weights))}catch{}At(),Tt(),P(),clearTimeout(Gt),Gt=setTimeout(async()=>{try{let t=await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({weights:n.weights})}),e=await t.json();if(!t.ok)throw new Error(e.error);o("model-status").textContent="\\u6743\\u91CD\\u5DF2\\u4FDD\\u5B58 \\xB7 \\u5DF2\\u5F52\\u6863\\u8BC4\\u5206\\u4FDD\\u6301\\u539F\\u6837"}catch{o("model-status").textContent="\\u670D\\u52A1\\u5668\\u4FDD\\u5B58\\u5931\\u8D25\\uFF0C\\u5F53\\u524D\\u8C03\\u6574\\u4ECD\\u53EF\\u4F7F\\u7528\\uFF0C\\u8BF7\\u7A0D\\u540E\\u91CD\\u8BD5\\u3002"}},500)}document.querySelectorAll("[data-preset]").forEach(t=>t.onclick=()=>{n.weights=[...I[t.dataset.preset]],Lt(),mt()});o("reset-model").onclick=()=>{n.weights=[...I.balanced],Lt(),mt()};function ve(){let t=["\\u793A\\u4F8B\\xB7\\u8F6F\\u4EF6\\u670D\\u52A1","\\u793A\\u4F8B\\xB7\\u7535\\u5B50\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u673A\\u68B0\\u5236\\u9020","\\u793A\\u4F8B\\xB7\\u7535\\u529B\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u533B\\u836F\\u5236\\u9020"];return Array.from({length:22},(e,a)=>({c:`DEMO${String(a+1).padStart(3,"0")}`,n:`\\u793A\\u4F8B\\u4E2A\\u80A1 ${String(a+1).padStart(2,"0")}`,hybk:t[Math.min(4,Math.floor(a/5))],p:(12+a)*1e3,zdp:a%4===0?20:10,amount:(2+a%6)*1e8,ltsz:(18+a)*1e8,fund:(.3+(21-a)/10)*1e8,hs:4+a%16,lbc:a===0?6:a===1?4:a<5?3:a<9?2:1,fbt:a%6===0?92500:93e3+a*700,lbt:a===0?145500:1e5+a*800,zbc:a%5===0?3:a%3===0?1:0,zttj:{days:3,ct:1}}))}o("demo-btn").onclick=()=>{if(n.demo){J();return}++n.request,n.loading=!1,n.demo=!0,n.error=null,n.review=null,n.ai=null,n.reviewMessage="\\u6F14\\u793A\\u6837\\u672C\\u4E0D\\u4F1A\\u4FDD\\u5B58\\u8BC4\\u5206\\u6216\\u751F\\u6210\\u5E02\\u573A\\u53CD\\u9988\\u3002",n.payload={date:"\\u6F14\\u793A",source:"\\u865A\\u6784\\u6837\\u672C",fetchedAt:new Date().toISOString(),rows:ve(),broken:6,previous:null,warnings:[]},Tt(),Vt(),ut(),P(),R()};function Wt(t){return t==null?"\\u2014":`${t>0?"+":""}${Number(t).toFixed(2)}%`}function ct(t){return`<span class="${t>0?"up":t<0?"down":""}">${Wt(t)}</span>`}function R(){let t=n.review,e=n.ai;o("review-date-label").textContent=t?`${t.snapshotDate} \\u8BC4\\u5206 \\u2192 ${t.date} \\u8868\\u73B0`:"\\u7B49\\u5F85\\u9996\\u4E2A\\u53CD\\u9988\\u65E5",o("review-status").textContent=n.reviewBusy?"\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C\\u6536\\u76D8\\u7ED3\\u679C\\u2026":n.reviewMessage||"\\u5F53\\u5929\\u6536\\u76D8\\u540E\\u4FDD\\u5B58\\u539F\\u59CB\\u8BC4\\u5206\\uFF0C\\u4E0B\\u4E00\\u4E2A\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5E02\\u573A\\u8868\\u73B0\\u3002",o("run-review").disabled=n.reviewBusy||n.demo,o("review-coverage").textContent=t?`${t.validCount} / ${t.total} \\u5BB6\\u6709\\u6548`:"\\u7B49\\u5F85\\u6837\\u672C";let a=[{name:"\\u7CFB\\u7EDF\\u5BA2\\u89C2\\u53CD\\u9988\\u5206",value:t?.systemScore??"\\u2014",unit:"/ 100",caption:"\\u5355\\u65E5\\u6392\\u5E8F\\u4E0E\\u76F8\\u5BF9\\u8868\\u73B0\\uFF0C\\u89C4\\u5219\\u8BA1\\u7B97"},{name:"\\u9AD8\\u5206\\u7EC4\\u6B21\\u65E5\\u6536\\u76CA",value:t?.topMean===null||!t?"\\u2014":w(t.topMean,2),unit:"%",caption:t?`\\u6709\\u6548 ${t.topValid} \\u5BB6 \\xB7 \\u8BC4\\u5206\\u524D 20%`:"\\u6309\\u6628\\u65E5\\u8BC4\\u5206\\u56FA\\u5B9A\\u89C2\\u5BDF\\u7EC4"},{name:"\\u76F8\\u5BF9\\u6837\\u672C\\u8D85\\u989D",value:t?.excess===null||!t?"\\u2014":w(t.excess,2),unit:"\\u767E\\u5206\\u70B9",caption:t?`\\u5168\\u6837\\u672C\\u5747\\u503C ${Wt(t.allMean)}`:"\\u9AD8\\u5206\\u7EC4\\u5747\\u503C \\u2212 \\u5168\\u6837\\u672C\\u5747\\u503C"},{name:"\\u8BC4\\u5206\\u4E0E\\u8868\\u73B0\\u76F8\\u5173",value:t?.rho===null||!t?"\\u2014":w(t.rho,2),unit:"\\u03C1",caption:"Spearman \\u79E9\\u76F8\\u5173\\uFF0C\\u8303\\u56F4 \\u22121 \\u81F3 1"}];o("review-metrics").innerHTML=a.map(s=>`<article class="metric"><div class="metric-head">${s.name}${Y("shield")}</div><div class="metric-value">${s.value}<small>${s.unit}</small></div><div class="metric-caption">${s.caption}</div></article>`).join(""),o("review-conclusion").hidden=!t,o("review-conclusion").textContent=t?.conclusion||"",o("review-rows").innerHTML=t?t.rows.map((s,u)=>`<tr><td><strong class="review-stock">${$(s.name)}${u<t.topSize?\'<span class="top-group">\\u9AD8\\u5206\\u7EC4</span>\':""}</strong><span class="stock-code">${$(s.code)}</span></td><td>${dt(s.score)}</td><td>${s.available?ct(s.openReturn):"\\u2014"}</td><td>${s.available?ct(s.closeReturn):"\\u2014"}</td><td>${s.available?ct(s.lowReturn):"\\u2014"}</td><td>${s.available?s.continued?\'<span class="height-tag high">\\u662F</span>\':"\\u5426":`<span class="small-muted" title="${$(s.reason)}">\\u4E0D\\u53EF\\u6BD4</span>`}</td></tr>`).join(""):\'<tr><td colspan="6"><div class="empty"><strong>\\u5148\\u4FDD\\u5B58\\u5224\\u65AD\\uFF0C\\u518D\\u68C0\\u9A8C\\u7ED3\\u679C</strong>\\u6536\\u76D8\\u540E\\u8BBF\\u95EE\\u5DE5\\u4F5C\\u53F0\\u4F1A\\u81EA\\u52A8\\u4FDD\\u5B58\\u5F53\\u65E5\\u8BC4\\u5206\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u7684\\u771F\\u5B9E\\u53CD\\u9988\\u5230\\u8FBE\\u524D\\uFF0C\\u6B64\\u5904\\u4FDD\\u6301\\u7A7A\\u767D\\u3002</div></td></tr>\',o("review-sector-rows").innerHTML=t?t.sectors.map(s=>`<tr><td>${$(s.name)}</td><td>${dt(s.score)}</td><td>${s.available} / ${s.count}</td><td>${ct(s.averageReturn)}</td><td>${s.continuationRate===null?"\\u2014":w(s.continuationRate*100)}%</td></tr>`).join(""):\'<tr><td colspan="5"><div class="empty compact">\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5DF2\\u4FDD\\u5B58\\u7684\\u677F\\u5757\\u8BC4\\u5206\\u3002</div></td></tr>\',o("ai-status-tag").textContent=n.aiConfig.configured?"\\u5DF2\\u8FDE\\u63A5":"\\u5F85\\u914D\\u7F6E",o("model-ai-status").textContent=n.aiConfig.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E",o("model-ai-detail").textContent=n.aiConfig.configured?`\\u5DF2\\u914D\\u7F6E ${n.aiConfig.model}\\u3002\\u53EA\\u5411\\u6A21\\u578B\\u53D1\\u9001\\u51BB\\u7ED3\\u8BC4\\u5206\\u3001\\u6838\\u9A8C\\u7ED3\\u679C\\u4E0E\\u8FD1\\u671F\\u5BA2\\u89C2\\u6307\\u6807\\uFF08\\u4E0D\\u542B\\u8FC7\\u5F80AI\\u610F\\u89C1\\uFF09\\uFF0C\\u8BC4\\u4EF7\\u4F1A\\u4E0E\\u539F\\u59CB\\u6570\\u636E\\u4E00\\u5E76\\u4FDD\\u5B58\\u3002`:"\\u670D\\u52A1\\u7AEF\\u914D\\u7F6E\\u5BC6\\u94A5\\u3001\\u63A5\\u53E3\\u5730\\u5740\\u548C\\u6A21\\u578B\\u540E\\uFF0CAI \\u4F1A\\u6839\\u636E\\u51BB\\u7ED3\\u8BC4\\u5206\\u3001\\u5DF2\\u6838\\u9A8C\\u5E02\\u573A\\u7ED3\\u679C\\u4E0E\\u8FD1\\u671F\\u5BA2\\u89C2\\u6307\\u6807\\u8D8B\\u52BF\\u751F\\u6210\\u8BC4\\u4EF7\\u3002\\u5BC6\\u94A5\\u4E0D\\u8FDB\\u5165\\u6D4F\\u89C8\\u5668\\u3002",o("ai-content").innerHTML=e?`<div class="ai-score"><strong>${e.score}</strong><span>AI \\u4E3B\\u89C2\\u8BC4\\u4EF7 / 100<small>${$(e.model)} \\xB7 ${e.confidence==="high"?"\\u8F83\\u9AD8":e.confidence==="medium"?"\\u4E2D\\u7B49":"\\u8F83\\u4F4E"}\\u7F6E\\u4FE1\\u5EA6</small></span></div><p class="ai-summary">${$(e.summary)}</p><h3>\\u8BC4\\u4EF7\\u4F9D\\u636E</h3><ul>${e.evidence.map(s=>`<li>${$(s)}</li>`).join("")}</ul>${e.failures.length?`<h3>\\u5224\\u65AD\\u4E0D\\u8DB3</h3><ul>${e.failures.map(s=>`<li>${$(s)}</li>`).join("")}</ul>`:""}${e.suggestions.length?`<h3>\\u6539\\u8FDB\\u5EFA\\u8BAE</h3><ul>${e.suggestions.map(s=>`<li>${$(s)}</li>`).join("")}</ul>`:""}<p class="ai-note">AI \\u8BC4\\u4EF7\\u4E0E\\u89C4\\u5219\\u53CD\\u9988\\u5206\\u5206\\u522B\\u4FDD\\u7559\\u3002\\u5EFA\\u8BAE\\u4E0D\\u4F1A\\u81EA\\u52A8\\u6539\\u5199\\u6A21\\u578B\\u3002</p>`:`<div class="ai-empty"><span class="ai-symbol">${Y("sliders")}</span><h3>${n.aiConfig.configured?"\\u7B49\\u5F85\\u5DF2\\u6838\\u9A8C\\u7ED3\\u679C":"\\u5927\\u6A21\\u578B\\u5C1A\\u672A\\u914D\\u7F6E"}</h3><p>${n.aiConfig.configured?"\\u79EF\\u7D2F\\u4E8B\\u524D\\u5FEB\\u7167\\u5E76\\u53D6\\u5F97\\u6B21\\u65E5\\u6536\\u76D8\\u7ED3\\u679C\\u540E\\uFF0CAI \\u624D\\u5BF9\\u7CFB\\u7EDF\\u8BC4\\u4EF7\\u3002":"\\u5DF2\\u9884\\u7559 DeepSeek\\u3001OpenAI\\u3001\\u901A\\u4E49\\u517C\\u5BB9\\u63A5\\u53E3\\u3002\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5BC6\\u94A5\\u540E\\u542F\\u7528\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6A21\\u62DF AI \\u7ED3\\u8BBA\\u66FF\\u4EE3\\u771F\\u5B9E\\u8C03\\u7528\\u3002"}</p><div class="ai-process">\\u51BB\\u7ED3\\u6628\\u65E5\\u8BC4\\u5206<span>\\u2193</span>\\u6838\\u9A8C\\u4ECA\\u65E5\\u5E02\\u573A\\u7ED3\\u679C<span>\\u2193</span>AI \\u8BC4\\u5206\\u3001\\u8BC1\\u636E\\u4E0E\\u6539\\u8FDB\\u5EFA\\u8BAE</div></div>`,o("ai-grade-btn").disabled=n.demo||n.reviewBusy||!n.aiConfig.configured||!t||!!e,o("ai-grade-btn").textContent=e?"\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58":"\\u751F\\u6210 AI \\u8BC4\\u4EF7";let i=n.history?.reviews||[];o("review-history").innerHTML=i.length?`<div class="history-list">${i.map(s=>`<button data-history="${$(s.date)}"><span>${$(s.snapshotDate)} \\u2192 ${$(s.date)}</span><span>\\u5BA2\\u89C2 ${s.systemScore??"\\u2014"} \\u5206 \\xB7 AI ${s.aiScore??"\\u2014"} \\u5206</span></button>`).join("")}</div>`:\'<div class="empty compact">\\u5C1A\\u65E0\\u53CD\\u9988\\u8BB0\\u5F55\\u3002\\u5FEB\\u7167\\u4E0E\\u53CD\\u9988\\u4F1A\\u4FDD\\u5B58\\u5230\\u670D\\u52A1\\u7AEF\\uFF0C\\u8DE8\\u8BBE\\u5907\\u53EF\\u67E5\\u770B\\u3002</div>\',document.querySelectorAll("[data-history]").forEach(s=>s.onclick=()=>{o("trade-date").value=s.dataset.history,J()})}async function Kt(t=n.request){try{let[e,a]=await Promise.all([fetch(`/api/review?date=${encodeURIComponent(o("trade-date").value)}`),fetch("/api/history")]),i=await e.json(),s=await a.json();if(t!==n.request||n.demo)return;if(!e.ok)throw new Error(i.error);n.review=i.review,n.ai=i.ai,n.aiConfig=i.aiStatus||n.aiConfig,n.history=a.ok?s:n.history,n.reviewMessage=i.reason||"\\u5DF2\\u52A0\\u8F7D\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5B9E\\u9645\\u7ED3\\u679C\\u3002"}catch(e){t===n.request&&(n.reviewMessage=e.message||"\\u5386\\u53F2\\u53CD\\u9988\\u6682\\u65F6\\u4E0D\\u53EF\\u7528")}t===n.request&&R()}async function Yt(t=n.request){if(!(n.demo||n.reviewBusy)){n.reviewBusy=!0,n.reviewMessage="\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C",R();try{let e=await fetch("/api/run-daily",{method:"POST",signal:AbortSignal.timeout(13e4)}),a=await e.json();if(t!==n.request||n.demo)return;if(!e.ok)throw new Error(a.error);n.review=a.review,n.ai=a.ai||null,n.aiConfig=a.aiStatus||n.aiConfig,n.history=a.history||n.history,n.reviewMessage=a.aiError||a.reason||(a.review?"\\u5DF2\\u5B8C\\u6210\\u6628\\u65E5\\u5224\\u65AD\\u6838\\u9A8C\\uFF1B\\u539F\\u59CB\\u8BC4\\u5206\\u4E0E\\u7ED3\\u679C\\u5747\\u5DF2\\u4FDD\\u5B58\\u3002":"\\u4ECA\\u65E5\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863\\uFF0C\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u751F\\u6210\\u53CD\\u9988\\u3002"),o("snapshot-status").textContent=a.snapshot?.saved?`${a.snapshot.date} \\u539F\\u59CB\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863`:a.snapshot?.reason||"\\u7B49\\u5F85\\u6536\\u76D8\\u540E\\u4FDD\\u5B58"}catch(e){t===n.request&&(n.reviewMessage=e.name==="TimeoutError"?"\\u53CD\\u9988\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u53EF\\u5237\\u65B0\\u8BFB\\u53D6\\u5DF2\\u4FDD\\u5B58\\u7684\\u8FDB\\u5EA6\\u3002":e.message,o("snapshot-status").textContent="\\u5F52\\u6863\\u6682\\u4E0D\\u53EF\\u7528\\uFF0C\\u53EF\\u7A0D\\u540E\\u91CD\\u8BD5")}finally{n.reviewBusy=!1,R(),window.dispatchEvent(new Event("paper-updated"))}}}o("run-review").onclick=()=>{o("trade-date").value===X?Yt():Kt()};o("ai-grade-btn").onclick=async()=>{if(!n.review)return;let t=n.review.date;n.reviewBusy=!0,R(),o("ai-action-status").textContent="\\u6A21\\u578B\\u6B63\\u5728\\u8BC4\\u4EF7\\u2026";try{let e=await fetch("/api/ai-grade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:t}),signal:AbortSignal.timeout(55e3)}),a=await e.json();if(!e.ok)throw new Error(a.error);n.review?.date===t&&(n.ai=a.ai),o("ai-action-status").textContent="\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58"}catch(e){o("ai-action-status").textContent=e.message||"AI \\u8C03\\u7528\\u5931\\u8D25"}finally{n.reviewBusy=!1,R()}};async function be(){try{let t=await fetch("/api/market/latest-date",{signal:AbortSignal.timeout(6e3)}),e=await t.json();t.ok&&/^\\d{4}-\\d{2}-\\d{2}$/.test(e.date)&&e.date<=X&&(o("trade-date").value=e.date)}catch{}}async function xe(){let t=fetch("/api/settings",{signal:AbortSignal.timeout(5e3)}).then(async a=>a.ok?a.json():null).catch(()=>null),[e]=await Promise.all([t,be()]);e&&(n.storageAvailable=!0,Ee(e.weights)&&(n.weights=e.weights),n.aiConfig=e.ai,mt()),await J()}function Ee(t){return Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)}mt();ut();P();R();xe();if(document.modelContext?.registerTool){let t=new AbortController;try{Promise.resolve(document.modelContext.registerTool({name:"read_limit_up_analysis",title:"\\u8BFB\\u53D6\\u6DA8\\u505C\\u5206\\u6790",description:"\\u8BFB\\u53D6\\u5F53\\u524D\\u4EA4\\u6613\\u65E5\\u7684\\u4E2A\\u80A1\\u4E0E\\u884C\\u4E1A\\u8BC4\\u5206\\uFF0C\\u5E76\\u660E\\u786E\\u8FD4\\u56DE\\u771F\\u5B9E\\u6216\\u6F14\\u793A\\u6570\\u636E\\u72B6\\u6001\\u3002",inputSchema:{type:"object",properties:{},additionalProperties:!1},annotations:{readOnlyHint:!0,untrustedContentHint:!0},execute(e){if(e===null||typeof e!="object"||Array.isArray(e)||Object.keys(e).length)throw new Error("\\u8F93\\u5165\\u5FC5\\u987B\\u662F\\u7A7A\\u5BF9\\u8C61");return{date:n.payload?.date??null,mode:n.demo?"demo":"public",loading:n.loading,error:n.error,stocks:n.analysis?.stocks.map(a=>({code:a.code,name:a.name,sector:a.sector,score:a.score,coverage:a.coverage,risks:a.risks.map(i=>i.text)}))||[],sectors:n.analysis?.sectors.map(a=>({name:a.name,score:a.score,count:a.count}))||[]}}},{signal:t.signal})).catch(()=>{}),window.addEventListener("pagehide",()=>t.abort(),{once:!0})}catch{}}\n', "type": "text/javascript; charset=utf-8" }, "/assets/styles.css": { "body": '* {\r\n  box-sizing: border-box;\r\n}\r\n:root {\r\n  --navy: #101e2e;\r\n  --ink: #1b2c3f;\r\n  --muted: #7c8795;\r\n  --line: #e7ebf0;\r\n  --bg: #f4f6f9;\r\n  --teal: #148775;\r\n  --red: #db5a55;\r\n  --green: #309477;\r\n  --amber: #c18a31;\r\n}\r\nbody {\r\n  margin: 0;\r\n  background: var(--bg);\r\n  color: var(--ink);\r\n  font:\r\n    14px/1.55 -apple-system,\r\n    BlinkMacSystemFont,\r\n    "Segoe UI",\r\n    "PingFang SC",\r\n    "Microsoft YaHei",\r\n    sans-serif;\r\n}\r\nbutton,\r\ninput,\r\nselect {\r\n  font: inherit;\r\n}\r\nbutton,\r\na,\r\ninput,\r\nselect {\r\n  touch-action: manipulation;\r\n}\r\nbutton {\r\n  cursor: pointer;\r\n}\r\nbutton {\r\n  border: 0;\r\n}\r\nbutton:focus-visible,\r\na:focus-visible,\r\ninput:focus-visible,\r\nselect:focus-visible {\r\n  outline: 3px solid #66c5ba;\r\n  outline-offset: 3px;\r\n}\r\nbutton:disabled {\r\n  opacity: 0.65;\r\n  cursor: wait;\r\n}\r\na {\r\n  text-decoration: none;\r\n  color: inherit;\r\n}\r\n[hidden] {\r\n  display: none !important;\r\n}\r\nh1,\r\nh2,\r\nh3,\r\np {\r\n  margin: 0;\r\n}\r\nh2 {\r\n  font-size: 16px;\r\n  font-weight: 650;\r\n}\r\nh3 {\r\n  font-size: 14px;\r\n}\r\nsvg {\r\n  width: 19px;\r\n  height: 19px;\r\n  display: block;\r\n  fill: none;\r\n  stroke: currentColor;\r\n  stroke-width: 1.6;\r\n  stroke-linecap: round;\r\n  stroke-linejoin: round;\r\n}\r\n.shell {\r\n  display: flex;\r\n  min-height: 100vh;\r\n}\r\n.sidebar {\r\n  width: 222px;\r\n  position: fixed;\r\n  inset: 0 auto 0 0;\r\n  background: var(--navy);\r\n  color: #b4c0cd;\r\n  padding: 32px 18px;\r\n  display: flex;\r\n  flex-direction: column;\r\n}\r\n.brand {\r\n  display: flex;\r\n  gap: 12px;\r\n  align-items: center;\r\n  color: #fff;\r\n  font-size: 19px;\r\n  font-weight: 650;\r\n  padding: 0 10px;\r\n}\r\n.brand small {\r\n  display: block;\r\n  font-size: 10px;\r\n  letter-spacing: 2.8px;\r\n  font-weight: 450;\r\n  color: #7e93aa;\r\n  margin-top: 3px;\r\n}\r\n.brand-mark {\r\n  display: flex;\r\n  gap: 4px;\r\n  align-items: flex-end;\r\n  width: 29px;\r\n  height: 29px;\r\n}\r\n.brand-mark i {\r\n  display: block;\r\n  background: #55c9b0;\r\n  width: 6px;\r\n  border-radius: 2px;\r\n}\r\n.brand-mark i:nth-child(1) {\r\n  height: 12px;\r\n}\r\n.brand-mark i:nth-child(2) {\r\n  height: 20px;\r\n}\r\n.brand-mark i:nth-child(3) {\r\n  height: 29px;\r\n}\r\n.nav-label {\r\n  font-size: 12px;\r\n  color: #718398;\r\n  letter-spacing: 1px;\r\n  margin: 46px 16px 13px;\r\n}\r\n.nav-item {\r\n  background: transparent;\r\n  color: #91a4b8;\r\n  display: flex;\r\n  gap: 13px;\r\n  align-items: center;\r\n  padding: 13px 16px;\r\n  width: 100%;\r\n  text-align: left;\r\n  margin-bottom: 7px;\r\n  border-radius: 7px;\r\n  font-size: 14px;\r\n}\r\n.nav-item.active {\r\n  background: #223847;\r\n  color: #70d6c2;\r\n}\r\n.nav-item:hover {\r\n  background: #1d3042;\r\n}\r\n.sidebar-note {\r\n  margin-top: auto;\r\n  background: #152738;\r\n  border: 1px solid #293b4e;\r\n  padding: 19px 15px;\r\n  border-radius: 8px;\r\n}\r\n.mini-label {\r\n  display: block;\r\n  color: #6d8b9d;\r\n  font-size: 12px;\r\n  margin-bottom: 9px;\r\n}\r\n.sidebar-note strong {\r\n  font-size: 14px;\r\n  color: #d5dee7;\r\n  font-weight: 500;\r\n}\r\n.sidebar-note p {\r\n  font-size: 12px;\r\n  color: #8a9bae;\r\n  margin: 9px 0 15px;\r\n  line-height: 1.8;\r\n}\r\n.note-line {\r\n  height: 1px;\r\n  background: #2b3b4d;\r\n  margin-bottom: 12px;\r\n}\r\n.sidebar-note > span:last-child {\r\n  font-size: 12px;\r\n  color: #90a3b7;\r\n}\r\n.sidebar-footer {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: center;\r\n  margin: 22px 12px 0;\r\n  font-size: 12px;\r\n}\r\n.sidebar-footer small {\r\n  display: block;\r\n  color: #60768c;\r\n  font-size: 12px;\r\n}\r\n.workspace {\r\n  margin-left: 222px;\r\n  width: calc(100% - 222px);\r\n}\r\n.topbar {\r\n  height: 68px;\r\n  background: #fff;\r\n  border-bottom: 1px solid var(--line);\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  padding: 0 35px;\r\n}\r\n.breadcrumb {\r\n  font-size: 13px;\r\n  color: #8a95a2;\r\n  display: flex;\r\n  gap: 14px;\r\n}\r\n.breadcrumb strong {\r\n  color: #526073;\r\n  font-weight: 500;\r\n}\r\n.topbar-right {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 24px;\r\n}\r\n.session-label {\r\n  font-size: 13px;\r\n  color: #7d8897;\r\n}\r\n.icon-button {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  background: transparent;\r\n  width: 32px;\r\n  height: 32px;\r\n  color: #8b98a6;\r\n  border-radius: 5px;\r\n}\r\n.icon-button:hover {\r\n  background: #eef4f4;\r\n  color: var(--teal);\r\n}\r\nmain {\r\n  max-width: 1680px;\r\n  margin: auto;\r\n  padding: 31px 35px 20px;\r\n}\r\n.page-heading {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  margin-bottom: 25px;\r\n}\r\n.eyebrow {\r\n  font-size: 11px;\r\n  letter-spacing: 1.9px;\r\n  color: #8290a0;\r\n  font-weight: 650;\r\n}\r\n.page-heading h1 {\r\n  font-size: 28px;\r\n  letter-spacing: -0.7px;\r\n  font-weight: 650;\r\n  margin-top: 5px;\r\n}\r\n.page-heading p {\r\n  font-size: 14px;\r\n  color: #86909d;\r\n  margin-top: 6px;\r\n}\r\n.heading-actions {\r\n  display: flex;\r\n  gap: 12px;\r\n  align-items: center;\r\n}\r\n.date-control {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  background: #fff;\r\n  border: 1px solid #e0e5ec;\r\n  padding: 9px 12px;\r\n  border-radius: 6px;\r\n  color: #8391a0;\r\n}\r\n.date-control input {\r\n  border: 0;\r\n  outline: 0;\r\n  color: #536276;\r\n  width: 130px;\r\n  background: transparent;\r\n}\r\n.primary,\r\n.secondary {\r\n  padding: 10px 16px;\r\n  border-radius: 6px;\r\n  font-weight: 550;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 9px;\r\n  white-space: nowrap;\r\n}\r\n.primary {\r\n  background: var(--teal);\r\n  color: #fff;\r\n}\r\n.primary:hover {\r\n  background: #106f62;\r\n}\r\n.secondary {\r\n  background: #f3f5f8;\r\n  color: #4f6275;\r\n  border: 1px solid var(--line);\r\n}\r\n.data-strip {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  margin-bottom: 21px;\r\n  gap: 12px;\r\n  color: #8a96a3;\r\n  font-size: 12px;\r\n}\r\n.data-strip > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 12px;\r\n  flex-wrap: wrap;\r\n}\r\n.source-tag {\r\n  display: inline-flex;\r\n  background: #e5f1ed;\r\n  color: #3b8b7b;\r\n  font-size: 12px;\r\n  border-radius: 4px;\r\n  padding: 3px 8px;\r\n}\r\n.source-tag.unavailable {\r\n  background: #fff1df;\r\n  color: #a27428;\r\n}\r\n.source-tag.demo {\r\n  background: #edf0f7;\r\n  color: #6e7ba1;\r\n}\r\n.text-button {\r\n  background: transparent;\r\n  color: #74839b;\r\n  font-size: 12px;\r\n  white-space: nowrap;\r\n  padding: 4px;\r\n}\r\n.text-button:hover {\r\n  color: var(--teal);\r\n}\r\n.notice {\r\n  padding: 13px 17px;\r\n  background: #fff8ed;\r\n  border: 1px solid #eedfc6;\r\n  color: #91703b;\r\n  border-radius: 6px;\r\n  margin-bottom: 19px;\r\n  font-size: 14px;\r\n}\r\n.metrics {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, minmax(0, 1fr));\r\n  gap: 17px;\r\n  margin-bottom: 24px;\r\n}\r\n.metric {\r\n  background: white;\r\n  border: 1px solid var(--line);\r\n  border-radius: 8px;\r\n  padding: 20px 21px;\r\n  position: relative;\r\n  overflow: hidden;\r\n}\r\n.metric-head {\r\n  color: #7c8999;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  font-size: 13px;\r\n}\r\n.metric-head svg {\r\n  width: 17px;\r\n  height: 17px;\r\n  color: #aab4c1;\r\n}\r\n.metric-value {\r\n  font-size: 36px;\r\n  font-family: ui-sans-serif, system-ui, sans-serif;\r\n  font-weight: 600;\r\n  letter-spacing: -1.7px;\r\n  margin-top: 8px;\r\n  line-height: 1.25;\r\n}\r\n.metric-value small {\r\n  font-size: 14px;\r\n  color: #94a0ae;\r\n  font-weight: 400;\r\n  letter-spacing: 0;\r\n  margin-left: 5px;\r\n}\r\n.metric-caption {\r\n  font-size: 12px;\r\n  color: #8a96a4;\r\n  margin-top: 10px;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n}\r\n.metric-line {\r\n  height: 3px;\r\n  background: #edf2f3;\r\n  border-radius: 3px;\r\n  margin-top: 15px;\r\n}\r\n.metric-line i {\r\n  display: block;\r\n  height: 100%;\r\n  border-radius: 3px;\r\n  background: #80bfad;\r\n}\r\n.metric-line.amber i {\r\n  background: #e0b065;\r\n}\r\n.metric-value.accent {\r\n  color: var(--teal);\r\n}\r\n.overview-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1fr) 300px;\r\n  gap: 22px;\r\n  align-items: start;\r\n}\r\n.panel {\r\n  --panel-inline-padding: 22px;\r\n  background: #fff;\r\n  border: 1px solid var(--line);\r\n  border-radius: 8px;\r\n  overflow: hidden;\r\n}\r\n.panel-heading {\r\n  padding: 21px var(--panel-inline-padding) 17px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  gap: 12px;\r\n}\r\n.panel-heading h2 {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 9px;\r\n}\r\n.panel-heading p {\r\n  font-size: 12px;\r\n  color: #929ca9;\r\n  margin-top: 5px;\r\n}\r\n.count-chip {\r\n  font-size: 11px;\r\n  font-weight: 500;\r\n  background: #eef3f6;\r\n  padding: 0 7px;\r\n  line-height: 20px;\r\n  border-radius: 4px;\r\n  color: #7990a2;\r\n}\r\n.small-muted {\r\n  font-size: 12px;\r\n  color: #9ca6b0;\r\n  white-space: nowrap;\r\n}\r\n.filters {\r\n  display: flex;\r\n  gap: 12px;\r\n  padding: 0 22px 17px;\r\n}\r\n.search-control {\r\n  display: flex;\r\n  gap: 9px;\r\n  align-items: center;\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  padding: 8px 10px;\r\n  flex: 1;\r\n  min-width: 100px;\r\n  color: #9ca8b5;\r\n  background: #fcfdfe;\r\n}\r\n.search-control svg {\r\n  width: 15px;\r\n  height: 15px;\r\n}\r\n.search-control input {\r\n  border: 0;\r\n  background: transparent;\r\n  outline: 0;\r\n  width: 100%;\r\n  min-width: 0;\r\n  font-size: 13px;\r\n  color: var(--ink);\r\n}\r\ninput::placeholder {\r\n  color: #a1aab6;\r\n}\r\nselect {\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  color: #6b798b;\r\n  padding: 7px 9px;\r\n  background: #fff;\r\n  max-width: 180px;\r\n  font-size: 13px;\r\n}\r\n.table-subnav {\r\n  padding: 0 22px 13px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  align-items: center;\r\n}\r\n.segments {\r\n  display: flex;\r\n  gap: 6px;\r\n}\r\n.segments button {\r\n  background: transparent;\r\n  color: #8c97a4;\r\n  padding: 5px 12px;\r\n  font-size: 13px;\r\n  border-radius: 4px;\r\n}\r\n.segments button.active {\r\n  background: #e8f3ef;\r\n  color: var(--teal);\r\n  font-weight: 550;\r\n}\r\n.sort-control {\r\n  display: flex;\r\n  gap: 8px;\r\n  align-items: center;\r\n  font-size: 12px;\r\n  color: #9aa4af;\r\n}\r\n.sort-control select {\r\n  border: 0;\r\n  padding: 4px;\r\n  font-size: 12px;\r\n}\r\n.table-scroll {\r\n  overflow-x: auto;\r\n}\r\ntable {\r\n  border-collapse: collapse;\r\n  width: 100%;\r\n  white-space: nowrap;\r\n  font-size: 13px;\r\n  text-align: left;\r\n}\r\nth {\r\n  padding: 11px 16px;\r\n  background: #f8fafc;\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n  color: #8b97a5;\r\n  border-block: 1px solid #edf0f3;\r\n}\r\ntd {\r\n  padding: 17px 16px;\r\n  border-bottom: 1px solid #eef1f5;\r\n  vertical-align: middle;\r\n}\r\ntd:first-child,\r\nth:first-child {\r\n  padding-left: 22px;\r\n}\r\ntd:last-child,\r\nth:last-child {\r\n  padding-right: 22px;\r\n}\r\ntbody tr:hover {\r\n  background: #f8fbfa;\r\n}\r\n.stock-name {\r\n  background: transparent;\r\n  text-align: left;\r\n  display: block;\r\n  padding: 0;\r\n  color: #253a4d;\r\n  font-size: 14px;\r\n  font-weight: 550;\r\n  max-width: 145px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n.stock-name:hover {\r\n  color: var(--teal);\r\n}\r\n.stock-code {\r\n  font-size: 11px;\r\n  color: #9ba5b0;\r\n  display: block;\r\n  margin-top: 3px;\r\n  font-variant-numeric: tabular-nums;\r\n  letter-spacing: 0.3px;\r\n}\r\n.score-cell {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 7px;\r\n}\r\n.score-number {\r\n  font-size: 18px;\r\n  font-weight: 650;\r\n  color: var(--teal);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.score-number.mid {\r\n  color: #b18745;\r\n}\r\n.score-number.low {\r\n  color: #8695a5;\r\n}\r\n.score-track {\r\n  height: 3px;\r\n  background: #eaf1ee;\r\n  width: 36px;\r\n  border-radius: 2px;\r\n}\r\n.score-track i {\r\n  height: 100%;\r\n  display: block;\r\n  background: #78bda9;\r\n  border-radius: 2px;\r\n}\r\n.sector-tag {\r\n  background: #f4f6f9;\r\n  color: #7b8da0;\r\n  padding: 4px 7px;\r\n  border-radius: 4px;\r\n  font-size: 12px;\r\n}\r\n.height-tag {\r\n  color: #61758a;\r\n  background: #edf2f8;\r\n  padding: 3px 7px;\r\n  border-radius: 4px;\r\n  font-size: 12px;\r\n}\r\n.height-tag.high {\r\n  color: #b38742;\r\n  background: #fbf1df;\r\n}\r\n.money {\r\n  font-variant-numeric: tabular-nums;\r\n  color: #556a7d;\r\n}\r\n.table-footer {\r\n  font-size: 12px;\r\n  color: #9aa4b0;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  padding: 15px 22px;\r\n}\r\n.right-column {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 20px;\r\n}\r\n.sector-row {\r\n  display: block;\r\n  background: transparent;\r\n  width: 100%;\r\n  padding: 10px 22px;\r\n  text-align: left;\r\n}\r\n.sector-row:hover {\r\n  background: #f6faf8;\r\n}\r\n.sector-row-label {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  font-size: 14px;\r\n  color: #4e6478;\r\n}\r\n.sector-row-label > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 10px;\r\n}\r\n.rank-index {\r\n  color: #a8b3bf;\r\n  font:\r\n    12px/1 ui-monospace,\r\n    monospace;\r\n}\r\n.sector-score {\r\n  color: #3d8474;\r\n  font-weight: 650;\r\n  font-size: 17px;\r\n}\r\n.sector-bar {\r\n  height: 5px;\r\n  border-radius: 2px;\r\n  background: #f1f4f7;\r\n  margin: 9px 0 4px 25px;\r\n}\r\n.sector-bar i {\r\n  height: 100%;\r\n  display: block;\r\n  border-radius: 2px;\r\n  background: #71b7a3;\r\n}\r\n.sector-row:nth-child(2) .sector-bar i {\r\n  background: #8fc4b5;\r\n}\r\n.sector-row:nth-child(n + 3) .sector-bar i {\r\n  background: #b3d6cc;\r\n}\r\n.sector-row-meta {\r\n  font-size: 11px;\r\n  color: #a0aab5;\r\n  margin-left: 25px;\r\n}\r\n.panel-footnote {\r\n  font-size: 11px;\r\n  color: #9da7b1;\r\n  border-top: 1px solid #f0f2f5;\r\n  margin-top: 15px;\r\n  padding: 12px var(--panel-inline-padding);\r\n  overflow-wrap: anywhere;\r\n}\r\n.outline-tag {\r\n  font-size: 11px;\r\n  color: #8e9dac;\r\n  border: 1px solid #e5eaf0;\r\n  border-radius: 4px;\r\n  padding: 2px 7px;\r\n  white-space: nowrap;\r\n}\r\n#ladder-chart {\r\n  padding: 0 22px 10px;\r\n}\r\n.ladder-row {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: center;\r\n  padding: 8px 0;\r\n  font-size: 12px;\r\n  color: #8b99a8;\r\n}\r\n.ladder-row .label {\r\n  width: 38px;\r\n}\r\n.ladder-track {\r\n  background: #f3f5f8;\r\n  height: 18px;\r\n  flex: 1;\r\n  border-radius: 3px;\r\n  overflow: hidden;\r\n}\r\n.ladder-track i {\r\n  display: block;\r\n  height: 100%;\r\n  background: #b8c9d7;\r\n  border-radius: 3px;\r\n  min-width: 0;\r\n}\r\n.ladder-row:first-child .ladder-track i {\r\n  background: #dbb879;\r\n}\r\n.ladder-row:last-child .ladder-track i {\r\n  background: #81bba9;\r\n}\r\n.ladder-count {\r\n  width: 21px;\r\n  text-align: right;\r\n  color: #61778c;\r\n}\r\n.insight {\r\n  margin: 8px 22px 19px;\r\n  padding: 12px;\r\n  background: #f5f8fa;\r\n  border-radius: 5px;\r\n  color: #7a8a9a;\r\n  font-size: 12px;\r\n  line-height: 1.8;\r\n}\r\n.empty {\r\n  padding: 60px 24px;\r\n  text-align: center;\r\n  color: #8b9baa;\r\n  font-size: 14px;\r\n  white-space: normal;\r\n}\r\n.empty strong {\r\n  display: block;\r\n  font-size: 16px;\r\n  font-weight: 500;\r\n  color: #596d80;\r\n  margin-bottom: 8px;\r\n}\r\n.empty.compact {\r\n  padding: 27px 20px;\r\n  font-size: 12px;\r\n}\r\n.page-footer {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  font-size: 11px;\r\n  color: #a0aab5;\r\n  margin-top: 25px;\r\n}\r\n.page-footer > span:first-child {\r\n  white-space: nowrap;\r\n  letter-spacing: 0.5px;\r\n}\r\n.page-footer i {\r\n  margin: 0 5px;\r\n  font-style: normal;\r\n}\r\n.sector-formula {\r\n  padding: 13px 22px;\r\n  background: #f5faf8;\r\n  color: #6b8d80;\r\n  font-size: 13px;\r\n}\r\n.sector-formula span {\r\n  margin: 0 9px;\r\n  color: #b2c6bd;\r\n}\r\n.model-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);\r\n  gap: 22px;\r\n}\r\n.preset-buttons {\r\n  display: flex;\r\n  gap: 9px;\r\n  padding: 0 22px 22px;\r\n}\r\n.preset-buttons button {\r\n  font-size: 13px;\r\n  padding: 8px 13px;\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  background: #fff;\r\n  color: #8897a5;\r\n}\r\n.preset-buttons button.active {\r\n  background: #edf6f2;\r\n  color: var(--teal);\r\n  border-color: #c9e3d9;\r\n}\r\n.weight-item {\r\n  padding: 17px 22px;\r\n  border-top: 1px solid #eff2f5;\r\n}\r\n.weight-heading {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  font-size: 14px;\r\n  margin-bottom: 10px;\r\n}\r\n.weight-heading output {\r\n  font-weight: 600;\r\n  color: var(--teal);\r\n}\r\n.weight-item input {\r\n  width: 100%;\r\n  accent-color: var(--teal);\r\n  height: 5px;\r\n}\r\n.weight-item p {\r\n  color: #96a2ae;\r\n  font-size: 12px;\r\n  margin-top: 10px;\r\n}\r\n.model-actions {\r\n  padding: 18px 22px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  gap: 12px;\r\n  border-top: 1px solid var(--line);\r\n}\r\n.model-actions span {\r\n  color: #8b9aa7;\r\n  font-size: 12px;\r\n}\r\n.model-explain {\r\n  padding-bottom: 22px;\r\n}\r\n.formula-box {\r\n  padding: 20px 22px;\r\n  background: #f1f7f4;\r\n  margin: 0 22px 22px;\r\n  color: #4d8e79;\r\n  font-size: 16px;\r\n  font-weight: 550;\r\n  line-height: 1.9;\r\n  border-radius: 6px;\r\n}\r\n.formula-box span {\r\n  font-size: 13px;\r\n  font-weight: 400;\r\n}\r\n.model-explain h3 {\r\n  margin: 18px 22px 9px;\r\n}\r\n.model-explain p {\r\n  margin: 0 22px;\r\n  color: #8898a6;\r\n  line-height: 1.8;\r\n}\r\n.model-explain dl {\r\n  margin: 0 22px;\r\n}\r\n.model-explain dl div {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  padding: 8px 0;\r\n  color: #6d7d8d;\r\n  font-size: 13px;\r\n  border-bottom: 1px solid #f1f3f6;\r\n}\r\n.model-explain dd {\r\n  color: var(--amber);\r\n}\r\n.model-explain .model-limit {\r\n  margin-top: 22px;\r\n  font-size: 12px;\r\n}\r\n.detail-dialog,\r\n.help-dialog {\r\n  border: 1px solid var(--line);\r\n  border-radius: 12px;\r\n  box-shadow: 0 20px 80px #10213540;\r\n  width: min(720px, calc(100vw - 32px));\r\n  padding: 25px 29px;\r\n  max-height: 90vh;\r\n  color: var(--ink);\r\n}\r\ndialog::backdrop {\r\n  background: #10213580;\r\n  backdrop-filter: blur(3px);\r\n}\r\n.dialog-top {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  margin-bottom: 20px;\r\n}\r\n.detail-head {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  align-items: center;\r\n}\r\n.detail-head h2 {\r\n  font-size: 26px;\r\n}\r\n.detail-head .stock-code {\r\n  font-size: 13px;\r\n  margin-top: 6px;\r\n}\r\n.detail-score {\r\n  font-size: 54px;\r\n  line-height: 1;\r\n  color: var(--teal);\r\n  font-weight: 600;\r\n  letter-spacing: -2px;\r\n}\r\n.detail-score small {\r\n  display: block;\r\n  font-size: 12px;\r\n  letter-spacing: 0;\r\n  font-weight: 400;\r\n  color: #94a4b0;\r\n  text-align: right;\r\n  margin-top: 8px;\r\n}\r\n.detail-tags {\r\n  display: flex;\r\n  gap: 8px;\r\n  margin-top: 15px;\r\n}\r\n.detail-facts {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, 1fr);\r\n  gap: 15px;\r\n  background: #f6f8fa;\r\n  padding: 18px;\r\n  margin: 22px 0;\r\n  border-radius: 6px;\r\n}\r\n.detail-facts label {\r\n  display: block;\r\n  color: #91a0ae;\r\n  font-size: 12px;\r\n  margin-bottom: 5px;\r\n}\r\n.detail-facts strong {\r\n  font-size: 16px;\r\n  font-weight: 550;\r\n}\r\n.factor-row {\r\n  display: grid;\r\n  grid-template-columns: 90px 1fr 40px 56px;\r\n  gap: 12px;\r\n  align-items: center;\r\n  margin: 14px 0;\r\n  font-size: 13px;\r\n}\r\n.factor-row .factor-track {\r\n  height: 7px;\r\n  background: #edf2f4;\r\n  border-radius: 4px;\r\n}\r\n.factor-track i {\r\n  display: block;\r\n  height: 100%;\r\n  border-radius: 4px;\r\n  background: #7dbda9;\r\n}\r\n.factor-row .weight {\r\n  font-size: 12px;\r\n  color: #97a6b3;\r\n  text-align: right;\r\n}\r\n.detail-section h3 {\r\n  font-size: 15px;\r\n  margin: 23px 0 13px;\r\n}\r\n.risk-row {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: flex-start;\r\n  font-size: 13px;\r\n  line-height: 1.8;\r\n  margin: 10px 0;\r\n  color: #8593a0;\r\n}\r\n.risk-row strong {\r\n  color: #b18442;\r\n  font-size: 12px;\r\n  white-space: nowrap;\r\n  background: #fbf2e4;\r\n  padding: 2px 6px;\r\n  border-radius: 4px;\r\n}\r\n.detail-text {\r\n  padding: 15px 18px;\r\n  background: #f4f8f7;\r\n  color: #6e8a81;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  border-radius: 6px;\r\n}\r\n.detail-footnote {\r\n  font-size: 12px;\r\n  color: #97a5b2;\r\n  margin-top: 18px;\r\n  line-height: 1.8;\r\n}\r\n.help-content p {\r\n  margin: 15px 0;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #6c7f90;\r\n}\r\n.loading {\r\n  animation: pulse 1.5s ease-in-out infinite;\r\n}\r\n@keyframes pulse {\r\n  50% {\r\n    opacity: 0.4;\r\n  }\r\n}\r\n@media (min-width: 1500px) {\r\n  .overview-grid {\r\n    grid-template-columns: minmax(0, 1fr) 330px;\r\n  }\r\n  td {\r\n    padding: 19px 18px;\r\n  }\r\n  main {\r\n    padding: 38px 42px;\r\n  }\r\n  .metric {\r\n    padding: 23px 26px;\r\n  }\r\n}\r\n@media (max-width: 1200px) {\r\n  .sidebar {\r\n    width: 190px;\r\n    padding-inline: 12px;\r\n  }\r\n  .workspace {\r\n    margin-left: 190px;\r\n    width: calc(100% - 190px);\r\n  }\r\n  main {\r\n    padding: 25px 24px;\r\n  }\r\n  .topbar {\r\n    padding-inline: 24px;\r\n  }\r\n  .overview-grid {\r\n    grid-template-columns: minmax(0, 1fr) 270px;\r\n    gap: 17px;\r\n  }\r\n  .metric {\r\n    padding: 17px;\r\n  }\r\n  .metric-value {\r\n    font-size: 31px;\r\n  }\r\n  .brand {\r\n    font-size: 17px;\r\n    padding: 0 5px;\r\n  }\r\n  .brand small {\r\n    font-size: 9px;\r\n  }\r\n  .metric-caption {\r\n    font-size: 11px;\r\n  }\r\n  .heading-actions {\r\n    gap: 8px;\r\n  }\r\n  .primary {\r\n    padding-inline: 13px;\r\n  }\r\n  .page-footer {\r\n    font-size: 10px;\r\n  }\r\n}\r\n@media (max-width: 1000px) {\r\n  .overview-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .right-column {\r\n    display: grid;\r\n    grid-template-columns: 1fr 1fr;\r\n  }\r\n  .model-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .sidebar {\r\n    width: 175px;\r\n  }\r\n  .workspace {\r\n    margin-left: 175px;\r\n    width: calc(100% - 175px);\r\n  }\r\n  .page-heading {\r\n    align-items: flex-start;\r\n    flex-wrap: wrap;\r\n  }\r\n  .metric-caption {\r\n    flex-direction: column;\r\n    align-items: flex-start;\r\n    gap: 2px;\r\n  }\r\n  .metric-head {\r\n    font-size: 12px;\r\n  }\r\n  .metric-value {\r\n    font-size: 28px;\r\n  }\r\n  .page-footer {\r\n    flex-direction: column;\r\n    gap: 6px;\r\n  }\r\n}\r\n@media (max-width: 720px) {\r\n  .shell {\r\n    display: block;\r\n  }\r\n  .sidebar {\r\n    position: static;\r\n    width: 100%;\r\n    padding: 18px 20px 0;\r\n  }\r\n  .brand {\r\n    font-size: 18px;\r\n  }\r\n  .brand small {\r\n    font-size: 9px;\r\n  }\r\n  .brand-mark {\r\n    height: 25px;\r\n  }\r\n  .brand-mark i:nth-child(3) {\r\n    height: 25px;\r\n  }\r\n  .nav-label,\r\n  .sidebar-note,\r\n  .sidebar-footer {\r\n    display: none;\r\n  }\r\n  .sidebar nav {\r\n    display: flex;\r\n    margin-top: 17px;\r\n    gap: 6px;\r\n  }\r\n  .nav-item {\r\n    padding: 11px 8px;\r\n    font-size: 13px;\r\n    justify-content: center;\r\n    gap: 7px;\r\n    margin: 0;\r\n    border-radius: 6px 6px 0 0;\r\n  }\r\n  .nav-item svg {\r\n    width: 15px;\r\n    height: 15px;\r\n  }\r\n  .workspace {\r\n    width: 100%;\r\n    margin: 0;\r\n  }\r\n  .topbar {\r\n    height: 48px;\r\n    padding-inline: 20px;\r\n  }\r\n  .session-label {\r\n    font-size: 11px;\r\n  }\r\n  .topbar-right {\r\n    gap: 10px;\r\n  }\r\n  .breadcrumb {\r\n    font-size: 12px;\r\n    gap: 10px;\r\n  }\r\n  main {\r\n    padding: 23px 18px 18px;\r\n  }\r\n  .page-heading {\r\n    gap: 17px;\r\n    margin-bottom: 20px;\r\n  }\r\n  .page-heading h1 {\r\n    font-size: 25px;\r\n  }\r\n  .page-heading p {\r\n    font-size: 13px;\r\n  }\r\n  .eyebrow {\r\n    font-size: 10px;\r\n  }\r\n  .heading-actions {\r\n    width: 100%;\r\n    justify-content: space-between;\r\n  }\r\n  .date-control {\r\n    flex: 1;\r\n    max-width: 225px;\r\n  }\r\n  .date-control input {\r\n    width: 100%;\r\n  }\r\n  .data-strip {\r\n    font-size: 11px;\r\n    align-items: flex-start;\r\n  }\r\n  .data-strip > div {\r\n    gap: 6px;\r\n    align-items: flex-start;\r\n    flex-direction: column;\r\n  }\r\n  .metrics {\r\n    grid-template-columns: repeat(2, minmax(0, 1fr));\r\n    gap: 12px;\r\n    margin-bottom: 17px;\r\n  }\r\n  .metric {\r\n    padding: 16px;\r\n  }\r\n  .metric-head {\r\n    font-size: 13px;\r\n  }\r\n  .metric-value {\r\n    font-size: 32px;\r\n  }\r\n  .metric-caption {\r\n    font-size: 12px;\r\n  }\r\n  .right-column {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .panel {\r\n    --panel-inline-padding: 17px;\r\n  }\r\n  .panel-heading {\r\n    padding: 19px var(--panel-inline-padding) 15px;\r\n  }\r\n  .filters {\r\n    padding-inline: 17px;\r\n    gap: 8px;\r\n  }\r\n  .filters select {\r\n    max-width: 130px;\r\n  }\r\n  .table-subnav {\r\n    padding-inline: 17px;\r\n  }\r\n  .table-footer {\r\n    padding-inline: 17px;\r\n  }\r\n  .table-footer span:last-child {\r\n    display: none;\r\n  }\r\n  .small-muted {\r\n    font-size: 11px;\r\n  }\r\n  .detail-dialog,\r\n  .help-dialog {\r\n    padding: 20px;\r\n  }\r\n  .detail-facts {\r\n    grid-template-columns: 1fr 1fr;\r\n  }\r\n  .detail-head h2 {\r\n    font-size: 22px;\r\n  }\r\n  .detail-score {\r\n    font-size: 45px;\r\n  }\r\n  .factor-row {\r\n    grid-template-columns: 76px 1fr 26px 42px;\r\n    gap: 8px;\r\n    font-size: 12px;\r\n  }\r\n  .sector-formula {\r\n    line-height: 2;\r\n  }\r\n  .model-actions {\r\n    flex-wrap: wrap;\r\n  }\r\n  .preset-buttons {\r\n    padding-inline: 17px;\r\n    gap: 6px;\r\n  }\r\n  .preset-buttons button {\r\n    padding-inline: 11px;\r\n  }\r\n  .detail-facts strong {\r\n    font-size: 16px;\r\n  }\r\n  .page-footer {\r\n    font-size: 11px;\r\n  }\r\n  .sidebar .brand small {\r\n    font-size: 10px;\r\n  }\r\n}\r\n@media (prefers-reduced-motion: reduce) {\r\n  * {\r\n    animation: none !important;\r\n    scroll-behavior: auto !important;\r\n  }\r\n}\r\n.review-intro {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  margin-bottom: 22px;\r\n  gap: 20px;\r\n}\r\n.review-intro p {\r\n  font-size: 14px;\r\n  color: #8395a3;\r\n  margin-top: 9px;\r\n}\r\n.review-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);\r\n  gap: 22px;\r\n  align-items: start;\r\n}\r\n.review-conclusion {\r\n  background: #eff7f3;\r\n  color: #628b79;\r\n  padding: 12px 22px;\r\n  font-size: 13px;\r\n}\r\n.review-stock {\r\n  font-weight: 500;\r\n  font-size: 14px;\r\n}\r\n.top-group {\r\n  color: #b58d48;\r\n  background: #fbf3e5;\r\n  font-size: 10px;\r\n  padding: 2px 5px;\r\n  margin-left: 7px;\r\n  border-radius: 3px;\r\n}\r\n.up {\r\n  color: var(--red);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.down {\r\n  color: var(--green);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.ai-content {\r\n  padding: 0 22px;\r\n}\r\n.ai-empty {\r\n  text-align: center;\r\n  padding: 17px 25px 20px;\r\n  color: #8b9aa8;\r\n}\r\n.ai-symbol {\r\n  display: flex;\r\n  justify-content: center;\r\n  width: 45px;\r\n  height: 45px;\r\n  align-items: center;\r\n  background: #eef5f2;\r\n  color: #69a991;\r\n  border-radius: 12px;\r\n  margin: 0 auto 15px;\r\n}\r\n.ai-symbol svg {\r\n  width: 25px;\r\n  height: 25px;\r\n}\r\n.ai-empty h3 {\r\n  font-size: 16px;\r\n  color: #617587;\r\n  font-weight: 500;\r\n  margin-bottom: 9px;\r\n}\r\n.ai-empty p {\r\n  font-size: 13px;\r\n  line-height: 1.9;\r\n}\r\n.ai-process {\r\n  font-size: 12px;\r\n  background: #f7f9fb;\r\n  padding: 16px;\r\n  margin-top: 23px;\r\n  color: #9aabba;\r\n}\r\n.ai-process span {\r\n  display: block;\r\n  color: #c0ccd5;\r\n  line-height: 1.8;\r\n}\r\n.ai-actions {\r\n  padding: 17px 22px;\r\n  border-top: 1px solid var(--line);\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 13px;\r\n}\r\n.ai-actions button {\r\n  font-size: 13px;\r\n}\r\n.ai-actions > span {\r\n  font-size: 12px;\r\n  color: #9b8a6b;\r\n}\r\n.ai-score {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 14px;\r\n  padding: 8px 22px 16px;\r\n}\r\n.ai-score strong {\r\n  font-size: 48px;\r\n  color: #588b79;\r\n  line-height: 1.1;\r\n}\r\n.ai-score > span {\r\n  font-size: 13px;\r\n  color: #789285;\r\n}\r\n.ai-score small {\r\n  display: block;\r\n  font-size: 11px;\r\n  color: #9aa9a1;\r\n  margin-top: 4px;\r\n}\r\n.ai-summary {\r\n  padding: 0 22px;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #637889;\r\n}\r\n.ai-panel h3 {\r\n  margin: 20px 22px 10px;\r\n  font-size: 14px;\r\n}\r\n.ai-panel ul {\r\n  padding: 0 22px 0 38px;\r\n  color: #8192a1;\r\n  font-size: 13px;\r\n  line-height: 1.9;\r\n}\r\n.ai-panel li {\r\n  margin-bottom: 8px;\r\n}\r\n.ai-note {\r\n  padding: 10px 22px 20px;\r\n  font-size: 12px;\r\n  color: #9ba8b2;\r\n}\r\n.review-sector-panel,\r\n.history-panel,\r\n.model-connection {\r\n  margin-top: 22px;\r\n}\r\n.history-list {\r\n  padding: 0 22px 18px;\r\n}\r\n.history-list button {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 14px;\r\n  padding: 12px;\r\n  width: 100%;\r\n  background: #f8fafb;\r\n  color: #718699;\r\n  border-bottom: 1px solid #e8eef1;\r\n  text-align: left;\r\n  font-size: 13px;\r\n}\r\n.history-list button:hover {\r\n  background: #eef6f1;\r\n}\r\n.model-connection > p {\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #81929f;\r\n  margin: 0 22px 14px;\r\n}\r\n.model-connection > p:last-child {\r\n  font-size: 12px;\r\n  margin-bottom: 22px;\r\n}\r\n@media (max-width: 1200px) {\r\n  .review-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .ai-panel {\r\n    max-width: none;\r\n  }\r\n}\r\n@media (max-width: 720px) {\r\n  .sidebar nav {\r\n    overflow-x: auto;\r\n  }\r\n  .nav-item {\r\n    min-width: 83px;\r\n    flex-shrink: 0;\r\n  }\r\n  .review-intro {\r\n    flex-wrap: wrap;\r\n    gap: 12px;\r\n  }\r\n  .history-list button {\r\n    flex-direction: column;\r\n    gap: 4px;\r\n  }\r\n  .top-group {\r\n    display: none;\r\n  }\r\n  .review-intro p {\r\n    font-size: 13px;\r\n  }\r\n  .review-grid {\r\n    gap: 17px;\r\n  }\r\n}\r\n.pool-panel .table-scroll {\r\n  max-height: 650px;\r\n}\r\n.pool-panel th {\r\n  position: sticky;\r\n  top: 0;\r\n  z-index: 1;\r\n}\r\n.stock-code,\r\n.sector-row-meta,\r\n.panel-footnote,\r\n.outline-tag,\r\n.page-footer,\r\n.sidebar-note p,\r\n.sidebar-footer small {\r\n  font-size: 12px;\r\n}\r\ntable {\r\n  font-size: 14px;\r\n}\r\n.sector-tag,\r\n.height-tag {\r\n  font-size: 12px;\r\n}\r\n.page-footer {\r\n  line-height: 1.7;\r\n}\r\n@media (max-width: 720px) {\r\n  .pool-panel .table-scroll {\r\n    max-height: 560px;\r\n  }\r\n}\r\n\r\n/* Paper account uses the same research workspace visual language. */\r\n.paper-toolbar {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 14px;\r\n  flex-wrap: wrap;\r\n}\r\n.paper-toolbar > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  flex-wrap: wrap;\r\n}\r\n.paper-toolbar a {\r\n  text-decoration: none;\r\n  font-size: 12px;\r\n  display: inline-flex;\r\n  align-items: center;\r\n}\r\n.paper-message {\r\n  font-size: 12px;\r\n  color: var(--muted);\r\n  min-height: 18px;\r\n  margin: 12px 0 20px;\r\n}\r\n.paper-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);\r\n  gap: 20px;\r\n  align-items: start;\r\n}\r\n.paper-panel {\r\n  margin-top: 20px;\r\n}\r\n.equity-chart {\r\n  display: block;\r\n  width: 100%;\r\n  height: auto;\r\n  padding: 4px 18px 0;\r\n}\r\n.chart-axis {\r\n  font-size: 11px;\r\n  fill: #758396;\r\n}\r\n.chart-legend {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 14px;\r\n  padding: 0 24px 18px;\r\n  font-size: 11px;\r\n  color: #758396;\r\n}\r\n.chart-legend i {\r\n  display: inline-block;\r\n  width: 12px;\r\n  height: 3px;\r\n  vertical-align: middle;\r\n  background: #13977e;\r\n  margin-right: 6px;\r\n}\r\n.chart-legend i.benchmark {\r\n  background: #acb6c4;\r\n}\r\n.verified {\r\n  color: #14846f;\r\n  border-color: #bfe5d9;\r\n  background: #f0faf6;\r\n}\r\n.action-tag {\r\n  background: #edf4f8;\r\n  color: #405c73;\r\n  border-radius: 5px;\r\n  padding: 5px 8px;\r\n  font-size: 11px;\r\n  white-space: nowrap;\r\n}\r\n.plan-reason {\r\n  min-width: 220px;\r\n  max-width: 330px;\r\n  white-space: normal !important;\r\n  line-height: 1.7;\r\n}\r\n.paper-config {\r\n  display: flex;\r\n  align-items: end;\r\n  gap: 20px;\r\n  flex-wrap: wrap;\r\n  padding: 0 24px 24px;\r\n}\r\n.paper-config label {\r\n  display: grid;\r\n  gap: 9px;\r\n  font-size: 12px;\r\n  color: #758396;\r\n}\r\n.paper-config input,\r\n.paper-config select {\r\n  border: 1px solid #dce3eb;\r\n  border-radius: 6px;\r\n  background: #fff;\r\n  padding: 10px 12px;\r\n  color: #21384b;\r\n  min-width: 220px;\r\n}\r\n.paper-config input:disabled {\r\n  background: #f2f5f8;\r\n  color: #8896a6;\r\n}\r\n.paper-outcomes {\r\n  padding: 0 24px;\r\n}\r\n.paper-outcomes summary {\r\n  cursor: pointer;\r\n  padding: 16px 0;\r\n  font-size: 12px;\r\n  color: #526b80;\r\n}\r\n.execution-feedback p {\r\n  display: flex;\r\n  gap: 14px;\r\n  justify-content: space-between;\r\n  border-top: 1px solid #edf1f5;\r\n  padding: 12px 0;\r\n  margin: 0;\r\n  font-size: 12px;\r\n}\r\n.execution-feedback span {\r\n  color: #758396;\r\n}\r\n.strategy-active {\r\n  display: grid;\r\n  gap: 8px;\r\n  padding: 0 24px 16px;\r\n}\r\n.strategy-active span {\r\n  font-size: 11px;\r\n  color: #758396;\r\n}\r\n.strategy-active strong {\r\n  font-size: 18px;\r\n  letter-spacing: 0.2px;\r\n}\r\n/* In-panel metrics share heading/footer gutters and stack labels above values. */\r\n.panel-metrics {\r\n  padding-inline: var(--panel-inline-padding);\r\n}\r\n.panel-metrics > div {\r\n  display: grid;\r\n  align-content: start;\r\n  gap: 6px;\r\n  min-width: 0;\r\n  overflow-wrap: anywhere;\r\n}\r\n.panel-metrics .mini-label {\r\n  margin-bottom: 0;\r\n}\r\n.panel-metrics .outline-tag {\r\n  justify-self: start;\r\n  max-width: 100%;\r\n  white-space: normal;\r\n}\r\n.panel-metric-value {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1fr);\r\n  gap: 4px;\r\n  min-width: 0;\r\n  overflow-wrap: anywhere;\r\n  font-size: 14px;\r\n  line-height: 1.7;\r\n  line-break: anywhere;\r\n}\r\n.alert-channel-metrics {\r\n  grid-template-columns: repeat(3, minmax(0, 1fr));\r\n}\r\n.strategy-metrics strong {\r\n  font-size: 16px;\r\n  overflow-wrap: anywhere;\r\n}\r\n.strategy-metrics small {\r\n  font-size: 12px;\r\n  color: var(--muted);\r\n  overflow-wrap: anywhere;\r\n}\r\n#strategies-status .strategy-metrics {\r\n  margin-bottom: 0;\r\n}\r\n@media (max-width: 720px) {\r\n  .alert-channel-metrics {\r\n    grid-template-columns: minmax(0, 1fr);\r\n  }\r\n}\r\n.version-row {\r\n  margin: 16px 24px;\r\n  padding: 14px 0;\r\n  border-top: 1px solid #edf1f5;\r\n  font-size: 12px;\r\n}\r\n.version-row > div {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n}\r\n.version-row p {\r\n  line-height: 1.7;\r\n  color: #758396;\r\n}\r\n.version-row small {\r\n  line-height: 1.8;\r\n  color: #758396;\r\n}\r\n.version-row button {\r\n  margin-top: 12px;\r\n}\r\n.paper-grid .ai-panel > div > p {\r\n  padding: 0 24px;\r\n  color: #758396;\r\n  font-size: 12px;\r\n  line-height: 1.8;\r\n}\r\n.paper-grid .ai-panel .small-muted {\r\n  padding: 0 24px 24px;\r\n}\r\n.paper-grid .ai-process {\r\n  margin: 0 24px;\r\n}\r\n.paper-grid .ai-note {\r\n  margin: 14px 0;\r\n}\r\n.paper-grid .panel-footnote {\r\n  line-height: 1.8;\r\n}\r\n.paper-panel .panel-footnote {\r\n  line-height: 1.8;\r\n}\r\n.paper-panel td {\r\n  vertical-align: top;\r\n}\r\n.paper-message:empty {\r\n  display: none;\r\n}\r\n@media (max-width: 1100px) {\r\n  .paper-grid {\r\n    grid-template-columns: minmax(0, 1fr);\r\n  }\r\n  .paper-toolbar {\r\n    align-items: start;\r\n  }\r\n  .paper-config {\r\n    gap: 14px;\r\n  }\r\n}\r\n@media (max-width: 650px) {\r\n  .paper-toolbar .secondary,\r\n  .paper-toolbar .primary {\r\n    font-size: 11px;\r\n    padding: 9px 10px;\r\n  }\r\n  .paper-toolbar > div {\r\n    gap: 6px;\r\n  }\r\n  .paper-config {\r\n    padding: 0 16px 20px;\r\n  }\r\n  .paper-config label,\r\n  .paper-config input,\r\n  .paper-config select {\r\n    width: 100%;\r\n    min-width: 0;\r\n  }\r\n  .execution-feedback p {\r\n    display: block;\r\n  }\r\n  .execution-feedback span {\r\n    display: block;\r\n    margin-top: 6px;\r\n  }\r\n  .chart-legend {\r\n    padding: 0 16px 16px;\r\n    gap: 9px;\r\n  }\r\n  .paper-grid {\r\n    gap: 16px;\r\n  }\r\n}\r\n\r\n.paper-fee-settings {\r\n  border: 1px solid #dce3eb;\r\n  border-radius: 8px;\r\n  width: 100%;\r\n  padding: 18px 20px;\r\n  margin: 0;\r\n  min-width: 0;\r\n}\r\n.paper-fee-settings legend {\r\n  font-size: 14px;\r\n  font-weight: 600;\r\n  color: #21384b;\r\n  padding: 0 8px;\r\n}\r\n.fee-settings-heading {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  flex-wrap: wrap;\r\n  margin-bottom: 16px;\r\n}\r\n.fee-settings-heading p,\r\n.fee-settings-note {\r\n  font-size: 12px;\r\n  color: #758396;\r\n  line-height: 1.8;\r\n  margin: 0;\r\n}\r\n.paper-fee-controls {\r\n  display: grid;\r\n  grid-template-columns: repeat(3, minmax(0, 1fr));\r\n  gap: 18px 24px;\r\n}\r\n.paper-config .paper-fee-controls input {\r\n  min-width: 0;\r\n  width: 100%;\r\n  font-size: 14px;\r\n}\r\n.paper-fee-controls span {\r\n  font-size: 12px;\r\n  color: #8896a6;\r\n}\r\n.fee-settings-note {\r\n  margin-top: 18px;\r\n}\r\n.paper-fee-settings .text-button {\r\n  margin-top: 8px;\r\n}\r\n.fee-breakdown {\r\n  max-width: 200px;\r\n  white-space: normal;\r\n  line-height: 1.7;\r\n}\r\n.fee-breakdown summary {\r\n  cursor: pointer;\r\n  white-space: nowrap;\r\n}\r\n.fee-breakdown > span {\r\n  display: block;\r\n  color: #758396;\r\n  font-size: 12px;\r\n  margin-top: 8px;\r\n  min-width: 160px;\r\n}\r\n@media (max-width: 650px) {\r\n  .paper-fee-settings {\r\n    padding: 16px 12px;\r\n  }\r\n  .paper-fee-controls {\r\n    grid-template-columns: repeat(2, minmax(0, 1fr));\r\n    gap: 16px 12px;\r\n  }\r\n  .paper-config .paper-fee-controls label {\r\n    font-size: 12px;\r\n  }\r\n  .fee-settings-heading p {\r\n    max-width: 100%;\r\n  }\r\n}\r\n\r\n#paper-metrics .metric-value {\r\n  font-size: clamp(22px, 2.2vw, 32px);\r\n}\r\n.plan-price-conditions {\r\n  min-width: 220px;\r\n  line-height: 1.65;\r\n}\r\n\r\n@media (max-width: 700px) {\r\n  .paper-plan-heading {\r\n    flex-direction: column;\r\n    align-items: flex-start;\r\n  }\r\n  .paper-plan-heading #paper-plan-date {\r\n    max-width: 100%;\r\n    white-space: normal;\r\n  }\r\n}\r\n', "type": "text/css; charset=utf-8" } };
 
 // backend/http.js
 function json(body, status = 200) {
@@ -1947,6 +1971,281 @@ function planRiskLimits(plan) {
   return plan?.riskLimits || DEFAULT_RISK_LIMITS;
 }
 
+// shared/strategy-params.js
+var EXPOSURE_TIERS_DEFAULTS = Object.freeze({
+  highEmotion: 65,
+  midEmotion: 40,
+  high: 0.55,
+  mid: 0.35,
+  low: 0.15
+});
+var STRATEGY_RANGES = Object.freeze({
+  minScore: [70, 95],
+  minSectorScore: [40, 80],
+  maxPositions: [2, 5],
+  maxHoldDays: [2, 10],
+  stopLoss: [0.02, 0.08],
+  takeProfit: [0.06, 0.2],
+  maxBuyGap: [0, 0.04],
+  tFraction: [0.1, 0.25],
+  tBuyDip: [0.01, 0.04],
+  tSellRise: [0.01, 0.04]
+});
+var STRATEGY_INTEGER_KEYS = Object.freeze([
+  "minScore",
+  "minSectorScore",
+  "maxPositions",
+  "maxHoldDays"
+]);
+var WEIGHT_FIELDS = Object.freeze([
+  { key: "quality", label: "\u5C01\u677F\u8D28\u91CF" },
+  { key: "capital", label: "\u5C01\u5355\u5F3A\u5EA6" },
+  { key: "liquidity", label: "\u6362\u624B\u7ED3\u6784" },
+  { key: "timing", label: "\u9996\u5C01\u65F6\u70B9" },
+  { key: "sector", label: "\u677F\u5757\u534F\u540C" },
+  { key: "ladder", label: "\u8FDE\u677F\u7ED3\u6784" }
+]);
+var STRATEGY_FIELDS = Object.freeze([
+  {
+    key: "maxPositions",
+    label: "\u6700\u5927\u6301\u4ED3\u6570",
+    unit: "\u53EA",
+    percent: false,
+    min: 2,
+    max: 5,
+    step: 1,
+    hint: "\u540C\u65F6\u6301\u6709\u7684\u80A1\u7968\u6570\u91CF\u4E0A\u9650"
+  },
+  {
+    key: "minScore",
+    label: "\u5EFA\u4ED3\u6700\u4F4E\u8BC4\u5206",
+    unit: "\u5206",
+    percent: false,
+    min: 70,
+    max: 95,
+    step: 1,
+    hint: "\u65B0\u5F00\u4ED3\u8981\u6C42\u7684\u7B56\u7565\u8BC4\u5206\u4E0B\u9650"
+  },
+  {
+    key: "minSectorScore",
+    label: "\u5EFA\u4ED3\u6700\u4F4E\u677F\u5757\u5206",
+    unit: "\u5206",
+    percent: false,
+    min: 40,
+    max: 80,
+    step: 1,
+    hint: "\u65B0\u5F00\u4ED3\u8981\u6C42\u7684\u677F\u5757\u534F\u540C\u8BC4\u5206\u4E0B\u9650"
+  },
+  {
+    key: "maxHoldDays",
+    label: "\u6700\u957F\u6301\u6709\u5929\u6570",
+    unit: "\u5929",
+    percent: false,
+    min: 2,
+    max: 10,
+    step: 1,
+    hint: "\u6301\u6709\u8FBE\u5230\u8BE5\u5929\u6570\u540E\u6E05\u4ED3"
+  },
+  {
+    key: "stopLoss",
+    label: "\u6B62\u635F\u5E45\u5EA6",
+    unit: "%",
+    percent: true,
+    min: 2,
+    max: 8,
+    step: 0.1,
+    hint: "\u4E8F\u635F\u8FBE\u5230\u8BE5\u6BD4\u4F8B\u89E6\u53D1\u6E05\u4ED3"
+  },
+  {
+    key: "takeProfit",
+    label: "\u5206\u6279\u6B62\u76C8\u5E45\u5EA6",
+    unit: "%",
+    percent: true,
+    min: 6,
+    max: 20,
+    step: 0.1,
+    hint: "\u76C8\u5229\u8FBE\u5230\u8BE5\u6BD4\u4F8B\u89E6\u53D1\u51CF\u4ED3\u5151\u73B0"
+  },
+  {
+    key: "maxBuyGap",
+    label: "\u5F00\u76D8\u4E70\u5165\u4E0A\u9650",
+    unit: "%",
+    percent: true,
+    min: 0,
+    max: 4,
+    step: 0.1,
+    hint: "\u4E70\u5165\u4EF7\u76F8\u5BF9\u6628\u6536\u7684\u6700\u5927\u4E0A\u6D6E\uFF0C\u8D85\u51FA\u5219\u653E\u5F03"
+  },
+  {
+    key: "tFraction",
+    label: "\u505A T \u4ED3\u4F4D\u6BD4\u4F8B",
+    unit: "%",
+    percent: true,
+    min: 10,
+    max: 25,
+    step: 0.1,
+    hint: "\u6BCF\u6B21\u505A T \u4F7F\u7528\u5E95\u4ED3\u7684\u6BD4\u4F8B"
+  },
+  {
+    key: "tBuyDip",
+    label: "\u505A T \u4F4E\u5438\u4EF7\u5DEE",
+    unit: "%",
+    percent: true,
+    min: 1,
+    max: 4,
+    step: 0.1,
+    hint: "\u6B63\u5411 T \u7684\u4E70\u5165\u89E6\u53D1\u56DE\u843D\u5E45\u5EA6"
+  },
+  {
+    key: "tSellRise",
+    label: "\u505A T \u5151\u73B0\u4EF7\u5DEE",
+    unit: "%",
+    percent: true,
+    min: 1,
+    max: 4,
+    step: 0.1,
+    hint: "\u6B63\u5411 T \u7684\u5356\u51FA\u89E6\u53D1\u4E0A\u6D6E\u5E45\u5EA6"
+  }
+]);
+var TIER_FIELDS = Object.freeze([
+  {
+    key: "highEmotion",
+    label: "\u9AD8\u6863\u60C5\u7EEA\u9608\u503C",
+    unit: "\u5206",
+    percent: false,
+    min: 0,
+    max: 100,
+    step: 1,
+    hint: "\u60C5\u7EEA\u8FBE\u5230\u8BE5\u503C\u8FDB\u5165\u9AD8\u6863\uFF1A\u76EE\u6807\u655E\u53E3\u53D6\u9AD8\u6863\uFF0C\u5E76\u5141\u8BB8\u52A0\u4ED3"
+  },
+  {
+    key: "midEmotion",
+    label: "\u4F4E\u6863\u60C5\u7EEA\u9608\u503C",
+    unit: "\u5206",
+    percent: false,
+    min: 0,
+    max: 100,
+    step: 1,
+    hint: "\u60C5\u7EEA\u4F4E\u4E8E\u8BE5\u503C\u8FDB\u5165\u9632\u5B88\uFF1A\u76EE\u6807\u655E\u53E3\u53D6\u4F4E\u6863\uFF0C\u505C\u6B62\u5F00\u65B0\u4ED3\u4E0E\u505A T \u5E76\u51CF\u4ED3"
+  },
+  {
+    key: "high",
+    label: "\u9AD8\u6863\u76EE\u6807\u655E\u53E3",
+    unit: "%",
+    percent: true,
+    min: 5,
+    max: 95,
+    step: 0.1,
+    hint: "\u9AD8\u6863\u60C5\u7EEA\u4E0B\u7684\u76EE\u6807\u603B\u4ED3\u4F4D"
+  },
+  {
+    key: "mid",
+    label: "\u4E2D\u6863\u76EE\u6807\u655E\u53E3",
+    unit: "%",
+    percent: true,
+    min: 5,
+    max: 95,
+    step: 0.1,
+    hint: "\u4E2D\u6027\u60C5\u7EEA\u4E0B\u7684\u76EE\u6807\u603B\u4ED3\u4F4D"
+  },
+  {
+    key: "low",
+    label: "\u4F4E\u6863\u76EE\u6807\u655E\u53E3",
+    unit: "%",
+    percent: true,
+    min: 5,
+    max: 95,
+    step: 0.1,
+    hint: "\u9632\u5B88\u60C5\u7EEA\u4E0B\u7684\u76EE\u6807\u603B\u4ED3\u4F4D"
+  }
+]);
+var STRATEGY_DEFAULTS = Object.freeze({
+  weights: Object.freeze([...PRESETS.balanced]),
+  minScore: 80,
+  minSectorScore: 55,
+  maxPositions: 4,
+  maxHoldDays: 5,
+  stopLoss: 0.06,
+  takeProfit: 0.12,
+  maxBuyGap: 0.03,
+  tFraction: 0.2,
+  tBuyDip: 0.02,
+  tSellRise: 0.02,
+  exposureTiers: EXPOSURE_TIERS_DEFAULTS
+});
+var TIER_BOUNDS = Object.freeze({
+  highEmotion: [0, 100],
+  midEmotion: [0, 100],
+  high: [0.05, 0.95],
+  mid: [0.05, 0.95],
+  low: [0.05, 0.95]
+});
+function normalizeStrategyParams(value) {
+  const invalid = (reason) => {
+    throw new Error(`\u7B56\u7565\u53C2\u6570\u65E0\u6548\uFF1A${reason}`);
+  };
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    invalid("\u7ED3\u6784\u65E0\u6548");
+  const keys = Object.keys(value);
+  const expected = [
+    ...Object.keys(STRATEGY_RANGES),
+    "weights",
+    "exposureTiers"
+  ];
+  if (keys.length !== expected.length || expected.some((key) => !keys.includes(key)))
+    invalid("\u5B57\u6BB5\u5FC5\u987B\u4E3A weights\u300110 \u9879\u7B56\u7565\u53C2\u6570\u4E0E exposureTiers");
+  const weights = value.weights;
+  if (!Array.isArray(weights) || weights.length !== WEIGHT_FIELDS.length || weights.some((v) => !Number.isInteger(v) || v < 0 || v > 50) || !weights.some((v) => v > 0))
+    invalid("\u6743\u91CD\u5FC5\u987B\u4E3A 6 \u4E2A 0\u201350 \u7684\u6574\u6570\u4E14\u4E0D\u5168\u4E3A\u96F6");
+  const params = { weights: [...weights] };
+  for (const [key, [min, max]] of Object.entries(STRATEGY_RANGES)) {
+    const number = value[key];
+    if (typeof number !== "number" || !Number.isFinite(number))
+      invalid(`${key} \u5FC5\u987B\u4E3A\u6570\u503C`);
+    if (STRATEGY_INTEGER_KEYS.includes(key)) {
+      if (!Number.isInteger(number) || number < min || number > max)
+        invalid(`${key} \u5FC5\u987B\u4E3A ${min}\u2013${max} \u7684\u6574\u6570`);
+      params[key] = number;
+    } else {
+      if (number < min || number > max) invalid(`${key} \u8D85\u51FA ${min}\u2013${max}`);
+      params[key] = Math.round(number * 1e6) / 1e6;
+    }
+  }
+  const tiers = value.exposureTiers;
+  if (!tiers || typeof tiers !== "object" || Array.isArray(tiers))
+    invalid("exposureTiers \u7ED3\u6784\u65E0\u6548");
+  const tierKeys = Object.keys(TIER_BOUNDS);
+  if (Object.keys(tiers).length !== tierKeys.length || tierKeys.some((key) => !(key in tiers)))
+    invalid("exposureTiers \u5B57\u6BB5\u96C6\u5408\u65E0\u6548");
+  const exposureTiers = {};
+  for (const [key, [min, max]] of Object.entries(TIER_BOUNDS)) {
+    const number = tiers[key];
+    if (typeof number !== "number" || !Number.isFinite(number))
+      invalid(`\u60C5\u7EEA\u6863\u4F4D ${key} \u5FC5\u987B\u4E3A\u6570\u503C`);
+    if (key.endsWith("Emotion")) {
+      if (!Number.isInteger(number) || number < min || number > max)
+        invalid(`\u60C5\u7EEA\u6863\u4F4D ${key} \u5FC5\u987B\u4E3A ${min}\u2013${max} \u7684\u6574\u6570`);
+      exposureTiers[key] = number;
+    } else {
+      if (number < min || number > max)
+        invalid(`\u60C5\u7EEA\u6863\u4F4D ${key} \u8D85\u51FA ${min}%\u2013${max}%`);
+      exposureTiers[key] = Math.round(number * 1e6) / 1e6;
+    }
+  }
+  if (exposureTiers.highEmotion <= exposureTiers.midEmotion)
+    invalid("\u9AD8\u6863\u60C5\u7EEA\u9608\u503C\u5FC5\u987B\u5927\u4E8E\u4F4E\u6863\u60C5\u7EEA\u9608\u503C");
+  if (exposureTiers.high < exposureTiers.mid || exposureTiers.mid < exposureTiers.low)
+    invalid("\u76EE\u6807\u655E\u53E3\u5FC5\u987B\u6EE1\u8DB3 \u9AD8\u6863 \u2265 \u4E2D\u6863 \u2265 \u4F4E\u6863");
+  params.exposureTiers = exposureTiers;
+  return params;
+}
+function withExposureTiers(params) {
+  return {
+    ...params,
+    exposureTiers: params?.exposureTiers ?? EXPOSURE_TIERS_DEFAULTS
+  };
+}
+
 // backend/domain/execution-cost.js
 var roundLot = (quantity) => Math.floor(Math.max(0, quantity) / 100) * 100;
 var bps = (ratio) => ratio * 1e4;
@@ -2366,19 +2665,7 @@ var ACTIONS = Object.freeze({
   T_REVERSE: "\u53CD\u5411 T",
   HOLD: "\u6301\u6709"
 });
-var BASE_STRATEGY = Object.freeze({
-  weights: PRESETS.balanced,
-  minScore: 80,
-  minSectorScore: 55,
-  maxPositions: 4,
-  maxHoldDays: 5,
-  stopLoss: 0.06,
-  takeProfit: 0.12,
-  maxBuyGap: 0.03,
-  tFraction: 0.2,
-  tBuyDip: 0.02,
-  tSellRise: 0.02
-});
+var BASE_STRATEGY = Object.freeze({ ...STRATEGY_DEFAULTS });
 var RISK_LIMITS = DEFAULT_RISK_LIMITS;
 var toCents = (value) => Math.round(Number(value) * 100);
 var roundLot2 = (quantity) => Math.floor(Math.max(0, quantity) / 100) * 100;
@@ -2478,7 +2765,8 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt, option
   const drawdown = book.peakEquityCents ? 1 - equity / book.peakEquityCents : 0;
   const riskLimits = riskLimitsForBook(book);
   const emotion = snapshot.emotion ?? 0;
-  const targetExposure = drawdown >= riskLimits.maxDrawdown ? 0 : emotion >= 65 ? 0.55 : emotion >= 40 ? 0.35 : 0.15;
+  const tiers = strategy.exposureTiers ?? BASE_STRATEGY.exposureTiers;
+  const targetExposure = drawdown >= riskLimits.maxDrawdown ? 0 : emotion >= tiers.highEmotion ? tiers.high : emotion >= tiers.midEmotion ? tiers.mid : tiers.low;
   const orders = [];
   const holdings = new Set(book.positions.map((position) => position.code));
   const selectionAudit = {
@@ -2548,14 +2836,14 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt, option
       plannedExposure -= quantity * referenceCents;
       continue;
     }
-    if (pnl >= strategy.takeProfit || signal && score < 65 || emotion < 40) {
+    if (pnl >= strategy.takeProfit || signal && score < 65 || emotion < tiers.midEmotion) {
       const reduceQuantity = roundLot2(quantity / 2) || quantity;
       addOrder({
         ...base,
         action: "REDUCE",
         side: "SELL",
         quantity: reduceQuantity,
-        reason: pnl >= strategy.takeProfit ? "\u5206\u6279\u5151\u73B0\u8FBE\u5230\u6B62\u76C8\u9608\u503C\u7684\u4ED3\u4F4D" : emotion < 40 ? "\u5E02\u573A\u60C5\u7EEA\u8F83\u5F31\uFF0C\u964D\u4F4E\u655E\u53E3" : "\u4E2A\u80A1\u8BC4\u5206\u8D70\u5F31\uFF0C\u964D\u4F4E\u4ED3\u4F4D"
+        reason: pnl >= strategy.takeProfit ? "\u5206\u6279\u5151\u73B0\u8FBE\u5230\u6B62\u76C8\u9608\u503C\u7684\u4ED3\u4F4D" : emotion < tiers.midEmotion ? "\u5E02\u573A\u60C5\u7EEA\u8F83\u5F31\uFF0C\u964D\u4F4E\u655E\u53E3" : "\u4E2A\u80A1\u8BC4\u5206\u8D70\u5F31\uFF0C\u964D\u4F4E\u4ED3\u4F4D"
       });
       plannedExposure -= reduceQuantity * referenceCents;
       continue;
@@ -2565,7 +2853,7 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt, option
     );
     const addBudget = target - quantity * referenceCents;
     const addQuantity = roundLot2(addBudget / referenceCents);
-    if (signal && score >= 88 && addQuantity >= 100 && emotion >= 65 && plannedExposure + addQuantity * referenceCents <= equity * targetExposure) {
+    if (signal && score >= 88 && addQuantity >= 100 && emotion >= tiers.highEmotion && plannedExposure + addQuantity * referenceCents <= equity * targetExposure) {
       addOrder({
         ...base,
         action: "ADD",
@@ -2584,7 +2872,7 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt, option
       continue;
     }
     const tQuantity = roundLot2(quantity * strategy.tFraction);
-    if (tQuantity >= 100 && score >= 65 && emotion >= 40) {
+    if (tQuantity >= 100 && score >= 65 && emotion >= tiers.midEmotion) {
       addOrder({
         ...base,
         action: score >= 82 ? "T_FORWARD" : "T_REVERSE",
@@ -2616,7 +2904,7 @@ function createPlan(snapshot, book, strategy, strategyVersion, createdAt, option
       audit.reason = "\u672A\u6EE1\u8DB3\u8BC4\u5206\u3001\u677F\u5757\u3001\u8986\u76D6\u3001\u98CE\u9669\u6216\u4EF7\u683C\u6761\u4EF6";
       continue;
     }
-    if (emotion < 40 || drawdown >= riskLimits.maxDrawdown) {
+    if (emotion < tiers.midEmotion || drawdown >= riskLimits.maxDrawdown) {
       audit.reason = "\u5E02\u573A\u60C5\u7EEA\u6216\u8D26\u6237\u56DE\u64A4\u9650\u5236\u65B0\u589E\u4EA4\u6613";
       continue;
     }
@@ -4300,18 +4588,7 @@ function closeSession(inputBook, inputSession, dataset) {
 }
 
 // backend/domain/validation.js
-var RANGES = {
-  minScore: [70, 95],
-  minSectorScore: [40, 80],
-  maxPositions: [2, 5],
-  maxHoldDays: [2, 10],
-  stopLoss: [0.02, 0.08],
-  takeProfit: [0.06, 0.2],
-  maxBuyGap: [0, 0.04],
-  tFraction: [0.1, 0.25],
-  tBuyDip: [0.01, 0.04],
-  tSellRise: [0.01, 0.04]
-};
+var RANGES = STRATEGY_RANGES;
 function validateProposal(output, base = BASE_STRATEGY) {
   if (!output || typeof output !== "object" || Array.isArray(output) || typeof output.rationale !== "string" || output.rationale.length > 2e3)
     throw new Error("AI \u5EFA\u8BAE\u7ED3\u6784\u65E0\u6548");
@@ -5945,6 +6222,33 @@ var PaperRepository = class {
       book.riskLimits = riskLimits;
       book.riskLimitsVersion = (book.riskLimitsVersion || 0) + 1;
     }
+    const currentStrategy = withExposureTiers(
+      await this.strategy(account.book)
+    );
+    let strategyChange = null;
+    if (settings.strategyParams !== void 0) {
+      const params = normalizeStrategyParams(settings.strategyParams);
+      const changed = JSON.stringify(canonical3(withExposureTiers(currentStrategy))) !== JSON.stringify(canonical3(params));
+      if (changed) {
+        const changedKeys = Object.keys(params).filter(
+          (key) => JSON.stringify(canonical3(params[key])) !== JSON.stringify(canonical3(currentStrategy[key]))
+        );
+        const row = await this.db.prepare(
+          "SELECT COUNT(*) AS n FROM strategy_versions WHERE id LIKE 'manual-%'"
+        ).first();
+        strategyChange = {
+          versionId: `manual-v${row.n + 1}`,
+          params,
+          evidence: {
+            type: "manual",
+            baseVersion: account.book.activeStrategy,
+            rationale: `\u624B\u52A8\u8C03\u6574\uFF1A${changedKeys.join("\u3001")}`,
+            changedKeys
+          }
+        };
+        book.activeStrategy = strategyChange.versionId;
+      }
+    }
     if (settings.improvementMode !== void 0) {
       if (!["auto", "manual"].includes(settings.improvementMode))
         throw new Error("\u6539\u8FDB\u6A21\u5F0F\u65E0\u6548");
@@ -5988,9 +6292,9 @@ var PaperRepository = class {
       hour12: false
     }).format(now);
     let replacement = null;
-    if ((capitalChanged || feesChanged || riskChanged) && book.lastDate === day && time >= "15:05") {
+    if ((capitalChanged || feesChanged || riskChanged || strategyChange) && book.lastDate === day && time >= "15:05") {
       const previousPlan = await this.db.prepare("SELECT payload,digest FROM paper_plans WHERE signal_date=?").bind(day).first();
-      const snapshot = await this.snapshot(day), strategy = await this.strategy(book);
+      const snapshot = await this.snapshot(day), strategy = strategyChange ? strategyChange.params : await this.strategy(book);
       const policy = previousPlan ? frozenSelectionPolicy(JSON.parse(previousPlan.payload)) : selectionPolicyForBook(book);
       const executionCostPolicy = await latestPolicyBundle(this.db);
       const originalScoreLookup = await buildOriginalScoreLookup(
@@ -6042,12 +6346,17 @@ var PaperRepository = class {
       capitalChanged,
       feesChanged,
       riskChanged,
+      strategyChanged: !!strategyChange,
       before: {
         initialCashCents: account.book.initialCashCents,
         fees: feesForBook(account.book),
         feeConfigVersion: account.book.feeConfigVersion || 0,
         riskLimits: riskLimitsForBook(account.book),
         riskLimitsVersion: account.book.riskLimitsVersion || 0,
+        strategy: {
+          id: account.book.activeStrategy,
+          params: currentStrategy
+        },
         improvementMode: account.book.improvementMode,
         benchmarkCode: account.book.benchmarkCode || DEFAULT_BENCHMARK
       },
@@ -6057,13 +6366,36 @@ var PaperRepository = class {
         feeConfigVersion: book.feeConfigVersion || 0,
         riskLimits: riskLimitsForBook(book),
         riskLimitsVersion: book.riskLimitsVersion || 0,
+        strategy: {
+          id: book.activeStrategy,
+          params: strategyChange ? strategyChange.params : currentStrategy
+        },
         improvementMode: book.improvementMode,
         benchmarkCode: book.benchmarkCode || DEFAULT_BENCHMARK
       },
       previousBaselines: baselines.map((row) => JSON.parse(row.payload)),
       revisedPlanDate: replacement?.signalDate || null,
-      effective: replacement ? "\u5F53\u65E5\u5C1A\u672A\u6267\u884C\u7684\u8BA1\u5212\u5DF2\u91CD\u65B0\u51BB\u7ED3\uFF1B\u539F\u8BA1\u5212\u7559\u6863" : "\u65B0\u8D39\u7528\u9002\u7528\u4E8E\u540E\u7EED\u65B0\u8BA1\u5212\uFF0C\u5DF2\u6709\u8BA1\u5212\u4FDD\u6301\u539F\u914D\u7F6E"
+      effective: replacement ? "\u5F53\u65E5\u5C1A\u672A\u6267\u884C\u7684\u8BA1\u5212\u5DF2\u91CD\u65B0\u51BB\u7ED3\uFF1B\u539F\u8BA1\u5212\u7559\u6863" : strategyChange ? "\u65B0\u7B56\u7565\u53C2\u6570\u5DF2\u767B\u8BB0\u542F\u7528\uFF0C\u5C06\u7528\u4E8E\u4E0B\u4E00\u4EFD\u8BA1\u5212\uFF1B\u5DF2\u51BB\u7ED3\u8BA1\u5212\u4FDD\u6301\u539F\u53C2\u6570" : "\u65B0\u914D\u7F6E\u9002\u7528\u4E8E\u540E\u7EED\u65B0\u8BA1\u5212\uFF0C\u5DF2\u51BB\u7ED3\u8BA1\u5212\u4FDD\u6301\u539F\u914D\u7F6E"
     };
+    if (strategyChange) {
+      statements.push(
+        this.db.prepare(
+          `INSERT INTO strategy_versions (id,created_at,status,params,evidence) SELECT ?,?,?,?,? WHERE ${guard}`
+        ).bind(
+          strategyChange.versionId,
+          stamp,
+          "ACTIVE",
+          JSON.stringify(strategyChange.params),
+          JSON.stringify(strategyChange.evidence),
+          ...guardArgs
+        )
+      );
+      statements.push(
+        this.db.prepare(
+          `UPDATE strategy_versions SET status='RETIRED' WHERE status='ACTIVE' AND id<>? AND ${guard}`
+        ).bind(strategyChange.versionId, ...guardArgs)
+      );
+    }
     statements.push(
       this.db.prepare(
         `INSERT INTO paper_configuration_history (id,created_at,payload,digest) SELECT ?,?,?,? WHERE ${guard}`
@@ -11048,7 +11380,7 @@ async function paperOverview(env, attempt = 0) {
     book,
     book.positions
   );
-  const canEditCapital = await repository.canEditCapital(book), versions = await repository.versions(), realtime = await realtimeStatus(env);
+  const canEditCapital = await repository.canEditCapital(book), versions = await repository.versions(), strategyParams = await repository.strategy(book), realtime = await realtimeStatus(env);
   if ((await repository.account()).revision !== revision) {
     if (attempt < 3) return paperOverview(env, attempt + 1);
     throw new Error("\u8D26\u6237\u6B63\u5728\u66F4\u65B0\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
@@ -11063,6 +11395,7 @@ async function paperOverview(env, attempt = 0) {
     run: rows[3][0] ? JSON.parse(rows[3][0].payload) : null,
     audit,
     riskLimits: riskLimitsForBook(book),
+    strategyParams,
     feeConfig: feesForBook(book),
     canEditCapital,
     versions,
@@ -15348,6 +15681,7 @@ async function api(request, env) {
           "improvementMode",
           "fees",
           "riskLimits",
+          "strategyParams",
           "benchmarkCode"
         ].includes(key)
       ))

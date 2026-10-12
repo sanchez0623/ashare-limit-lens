@@ -1,6 +1,13 @@
 import { DEFAULT_FEES, FEE_FIELDS } from "../shared/fees.js";
 import { DEFAULT_RISK_LIMITS, RISK_FIELDS } from "../shared/risk-limits.js";
 import {
+  EXPOSURE_TIERS_DEFAULTS,
+  STRATEGY_DEFAULTS,
+  STRATEGY_FIELDS,
+  TIER_FIELDS,
+  WEIGHT_FIELDS,
+} from "../shared/strategy-params.js";
+import {
   BENCHMARK_INDEXES,
   benchmarkName,
   DEFAULT_BENCHMARK,
@@ -124,6 +131,45 @@ function riskSummary(config) {
     ({ key, label, unit }) =>
       `${label} ${riskDisplay(key, config[key])}${unit}`,
   ).join(" · ");
+}
+const strategyDisplay = (field, value) =>
+  field.percent ? Number((value * 100).toFixed(2)) : value;
+function fillStrategyInputs(config) {
+  const tiers = { ...EXPOSURE_TIERS_DEFAULTS, ...config.exposureTiers };
+  WEIGHT_FIELDS.forEach(
+    ({ key }, index) =>
+      ($(`strat-weight-${key}`).value = config.weights[index]),
+  );
+  for (const field of STRATEGY_FIELDS)
+    $(`strat-${field.key}`).value = strategyDisplay(field, config[field.key]);
+  for (const field of TIER_FIELDS)
+    $(`strat-tier-${field.key}`).value = strategyDisplay(
+      field,
+      tiers[field.key],
+    );
+}
+function collectStrategyParams() {
+  return {
+    weights: WEIGHT_FIELDS.map(({ key }) =>
+      Number($(`strat-weight-${key}`).value),
+    ),
+    ...Object.fromEntries(
+      STRATEGY_FIELDS.map(({ key, percent }) => [
+        key,
+        percent
+          ? Number($(`strat-${key}`).value) / 100
+          : Number($(`strat-${key}`).value),
+      ]),
+    ),
+    exposureTiers: Object.fromEntries(
+      TIER_FIELDS.map(({ key, percent }) => [
+        key,
+        percent
+          ? Number($(`strat-tier-${key}`).value) / 100
+          : Number($(`strat-tier-${key}`).value),
+      ]),
+    ),
+  };
 }
 function breakdown(fill) {
   const labels = {
@@ -342,6 +388,10 @@ function render() {
     `风控配置 v${book.riskLimitsVersion || 0}`;
   $("paper-risk-summary").textContent =
     `下一计划：${plan?.riskLimits ? riskSummary(plan.riskLimits) : "默认风控"}。新设置随计划冻结，历史成交按当时配置核验。`;
+  if (!settingsDirty) fillStrategyInputs(data.strategyParams);
+  $("paper-strategy-version").textContent = `策略 ${book.activeStrategy}`;
+  $("paper-strategy-summary").textContent =
+    `当前版本 ${book.activeStrategy}${plan ? ` · 下一计划 ${plan.strategyVersion}` : ""}。保存后登记为新版本并用于下一份计划，已冻结计划保持原参数。`;
   if (!settingsDirty)
     $("paper-improvement-mode").value = book.improvementMode || "auto";
   if (!settingsDirty)
@@ -402,6 +452,20 @@ export function initializePaper() {
     ({ key, label, unit, percent, hint }) =>
       `<label for="risk-${key}" title="${escape(hint)}">${label}（${unit}）<input id="risk-${key}" type="number" min="${percent ? 0.01 : 0}" max="${percent ? 100 : 200}" step="${percent ? "0.01" : "1"}" value="${riskDisplay(key, DEFAULT_RISK_LIMITS[key])}" required></label>`,
   ).join("");
+  $("paper-strategy-controls").innerHTML = [
+    ...WEIGHT_FIELDS.map(
+      ({ key, label }) =>
+        `<label for="strat-weight-${key}" title="策略评分中「${label}」因子的权重，与研究页观察权重相互独立">${label}权重（%）<input id="strat-weight-${key}" type="number" min="0" max="50" step="1" required></label>`,
+    ),
+    ...STRATEGY_FIELDS.map(
+      ({ key, label, unit, min, max, step, hint }) =>
+        `<label for="strat-${key}" title="${escape(hint)}">${label}（${unit}）<input id="strat-${key}" type="number" min="${min}" max="${max}" step="${step}" required></label>`,
+    ),
+    ...TIER_FIELDS.map(
+      ({ key, label, unit, min, max, step, hint }) =>
+        `<label for="strat-tier-${key}" title="${escape(hint)}">${label}（${unit}）<input id="strat-tier-${key}" type="number" min="${min}" max="${max}" step="${step}" required></label>`,
+    ),
+  ].join("");
   $("paper-benchmark").innerHTML = BENCHMARK_INDEXES.map(
     ({ code, name }) => `<option value="${code}">${name}</option>`,
   ).join("");
@@ -414,6 +478,11 @@ export function initializePaper() {
     fillRiskInputs(DEFAULT_RISK_LIMITS);
     settingsDirty = true;
     message("已填入默认风控约束，保存设置后生效。");
+  };
+  $("paper-strategy-defaults").onclick = () => {
+    fillStrategyInputs(STRATEGY_DEFAULTS);
+    settingsDirty = true;
+    message("已填入默认策略参数，保存设置后登记为新版本并用于下一份计划。");
   };
   $("paper-run").onclick = () =>
     perform(async () => {
@@ -441,7 +510,7 @@ export function initializePaper() {
   $("paper-config-form").onsubmit = (event) => {
     event.preventDefault();
     void perform(async () => {
-      await request("/api/paper/settings", {
+      const result = await request("/api/paper/settings", {
         ...(data?.canEditCapital
           ? { initialCapital: Number($("paper-initial-capital").value) }
           : {}),
@@ -463,9 +532,10 @@ export function initializePaper() {
               : Number($(`risk-${key}`).value),
           ]),
         ),
+        strategyParams: collectStrategyParams(),
       });
       settingsDirty = false;
-      return "资金、费用与风控设置已保存；新计划采用新配置，已执行记录保留原配置。";
+      return `设置已保存；策略参数登记为 ${result.book.activeStrategy}，将用于下一份计划，已冻结计划保持原参数。`;
     });
   };
   window.addEventListener("paper-updated", refresh);

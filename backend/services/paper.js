@@ -486,6 +486,7 @@ export async function paperOverview(env, attempt = 0) {
   );
   const canEditCapital = await repository.canEditCapital(book),
     versions = await repository.versions(),
+    strategyParams = await repository.strategy(book),
     realtime = await realtimeStatus(env);
   if ((await repository.account()).revision !== revision) {
     if (attempt < 3) return paperOverview(env, attempt + 1);
@@ -501,6 +502,7 @@ export async function paperOverview(env, attempt = 0) {
     run: rows[3][0] ? JSON.parse(rows[3][0].payload) : null,
     audit,
     riskLimits: riskLimitsForBook(book),
+    strategyParams,
     feeConfig: feesForBook(book),
     canEditCapital,
     versions,

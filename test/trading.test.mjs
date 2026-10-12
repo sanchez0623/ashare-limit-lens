@@ -16,6 +16,11 @@ import {
   validateCandidate,
 } from "../backend/domain/validation.js";
 import {
+  EXPOSURE_TIERS_DEFAULTS,
+  STRATEGY_DEFAULTS,
+  normalizeStrategyParams,
+} from "../shared/strategy-params.js";
+import {
   PaperRepository,
   buildOriginalScoreLookup,
 } from "../backend/storage/paper.js";
@@ -270,6 +275,129 @@ test("规划覆盖建仓、加仓、减仓、清仓与双向 T，低情绪不强
     ).orders.length,
     0,
   );
+});
+test("情绪档位可配置：目标敞口与开新仓闸门随版本参数变化", () => {
+  // 情绪 70：默认高档 0.55；高档阈值抬到 75 后落入中档 0.35，建仓预算缩小
+  const relaxed = {
+    ...BASE_STRATEGY,
+    exposureTiers: { ...EXPOSURE_TIERS_DEFAULTS, highEmotion: 75, high: 0.4 },
+  };
+  const baseline = createPlan(
+    snapshot(dateAt(0)),
+    newBook(100000),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  );
+  const adjusted = createPlan(
+    snapshot(dateAt(0)),
+    newBook(100000),
+    relaxed,
+    "v",
+    "now",
+  );
+  assert.equal(baseline.targetExposure, 0.55);
+  assert.equal(adjusted.targetExposure, 0.35);
+  assert.ok(adjusted.orders[0].quantity < baseline.orders[0].quantity);
+  // 低档阈值抬升：情绪 45 原本可开仓，阈值提到 50 后停止开新仓
+  const defensive = {
+    ...BASE_STRATEGY,
+    exposureTiers: { ...EXPOSURE_TIERS_DEFAULTS, midEmotion: 50 },
+  };
+  assert.equal(
+    createPlan(
+      { ...snapshot(dateAt(0)), emotion: 45 },
+      newBook(100000),
+      BASE_STRATEGY,
+      "v",
+      "now",
+    ).orders[0].action,
+    "OPEN",
+  );
+  assert.equal(
+    createPlan(
+      { ...snapshot(dateAt(0)), emotion: 45 },
+      newBook(100000),
+      defensive,
+      "v",
+      "now",
+    ).orders.length,
+    0,
+  );
+  // 旧策略版本缺 exposureTiers 时回退默认档位，重放语义不变
+  const legacy = { ...BASE_STRATEGY };
+  delete legacy.exposureTiers;
+  assert.equal(
+    createPlan(snapshot(dateAt(0)), newBook(100000), legacy, "v", "now")
+      .targetExposure,
+    0.55,
+  );
+});
+test("手动策略参数校验拒绝越界、缺字段与档位倒挂", () => {
+  assert.deepEqual(normalizeStrategyParams(STRATEGY_DEFAULTS), {
+    ...STRATEGY_DEFAULTS,
+    exposureTiers: { ...EXPOSURE_TIERS_DEFAULTS },
+  });
+  for (const bad of [
+    { ...STRATEGY_DEFAULTS, extra: 1 },
+    { ...STRATEGY_DEFAULTS, weights: [0, 0, 0, 0, 0, 0] },
+    { ...STRATEGY_DEFAULTS, weights: [30, 20, 15, 15, 15] },
+    { ...STRATEGY_DEFAULTS, maxPositions: 6 },
+    { ...STRATEGY_DEFAULTS, maxPositions: 3.5 },
+    { ...STRATEGY_DEFAULTS, stopLoss: 0.1 },
+    {
+      ...STRATEGY_DEFAULTS,
+      exposureTiers: { ...EXPOSURE_TIERS_DEFAULTS, highEmotion: 30 },
+    },
+    {
+      ...STRATEGY_DEFAULTS,
+      exposureTiers: { ...EXPOSURE_TIERS_DEFAULTS, highEmotion: 65.5 },
+    },
+    {
+      ...STRATEGY_DEFAULTS,
+      exposureTiers: { ...EXPOSURE_TIERS_DEFAULTS, high: 0.1, mid: 0.35 },
+    },
+  ])
+    assert.throws(() => normalizeStrategyParams(bad), /策略参数/);
+});
+test("手动策略参数登记为新版本并驱动后续计划", async () => {
+  const DB = localDatabase(),
+    repository = new PaperRepository({ DB });
+  await repository.initialize();
+  const edited = normalizeStrategyParams({
+    ...STRATEGY_DEFAULTS,
+    maxPositions: 5,
+    stopLoss: 0.05,
+  });
+  const book = await repository.configure({ strategyParams: edited });
+  assert.equal(book.activeStrategy, "manual-v1");
+  assert.deepEqual(await repository.strategy(book), edited);
+  const versions = await repository.versions();
+  const manual = versions.find((version) => version.id === "manual-v1");
+  assert.equal(manual.status, "ACTIVE");
+  assert.equal(manual.evidence.type, "manual");
+  assert.deepEqual(manual.evidence.changedKeys.sort(), [
+    "maxPositions",
+    "stopLoss",
+  ]);
+  assert.equal(
+    versions.find((version) => version.id === "baseline-v1").status,
+    "RETIRED",
+  );
+  // 相同参数重复保存不再新开版本
+  const again = await repository.configure({ strategyParams: edited });
+  assert.equal(again.activeStrategy, "manual-v1");
+  assert.equal(
+    (await repository.versions()).filter((version) =>
+      version.id.startsWith("manual-"),
+    ).length,
+    1,
+  );
+  await assert.rejects(
+    () => repository.configure({ strategyParams: { ...edited, minScore: 60 } }),
+    /策略参数/,
+  );
+  DB.close();
 });
 test("原子账本并发结算只有一次；完整导出重放及篡改检测", async () => {
   const DB = localDatabase();

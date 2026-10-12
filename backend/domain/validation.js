@@ -1,4 +1,9 @@
 import { createPlan, executePlan, newBook, BASE_STRATEGY } from "./trading.js";
+import { STRATEGY_RANGES } from "../../shared/strategy-params.js";
+
+// 与 shared/strategy-params.js 共用一套范围，手动编辑与 AI 提案同界。
+const RANGES = STRATEGY_RANGES;
+export { RANGES };
 import {
   selectionPolicyForBook,
   selectionPolicyFields,
@@ -16,19 +21,6 @@ import {
   normalizeFees,
 } from "../../shared/fees.js";
 
-const RANGES = {
-  minScore: [70, 95],
-  minSectorScore: [40, 80],
-  maxPositions: [2, 5],
-  maxHoldDays: [2, 10],
-  stopLoss: [0.02, 0.08],
-  takeProfit: [0.06, 0.2],
-  maxBuyGap: [0, 0.04],
-  tFraction: [0.1, 0.25],
-  tBuyDip: [0.01, 0.04],
-  tSellRise: [0.01, 0.04],
-};
-export { RANGES };
 export function validateProposal(output, base = BASE_STRATEGY) {
   if (
     !output ||

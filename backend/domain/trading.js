@@ -1,4 +1,4 @@
-import { clamp, PRESETS } from "../../shared/scoring.js";
+import { clamp } from "../../shared/scoring.js";
 import {
   DEFAULT_INITIAL_CAPITAL,
   DEFAULT_FEES,
@@ -16,6 +16,7 @@ import {
   riskLimitsForBook,
   planRiskLimits,
 } from "../../shared/risk-limits.js";
+import { STRATEGY_DEFAULTS } from "../../shared/strategy-params.js";
 import { buildExecutionContext, solveFillQuantity } from "./execution-cost.js";
 import {
   DEFAULT_SELECTION_VERSION,
@@ -37,19 +38,7 @@ export const ACTIONS = Object.freeze({
   T_REVERSE: "反向 T",
   HOLD: "持有",
 });
-export const BASE_STRATEGY = Object.freeze({
-  weights: PRESETS.balanced,
-  minScore: 80,
-  minSectorScore: 55,
-  maxPositions: 4,
-  maxHoldDays: 5,
-  stopLoss: 0.06,
-  takeProfit: 0.12,
-  maxBuyGap: 0.03,
-  tFraction: 0.2,
-  tBuyDip: 0.02,
-  tSellRise: 0.02,
-});
+export const BASE_STRATEGY = Object.freeze({ ...STRATEGY_DEFAULTS });
 // 兼容别名：旧执行器与既有引用仍使用默认风控；账户级自定义值
 // 通过 book.riskLimits / plan.riskLimits 传递（shared/risk-limits.js）。
 export const RISK_LIMITS = DEFAULT_RISK_LIMITS;
@@ -201,14 +190,17 @@ export function createPlan(
   const drawdown = book.peakEquityCents ? 1 - equity / book.peakEquityCents : 0;
   const riskLimits = riskLimitsForBook(book);
   const emotion = snapshot.emotion ?? 0;
+  // 情绪档位（可配置，随计划冻结）：两档阈值同时驱动目标敞口与
+  // 加仓 / 做 T / 开新仓 / 减仓闸门，旧版本缺字段时回退默认档位。
+  const tiers = strategy.exposureTiers ?? BASE_STRATEGY.exposureTiers;
   const targetExposure =
     drawdown >= riskLimits.maxDrawdown
       ? 0
-      : emotion >= 65
-        ? 0.55
-        : emotion >= 40
-          ? 0.35
-          : 0.15;
+      : emotion >= tiers.highEmotion
+        ? tiers.high
+        : emotion >= tiers.midEmotion
+          ? tiers.mid
+          : tiers.low;
   const orders = [];
   const holdings = new Set(book.positions.map((position) => position.code));
   const selectionAudit = {
@@ -292,7 +284,11 @@ export function createPlan(
       plannedExposure -= quantity * referenceCents;
       continue;
     }
-    if (pnl >= strategy.takeProfit || (signal && score < 65) || emotion < 40) {
+    if (
+      pnl >= strategy.takeProfit ||
+      (signal && score < 65) ||
+      emotion < tiers.midEmotion
+    ) {
       const reduceQuantity = roundLot(quantity / 2) || quantity;
       addOrder({
         ...base,
@@ -302,7 +298,7 @@ export function createPlan(
         reason:
           pnl >= strategy.takeProfit
             ? "分批兑现达到止盈阈值的仓位"
-            : emotion < 40
+            : emotion < tiers.midEmotion
               ? "市场情绪较弱，降低敞口"
               : "个股评分走弱，降低仓位",
       });
@@ -318,7 +314,7 @@ export function createPlan(
       signal &&
       score >= 88 &&
       addQuantity >= 100 &&
-      emotion >= 65 &&
+      emotion >= tiers.highEmotion &&
       plannedExposure + addQuantity * referenceCents <= equity * targetExposure
     ) {
       addOrder({
@@ -341,7 +337,7 @@ export function createPlan(
       continue;
     }
     const tQuantity = roundLot(quantity * strategy.tFraction);
-    if (tQuantity >= 100 && score >= 65 && emotion >= 40) {
+    if (tQuantity >= 100 && score >= 65 && emotion >= tiers.midEmotion) {
       addOrder({
         ...base,
         action: score >= 82 ? "T_FORWARD" : "T_REVERSE",
@@ -389,7 +385,7 @@ export function createPlan(
       audit.reason = "未满足评分、板块、覆盖、风险或价格条件";
       continue;
     }
-    if (emotion < 40 || drawdown >= riskLimits.maxDrawdown) {
+    if (emotion < tiers.midEmotion || drawdown >= riskLimits.maxDrawdown) {
       audit.reason = "市场情绪或账户回撤限制新增交易";
       continue;
     }

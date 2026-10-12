@@ -406,6 +406,7 @@ export async function api(request, env) {
               "improvementMode",
               "fees",
               "riskLimits",
+              "strategyParams",
               "benchmarkCode",
             ].includes(key),
         )

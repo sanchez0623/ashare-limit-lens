@@ -10,6 +10,10 @@ import {
   normalizeRiskLimits,
   riskLimitsForBook,
 } from "../../shared/risk-limits.js";
+import {
+  normalizeStrategyParams,
+  withExposureTiers,
+} from "../../shared/strategy-params.js";
 import { BENCHMARK_CODES, DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
 import { latestPolicyBundle, verifyPolicyBundle } from "./execution-cost.js";
 import {
@@ -372,6 +376,42 @@ export class PaperRepository {
       book.riskLimits = riskLimits;
       book.riskLimitsVersion = (book.riskLimitsVersion || 0) + 1;
     }
+    // 手动策略参数：校验后登记为新策略版本（evidence.type = "manual"）
+    // 并切换 activeStrategy；与费用/风控同一生效纪律——只在下一个尚未
+    // 冻结的计划生效，已冻结计划与历史成交保持原参数。
+    const currentStrategy = withExposureTiers(
+      await this.strategy(account.book),
+    );
+    let strategyChange = null;
+    if (settings.strategyParams !== undefined) {
+      const params = normalizeStrategyParams(settings.strategyParams);
+      const changed =
+        JSON.stringify(canonical(withExposureTiers(currentStrategy))) !==
+        JSON.stringify(canonical(params));
+      if (changed) {
+        const changedKeys = Object.keys(params).filter(
+          (key) =>
+            JSON.stringify(canonical(params[key])) !==
+            JSON.stringify(canonical(currentStrategy[key])),
+        );
+        const row = await this.db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM strategy_versions WHERE id LIKE 'manual-%'",
+          )
+          .first();
+        strategyChange = {
+          versionId: `manual-v${row.n + 1}`,
+          params,
+          evidence: {
+            type: "manual",
+            baseVersion: account.book.activeStrategy,
+            rationale: `手动调整：${changedKeys.join("、")}`,
+            changedKeys,
+          },
+        };
+        book.activeStrategy = strategyChange.versionId;
+      }
+    }
     if (settings.improvementMode !== undefined) {
       if (!["auto", "manual"].includes(settings.improvementMode))
         throw new Error("改进模式无效");
@@ -429,7 +469,7 @@ export class PaperRepository {
     let replacement = null;
     // Only revise a plan on its signal day after close; never alter an executable intraday plan.
     if (
-      (capitalChanged || feesChanged || riskChanged) &&
+      (capitalChanged || feesChanged || riskChanged || strategyChange) &&
       book.lastDate === day &&
       time >= "15:05"
     ) {
@@ -438,7 +478,9 @@ export class PaperRepository {
         .bind(day)
         .first();
       const snapshot = await this.snapshot(day),
-        strategy = await this.strategy(book);
+        strategy = strategyChange
+          ? strategyChange.params
+          : await this.strategy(book);
       // 调整费用/资金不借机换选股政策；仍使用被替换计划的冻结版本。
       const policy = previousPlan
         ? frozenSelectionPolicy(JSON.parse(previousPlan.payload))
@@ -503,12 +545,17 @@ export class PaperRepository {
       capitalChanged,
       feesChanged,
       riskChanged,
+      strategyChanged: !!strategyChange,
       before: {
         initialCashCents: account.book.initialCashCents,
         fees: feesForBook(account.book),
         feeConfigVersion: account.book.feeConfigVersion || 0,
         riskLimits: riskLimitsForBook(account.book),
         riskLimitsVersion: account.book.riskLimitsVersion || 0,
+        strategy: {
+          id: account.book.activeStrategy,
+          params: currentStrategy,
+        },
         improvementMode: account.book.improvementMode,
         benchmarkCode: account.book.benchmarkCode || DEFAULT_BENCHMARK,
       },
@@ -518,6 +565,10 @@ export class PaperRepository {
         feeConfigVersion: book.feeConfigVersion || 0,
         riskLimits: riskLimitsForBook(book),
         riskLimitsVersion: book.riskLimitsVersion || 0,
+        strategy: {
+          id: book.activeStrategy,
+          params: strategyChange ? strategyChange.params : currentStrategy,
+        },
         improvementMode: book.improvementMode,
         benchmarkCode: book.benchmarkCode || DEFAULT_BENCHMARK,
       },
@@ -525,8 +576,34 @@ export class PaperRepository {
       revisedPlanDate: replacement?.signalDate || null,
       effective: replacement
         ? "当日尚未执行的计划已重新冻结；原计划留档"
-        : "新费用适用于后续新计划，已有计划保持原配置",
+        : strategyChange
+          ? "新策略参数已登记启用，将用于下一份计划；已冻结计划保持原参数"
+          : "新配置适用于后续新计划，已冻结计划保持原配置",
     };
+    if (strategyChange) {
+      // 版本登记与账户切换同一事务：账户提交失败时版本一并回滚。
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO strategy_versions (id,created_at,status,params,evidence) SELECT ?,?,?,?,? WHERE ${guard}`,
+          )
+          .bind(
+            strategyChange.versionId,
+            stamp,
+            "ACTIVE",
+            JSON.stringify(strategyChange.params),
+            JSON.stringify(strategyChange.evidence),
+            ...guardArgs,
+          ),
+      );
+      statements.push(
+        this.db
+          .prepare(
+            `UPDATE strategy_versions SET status='RETIRED' WHERE status='ACTIVE' AND id<>? AND ${guard}`,
+          )
+          .bind(strategyChange.versionId, ...guardArgs),
+      );
+    }
     statements.push(
       this.db
         .prepare(

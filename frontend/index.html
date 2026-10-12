@@ -652,6 +652,30 @@
                     恢复默认风控
                   </button>
                 </fieldset>
+                <fieldset class="paper-fee-settings">
+                  <legend>策略参数与情绪档位</legend>
+                  <div class="fee-settings-heading">
+                    <p>
+                      保存后登记为新策略版本并用于下一份计划，已冻结计划保持原参数；因子权重为交易决策权重，独立于研究页观察权重。情绪阈值同时决定目标敞口与加仓、做
+                      T、开新仓、减仓闸门。
+                    </p>
+                    <span class="outline-tag" id="paper-strategy-version"
+                      >策略 baseline-v1</span
+                    >
+                  </div>
+                  <div
+                    id="paper-strategy-controls"
+                    class="paper-fee-controls"
+                  ></div>
+                  <p id="paper-strategy-summary" class="fee-settings-note"></p>
+                  <button
+                    type="button"
+                    id="paper-strategy-defaults"
+                    class="text-button"
+                  >
+                    恢复默认策略参数
+                  </button>
+                </fieldset>
                 <button class="secondary" type="submit" data-paper-operation>
                   保存设置
                 </button>
