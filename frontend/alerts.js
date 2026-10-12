@@ -54,22 +54,22 @@ function renderStatus() {
   const channelHtml = status.channels
     .map(
       (channel) =>
-        `<div><span class="outline-tag">${escape(channel.name)}</span><span>${
+        `<div><span class="outline-tag">${escape(channel.name)}</span><div class="panel-metric-value">${
           channel.configured ? "已配置" : "未配置（服务端 .env）"
-        }</span></div>`,
+        }</div></div>`,
     )
     .join("");
   const watchdog = status.watchdog ?? {};
   el("alerts-channel-list").innerHTML =
     channelHtml +
-    `<div><span class="outline-tag">外部监测</span><span>${
+    `<div><span class="outline-tag">外部监测</span><div class="panel-metric-value"><span>${
       watchdog.progressConfigured
         ? `进度信号已配置${watchdog.lastProgressAt ? `，最近 ${fmtTime(watchdog.lastProgressAt)}` : ""}`
         : "未配置（WATCHDOG_PROGRESS_URL）"
-    }；${
+    }</span><span>${
       watchdog.pipelineConfigured ? "管道信号已配置" : "管道信号未配置"
-    }</span></div>
-    <div><span class="outline-tag">发送队列</span><span>待发送 ${status.outbox?.pending ?? 0}，逾期未领 ${status.outbox?.overdue ?? 0}，已发送 ${status.outbox?.sent ?? 0}，过期 ${status.outbox?.expired ?? 0}</span></div>`;
+    }</span></div></div>
+    <div><span class="outline-tag">发送队列</span><div class="panel-metric-value">待发送 ${status.outbox?.pending ?? 0}，逾期未领 ${status.outbox?.overdue ?? 0}，已发送 ${status.outbox?.sent ?? 0}，过期 ${status.outbox?.expired ?? 0}</div></div>`;
 }
 
 function renderIncidents(reset) {

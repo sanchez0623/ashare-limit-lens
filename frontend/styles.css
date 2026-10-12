@@ -450,13 +450,14 @@ main {
   align-items: start;
 }
 .panel {
+  --panel-inline-padding: 22px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
 }
 .panel-heading {
-  padding: 21px 22px 17px;
+  padding: 21px var(--panel-inline-padding) 17px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -745,7 +746,8 @@ tbody tr:hover {
   color: #9da7b1;
   border-top: 1px solid #f0f2f5;
   margin-top: 15px;
-  padding: 12px 22px;
+  padding: 12px var(--panel-inline-padding);
+  overflow-wrap: anywhere;
 }
 .outline-tag {
   font-size: 11px;
@@ -1309,8 +1311,11 @@ dialog::backdrop {
   .right-column {
     grid-template-columns: 1fr;
   }
+  .panel {
+    --panel-inline-padding: 17px;
+  }
   .panel-heading {
-    padding: 19px 17px 15px;
+    padding: 19px var(--panel-inline-padding) 15px;
   }
   .filters {
     padding-inline: 17px;
@@ -1771,17 +1776,37 @@ table {
   font-size: 18px;
   letter-spacing: 0.2px;
 }
-.strategy-metrics {
-  padding-inline: 22px;
+/* In-panel metrics share heading/footer gutters and stack labels above values. */
+.panel-metrics {
+  padding-inline: var(--panel-inline-padding);
 }
-.strategy-metrics > div {
+.panel-metrics > div {
   display: grid;
   align-content: start;
   gap: 6px;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
-.strategy-metrics .mini-label {
+.panel-metrics .mini-label {
   margin-bottom: 0;
+}
+.panel-metrics .outline-tag {
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
+}
+.panel-metric-value {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.7;
+  line-break: anywhere;
+}
+.alert-channel-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .strategy-metrics strong {
   font-size: 16px;
@@ -1796,9 +1821,8 @@ table {
   margin-bottom: 0;
 }
 @media (max-width: 720px) {
-  .strategy-metrics,
-  #strategies-view .panel-footnote {
-    padding-inline: 17px;
+  .alert-channel-metrics {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .version-row {
