@@ -38,6 +38,17 @@ export const REVIEW_METRIC_FAMILY = Object.freeze([
   "MEAN_DAILY_IC",
   "MEAN_DAILY_EXCESS",
 ]);
+// 账户系列预登记检验族：单一指标（主账户连续账本无匹配对照，
+// 配对族另行声明，不混入本系列）。
+export const ACCOUNT_METRIC_FAMILY = Object.freeze(["MEAN_DAILY_RETURN"]);
+// 系列预登记检验族（§6.4）：报告不得清空、删减或替换族成员；
+// verifier 按系列核对族一致性（P1-2）。
+export const REVIEW_EVIDENCE_SERIES = "review-primary";
+export const ACCOUNT_EVIDENCE_SERIES = "account-primary";
+export const SERIES_METRIC_FAMILIES = Object.freeze({
+  [REVIEW_EVIDENCE_SERIES]: REVIEW_METRIC_FAMILY,
+  [ACCOUNT_EVIDENCE_SERIES]: ACCOUNT_METRIC_FAMILY,
+});
 
 export const EVIDENCE_POLICY_FIELDS = Object.freeze([
   { key: "windows", label: "滚动窗口（交易日）" },

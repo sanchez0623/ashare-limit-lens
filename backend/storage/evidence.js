@@ -234,12 +234,25 @@ export class EvidenceRepository {
         : null,
     };
   }
-  async listReports({ seriesId, limit = 30 }) {
+  // 列表查询在 SQL 层完成 asOf/horizon 过滤（P2-1）：先取最新 N 条再在
+  // 内存过滤会漏掉深分页之外的历史报告。
+  async listReports({ seriesId, limit = 30, asOf, horizon } = {}) {
+    const conditions = ["series_id=?"];
+    const args = [seriesId];
+    if (asOf) {
+      conditions.push("as_of<=?");
+      args.push(asOf);
+    }
+    if (horizon) {
+      conditions.push("horizon=?");
+      args.push(horizon);
+    }
+    args.push(limit);
     const rows = await this.db
       .prepare(
-        "SELECT id,series_id,as_of,horizon,purpose,payload,digest,created_at FROM evidence_reports WHERE series_id=? ORDER BY as_of DESC, horizon LIMIT ?",
+        `SELECT id,series_id,as_of,horizon,purpose,payload,digest,created_at FROM evidence_reports WHERE ${conditions.join(" AND ")} ORDER BY as_of DESC, horizon LIMIT ?`,
       )
-      .bind(seriesId, limit)
+      .bind(...args)
       .all();
     return rows.results.map((row) => ({
       id: row.id,

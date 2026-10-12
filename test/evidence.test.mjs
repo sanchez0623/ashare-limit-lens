@@ -15,6 +15,7 @@ import {
   bootstrapMeanEvidence,
   adjustEvidenceFamily,
   evidenceSeed,
+  DIAGNOSTIC_METHOD_VERSION,
 } from "../backend/domain/research-statistics.js";
 import { EvidenceRepository } from "../backend/storage/evidence.js";
 import {
@@ -998,6 +999,23 @@ test("verifier：合法退化组合通过，方法/状态/方向/manifest 篡改
     const coverageAudit = await verifyEvidenceBundle(coverageTampered);
     assert.equal(coverageAudit.passed, false);
     assert.match(coverageAudit.reason, /覆盖率/);
+    // 清空检验族并改成 PENDING、重算报告摘要：空族规则拒绝（P1-2）
+    const familyCleared = structuredClone(bundle);
+    familyCleared.report.payload.family = [];
+    familyCleared.report.payload.status = "PENDING";
+    familyCleared.report.digest = await digestOf(familyCleared.report.payload);
+    const familyAudit = await verifyEvidenceBundle(familyCleared);
+    assert.equal(familyAudit.passed, false);
+    assert.match(familyAudit.reason, /空检验族/);
+    // 删减族成员（去掉超额）并重算摘要：预登记族不一致，拒绝（P1-2）
+    const familyTrimmed = structuredClone(bundle);
+    familyTrimmed.report.payload.family = [
+      familyTrimmed.report.payload.family[0],
+    ];
+    familyTrimmed.report.digest = await digestOf(familyTrimmed.report.payload);
+    const trimAudit = await verifyEvidenceBundle(familyTrimmed);
+    assert.equal(trimAudit.passed, false);
+    assert.match(trimAudit.reason, /检验族/);
   } finally {
     DB.close();
   }
@@ -1045,6 +1063,210 @@ test("证据 API：asOf 截取不混入所选日期之后的报告（P1-8）", a
       env,
     );
     assert.equal(badAsOf.status, 400);
+  } finally {
+    DB.close();
+  }
+});
+
+test("覆盖率精度：58/60 有效日的合法报告不被核验拒绝（P1-1）", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(120);
+    await seedReviewHistory(env, dates, { effect: 0.004 });
+    // h60 窗口 = dates[60..119]：只登记 dates[1..117] → 有效 58 天
+    for (const date of dates.slice(1, 118))
+      await recordReviewDailyMetric(env, date);
+    const report = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.equal(report.payload.window.validDates.length, 58);
+    assert.equal(report.payload.status, "READY");
+    // 58/60 = 0.9666…，报告按 4 位小数发布为 0.9667，不得因精度差异被拒
+    assert.equal(report.payload.window.coverage, 0.9667);
+    const audit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: report.id }),
+    );
+    assert.equal(audit.passed, true, JSON.stringify(audit));
+  } finally {
+    DB.close();
+  }
+});
+
+test("账户净值完整性：complete=false 当日与次日不计有效样本（P1-3）", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const paper = new PaperRepository(env);
+    await paper.initialize();
+    const dates = tradingDates(140);
+    const equityRow = (date, cents, complete) =>
+      JSON.stringify({
+        date,
+        equityCents: cents,
+        complete,
+        cashCents: 0,
+        marketValueCents: 0,
+        dailyPnlCents: 0,
+        dailyReturn: 0,
+        totalReturn: 0,
+        realizedPnlCents: 0,
+        unrealizedPnlCents: 0,
+        feesCents: 0,
+        drawdown: 0,
+        positionCount: 0,
+        missingMinuteOrders: complete ? 0 : 3,
+        source: "fixture",
+      });
+    // h60 窗口（dates[80..139]）内 index 130 净值不完整
+    for (const [index, date] of dates.entries()) {
+      await DB.prepare(
+        "INSERT OR IGNORE INTO paper_equity (trade_date, payload) VALUES (?,?)",
+      )
+        .bind(date, equityRow(date, 100000000 + index * 100000, index !== 130))
+        .run();
+    }
+    const report = await buildAccountEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    const window = report.payload.window;
+    assert.deepEqual(
+      window.excludedDates,
+      [dates[130], dates[131]],
+      "不完整净值当日与次日都不计有效样本",
+    );
+    assert.deepEqual(window.missingDates, []);
+    assert.match(window.exclusionReasons[dates[130]], /当日净值不完整/);
+    assert.match(window.exclusionReasons[dates[131]], /前一日净值不完整/);
+    assert.equal(window.validDates.length, 58);
+    assert.equal(report.payload.status, "READY");
+    // 132 恢复单日口径：收益基于 131 的完整净值（≈0.1%），
+    // 不把不完整净值的跨期波动合并进来
+    const afterGap = report.inputs.metrics.find(
+      (row) => row.outcomeDate === dates[132],
+    );
+    const singleDay = afterGap.payload.values.meanDailyReturn;
+    assert.ok(
+      singleDay > 0 && singleDay < 0.0012,
+      `缺口后应为单日收益，实际 ${singleDay}`,
+    );
+    const audit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: report.id }),
+    );
+    assert.equal(audit.passed, true, JSON.stringify(audit));
+  } finally {
+    DB.close();
+  }
+});
+
+test("历史 asOf 查询：深分页不受最新 60 条截断影响（P2-1）", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(70);
+    // 直插 65 个 h20 报告（asOf 递增）：最老一条在最新 60 条之外
+    for (const [index, date] of dates.slice(0, 65).entries()) {
+      const payload = JSON.stringify({
+        purpose: "DIAGNOSTIC",
+        eligibleForPromotion: false,
+        repeatedLooksAdjusted: false,
+        asOf: date,
+        horizon: 20,
+        seriesId: "review-primary",
+        status: "PENDING",
+        family: [],
+        window: {
+          expectedDates: [],
+          validDates: [],
+          missingDates: [],
+          excludedDates: [],
+          exclusionReasons: {},
+          coverage: 0,
+        },
+        context: { digest: "legacy", mixedContext: false },
+        method: {
+          version: DIAGNOSTIC_METHOD_VERSION,
+          blockLength: 5,
+          resamples: 100,
+          seed: "s",
+        },
+        tags: [],
+      });
+      await DB.prepare(
+        "INSERT OR IGNORE INTO evidence_reports (id,namespace,series_id,as_of,horizon,purpose,input_digest,policy_digest,method_version,payload,digest,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+      )
+        .bind(
+          `legacy-${index}`,
+          "main",
+          "review-primary",
+          date,
+          20,
+          "DIAGNOSTIC",
+          `in-${index}`,
+          "pol",
+          DIAGNOSTIC_METHOD_VERSION,
+          payload,
+          `d-${index}`,
+          new Date().toISOString(),
+        )
+        .run();
+    }
+    // 修复前：最新 60 条（dates[5..64]）内没有 ≤ dates[0] 的报告 → 漏掉
+    const response = await api(
+      new Request(
+        `https://example.test/api/evidence?series=review-primary&horizon=20&asOf=${encodeURIComponent(dates[0])}`,
+      ),
+      env,
+    );
+    const body = await response.json();
+    assert.equal(body.report?.asOf, dates[0], "深分页外的历史报告必须可见");
+    assert.ok(body.history.every((row) => row.asOf <= dates[0]));
+    assert.equal(body.history.length, 1);
+  } finally {
+    DB.close();
+  }
+});
+
+test("迁移前旧报告：无冻结指标列仍可通过核验（P2-2）", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(120);
+    await seedReviewHistory(env, dates, { effect: 0.004 });
+    for (const date of dates.slice(1)) await recordReviewDailyMetric(env, date);
+    const repository = new EvidenceRepository(env);
+    const report = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 20,
+      calendarDates: dates,
+    });
+    assert.equal(
+      (await verifyEvidenceBundle(await exportEvidence(env, { id: report.id })))
+        .passed,
+      true,
+    );
+    // 改造为迁移前形态：metrics_json 置空，manifest 摘要按旧口径重算
+    const inputs = (await repository.getReport(report.id)).inputs;
+    const legacyDigest = await digestOf({
+      orderedDates: inputs.orderedDates,
+      sourceRefs: inputs.sourceRefs,
+      sourceDigests: inputs.sourceDigests,
+      contextDigest: report.payload.context.digest,
+    });
+    await DB.prepare(
+      "UPDATE evidence_report_inputs SET metrics_json=NULL, manifest_digest=? WHERE report_id=?",
+    )
+      .bind(legacyDigest, report.id)
+      .run();
+    const legacyBundle = await exportEvidence(env, { id: report.id });
+    assert.equal(legacyBundle.report.inputs.metrics, null);
+    assert.equal(legacyBundle.dailyMetrics.length, 20, "导出回退当前日指标");
+    const audit = await verifyEvidenceBundle(legacyBundle);
+    assert.equal(audit.passed, true, JSON.stringify(audit));
   } finally {
     DB.close();
   }

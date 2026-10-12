@@ -14621,6 +14621,13 @@ var REVIEW_METRIC_FAMILY = Object.freeze([
   "MEAN_DAILY_IC",
   "MEAN_DAILY_EXCESS"
 ]);
+var ACCOUNT_METRIC_FAMILY = Object.freeze(["MEAN_DAILY_RETURN"]);
+var REVIEW_EVIDENCE_SERIES = "review-primary";
+var ACCOUNT_EVIDENCE_SERIES = "account-primary";
+var SERIES_METRIC_FAMILIES = Object.freeze({
+  [REVIEW_EVIDENCE_SERIES]: REVIEW_METRIC_FAMILY,
+  [ACCOUNT_EVIDENCE_SERIES]: ACCOUNT_METRIC_FAMILY
+});
 var EVIDENCE_POLICY_FIELDS = Object.freeze([
   { key: "windows", label: "\u6EDA\u52A8\u7A97\u53E3\uFF08\u4EA4\u6613\u65E5\uFF09" },
   { key: "primaryWindow", label: "\u4E3B\u89C6\u56FE\u7A97\u53E3", min: 5, max: 250 },
@@ -14968,10 +14975,23 @@ var EvidenceRepository = class {
       } : null
     };
   }
-  async listReports({ seriesId, limit = 30 }) {
+  // 列表查询在 SQL 层完成 asOf/horizon 过滤（P2-1）：先取最新 N 条再在
+  // 内存过滤会漏掉深分页之外的历史报告。
+  async listReports({ seriesId, limit = 30, asOf, horizon } = {}) {
+    const conditions = ["series_id=?"];
+    const args = [seriesId];
+    if (asOf) {
+      conditions.push("as_of<=?");
+      args.push(asOf);
+    }
+    if (horizon) {
+      conditions.push("horizon=?");
+      args.push(horizon);
+    }
+    args.push(limit);
     const rows = await this.db.prepare(
-      "SELECT id,series_id,as_of,horizon,purpose,payload,digest,created_at FROM evidence_reports WHERE series_id=? ORDER BY as_of DESC, horizon LIMIT ?"
-    ).bind(seriesId, limit).all();
+      `SELECT id,series_id,as_of,horizon,purpose,payload,digest,created_at FROM evidence_reports WHERE ${conditions.join(" AND ")} ORDER BY as_of DESC, horizon LIMIT ?`
+    ).bind(...args).all();
     return rows.results.map((row) => ({
       id: row.id,
       seriesId: row.series_id,
@@ -15105,8 +15125,8 @@ async function computeDailyReviewMetrics({
 
 // backend/services/evidence.js
 var NAMESPACE = "main";
-var REVIEW_SERIES = "review-primary";
-var ACCOUNT_SERIES = "account-primary";
+var REVIEW_SERIES = REVIEW_EVIDENCE_SERIES;
+var ACCOUNT_SERIES = ACCOUNT_EVIDENCE_SERIES;
 function metricUnits(metric) {
   if (metric === "MEAN_DAILY_IC") return "CORRELATION";
   if (metric === "MEAN_DAILY_EXCESS" || metric === "MEAN_DAILY_RETURN")
@@ -15503,15 +15523,18 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
   const { book } = await paper.initialize();
   const rows = (await paper.history("paper_equity", 1e5)).map((row) => JSON.parse(row.payload)).map((row) => ({
     tradeDate: row.date ?? row.trade_date,
-    equityCents: row.equityCents
+    equityCents: row.equityCents,
+    // 净值完整性（P1-3）：complete=false 表示当日净值为临时值
+    // （如缺行情/分钟数据），当日与次日收益都不可作为有效单日样本。
+    complete: row.complete !== false
   })).sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
-  const byDate = new Map(rows.map((row) => [row.tradeDate, row.equityCents]));
+  const byDate = new Map(rows.map((row) => [row.tradeDate, row]));
   const prior = rows.filter((row) => row.tradeDate < expectedDates[0]);
   let baseEquityCents;
   let firstDayAdjacent;
   if (prior.length) {
     baseEquityCents = prior.at(-1).equityCents;
-    firstDayAdjacent = frozen.predecessor != null && prior.at(-1).tradeDate === frozen.predecessor;
+    firstDayAdjacent = frozen.predecessor != null && prior.at(-1).tradeDate === frozen.predecessor && prior.at(-1).complete !== false;
   } else if (book.lastDate && book.lastDate < expectedDates[0]) {
     baseEquityCents = book.initialCashCents;
     firstDayAdjacent = false;
@@ -15542,11 +15565,28 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
   let previousSettled = firstDayAdjacent;
   let pendingReason = firstDayAdjacent ? null : "\u671F\u521D\u51C0\u503C\u4E0E\u7A97\u53E3\u9996\u65E5\u4E0D\u76F8\u90BB\u6216\u4E0D\u53EF\u6838\u9A8C\uFF0C\u8DE8\u671F\u6536\u76CA\u65E0\u6CD5\u62C6\u5206\u4E3A\u5355\u65E5";
   for (const date of expectedDates) {
-    const equity = byDate.get(date);
-    if (equity === void 0 || equity === null) {
+    const row = byDate.get(date);
+    if (!row || row.equityCents === void 0 || row.equityCents === null) {
       metrics.set(date, null);
       if (previousSettled)
         pendingReason = "\u524D\u4E00\u65E5\u51C0\u503C\u7F3A\u5931\uFF0C\u8DE8\u7F3A\u53E3\u6536\u76CA\u65E0\u6CD5\u62C6\u5206\u4E3A\u5355\u65E5";
+      previousSettled = false;
+      continue;
+    }
+    const equity = row.equityCents;
+    if (!row.complete) {
+      metrics.set(date, {
+        outcomeDate: date,
+        sourceDigest: await digestOf({ date, equityCents: equity }),
+        payload: buildPayload(
+          date,
+          { meanDailyReturn: null },
+          "INSUFFICIENT_SAMPLE",
+          ["\u5F53\u65E5\u51C0\u503C\u4E0D\u5B8C\u6574\uFF08complete=false\uFF09\uFF0C\u4E0D\u4F5C\u4E3A\u6709\u6548\u6837\u672C"]
+        )
+      });
+      if (previousSettled)
+        pendingReason = "\u524D\u4E00\u65E5\u51C0\u503C\u4E0D\u5B8C\u6574\uFF08complete=false\uFF09\uFF0C\u8DE8\u671F\u6536\u76CA\u65E0\u6CD5\u62C6\u5206\u4E3A\u5355\u65E5";
       previousSettled = false;
       continue;
     }
@@ -15586,7 +15626,7 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
     horizon,
     expectedDates,
     metrics,
-    metricKeys: ["MEAN_DAILY_RETURN"],
+    metricKeys: ACCOUNT_METRIC_FAMILY,
     observationGrade: false,
     costUncalibrated: true,
     noComparableBaseline: true
@@ -15655,10 +15695,13 @@ async function exportEvidence(env, { id }) {
 }
 async function getEvidence(env, { series, asOf, horizon }) {
   const repository = new EvidenceRepository(env);
-  const reports = await repository.listReports({ seriesId: series, limit: 60 });
-  const scoped = reports.filter((report) => !asOf || report.asOf <= asOf);
-  const matching = scoped.filter((report) => report.horizon === horizon);
-  return { report: matching.at(0) ?? null, history: scoped.slice(0, 12) };
+  const reports = await repository.listReports({
+    seriesId: series,
+    limit: 60,
+    asOf,
+    horizon
+  });
+  return { report: reports.at(0) ?? null, history: reports.slice(0, 12) };
 }
 async function evidenceOverview(env, { asOf } = {}) {
   const repository = new EvidenceRepository(env);

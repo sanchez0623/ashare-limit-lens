@@ -5,7 +5,10 @@
 // 用途限制；不再只核验 READY 且带区间的报告，也不拒绝合法退化组合。
 // 用法：npm run verify:evidence -- /path/to/evidence-export.json
 import assert from "node:assert/strict";
-import { normalizeEvidencePolicy } from "../backend/domain/evidence-policy.js";
+import {
+  normalizeEvidencePolicy,
+  SERIES_METRIC_FAMILIES,
+} from "../backend/domain/evidence-policy.js";
 import {
   resampleSegmentIndexMatrix,
   bootstrapMeanEvidence,
@@ -102,16 +105,20 @@ export async function verifyEvidenceBundle(bundle) {
         return fail(checks, `${date} 上下文摘要与报告不一致`);
       sourceDigests[date] = metric.sourceDigest;
     }
-    // 冻结清单与有效日期一一对应（P1-6）。
-    const manifestDates = (report.inputs.metrics ?? [])
-      .map((row) => row.outcomeDate)
-      .sort();
-    if (
-      JSON.stringify(manifestDates) !== JSON.stringify([...validDates].sort())
-    )
-      return fail(checks, "冻结输入指标与窗口有效日期不一致");
+    // 冻结清单与有效日期一一对应（P1-6）。迁移前旧报告无冻结指标列
+    // （metrics 为 null）：指标取自导出回退，跳过清单对应检查（P2-2）。
+    if (Array.isArray(report.inputs.metrics)) {
+      const manifestDates = report.inputs.metrics
+        .map((row) => row.outcomeDate)
+        .sort();
+      if (
+        JSON.stringify(manifestDates) !== JSON.stringify([...validDates].sort())
+      )
+        return fail(checks, "冻结输入指标与窗口有效日期不一致");
+    }
     // 窗口划分与覆盖率如实（P1-3/P1-6）：有效/缺失/质量剔除互斥且并集
-    // 等于冻结日历，覆盖率等于有效占比。
+    // 等于冻结日历，覆盖率等于有效占比。报告覆盖率按 4 位小数发布，
+    // 核验容差 1e-4（P1-1）：不因精度舍入拒绝合法报告。
     const missingDates = report.payload.window.missingDates ?? [];
     const excludedDates = report.payload.window.excludedDates ?? [];
     const partition = [...validDates, ...missingDates, ...excludedDates].sort();
@@ -119,7 +126,7 @@ export async function verifyEvidenceBundle(bundle) {
       return fail(checks, "窗口日期划分与冻结日历不一致");
     const expectedCoverage = validDates.length / expected.length;
     if (
-      Math.abs((report.payload.window.coverage ?? 0) - expectedCoverage) > 1e-9
+      Math.abs((report.payload.window.coverage ?? 0) - expectedCoverage) > 1e-4
     )
       return fail(checks, "窗口覆盖率与有效日期不一致");
     const inputDigest = await digestOf({
@@ -153,14 +160,28 @@ export async function verifyEvidenceBundle(bundle) {
     if (report.payload.method.resamples !== policy.resamples)
       return fail(checks, "报告重采样次数与政策不一致");
     if (!validDates.length) {
-      // 无有效日指标：只允许样本不足/不完整状态，不得给出可结论状态。
-      if (
-        !["PENDING", "INSUFFICIENT_SAMPLE", "INCOMPLETE_DATA"].includes(
-          report.payload.status,
-        )
-      )
-        return fail(checks, "无有效日指标时不应输出可结论状态");
+      // 无有效日指标（P1-2）：有质量剔除日说明样本被闸门拒绝
+      // （INSUFFICIENT_SAMPLE），否则只是尚未积累（PENDING）。
+      const expectedNoValid = (report.payload.window.excludedDates ?? []).length
+        ? "INSUFFICIENT_SAMPLE"
+        : "PENDING";
+      if (report.payload.status !== expectedNoValid)
+        return fail(checks, "无有效日指标时的状态与窗口结构不一致");
     } else {
+      // 检验族预登记核对（§6.4/P1-2）：已知系列的族不得删减或替换；
+      // 空族的合法性由覆盖/片段状态在下方核验（发布端仅在覆盖不足、
+      // 片段过短或无有效日时输出空族）。
+      const declaredFamily = SERIES_METRIC_FAMILIES[report.seriesId];
+      const recordedMetrics = report.payload.family?.map(
+        (entry) => entry.metric,
+      );
+      if (
+        declaredFamily &&
+        recordedMetrics.length &&
+        JSON.stringify([...recordedMetrics].sort()) !==
+          JSON.stringify([...declaredFamily].sort())
+      )
+        return fail(checks, "检验族与该系列预登记的指标族不一致");
       // 片段按冻结交易日日历重建：缺口（缺失与质量剔除日期）分隔连续
       // 有效片段，区块从不跨越缺口拼接（§5.1）。
       const validSet = new Set(validDates);
@@ -180,16 +201,16 @@ export async function verifyEvidenceBundle(bundle) {
         resamples: policy.resamples,
         seedInput: seed,
       });
-      if (!report.payload.family?.length) {
-        if (
-          !["PENDING", "INSUFFICIENT_SAMPLE", "INCOMPLETE_DATA"].includes(
-            report.payload.status,
-          )
-        )
-          return fail(checks, "无检验结果的报告不应输出可结论状态");
-      } else if (!matrix) {
+      if (!matrix) {
         if (report.payload.status !== "INCOMPLETE_DATA")
           return fail(checks, "片段短于区块长度时报告应标注 INCOMPLETE_DATA");
+      } else if (!recordedMetrics.length) {
+        // 可重采样时清空检验族改 PENDING 必须被拒绝（P1-2）：覆盖达标
+        // 却无检验结果，或覆盖不足却未如实标注 INCOMPLETE_DATA。
+        if ((report.payload.window.coverage ?? 0) >= policy.minWindowCoverage)
+          return fail(checks, "窗口覆盖达标却无检验结果，不应输出空检验族");
+        if (report.payload.status !== "INCOMPLETE_DATA")
+          return fail(checks, "覆盖不足的空检验族报告应标注 INCOMPLETE_DATA");
       } else {
         // 全量重算全部族成员（P1-6）：不再跳过非 READY 报告，也不再
         // 假设所有成员都有区间——合法退化组合（区间为 null）按重算

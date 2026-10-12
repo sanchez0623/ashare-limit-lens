@@ -8,6 +8,9 @@ import { digestOf } from "../domain/research-lineage.js";
 import {
   normalizeEvidencePolicy,
   REVIEW_METRIC_FAMILY,
+  ACCOUNT_METRIC_FAMILY,
+  REVIEW_EVIDENCE_SERIES,
+  ACCOUNT_EVIDENCE_SERIES,
   METHOD_QUALIFIED_HORIZONS,
 } from "../domain/evidence-policy.js";
 import {
@@ -22,8 +25,9 @@ import { computeDailyReviewMetrics } from "../domain/review-metrics.js";
 import { tradingCalendar } from "./market.js";
 
 const NAMESPACE = "main";
-export const REVIEW_SERIES = "review-primary";
-export const ACCOUNT_SERIES = "account-primary";
+// 系列与检验族常量统一从预登记政策导出（P1-2）：verifier 按同一来源核对。
+export const REVIEW_SERIES = REVIEW_EVIDENCE_SERIES;
+export const ACCOUNT_SERIES = ACCOUNT_EVIDENCE_SERIES;
 
 function metricUnits(metric) {
   if (metric === "MEAN_DAILY_IC") return "CORRELATION";
@@ -513,20 +517,24 @@ export async function buildAccountEvidence(
     .map((row) => ({
       tradeDate: row.date ?? row.trade_date,
       equityCents: row.equityCents,
+      // 净值完整性（P1-3）：complete=false 表示当日净值为临时值
+      // （如缺行情/分钟数据），当日与次日收益都不可作为有效单日样本。
+      complete: row.complete !== false,
     }))
     .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
-  const byDate = new Map(rows.map((row) => [row.tradeDate, row.equityCents]));
+  const byDate = new Map(rows.map((row) => [row.tradeDate, row]));
   const prior = rows.filter((row) => row.tradeDate < expectedDates[0]);
   // 净值完整性（§5.2）：期初权益必须是窗口首日之前最近交易日的已结算净值。
-  // 无法核验相邻性、或账户存在更早历史但净值序列缺失时，窗口首日的收益
-  // 可能跨越多个交易日，不得算作单日样本（P1-4）。
+  // 无法核验相邻性、期初净值不完整、或账户存在更早历史但净值序列缺失时，
+  // 窗口首日的收益可能跨越多个交易日，不得算作单日样本（P1-4/P1-3）。
   let baseEquityCents;
   let firstDayAdjacent;
   if (prior.length) {
     baseEquityCents = prior.at(-1).equityCents;
     firstDayAdjacent =
       frozen.predecessor != null &&
-      prior.at(-1).tradeDate === frozen.predecessor;
+      prior.at(-1).tradeDate === frozen.predecessor &&
+      prior.at(-1).complete !== false;
   } else if (book.lastDate && book.lastDate < expectedDates[0]) {
     // 账户在窗口之前已有结算，但净值序列缺失：期初权益不可信。
     baseEquityCents = book.initialCashCents;
@@ -564,11 +572,31 @@ export async function buildAccountEvidence(
     ? null
     : "期初净值与窗口首日不相邻或不可核验，跨期收益无法拆分为单日";
   for (const date of expectedDates) {
-    const equity = byDate.get(date);
-    if (equity === undefined || equity === null) {
+    const row = byDate.get(date);
+    if (!row || row.equityCents === undefined || row.equityCents === null) {
       metrics.set(date, null);
       if (previousSettled)
         pendingReason = "前一日净值缺失，跨缺口收益无法拆分为单日";
+      previousSettled = false;
+      continue;
+    }
+    const equity = row.equityCents;
+    if (!row.complete) {
+      // 净值不完整（P1-3）：当日为临时净值，当日与次日都不作为有效
+      // 单日样本，且当日净值不得作为后续收益的基数。
+      metrics.set(date, {
+        outcomeDate: date,
+        sourceDigest: await digestOf({ date, equityCents: equity }),
+        payload: buildPayload(
+          date,
+          { meanDailyReturn: null },
+          "INSUFFICIENT_SAMPLE",
+          ["当日净值不完整（complete=false），不作为有效样本"],
+        ),
+      });
+      if (previousSettled)
+        pendingReason =
+          "前一日净值不完整（complete=false），跨期收益无法拆分为单日";
       previousSettled = false;
       continue;
     }
@@ -610,7 +638,7 @@ export async function buildAccountEvidence(
     horizon,
     expectedDates,
     metrics,
-    metricKeys: ["MEAN_DAILY_RETURN"],
+    metricKeys: ACCOUNT_METRIC_FAMILY,
     observationGrade: false,
     costUncalibrated: true,
     noComparableBaseline: true,
@@ -694,11 +722,15 @@ export async function exportEvidence(env, { id }) {
 
 export async function getEvidence(env, { series, asOf, horizon }) {
   const repository = new EvidenceRepository(env);
-  const reports = await repository.listReports({ seriesId: series, limit: 60 });
-  // asOf 截取（P1-8）：报告与历史都不得混入所选日期之后的数据。
-  const scoped = reports.filter((report) => !asOf || report.asOf <= asOf);
-  const matching = scoped.filter((report) => report.horizon === horizon);
-  return { report: matching.at(0) ?? null, history: scoped.slice(0, 12) };
+  // asOf 与 horizon 下推到 SQL（P2-1）：先取最新 60 条再过滤会漏掉
+  // 深分页之外的历史报告，历史 asOf 查询必须完整。
+  const reports = await repository.listReports({
+    seriesId: series,
+    limit: 60,
+    asOf,
+    horizon,
+  });
+  return { report: reports.at(0) ?? null, history: reports.slice(0, 12) };
 }
 
 export async function evidenceOverview(env, { asOf } = {}) {
