@@ -1634,3 +1634,236 @@ test("报告 id 自洽：同步改写窗口与摘要的深伪造被拒绝（P1�
     DB.close();
   }
 });
+
+// ---------- 批次 C：板块次要族、成本联动与晋级入口 ----------
+
+// 多板块合成快照：四个板块各 3 只，板块评分与板块收益同向且逐日微噪声，
+// 用于次要族发布与核验（§3.2/§6.4 批次 C）。
+const SECTORS = [
+  { name: "电子", score: 90 },
+  { name: "机械", score: 80 },
+  { name: "电力", score: 70 },
+  { name: "医药", score: 60 },
+];
+function sectorSnapshot(date, dayIndex) {
+  return {
+    date,
+    createdAt: `${date}T07:10:00.000Z`,
+    modelVersion: "rules-v1",
+    weights: [8, 8, 8, 8, 8, 8],
+    sectors: SECTORS,
+    stocks: Array.from({ length: 12 }, (_, index) => {
+      const sectorIndex = index % 4;
+      return {
+        code: `3000${String(index).padStart(2, "0")}`,
+        name: `合成${index}`,
+        sector: SECTORS[sectorIndex].name,
+        score: SECTORS[sectorIndex].score,
+        price: 10 + index,
+        height: 1,
+        risks: [],
+      };
+    }),
+  };
+}
+function sectorReviewPayload(date, snapshot, dayIndex) {
+  const noiseRandom = mulberry32(((dayIndex + 1) * 40503) >>> 0);
+  const rows = snapshot.stocks.map((stock) => {
+    const sectorIndex = SECTORS.findIndex((s) => s.name === stock.sector);
+    const ret = (noiseRandom() * 2 - 1) * 0.004 + 0.002 * (3 - sectorIndex);
+    return {
+      code: stock.code,
+      available: true,
+      reason: null,
+      closeReturn: Number((ret * 100).toFixed(4)),
+      continued: false,
+    };
+  });
+  return {
+    date,
+    snapshotDate: snapshot.date,
+    modelVersion: "rules-v1",
+    rows,
+    validCount: rows.length,
+    coverage: 1,
+    systemScore: null,
+  };
+}
+async function seedSectorReviews(env, dates) {
+  const db = (await import("../backend/storage/database.js")).database(env);
+  for (const [index, date] of dates.entries()) {
+    const snapshot = sectorSnapshot(date, index);
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO snapshots (trade_date, created_at, payload) VALUES (?,?,?)",
+      )
+      .bind(date, snapshot.createdAt, JSON.stringify(snapshot))
+      .run();
+    if (index === 0) continue;
+    const snapshotPrev = sectorSnapshot(dates[index - 1], index - 1);
+    const review = sectorReviewPayload(date, snapshotPrev, index);
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO reviews (trade_date, snapshot_date, created_at, payload) VALUES (?,?,?,?)",
+      )
+      .bind(date, snapshotPrev.date, review.date, JSON.stringify(review))
+      .run();
+  }
+  for (const date of dates.slice(1)) await recordReviewDailyMetric(env, date);
+}
+
+test("批次 C：板块次要族随复盘报告发布，Holm 跨板块校正，导出可核验", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(62);
+    await seedSectorReviews(env, dates);
+    const report = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.equal(report.payload.status, "READY");
+    const secondary = report.payload.secondaryFamilies ?? [];
+    assert.equal(secondary.length, 2);
+    const excess = secondary.find(
+      (family) => family.name === "SECTOR_SECONDARY_EXCESS",
+    );
+    assert.equal(excess.familySize, 4);
+    assert.equal(excess.role, "SECONDARY");
+    assert.equal(excess.entries.length, 4);
+    assert.deepEqual(
+      // 族成员按名称 Unicode 码位排序（发布端 declared.sort()）。
+      excess.entries.map((entry) => entry.sector),
+      ["医药", "机械", "电力", "电子"],
+    );
+    // 板块超额随板块评分同向：高分板块区间为正，低分板块为负。
+    assert.equal(excess.entries[3].direction, "POSITIVE");
+    assert.equal(excess.entries[0].direction, "NEGATIVE");
+    for (const entry of excess.entries) {
+      assert.equal(entry.metric, "MEAN_SECTOR_EXCESS");
+      assert.equal(entry.status, "READY");
+      assert.ok(entry.ci);
+      // Holm：族校正 p 不小于 raw p，且单调不减（按 raw p 排序）。
+      assert.ok(entry.pAdjustedWithinFamily >= entry.pRaw);
+    }
+    const aggregate = secondary.find(
+      (family) => family.name === "SECTOR_AGGREGATE_IC",
+    );
+    assert.equal(aggregate.familySize, 1);
+    assert.equal(aggregate.entries[0].metric, "SECTOR_RETURN_IC");
+    assert.equal(aggregate.entries[0].status, "READY");
+    assert.ok(aggregate.entries[0].estimate > 0.9);
+    // 导出核验通过；篡改板块区间被拒绝。
+    const audit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: report.id }),
+    );
+    assert.equal(audit.passed, true, JSON.stringify(audit));
+    const forged = await exportEvidence(env, { id: report.id });
+    forged.report.payload.secondaryFamilies.find(
+      (family) => family.name === "SECTOR_SECONDARY_EXCESS",
+    ).entries[0].ci.upper += 0.01;
+    forged.report.digest = await digestOf(forged.report.payload);
+    const forgedAudit = await verifyEvidenceBundle(forged);
+    assert.equal(forgedAudit.passed, false);
+    assert.match(forgedAudit.reason, /区间不一致|点估计不一致/);
+  } finally {
+    DB.close();
+  }
+});
+
+test("批次 C：账户证据绑定执行成本指纹与校准标签", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const paper = new PaperRepository(env);
+    await paper.initialize();
+    const dates = tradingDates(65);
+    const db = (await import("../backend/storage/database.js")).database(env);
+    let equity = 100000000;
+    for (const date of dates) {
+      equity += 80000;
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO paper_equity (trade_date, payload) VALUES (?,?)",
+        )
+        .bind(
+          date,
+          JSON.stringify({
+            date,
+            equityCents: equity,
+            complete: true,
+            cashCents: equity,
+            marketValueCents: 0,
+            dailyPnlCents: 80000,
+            dailyReturn: 0.0008,
+            totalReturn: equity / 100000000 - 1,
+            realizedPnlCents: 0,
+            unrealizedPnlCents: 0,
+            feesCents: 0,
+            drawdown: 0,
+            positionCount: 0,
+          }),
+        )
+        .run();
+    }
+    const report = await buildAccountEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.equal(report.payload.status, "READY");
+    // 成本指纹（§7.2 批次 C）：校准状态由成本政策事实派生，先验未校准。
+    assert.ok(report.payload.cost);
+    assert.equal(report.payload.cost.calibrationStatus, "PRIOR_UNCALIBRATED");
+    assert.ok(/^[0-9a-f]{64}$/.test(report.payload.cost.digest));
+    assert.ok(report.payload.tags.includes("COST_PRIOR_UNCALIBRATED"));
+    assert.ok(report.payload.tags.includes("NO_COMPARABLE_BASELINE"));
+    const audit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: report.id }),
+    );
+    assert.equal(audit.passed, true, JSON.stringify(audit));
+  } finally {
+    DB.close();
+  }
+});
+
+test("批次 C：统一晋级入口拒绝诊断证据报告（含资格标记不一致）", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const { promoteCohortChampion } = await import(
+      "../backend/services/promotion.js"
+    );
+    const db = (await import("../backend/storage/database.js")).database(env);
+    const now = new Date().toISOString();
+    await db
+      .prepare(
+        "INSERT INTO strategy_cohorts (id, namespace, parent_version, policy_id, policy_digest, research_policy_id, research_policy_digest, stage, max_candidates, forward_days, reservation_manifest, created_at, updated_at) VALUES ('cohort-diag', 'main', 'baseline-v1', 'p', 'pd', 'rp', 'rpd', 'EVALUATING', 2, 60, '{}', ?, ?)",
+      )
+      .bind(now, now)
+      .run();
+    await assert.rejects(
+      promoteCohortChampion(env, "cohort-diag", {
+        evaluation: {
+          champion: { memberId: "m1" },
+          purpose: "DIAGNOSTIC",
+          eligibleForPromotion: false,
+        },
+      }),
+      /诊断证据报告没有启用资格/,
+    );
+    await assert.rejects(
+      promoteCohortChampion(env, "cohort-diag", {
+        evaluation: {
+          champion: { memberId: "m1" },
+          purpose: "DIAGNOSTIC",
+          eligibleForPromotion: true,
+        },
+      }),
+      /诊断证据报告没有启用资格/,
+    );
+  } finally {
+    DB.close();
+  }
+});

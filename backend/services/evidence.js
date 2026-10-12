@@ -12,6 +12,10 @@ import {
   REVIEW_EVIDENCE_SERIES,
   ACCOUNT_EVIDENCE_SERIES,
   METHOD_QUALIFIED_HORIZONS,
+  SECTOR_SECONDARY_METRIC,
+  SECTOR_AGGREGATE_METRIC,
+  SECTOR_MIN_VALID_STOCKS,
+  MIN_SECTOR_COUNT,
 } from "../domain/evidence-policy.js";
 import {
   buildEvidenceWindow,
@@ -23,6 +27,7 @@ import {
 } from "../domain/research-statistics.js";
 import { computeDailyReviewMetrics } from "../domain/review-metrics.js";
 import { tradingCalendar } from "./market.js";
+import { latestPolicyBundle } from "../storage/execution-cost.js";
 
 const NAMESPACE = "main";
 // 系列与检验族常量统一从预登记政策导出（P1-2）：verifier 按同一来源核对。
@@ -30,8 +35,13 @@ export const REVIEW_SERIES = REVIEW_EVIDENCE_SERIES;
 export const ACCOUNT_SERIES = ACCOUNT_EVIDENCE_SERIES;
 
 function metricUnits(metric) {
-  if (metric === "MEAN_DAILY_IC") return "CORRELATION";
-  if (metric === "MEAN_DAILY_EXCESS" || metric === "MEAN_DAILY_RETURN")
+  if (metric === "MEAN_DAILY_IC" || metric === "SECTOR_RETURN_IC")
+    return "CORRELATION";
+  if (
+    metric === "MEAN_DAILY_EXCESS" ||
+    metric === "MEAN_DAILY_RETURN" ||
+    metric === "MEAN_SECTOR_EXCESS"
+  )
     return "DECIMAL_RETURN";
   return "UNKNOWN";
 }
@@ -41,7 +51,9 @@ const metricValueKey = (metric) =>
     ? "ic"
     : metric === "MEAN_DAILY_EXCESS"
       ? "excessDecimal"
-      : "meanDailyReturn";
+      : metric === "SECTOR_RETURN_IC"
+        ? "sectorReturnIc"
+        : "meanDailyReturn";
 
 async function policyBundle(repository) {
   const stored = await repository.latestPolicy();
@@ -146,10 +158,12 @@ export async function recordReviewDailyMetric(env, date) {
 // 标签由窗口/政策/系列结构完全派生（§4/§7.1/§10），与是否输出检验族无关：
 // 空样本、覆盖不足、片段过短等提前返回的报告同样如实标注受限探索，
 // 否则核验端按结构派生出的标签会与发布端不一致（P1 正常导出误拒绝）。
+// 成本标签（批次 C）：由执行成本政策的校准状态事实派生，而非硬编码；
+// cost 为 null（政策读取失败）时按先验未校准兜底。
 function evidenceTags({
   observationGrade,
   missingDates,
-  costUncalibrated,
+  cost,
   noComparableBaseline,
   horizon,
   policy,
@@ -157,7 +171,8 @@ function evidenceTags({
   const tags = ["EXPLORATORY_REPEATED_LOOKS"];
   if (missingDates?.length) tags.push("CONDITIONAL_ON_OBSERVED_DAYS");
   if (observationGrade) tags.push("OBSERVATION_NOT_EXECUTABLE");
-  if (costUncalibrated) tags.push("COST_PRIOR_UNCALIBRATED");
+  if (cost && cost.calibrationStatus !== "EXECUTION_CALIBRATED")
+    tags.push(`COST_${cost.calibrationStatus}`);
   if (noComparableBaseline) tags.push("NO_COMPARABLE_BASELINE");
   if (horizon !== policy.primaryWindow && horizon === policy.windows[0])
     tags.push("SHORT_WINDOW");
@@ -175,6 +190,198 @@ function directionOf(ci) {
   return "INCLUDES_ZERO";
 }
 
+// 板块次要检验族（§3.2/§6.4 批次 C）：逐板块日均观察超额以独立声明的
+// 次要族输出，Holm 跨板块校正；板块聚合秩相关作为同批辅助视图。
+// 与主检验族共用同一日期区块索引矩阵（§6.1 同日指标相关性）；
+// 板块序列不完整（板块成员逐日变化）时如实降级为样本不足并保留族名额。
+function buildSectorSecondaryFamilies({
+  policy,
+  validDates,
+  readyMetrics,
+  matrix,
+}) {
+  const secondaryFamilies = [];
+  const payloads = validDates.map((date) => readyMetrics.get(date).payload);
+  const minSectorStocks = Math.min(
+    SECTOR_MIN_VALID_STOCKS,
+    policy.minValidStocks,
+  );
+  const universeDays = new Map();
+  for (const payload of payloads)
+    for (const sector of payload.sectors ?? [])
+      if (
+        Number.isFinite(sector.excessDecimal) &&
+        sector.validStocks >= minSectorStocks
+      )
+        universeDays.set(sector.name, (universeDays.get(sector.name) ?? 0) + 1);
+  const threshold = Math.ceil(validDates.length * 0.5);
+  const declared = [...universeDays.entries()]
+    .filter(([, days]) => days >= threshold)
+    .map(([name]) => name)
+    .sort();
+  const familyRule = "窗口内出现过且≥50%有效日满足单日板块样本下限的板块";
+  if (!declared.length) {
+    secondaryFamilies.push({
+      name: "SECTOR_SECONDARY_EXCESS",
+      role: "SECONDARY",
+      familySize: 0,
+      familyRule,
+      entries: [],
+      note: "窗口内没有满足样本下限的板块，次要检验族为空",
+    });
+  } else {
+    const valuesByName = new Map(
+      declared.map((name) => [
+        name,
+        payloads.map((payload) => {
+          const sector = payload.sectors?.find((item) => item.name === name);
+          const value = sector?.excessDecimal;
+          return Number.isFinite(value) ? value : null;
+        }),
+      ]),
+    );
+    const rawResults = [];
+    const outcomeByName = new Map();
+    for (const name of declared) {
+      const values = valuesByName.get(name);
+      const complete = values.every((value) => value !== null);
+      const outcome = complete
+        ? bootstrapMeanEvidence({
+            values,
+            indexMatrix: matrix,
+            confidenceLevel: policy.confidenceLevel,
+            nullMean: 0,
+            side: "TWO_SIDED",
+            minValidDays: policy.minValidDays,
+          })
+        : {
+            status: "INSUFFICIENT_SAMPLE",
+            estimate: null,
+            ci: null,
+            pRaw: null,
+            standardError: null,
+            reasons: ["窗口内板块序列不完整（板块成员逐日变化），不输出区间"],
+            validDays: values.filter((value) => value !== null).length,
+          };
+      outcomeByName.set(name, { outcome, values });
+      rawResults.push({
+        key: name,
+        pRaw: outcome.pRaw,
+        reason: outcome.reasons?.at(0) ?? null,
+      });
+    }
+    const family = adjustEvidenceFamily({
+      declaredHypotheses: declared,
+      results: rawResults,
+      method: "HOLM",
+    });
+    const adjustedByKey = new Map(
+      family.hypotheses.map((row) => [row.key, row]),
+    );
+    secondaryFamilies.push({
+      name: "SECTOR_SECONDARY_EXCESS",
+      role: "SECONDARY",
+      familySize: declared.length,
+      familyRule,
+      entries: declared.map((name) => {
+        const { outcome, values } = outcomeByName.get(name);
+        const adjusted = adjustedByKey.get(name);
+        const degenerate =
+          outcome.status === "DEGENERATE" ||
+          (outcome.degenerateResampleRatio ?? 0) >
+            policy.maxDegenerateResampleRatio;
+        const ci =
+          outcome.status === "READY" && !degenerate
+            ? { ...outcome.ci, scope: "POINTWISE" }
+            : null;
+        return {
+          metric: SECTOR_SECONDARY_METRIC,
+          sector: name,
+          unit: metricUnits(SECTOR_SECONDARY_METRIC),
+          status: degenerate ? "DEGENERATE" : outcome.status,
+          estimate: outcome.estimate ?? null,
+          ci,
+          pRaw: outcome.pRaw ?? null,
+          pAdjustedWithinFamily: adjusted.pAdjustedWithinFamily,
+          standardError: outcome.standardError ?? null,
+          validDays: values.filter((value) => value !== null).length,
+          reasons: [
+            ...(outcome.reasons ?? []),
+            ...(degenerate
+              ? ["退化重采样比例超过政策上限，不输出可靠区间"]
+              : []),
+            ...(adjusted.reason ? [adjusted.reason] : []),
+          ],
+          direction:
+            degenerate || outcome.status !== "READY" ? null : directionOf(ci),
+        };
+      }),
+    });
+  }
+  // 板块聚合秩相关（辅助视图）：单成员族，窗口内序列不完整时如实降级。
+  const icValues = payloads.map((payload) => payload.values?.sectorReturnIc);
+  const icComplete = icValues.every((value) => Number.isFinite(value));
+  const icOutcome =
+    icComplete && matrix
+      ? bootstrapMeanEvidence({
+          values: icValues,
+          indexMatrix: matrix,
+          confidenceLevel: policy.confidenceLevel,
+          nullMean: 0,
+          side: "TWO_SIDED",
+          minValidDays: policy.minValidDays,
+        })
+      : {
+          status: "INSUFFICIENT_SAMPLE",
+          estimate: null,
+          ci: null,
+          pRaw: null,
+          standardError: null,
+          reasons: [
+            icComplete
+              ? "窗口覆盖不足，未生成重采样矩阵"
+              : "窗口内板块聚合序列不完整，不输出区间",
+          ],
+          validDays: icValues.filter((value) => Number.isFinite(value)).length,
+        };
+  const icDegenerate =
+    icOutcome.status === "DEGENERATE" ||
+    (icOutcome.degenerateResampleRatio ?? 0) >
+      policy.maxDegenerateResampleRatio;
+  secondaryFamilies.push({
+    name: "SECTOR_AGGREGATE_IC",
+    role: "SECONDARY",
+    familySize: 1,
+    familyRule: `每日板块评分与板块平均观察收益的秩相关；有效板块少于 ${MIN_SECTOR_COUNT} 的日期不参与`,
+    entries: [
+      {
+        metric: SECTOR_AGGREGATE_METRIC,
+        unit: metricUnits(SECTOR_AGGREGATE_METRIC),
+        status: icDegenerate ? "DEGENERATE" : icOutcome.status,
+        estimate: icOutcome.estimate ?? null,
+        ci:
+          icOutcome.status === "READY" && !icDegenerate
+            ? { ...icOutcome.ci, scope: "POINTWISE" }
+            : null,
+        pRaw: icOutcome.pRaw ?? null,
+        pAdjustedWithinFamily: icOutcome.pRaw ?? null,
+        standardError: icOutcome.standardError ?? null,
+        validDays: icOutcome.validDays ?? validDates.length,
+        reasons: [...(icOutcome.reasons ?? [])],
+        direction:
+          icDegenerate || icOutcome.status !== "READY"
+            ? null
+            : directionOf(
+                icOutcome.status === "READY" && !icDegenerate
+                  ? { ...icOutcome.ci, scope: "POINTWISE" }
+                  : null,
+              ),
+      },
+    ],
+  });
+  return secondaryFamilies;
+}
+
 // 滚动诊断报告（§7.1）：purpose=DIAGNOSTIC、eligibleForPromotion=false、
 // repeatedLooksAdjusted=false；同输入/政策/方法幂等发布，不覆写原证据。
 async function publishWindowReport({
@@ -188,8 +395,9 @@ async function publishWindowReport({
   metrics,
   metricKeys,
   observationGrade,
-  costUncalibrated,
   noComparableBaseline,
+  sectorFamily = false,
+  cost = null,
 }) {
   // 每日质量闸门（§4/§5.1）：仅 status=READY 的日指标进入诊断序列。
   // 未通过质量的日期留在窗口里并公开剔除原因，不计入覆盖率与有效天数；
@@ -297,7 +505,7 @@ async function publishWindowReport({
     tags: evidenceTags({
       observationGrade,
       missingDates: window.missingDates,
-      costUncalibrated,
+      cost,
       noComparableBaseline,
       horizon,
       policy,
@@ -329,6 +537,7 @@ async function publishWindowReport({
         ...base,
         status: allExcluded ? "INSUFFICIENT_SAMPLE" : "PENDING",
         family: [],
+        secondaryFamilies: [],
         reasons: allExcluded
           ? [
               `窗口内全部 ${excludedDates.length} 个日指标未通过每日质量闸门，不输出统计结论`,
@@ -343,6 +552,7 @@ async function publishWindowReport({
         ...base,
         status: "INCOMPLETE_DATA",
         family: [],
+        secondaryFamilies: [],
         reasons: [
           `窗口覆盖 ${window.coverage.toFixed(3)} 低于最低要求 ${policy.minWindowCoverage}`,
         ],
@@ -355,6 +565,7 @@ async function publishWindowReport({
         ...base,
         status: "INCOMPLETE_DATA",
         family: [],
+        secondaryFamilies: [],
         reasons: ["存在短于区块长度的连续片段，不输出区间"],
       })
     ).report;
@@ -435,6 +646,15 @@ async function publishWindowReport({
     ...base,
     status,
     family: entries,
+    secondaryFamilies: sectorFamily
+      ? buildSectorSecondaryFamilies({
+          policy,
+          validDates,
+          readyMetrics,
+          matrix,
+        })
+      : [],
+    cost,
     reasons: [
       ...(status === "MIXED_CONTEXT"
         ? [
@@ -491,8 +711,9 @@ export async function buildReviewEvidence(
     metrics,
     metricKeys: REVIEW_METRIC_FAMILY,
     observationGrade: true,
-    costUncalibrated: false,
     noComparableBaseline: false,
+    // 板块次要检验族随复盘系列发布（§3.2/§11 批次 C）。
+    sectorFamily: true,
   });
 }
 
@@ -635,6 +856,21 @@ export async function buildAccountEvidence(
     });
     previousEquity = equity;
   }
+  // 成本联动（§7.2/§11 批次 C）：账户系列绑定执行成本指纹与校准等级；
+  // 校准状态由成本政策事实派生，不再硬编码为先验未校准。
+  let executionCost = null;
+  try {
+    const bundle = await latestPolicyBundle(database(env));
+    executionCost = {
+      modelVersion: bundle.modelVersion,
+      policyId: bundle.id,
+      version: bundle.version,
+      digest: bundle.payloadDigest,
+      calibrationStatus: bundle.calibrationStatus,
+    };
+  } catch {
+    executionCost = null;
+  }
   return publishWindowReport({
     repository,
     policy,
@@ -646,8 +882,8 @@ export async function buildAccountEvidence(
     metrics,
     metricKeys: ACCOUNT_METRIC_FAMILY,
     observationGrade: false,
-    costUncalibrated: true,
     noComparableBaseline: true,
+    cost: executionCost,
   });
 }
 

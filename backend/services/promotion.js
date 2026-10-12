@@ -2,6 +2,7 @@ import { RealtimeRepository } from "../storage/realtime.js";
 import { CohortRepository } from "../storage/cohorts.js";
 import { ShadowAccountRepository } from "../storage/shadow.js";
 import { digest } from "../storage/paper.js";
+import { latestPolicyBundle } from "../storage/execution-cost.js";
 import {
   digestOf,
   EXECUTION_VERSION,
@@ -36,6 +37,13 @@ export async function promoteCohortChampion(
   const report =
     evaluation ?? (await cohorts.report(cohortId, "EVALUATION"))?.payload;
   if (!report?.champion) throw new Error("批次没有通过全部闸门的可启用冠军");
+  // 统一晋级入口拒绝诊断证据报告（statistical-evidence.md §7.2 批次 C）：
+  // 包括人工与 API 重试；滚动诊断固定无启用资格，正式启用只读取
+  // 固定终点前瞻评估报告。
+  if (report.purpose === "DIAGNOSTIC")
+    throw new Error("诊断证据报告没有启用资格；正式启用只读取冻结前瞻评估报告");
+  if (report.eligibleForPromotion === true && report.purpose)
+    throw new Error("报告携带的用途与启用资格不一致，拒绝晋级");
   const member = await cohorts.member(cohortId, report.champion.memberId);
   if (!member || !["ELIGIBLE", "PROMOTED"].includes(member.stage))
     throw new Error("冠军成员不符合启用条件");
@@ -165,6 +173,15 @@ export async function promoteCohortChampion(
   const feeConfigDigest = await digestOf(feeConfig);
   if (feeConfigDigest !== forwardManifest.feeConfigDigest)
     throw new Error("费用配置在窗口期内变化，本批资格失效");
+  // 成本指纹核验（statistical-evidence.md §7.2 批次 C）：捕获清单记录了
+  // 执行成本政策摘要的批次，在成本口径变化后不再晋级；旧批次无该字段不受影响。
+  const costPolicy = await latestPolicyBundle(env.DB).catch(() => null);
+  if (
+    forwardManifest.executionCostDigest &&
+    costPolicy &&
+    costPolicy.payloadDigest !== forwardManifest.executionCostDigest
+  )
+    throw new Error("执行成本政策在窗口期内变化，本批资格失效");
   if (account.book.activeStrategy !== cohort.parentVersion)
     throw new Error("主账户父策略已变化，本批资格失效");
   if (
