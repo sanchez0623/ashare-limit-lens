@@ -15216,13 +15216,19 @@ function evidenceTags({
   observationGrade,
   missingDates,
   costUncalibrated,
-  noComparableBaseline
+  noComparableBaseline,
+  horizon,
+  policy
 }) {
   const tags = ["EXPLORATORY_REPEATED_LOOKS"];
   if (missingDates?.length) tags.push("CONDITIONAL_ON_OBSERVED_DAYS");
   if (observationGrade) tags.push("OBSERVATION_NOT_EXECUTABLE");
   if (costUncalibrated) tags.push("COST_PRIOR_UNCALIBRATED");
   if (noComparableBaseline) tags.push("NO_COMPARABLE_BASELINE");
+  if (horizon !== policy.primaryWindow && horizon === policy.windows[0])
+    tags.push("SHORT_WINDOW");
+  if (!METHOD_QUALIFIED_HORIZONS.includes(horizon))
+    tags.push("METHOD_SIMULATION_LIMITED");
   return tags;
 }
 function directionOf(ci) {
@@ -15339,7 +15345,9 @@ async function publishWindowReport({
       observationGrade,
       missingDates: window.missingDates,
       costUncalibrated,
-      noComparableBaseline
+      noComparableBaseline,
+      horizon,
+      policy
     })
   };
   const publish = (payload2) => repository.publishReport({
@@ -15447,14 +15455,8 @@ async function publishWindowReport({
   });
   const anyReady = entries.some((entry) => entry.status === "READY");
   const status = mixedContext ? anyReady ? "MIXED_CONTEXT" : "INSUFFICIENT_SAMPLE" : anyReady ? "READY" : entries[0].status;
-  const tags = [...base.tags];
-  if (horizon !== policy.primaryWindow && horizon === policy.windows[0])
-    tags.push("SHORT_WINDOW");
-  if (!METHOD_QUALIFIED_HORIZONS.includes(horizon))
-    tags.push("METHOD_SIMULATION_LIMITED");
   const payload = {
     ...base,
-    tags,
     status,
     family: entries,
     reasons: [

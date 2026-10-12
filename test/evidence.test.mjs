@@ -131,6 +131,42 @@ async function seedReviewHistory(env, dates, { effect, missingTopIndex } = {}) {
       .run();
   }
 }
+// 空样本窗口：登记空评分快照与复盘，全部日指标因无有效样本被每日质量
+// 闸门剔除（用于 P1 正常导出误拒绝 / 零样本漏验回归）。
+async function seedEmptyReviews(env, dates) {
+  const db = (await import("../backend/storage/database.js")).database(env);
+  for (const date of dates) {
+    const snapshot = {
+      date,
+      createdAt: `${date}T07:10:00.000Z`,
+      modelVersion: "rules-v1",
+      weights: [8, 8, 8, 8, 8, 8],
+      stocks: [],
+    };
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO snapshots (trade_date, created_at, payload) VALUES (?,?,?)",
+      )
+      .bind(date, snapshot.createdAt, JSON.stringify(snapshot))
+      .run();
+    const review = {
+      date,
+      snapshotDate: date,
+      modelVersion: "rules-v1",
+      rows: [],
+      validCount: 0,
+      coverage: 0,
+      systemScore: null,
+    };
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO reviews (trade_date, snapshot_date, created_at, payload) VALUES (?,?,?,?)",
+      )
+      .bind(date, date, review.date, JSON.stringify(review))
+      .run();
+  }
+  for (const date of dates) await recordReviewDailyMetric(env, date);
+}
 
 test("证据政策：严格 schema 拒绝未知字段、越界与非主视图窗口", () => {
   const policy = normalizeEvidencePolicy(undefined);
@@ -1386,6 +1422,14 @@ test("结构闸门：覆盖不足与短片段塞入重算一致的族仍被拒�
     assert.equal(sparse.payload.status, "INCOMPLETE_DATA");
     assert.equal(sparse.payload.window.coverage, 0.65);
     const sparseBundle = await exportEvidence(env, { id: sparse.id });
+    // 合法受限报告（覆盖不足 → INCOMPLETE_DATA）必须通过核验：受限标签由
+    // 窗口/政策派生，不能因提前返回而缺标（P1 正常导出误拒绝）。
+    const sparseAudit = await verifyEvidenceBundle(sparseBundle);
+    assert.equal(
+      sparseAudit.passed,
+      true,
+      `覆盖不足的合法报告不应被拒：${JSON.stringify(sparseAudit)}`,
+    );
     // 攻击者用真实算法重算族塞入、状态改 READY、重算报告摘要：
     // 数值核验全部一致，必须由覆盖率闸门拒绝（P1-1）
     const forged = structuredClone(sparseBundle);
@@ -1444,6 +1488,79 @@ test("结构闸门：覆盖不足与短片段塞入重算一致的族仍被拒�
     const fabricatedAudit = await verifyEvidenceBundle(fabricated);
     assert.equal(fabricatedAudit.passed, false);
     assert.match(fabricatedAudit.reason, /片段短于区块长度时不得输出检验结果/);
+  } finally {
+    DB.close();
+  }
+});
+
+test("空样本与零有效样本：合法受限报告通过、塞入检验结果被拒（P1 误拒绝/漏验）", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(120);
+    await seedEmptyReviews(env, dates);
+    // 情景一：h60 空样本复盘报告——无有效日、全部日指标被闸门剔除 →
+    // INSUFFICIENT_SAMPLE 且不含族；受限标签仍须由窗口/政策派生，
+    // 否则核验端按结构派生出的标签会误拒合法报告（P1 正常导出误拒绝）。
+    const review = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.equal(review.payload.status, "INSUFFICIENT_SAMPLE");
+    assert.equal(review.payload.family.length, 0);
+    const reviewAudit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: review.id }),
+    );
+    assert.equal(
+      reviewAudit.passed,
+      true,
+      `空样本复盘报告不应被拒：${JSON.stringify(reviewAudit)}`,
+    );
+    // 情景二：h60 空样本账户报告（无净值行 → 无有效日）同样必须通过核验。
+    const account = await buildAccountEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.equal(account.payload.family.length, 0);
+    const accountAudit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: account.id }),
+    );
+    assert.equal(
+      accountAudit.passed,
+      true,
+      `空样本账户报告不应被拒：${JSON.stringify(accountAudit)}`,
+    );
+    // 情景三：h120 零有效样本报告——发布端不输出任何检验结果；攻击者
+    // 塞入编造的区间与 p 值并重算摘要后，必须被拒绝（P1 零样本漏验）。
+    const zero = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 120,
+      calendarDates: dates,
+    });
+    assert.equal(zero.payload.window.validDates.length, 0);
+    assert.equal(zero.payload.family.length, 0);
+    const forged = structuredClone(await exportEvidence(env, { id: zero.id }));
+    forged.report.payload.family = [
+      {
+        metric: "MEAN_DAILY_IC",
+        unit: "CORRELATION",
+        status: "READY",
+        estimate: 0.5,
+        ci: { level: 0.95, lower: 0.4, upper: 0.6, scope: "POINTWISE" },
+        pRaw: 0.001,
+        pAdjustedWithinFamily: 0.002,
+        standardError: 0.01,
+        validDays: 120,
+        reasons: [],
+        direction: "POSITIVE",
+      },
+    ];
+    forged.report.digest = await digestOf(forged.report.payload);
+    const forgedAudit = await verifyEvidenceBundle(forged);
+    assert.equal(forgedAudit.passed, false);
+    assert.match(forgedAudit.reason, /无有效日指标时不得输出检验结果/);
   } finally {
     DB.close();
   }

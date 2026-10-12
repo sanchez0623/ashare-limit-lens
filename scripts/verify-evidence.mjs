@@ -198,6 +198,10 @@ export async function verifyEvidenceBundle(bundle) {
         : "PENDING";
       if (report.payload.status !== expectedNoValid)
         return fail(checks, "无有效日指标时的状态与窗口结构不一致");
+      // 无有效日指标时发布端不输出任何检验结果（P1-2）：不能因为无有效日
+      // 就跳过族核验——零样本报告塞入编造的区间与 p 值必须被拒绝。
+      if ((report.payload.family ?? []).length)
+        return fail(checks, "无有效日指标时不得输出检验结果");
     } else {
       // 检验族预登记核对（§6.4/P1-2）：已知系列的族不得删减或替换；
       // 空族的合法性由覆盖/片段状态在下方核验（发布端仅在覆盖不足、

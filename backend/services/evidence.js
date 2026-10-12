@@ -142,17 +142,28 @@ export async function recordReviewDailyMetric(env, date) {
   return { recorded: true, date, status: metric.status };
 }
 
+// 标签由窗口/政策/系列结构完全派生（§4/§7.1/§10），与是否输出检验族无关：
+// 空样本、覆盖不足、片段过短等提前返回的报告同样如实标注受限探索，
+// 否则核验端按结构派生出的标签会与发布端不一致（P1 正常导出误拒绝）。
 function evidenceTags({
   observationGrade,
   missingDates,
   costUncalibrated,
   noComparableBaseline,
+  horizon,
+  policy,
 }) {
   const tags = ["EXPLORATORY_REPEATED_LOOKS"];
   if (missingDates?.length) tags.push("CONDITIONAL_ON_OBSERVED_DAYS");
   if (observationGrade) tags.push("OBSERVATION_NOT_EXECUTABLE");
   if (costUncalibrated) tags.push("COST_PRIOR_UNCALIBRATED");
   if (noComparableBaseline) tags.push("NO_COMPARABLE_BASELINE");
+  if (horizon !== policy.primaryWindow && horizon === policy.windows[0])
+    tags.push("SHORT_WINDOW");
+  // 方法模拟资格（§10）：模拟未达阈值的窗口长度如实标注受限探索，
+  // 页面与 AI 输入不得据此作结论性表述。
+  if (!METHOD_QUALIFIED_HORIZONS.includes(horizon))
+    tags.push("METHOD_SIMULATION_LIMITED");
   return tags;
 }
 
@@ -287,6 +298,8 @@ async function publishWindowReport({
       missingDates: window.missingDates,
       costUncalibrated,
       noComparableBaseline,
+      horizon,
+      policy,
     }),
   };
   const publish = (payload) =>
@@ -417,16 +430,8 @@ async function publishWindowReport({
     : anyReady
       ? "READY"
       : entries[0].status;
-  const tags = [...base.tags];
-  if (horizon !== policy.primaryWindow && horizon === policy.windows[0])
-    tags.push("SHORT_WINDOW");
-  // 方法模拟资格（§10）：模拟未达阈值的窗口长度如实标注受限探索，
-  // 页面与 AI 输入不得据此作结论性表述。
-  if (!METHOD_QUALIFIED_HORIZONS.includes(horizon))
-    tags.push("METHOD_SIMULATION_LIMITED");
   const payload = {
     ...base,
-    tags,
     status,
     family: entries,
     reasons: [
