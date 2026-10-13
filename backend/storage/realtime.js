@@ -19,6 +19,17 @@ export class RealtimeRepository extends PaperRepository {
       digest: row.digest,
     }));
   }
+  // 晚于某结算日的最新实时会话：存在即说明账本正被该交易时段盯市，
+  // 但该日尚未盘后结算（结算与会话同日，正常至多一个）。
+  async latestSessionAfter(date) {
+    const row = await this.db
+      .prepare(
+        "SELECT payload FROM paper_live_sessions WHERE trade_date>? ORDER BY trade_date DESC LIMIT 1",
+      )
+      .bind(date)
+      .first();
+    return row ? JSON.parse(row.payload) : null;
+  }
   async observations(date) {
     const rows = await this.db
       .prepare(

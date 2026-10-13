@@ -492,9 +492,42 @@ export async function paperOverview(env, attempt = 0) {
     if (attempt < 3) return paperOverview(env, attempt + 1);
     throw new Error("账户正在更新，请稍后重试");
   }
+  // 盘中实时盯市：实时执行器已把账本按"晚于最近结算日"的交易时段报价
+  // 盯市，但该日尚未盘后结算时，"当日盈亏"不能再停留在上一结算日的数字；
+  // 用账本现值相对会话期初净值实时计算，盘后结算写入新记录后自动回落到
+  // 已结算口径。
+  let equity = equities.at(-1) || null;
+  const unsettled = equity
+    ? await repository.latestSessionAfter(equity.date)
+    : null;
+  if (equity && unsettled) {
+    const baseCents = unsettled.initialBook?.equityCents || equity.equityCents;
+    const dailyPnlCents = book.equityCents - baseCents;
+    equity = {
+      ...equity,
+      date: unsettled.date,
+      marketValueCents: book.equityCents - book.cashCents,
+      equityCents: book.equityCents,
+      dailyPnlCents,
+      dailyReturn: dailyPnlCents / baseCents,
+      totalReturn: book.equityCents / book.initialCashCents - 1,
+      unrealizedPnlCents: book.positions.reduce(
+        (sum, position) =>
+          sum +
+          position.lots.reduce((n, lot) => n + lot.quantity, 0) *
+            position.markCents -
+          position.lots.reduce((n, lot) => n + lot.costCents, 0),
+        0,
+      ),
+      drawdown: 1 - book.equityCents / book.peakEquityCents,
+      complete: false,
+      source: "盘中实时盯市",
+    };
+  }
   return {
     book,
-    equity: equities.at(-1) || null,
+    equity,
+    lastSettled: equities.at(-1) || null,
     equities,
     benchmarkCode,
     ledger: rows[1].map((row) => JSON.parse(row.payload)),

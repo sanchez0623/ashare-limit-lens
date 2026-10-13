@@ -19,7 +19,11 @@ import { RealtimeRepository } from "../backend/storage/realtime.js";
 import { pollTrading } from "../backend/services/realtime.js";
 import { buildOperationEvents } from "../backend/services/alerts.js";
 import { parseTencentQuotes } from "../backend/services/market.js";
-import { exportPaper, verifyExport } from "../backend/services/paper.js";
+import {
+  exportPaper,
+  verifyExport,
+  paperOverview,
+} from "../backend/services/paper.js";
 import { localDatabase } from "../scripts/local-db.mjs";
 import { dateAt, dataset, order, plan, snapshot } from "./fixtures/trading.mjs";
 
@@ -938,6 +942,69 @@ test("实时 CAS 防止两个执行器重复成交；活动账本可重放，篡
       "600001"
     ].closeCents = 1001;
     assert.equal((await verifyExport(bundle)).passed, false);
+  } finally {
+    db.close();
+  }
+});
+test("盘中实时盯市：未结算交易日的当日盈亏按账本现值实时计算，结算后回落已结算口径", async () => {
+  const db = localDatabase(),
+    env = { DB: db },
+    repo = new RealtimeRepository(env);
+  try {
+    await baseline(repo);
+    const settled = (await exportPaper(env)).equities.at(-1);
+    assert.equal(settled.date, dateAt(0));
+    assert.equal(settled.dailyPnlCents, 0);
+    const intent = frozen([["OPEN", 1000]], dateAt(0));
+    await repo.savePlan(intent);
+    let account = await repo.account();
+    let session = openSession(account.book, intent, dateAt(1));
+    for (const [time, price, volume] of [
+      ["09:30:00", 1000, 100000],
+      ["09:30:05", 1000, 200000],
+      ["09:40:00", 1100, 300000],
+    ]) {
+      const obs = observation(dateAt(1), time, price, volume);
+      account = await repo.account();
+      const step = advanceSession(account.book, session, obs);
+      assert.equal(
+        await repo.commitObservation(account.revision, step, obs),
+        true,
+      );
+      session = step.session;
+    }
+    // 盘中：账本已被 1100 报价盯市但当日未结算，当日盈亏必须是实时值，
+    // 而不是停留在上一结算日的数字。
+    const intraday = await paperOverview(env);
+    assert.equal(intraday.equity.date, dateAt(1));
+    assert.equal(intraday.equity.source, "盘中实时盯市");
+    assert.equal(intraday.equity.complete, false);
+    assert.equal(intraday.lastSettled.date, dateAt(0));
+    assert.equal(intraday.lastSettled.dailyPnlCents, settled.dailyPnlCents);
+    assert.equal(
+      intraday.equity.dailyPnlCents,
+      intraday.book.equityCents - settled.equityCents,
+    );
+    assert.equal(
+      intraday.equity.dailyReturn,
+      intraday.equity.dailyPnlCents / settled.equityCents,
+    );
+    assert.ok(
+      intraday.equity.dailyPnlCents > 0,
+      "1100 盯市价相对建仓成本应产生正收益",
+    );
+    // 结算后：overview 回落到已结算记录，不再合成实时快照。
+    account = await repo.account();
+    const day = closing(dateAt(1), 1000, 1100);
+    const result = closeSession(account.book, session, day);
+    assert.equal(await repo.close(account.revision, result, day), true);
+    const final = await paperOverview(env);
+    assert.equal(final.equity.date, dateAt(1));
+    assert.equal(final.equity.source, "腾讯实时模拟成交与收盘盯市");
+    assert.equal(final.equity.dailyPnlCents, result.equity.dailyPnlCents);
+    assert.equal(final.lastSettled.date, dateAt(1));
+    assert.equal(final.lastSettled.dailyPnlCents, result.equity.dailyPnlCents);
+    assert.equal((await verifyExport(await exportPaper(env))).passed, true);
   } finally {
     db.close();
   }

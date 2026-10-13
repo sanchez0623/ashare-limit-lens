@@ -230,7 +230,7 @@ function chart(rows, benchmarkLabel = "上证指数") {
 }
 function render() {
   if (!data) return;
-  const { book, equity, plan, run, versions, riskLimits } = data;
+  const { book, equity, lastSettled, plan, run, versions, riskLimits } = data;
   const live = data.realtime;
   const health = live?.health;
   $("paper-live-tag").textContent = live?.running
@@ -256,6 +256,11 @@ function render() {
         position.markCents,
     0,
   );
+  // 盘中实时盯市时 equity 是当日实时快照，上一结算日数字单独保留展示。
+  const settledDay =
+    lastSettled && equity && equity.date !== lastSettled.date
+      ? lastSettled
+      : null;
   const metrics = [
     [
       "账户总权益",
@@ -266,7 +271,9 @@ function render() {
     [
       "当日盈亏",
       `¥ ${metricMoney(equity?.dailyPnlCents)}`,
-      `当日收益 ${percent(equity?.dailyReturn ?? 0)}`,
+      settledDay
+        ? `当日收益 ${percent(equity?.dailyReturn ?? 0)} · 前结算 ${settledDay.date.slice(5)} ${percent(settledDay.dailyReturn)}`
+        : `当日收益 ${percent(equity?.dailyReturn ?? 0)}`,
       tone(equity?.dailyPnlCents),
     ],
     [
