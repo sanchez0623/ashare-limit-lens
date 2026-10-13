@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   normalizeEvidencePolicy,
   DEFAULT_EVIDENCE_POLICY,
@@ -1302,8 +1307,74 @@ test("迁移前旧报告：无冻结指标列仍可通过核验（P2-2）", asyn
         .passed,
       true,
     );
-    // 改造为迁移前形态：metrics_json 置空，manifest 摘要按旧口径重算
-    const inputs = (await repository.getReport(report.id)).inputs;
+    // 真实旧格式：输入没有版本/成本/板块字段，按原摘要与种子重算主族。
+    const legacy = await exportEvidence(env, { id: report.id });
+    for (const metric of legacy.dailyMetrics) {
+      delete metric.payload.sectors;
+      delete metric.payload.values.sectorReturnIc;
+      delete metric.payload.quality.sectorCount;
+      metric.digest = await digestOf(metric.payload);
+      await DB.prepare(
+        "UPDATE evidence_daily_metrics SET payload=?,digest=? WHERE series_id=? AND outcome_date=?",
+      )
+        .bind(
+          JSON.stringify(metric.payload),
+          metric.digest,
+          report.seriesId,
+          metric.outcomeDate,
+        )
+        .run();
+    }
+    delete legacy.report.payload.secondaryFamilies;
+    legacy.report.inputDigest = await digestOf({
+      seriesId: report.seriesId,
+      window: {
+        expectedDates: report.payload.window.expectedDates,
+        validDates: report.payload.window.validDates,
+        missingDates: report.payload.window.missingDates,
+      },
+      contextDigest: report.payload.context.digest,
+      metrics: Object.fromEntries(
+        legacy.dailyMetrics.map((metric) => [
+          metric.outcomeDate,
+          metric.payload,
+        ]),
+      ),
+    });
+    legacy.report.payload.method.seed = await evidenceSeed({
+      namespace: report.namespace,
+      purpose: report.purpose,
+      asOf: report.asOf,
+      orderedWindowDates: report.payload.window.validDates,
+      inputDigest: legacy.report.inputDigest,
+      policyDigest: report.policyDigest,
+    });
+    legacy.report.payload.family = await forgeFamily(
+      legacy,
+      normalizeEvidencePolicy(undefined),
+    );
+    legacy.report.id = `evidence-${await digestOf({
+      seriesId: report.seriesId,
+      asOf: report.asOf,
+      horizon: report.horizon,
+      purpose: report.purpose,
+      inputDigest: legacy.report.inputDigest,
+      policyDigest: report.policyDigest,
+      methodVersion: report.methodVersion,
+    })}`;
+    legacy.report.digest = await digestOf(legacy.report.payload);
+    await DB.prepare(
+      "UPDATE evidence_reports SET id=?,input_digest=?,payload=?,digest=? WHERE id=?",
+    )
+      .bind(
+        legacy.report.id,
+        legacy.report.inputDigest,
+        JSON.stringify(legacy.report.payload),
+        legacy.report.digest,
+        report.id,
+      )
+      .run();
+    const inputs = report.inputs;
     const legacyDigest = await digestOf({
       orderedDates: inputs.orderedDates,
       sourceRefs: inputs.sourceRefs,
@@ -1311,11 +1382,11 @@ test("迁移前旧报告：无冻结指标列仍可通过核验（P2-2）", asyn
       contextDigest: report.payload.context.digest,
     });
     await DB.prepare(
-      "UPDATE evidence_report_inputs SET metrics_json=NULL, manifest_digest=? WHERE report_id=?",
+      "UPDATE evidence_report_inputs SET report_id=?,metrics_json=NULL,schema_version=NULL,cost_json=NULL,manifest_digest=? WHERE report_id=?",
     )
-      .bind(legacyDigest, report.id)
+      .bind(legacy.report.id, legacyDigest, report.id)
       .run();
-    const legacyBundle = await exportEvidence(env, { id: report.id });
+    const legacyBundle = await exportEvidence(env, { id: legacy.report.id });
     assert.equal(legacyBundle.report.inputs.metrics, null);
     assert.equal(legacyBundle.dailyMetrics.length, 20, "导出回退当前日指标");
     const audit = await verifyEvidenceBundle(legacyBundle);
@@ -1632,5 +1703,837 @@ test("报告 id 自洽：同步改写窗口与摘要的深伪造被拒绝（P1�
     assert.match(forgedAudit.reason, /报告 id 与冻结标识不一致/);
   } finally {
     DB.close();
+  }
+});
+
+// ---------- 批次 C：板块次要族、成本联动与晋级入口 ----------
+
+// 多板块合成快照：四个板块各 3 只，板块评分与板块收益同向且逐日微噪声，
+// 用于次要族发布与核验（§3.2/§6.4 批次 C）。
+const SECTORS = [
+  { name: "电子", score: 90 },
+  { name: "机械", score: 80 },
+  { name: "电力", score: 70 },
+  { name: "医药", score: 60 },
+];
+function sectorSnapshot(date, dayIndex) {
+  return {
+    date,
+    createdAt: `${date}T07:10:00.000Z`,
+    modelVersion: "rules-v1",
+    weights: [8, 8, 8, 8, 8, 8],
+    sectors: SECTORS,
+    stocks: Array.from({ length: 12 }, (_, index) => {
+      const sectorIndex = index % 4;
+      return {
+        code: `3000${String(index).padStart(2, "0")}`,
+        name: `合成${index}`,
+        sector: SECTORS[sectorIndex].name,
+        score: SECTORS[sectorIndex].score,
+        price: 10 + index,
+        height: 1,
+        risks: [],
+      };
+    }),
+  };
+}
+function sectorReviewPayload(date, snapshot, dayIndex) {
+  const noiseRandom = mulberry32(((dayIndex + 1) * 40503) >>> 0);
+  const rows = snapshot.stocks.map((stock) => {
+    const sectorIndex = SECTORS.findIndex((s) => s.name === stock.sector);
+    const ret = (noiseRandom() * 2 - 1) * 0.004 + 0.002 * (3 - sectorIndex);
+    return {
+      code: stock.code,
+      available: true,
+      reason: null,
+      closeReturn: Number((ret * 100).toFixed(4)),
+      continued: false,
+    };
+  });
+  return {
+    date,
+    snapshotDate: snapshot.date,
+    modelVersion: "rules-v1",
+    rows,
+    validCount: rows.length,
+    coverage: 1,
+    systemScore: null,
+  };
+}
+async function seedSectorReviews(env, dates) {
+  const db = (await import("../backend/storage/database.js")).database(env);
+  for (const [index, date] of dates.entries()) {
+    const snapshot = sectorSnapshot(date, index);
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO snapshots (trade_date, created_at, payload) VALUES (?,?,?)",
+      )
+      .bind(date, snapshot.createdAt, JSON.stringify(snapshot))
+      .run();
+    if (index === 0) continue;
+    const snapshotPrev = sectorSnapshot(dates[index - 1], index - 1);
+    const review = sectorReviewPayload(date, snapshotPrev, index);
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO reviews (trade_date, snapshot_date, created_at, payload) VALUES (?,?,?,?)",
+      )
+      .bind(date, snapshotPrev.date, review.date, JSON.stringify(review))
+      .run();
+  }
+  for (const date of dates.slice(1)) await recordReviewDailyMetric(env, date);
+}
+
+test("批次 C：板块次要族随复盘报告发布，Holm 跨板块校正，导出可核验", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(62);
+    await seedSectorReviews(env, dates);
+    const report = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.equal(report.payload.status, "READY");
+    const secondary = report.payload.secondaryFamilies ?? [];
+    assert.equal(secondary.length, 2);
+    const excess = secondary.find(
+      (family) => family.name === "SECTOR_SECONDARY_EXCESS",
+    );
+    assert.equal(excess.familySize, 4);
+    assert.equal(excess.role, "SECONDARY");
+    assert.equal(excess.entries.length, 4);
+    assert.deepEqual(
+      // 族成员按名称 Unicode 码位排序（发布端 declared.sort()）。
+      excess.entries.map((entry) => entry.sector),
+      ["医药", "机械", "电力", "电子"],
+    );
+    // 板块超额随板块评分同向：高分板块区间为正，低分板块为负。
+    assert.equal(excess.entries[3].direction, "POSITIVE");
+    assert.equal(excess.entries[0].direction, "NEGATIVE");
+    for (const entry of excess.entries) {
+      assert.equal(entry.metric, "MEAN_SECTOR_EXCESS");
+      assert.equal(entry.status, "READY");
+      assert.ok(entry.ci);
+      // Holm：族校正 p 不小于 raw p，且单调不减（按 raw p 排序）。
+      assert.ok(entry.pAdjustedWithinFamily >= entry.pRaw);
+    }
+    const aggregate = secondary.find(
+      (family) => family.name === "SECTOR_AGGREGATE_IC",
+    );
+    assert.equal(aggregate.familySize, 1);
+    assert.equal(aggregate.entries[0].metric, "SECTOR_RETURN_IC");
+    assert.equal(aggregate.entries[0].status, "READY");
+    assert.ok(aggregate.entries[0].estimate > 0.9);
+    // 导出核验通过；篡改板块区间被拒绝。
+    const audit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: report.id }),
+    );
+    assert.equal(audit.passed, true, JSON.stringify(audit));
+    const forged = await exportEvidence(env, { id: report.id });
+    forged.report.payload.secondaryFamilies.find(
+      (family) => family.name === "SECTOR_SECONDARY_EXCESS",
+    ).entries[0].ci.upper += 0.01;
+    forged.report.digest = await digestOf(forged.report.payload);
+    const forgedAudit = await verifyEvidenceBundle(forged);
+    assert.equal(forgedAudit.passed, false);
+    assert.match(forgedAudit.reason, /区间不一致|点估计不一致/);
+  } finally {
+    DB.close();
+  }
+});
+
+test("批次 C：账户证据绑定执行成本指纹与校准标签", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const paper = new PaperRepository(env);
+    await paper.initialize();
+    const dates = tradingDates(65);
+    const db = (await import("../backend/storage/database.js")).database(env);
+    let equity = 100000000;
+    for (const date of dates) {
+      equity += 80000;
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO paper_equity (trade_date, payload) VALUES (?,?)",
+        )
+        .bind(
+          date,
+          JSON.stringify({
+            date,
+            equityCents: equity,
+            complete: true,
+            cashCents: equity,
+            marketValueCents: 0,
+            dailyPnlCents: 80000,
+            dailyReturn: 0.0008,
+            totalReturn: equity / 100000000 - 1,
+            realizedPnlCents: 0,
+            unrealizedPnlCents: 0,
+            feesCents: 0,
+            drawdown: 0,
+            positionCount: 0,
+          }),
+        )
+        .run();
+    }
+    const report = await buildAccountEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.equal(report.payload.status, "READY");
+    // 成本指纹（§7.2 批次 C）：校准状态由成本政策事实派生，先验未校准。
+    assert.ok(report.payload.cost);
+    assert.equal(report.payload.cost.calibrationStatus, "PRIOR_UNCALIBRATED");
+    assert.ok(/^[0-9a-f]{64}$/.test(report.payload.cost.digest));
+    assert.ok(report.payload.tags.includes("COST_PRIOR_UNCALIBRATED"));
+    assert.ok(report.payload.tags.includes("NO_COMPARABLE_BASELINE"));
+    const audit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: report.id }),
+    );
+    assert.equal(audit.passed, true, JSON.stringify(audit));
+  } finally {
+    DB.close();
+  }
+});
+
+test("批次 C：统一晋级入口拒绝诊断证据报告（含资格标记不一致）", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const { promoteCohortChampion } = await import(
+      "../backend/services/promotion.js"
+    );
+    const db = (await import("../backend/storage/database.js")).database(env);
+    const now = new Date().toISOString();
+    await db
+      .prepare(
+        "INSERT INTO strategy_cohorts (id, namespace, parent_version, policy_id, policy_digest, research_policy_id, research_policy_digest, stage, max_candidates, forward_days, reservation_manifest, created_at, updated_at) VALUES ('cohort-diag', 'main', 'baseline-v1', 'p', 'pd', 'rp', 'rpd', 'EVALUATING', 2, 60, '{}', ?, ?)",
+      )
+      .bind(now, now)
+      .run();
+    await assert.rejects(
+      promoteCohortChampion(env, "cohort-diag", {
+        evaluation: {
+          champion: { memberId: "m1" },
+          purpose: "DIAGNOSTIC",
+          eligibleForPromotion: false,
+        },
+      }),
+      /诊断证据报告没有启用资格/,
+    );
+    await assert.rejects(
+      promoteCohortChampion(env, "cohort-diag", {
+        evaluation: {
+          champion: { memberId: "m1" },
+          purpose: "DIAGNOSTIC",
+          eligibleForPromotion: true,
+        },
+      }),
+      /诊断证据报告没有启用资格/,
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+// ---------- 复核修复回归（P1/P2） ----------
+
+test("复核 P1：成本政策存储损坏时晋级抛错，不静默放行", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const { promoteCohortChampion } = await import(
+      "../backend/services/promotion.js"
+    );
+    const db = (await import("../backend/storage/database.js")).database(env);
+    await new PaperRepository(env).initialize();
+    const now = new Date().toISOString();
+    // 显式插入一条合法政策行（initialize 不写政策），随后篡改其内容。
+    const { defaultExecutionCostPolicy } = await import(
+      "../shared/execution-cost.js"
+    );
+    const { policyDigest } = await import(
+      "../backend/storage/execution-cost.js"
+    );
+    const fallbackPolicy = defaultExecutionCostPolicy();
+    await db
+      .prepare(
+        "INSERT INTO execution_cost_policies (id,version,model_version,payload,digest,calibration_status,calibration_cutoff,effective_from,created_at) VALUES (?,1,?,?,?,?,?,?,?)",
+      )
+      .bind(
+        "cost-default",
+        fallbackPolicy.modelVersion,
+        JSON.stringify(fallbackPolicy.payload),
+        await policyDigest(fallbackPolicy.payload),
+        "PRIOR_UNCALIBRATED",
+        null,
+        null,
+        now,
+      )
+      .run();
+    const forwardManifest = {
+      initialAccounts: {},
+      initialAccountsDigest: await digestOf({}),
+    };
+    await db
+      .prepare(
+        "INSERT INTO strategy_cohorts (id, namespace, revision, parent_version, policy_id, policy_digest, research_policy_id, research_policy_digest, stage, max_candidates, forward_days, reservation_manifest, forward_manifest, created_at, updated_at) VALUES ('c-corrupt', 'main', 0, 'baseline-v1', 'p', 'd', 'rp', 'rd', 'EVALUATING', 2, 60, '{}', ?, ?, ?)",
+      )
+      .bind(JSON.stringify(forwardManifest), now, now)
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO strategy_cohort_members (cohort_id, member_id, slot_index, experiment_id, strategy_version, k, params, params_digest, params_distance, stage, created_at, updated_at) VALUES ('c-corrupt', 'm1', 1, 'exp-x', 'v-champ', 1, '{}', 'd', 1, 'ELIGIBLE', ?, ?)",
+      )
+      .bind(now, now)
+      .run();
+    const evaluation = { champion: { memberId: "m1" }, promotion: null };
+    evaluation.digest = await digestOf(evaluation);
+    // 存储行 JSON 合法但摘要不匹配 → latestPolicyBundle 抛错 → 晋级失败。
+    await db
+      .prepare(
+        "UPDATE execution_cost_policies SET payload = '{\"tampered\":1}'",
+      )
+      .run();
+    await assert.rejects(
+      promoteCohortChampion(env, "c-corrupt", { evaluation }),
+      /成本政策 v1 存储内容(与摘要不一致|损坏)，拒绝静默回退/,
+      "成本政策损坏时晋级必须失败",
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+test("复核 P1：重复同名板块检验族夹带编造结果被 verifier 拒绝", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(62);
+    await seedSectorReviews(env, dates);
+    const report = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    const forged = await exportEvidence(env, { id: report.id });
+    // 在合法族之外夹带一个同名族（内含编造结果），并重算报告摘要。
+    forged.report.payload.secondaryFamilies.unshift({
+      name: "SECTOR_SECONDARY_EXCESS",
+      familySize: 1,
+      role: "SECONDARY",
+      entries: [
+        {
+          sector: "伪造板块",
+          metric: "MEAN_SECTOR_EXCESS",
+          unit: "DECIMAL_RETURN_PER_DAY",
+          status: "READY",
+          estimate: 0.09,
+          ci: { lower: 0.08, upper: 0.1, level: 0.95 },
+          pRaw: 0.0001,
+          pAdjustedWithinFamily: 0.0001,
+          standardError: 0.005,
+          validDays: 60,
+          direction: "POSITIVE",
+        },
+      ],
+    });
+    forged.report.digest = await digestOf(forged.report.payload);
+    const audit = await verifyEvidenceBundle(forged);
+    assert.equal(audit.passed, false);
+    assert.match(audit.reason, /次要检验族数量与重算不一致/);
+  } finally {
+    DB.close();
+  }
+});
+
+test("复核 P1：板块单日股票数不足的日期不计入该板块有效样本", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(62);
+    const db = (await import("../backend/storage/database.js")).database(env);
+    // 与 seedSectorReviews 相同的种子，但 dates[30] 只保留 2 只医药股票
+    // （单日样本不足）。
+    for (const [index, date] of dates.entries()) {
+      const snapshot = sectorSnapshot(date, index);
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO snapshots (trade_date, created_at, payload) VALUES (?,?,?)",
+        )
+        .bind(date, snapshot.createdAt, JSON.stringify(snapshot))
+        .run();
+      if (index === 0) continue;
+      const snapshotPrev = sectorSnapshot(dates[index - 1], index - 1);
+      const review = sectorReviewPayload(date, snapshotPrev, index);
+      if (index === 30) {
+        // 医药 3 只中剔除 1 只：validStocks=2 < 下限 3。
+        review.rows = review.rows.filter(
+          (row) => row.code !== "300003", // index 3 → 医药
+        );
+        review.validCount = review.rows.length;
+      }
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO reviews (trade_date, snapshot_date, created_at, payload) VALUES (?,?,?,?)",
+        )
+        .bind(date, snapshotPrev.date, review.date, JSON.stringify(review))
+        .run();
+    }
+    for (const date of dates.slice(1)) await recordReviewDailyMetric(env, date);
+    const report = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    const excess = report.payload.secondaryFamilies.find(
+      (family) => family.name === "SECTOR_SECONDARY_EXCESS",
+    );
+    const pharma = excess.entries.find((entry) => entry.sector === "医药");
+    const electronics = excess.entries.find((entry) => entry.sector === "电子");
+    // 医药在窗口内有一个样本不足日 → 序列不完整 → 如实降级，不输出区间。
+    assert.equal(pharma.status, "INSUFFICIENT_SAMPLE");
+    assert.equal(pharma.validDays, 59);
+    assert.equal(pharma.ci, null);
+    // 其余板块不受影响，仍输出 READY 区间。
+    assert.equal(electronics.status, "READY");
+    assert.ok(electronics.ci);
+    const audit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: report.id }),
+    );
+    assert.equal(audit.passed, true, JSON.stringify(audit));
+  } finally {
+    DB.close();
+  }
+});
+
+test("复核 P1：伪造校准等级（带摘要/无摘要）均被 verifier 拒绝", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(65);
+    await new PaperRepository(env).initialize();
+    const db = (await import("../backend/storage/database.js")).database(env);
+    let equity = 100000000;
+    for (const date of dates) {
+      equity += 80000;
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO paper_equity (trade_date, payload) VALUES (?,?)",
+        )
+        .bind(
+          date,
+          JSON.stringify({
+            date,
+            equityCents: equity,
+            complete: true,
+            cashCents: equity,
+            marketValueCents: 0,
+            dailyPnlCents: 80000,
+            dailyReturn: 0.0008,
+            totalReturn: equity / 100000000 - 1,
+            realizedPnlCents: 0,
+            unrealizedPnlCents: 0,
+            feesCents: 0,
+            drawdown: 0,
+            positionCount: 0,
+          }),
+        )
+        .run();
+    }
+    const report = await buildAccountEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.equal(report.payload.cost.calibrationStatus, "PRIOR_UNCALIBRATED");
+    // 伪造一：保留摘要但宣称已校准 → 与导出内成本政策记录不一致。
+    const forged = await exportEvidence(env, { id: report.id });
+    assert.equal(forged.executionCostPolicies.length, 1);
+    forged.report.payload.cost.calibrationStatus = "EXECUTION_CALIBRATED";
+    forged.report.digest = await digestOf(forged.report.payload);
+    const audit = await verifyEvidenceBundle(forged);
+    assert.equal(audit.passed, false);
+    assert.match(audit.reason, /成本指纹 calibrationStatus 与成本政策不一致/);
+    // 伪造二：去掉摘要直接宣称已校准 → 无记录支撑即拒绝。
+    const forged2 = await exportEvidence(env, { id: report.id });
+    delete forged2.report.payload.cost.digest;
+    forged2.report.payload.cost.calibrationStatus = "EXECUTION_CALIBRATED";
+    forged2.report.digest = await digestOf(forged2.report.payload);
+    const audit2 = await verifyEvidenceBundle(forged2);
+    assert.equal(audit2.passed, false);
+    assert.match(audit2.reason, /无成本政策摘要不得宣称已校准/);
+  } finally {
+    DB.close();
+  }
+});
+
+test("复核 P2：空样本账户报告（先验未校准）与旧格式报告可核验", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(65);
+    await new PaperRepository(env).initialize();
+    const db = (await import("../backend/storage/database.js")).database(env);
+    // 60 日日历内仅 1 个完整结算日：窗口几乎全空（空样本形态），
+    // 报告如实发布为样本不足而非拒绝。
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO paper_equity (trade_date, payload) VALUES (?,?)",
+      )
+      .bind(
+        dates.at(-1),
+        JSON.stringify({
+          date: dates.at(-1),
+          equityCents: 100000000,
+          complete: true,
+          cashCents: 100000000,
+          marketValueCents: 0,
+          dailyPnlCents: 0,
+          dailyReturn: 0,
+          totalReturn: 0,
+          realizedPnlCents: 0,
+          unrealizedPnlCents: 0,
+          feesCents: 0,
+          drawdown: 0,
+          positionCount: 0,
+        }),
+      )
+      .run();
+    const report = await buildAccountEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    assert.ok(report?.payload, "应发布报告而非静默跳过");
+    assert.notEqual(report.payload.status, "READY");
+    assert.equal(report.payload.cost.calibrationStatus, "PRIOR_UNCALIBRATED");
+    const audit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: report.id }),
+    );
+    assert.equal(audit.passed, true, JSON.stringify(audit));
+  } finally {
+    DB.close();
+  }
+});
+
+test("独立统计 worker：发现缺失窗口、幂等补齐发布", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const { runEvidenceWorkerTick } = await import(
+      "../backend/services/evidence.js"
+    );
+    const dates = tradingDates(62);
+    await seedSectorReviews(env, dates);
+    const first = await runEvidenceWorkerTick(env, { calendarDates: dates });
+    // 62 个来源日：20/60 日窗口可构建，120 日窗口因数量不足被跳过。
+    assert.equal(first.discovered, 2);
+    assert.ok(first.results.every((result) => result.reportId));
+    // 幂等：第二次执行不再发现缺失窗口。
+    const second = await runEvidenceWorkerTick(env);
+    assert.equal(second.discovered, 0);
+    assert.equal(second.results.length, 0);
+    // 发布的报告可通过既有核验。
+    const latest = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    const audit = await verifyEvidenceBundle(
+      await exportEvidence(env, { id: latest.id }),
+    );
+    assert.equal(audit.passed, true, JSON.stringify(audit));
+  } finally {
+    DB.close();
+  }
+});
+
+test("验收 P1：删除/null/对象板块族不能伪装成旧格式", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(62);
+    await seedSectorReviews(env, dates);
+    const report = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    const bundle = await exportEvidence(env, { id: report.id });
+    assert.equal((await verifyEvidenceBundle(bundle)).passed, true);
+    for (const value of [undefined, null, {}]) {
+      const forged = structuredClone(bundle);
+      if (value === undefined) delete forged.report.payload.secondaryFamilies;
+      else forged.report.payload.secondaryFamilies = value;
+      forged.report.digest = await digestOf(forged.report.payload);
+      assert.equal(forged.report.id, report.id);
+      assert.equal(forged.report.inputDigest, report.inputDigest);
+      assert.deepEqual(forged.report.inputs, report.inputs);
+      const audit = await verifyEvidenceBundle(forged);
+      assert.equal(audit.passed, false, JSON.stringify(audit));
+      assert.match(audit.reason, /次要检验族必须是数组/);
+    }
+    // 同步删除输入格式版本并重算 manifest，也不能绕过原 inputDigest。
+    const downgraded = structuredClone(bundle);
+    delete downgraded.report.inputs.schemaVersion;
+    delete downgraded.report.inputs.cost;
+    delete downgraded.report.payload.secondaryFamilies;
+    downgraded.report.inputs.manifestDigest = await digestOf({
+      orderedDates: report.inputs.orderedDates,
+      sourceRefs: report.inputs.sourceRefs,
+      sourceDigests: report.inputs.sourceDigests,
+      contextDigest: report.payload.context.digest,
+      metrics: report.inputs.metrics,
+    });
+    downgraded.report.digest = await digestOf(downgraded.report.payload);
+    assert.equal((await verifyEvidenceBundle(downgraded)).passed, false);
+  } finally {
+    DB.close();
+  }
+});
+
+async function accountAcceptanceFixture(env) {
+  const dates = tradingDates(65);
+  await new PaperRepository(env).initialize();
+  for (const [index, date] of dates.entries())
+    await env.DB.prepare(
+      "INSERT INTO paper_equity (trade_date,payload) VALUES (?,?)",
+    )
+      .bind(
+        date,
+        JSON.stringify({
+          date,
+          complete: true,
+          equityCents: 100000000 + 70000 * index + (index % 4) * 3000,
+        }),
+      )
+      .run();
+  return { asOf: dates.at(-1), horizon: 60, calendarDates: dates };
+}
+
+test("验收 P1：同步篡改报告/成本行/标签，冻结身份不变时仍拒绝", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const options = await accountAcceptanceFixture(env);
+    const report = await buildAccountEvidence(env, options);
+    const bundle = await exportEvidence(env, { id: report.id });
+    assert.equal((await verifyEvidenceBundle(bundle)).passed, true);
+    const forged = structuredClone(bundle);
+    forged.report.payload.cost.calibrationStatus = "EXECUTION_CALIBRATED";
+    forged.executionCostPolicies[0].calibrationStatus = "EXECUTION_CALIBRATED";
+    forged.report.payload.tags = forged.report.payload.tags.filter(
+      (tag) => !tag.startsWith("COST_"),
+    );
+    forged.report.digest = await digestOf(forged.report.payload);
+    assert.equal(forged.report.id, report.id);
+    assert.equal(forged.report.inputDigest, report.inputDigest);
+    assert.deepEqual(forged.report.inputs, report.inputs);
+    const audit = await verifyEvidenceBundle(forged);
+    assert.equal(audit.passed, false);
+    assert.match(audit.reason, /成本指纹与冻结成本输入不一致/);
+    // 连冻结清单都同步改写，原报告 inputDigest 仍会揭示篡改。
+    forged.report.inputs.cost.calibrationStatus = "EXECUTION_CALIBRATED";
+    forged.report.inputs.manifestDigest = await digestOf({
+      orderedDates: report.inputs.orderedDates,
+      sourceRefs: report.inputs.sourceRefs,
+      sourceDigests: report.inputs.sourceDigests,
+      contextDigest: report.payload.context.digest,
+      metrics: report.inputs.metrics,
+      schemaVersion: report.inputs.schemaVersion,
+      cost: forged.report.inputs.cost,
+    });
+    const deepAudit = await verifyEvidenceBundle(forged);
+    assert.equal(deepAudit.passed, false);
+    assert.match(deepAudit.reason, /输入摘要与报告不一致/);
+  } finally {
+    DB.close();
+  }
+});
+
+test("验收 P2：同参数/同校准等级 v2 不替换 v1，超过 50 版仍可导出", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const { ExecutionCostRepository } = await import(
+      "../backend/storage/execution-cost.js"
+    );
+    const { defaultExecutionCostPolicy } = await import(
+      "../shared/execution-cost.js"
+    );
+    const costs = new ExecutionCostRepository(env);
+    const options = await accountAcceptanceFixture(env);
+    const payload = defaultExecutionCostPolicy().payload;
+    const v1 = await costs.save({ payload });
+    const report = await buildAccountEvidence(env, options);
+    const original = await exportEvidence(env, { id: report.id });
+    const v2 = await costs.save({ payload });
+    assert.equal(v1.payloadDigest, v2.payloadDigest);
+    assert.equal(v1.calibrationStatus, v2.calibrationStatus);
+    for (const count of [2, 52]) {
+      if (count === 52)
+        for (let version = 3; version <= count; version++)
+          await costs.save({ payload });
+      const bundle = await exportEvidence(env, { id: report.id });
+      assert.equal(bundle.executionCostPolicies[0].policyId, v1.id);
+      assert.equal(bundle.executionCostPolicies[0].version, 1);
+      assert.deepEqual(bundle.report, original.report);
+      const audit = await verifyEvidenceBundle(bundle);
+      assert.equal(audit.passed, true, JSON.stringify(audit));
+      // verifier 也按完整引用定位，数组中的相同摘要 v2 不应抢占 v1。
+      bundle.executionCostPolicies.unshift({
+        ...bundle.executionCostPolicies[0],
+        policyId: v2.id,
+        version: v2.version,
+      });
+      assert.equal((await verifyEvidenceBundle(bundle)).passed, true);
+    }
+    const next = await buildAccountEvidence(env, options);
+    assert.notEqual(next.id, report.id);
+    assert.notEqual(next.inputDigest, report.inputDigest);
+    assert.equal(next.inputs.cost.version, 52);
+    assert.equal(
+      (await verifyEvidenceBundle(await exportEvidence(env, { id: next.id })))
+        .passed,
+      true,
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+function workerProcess(args, cwd, env) {
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, {
+      cwd,
+      env,
+      windowsHide: true,
+    });
+    let stdout = "",
+      stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error("worker 子进程超时"));
+    }, 10000);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      resolve({ code, stdout, stderr, elapsedMs: Date.now() - started });
+    });
+  });
+}
+
+test("验收 P1：官方 worker --once 读取配置/默认文件库，61 条复盘发布两个窗口", async () => {
+  const taskDir = mkdtempSync(join(tmpdir(), "evidence-worker-"));
+  try {
+    cpSync(join(repoRoot, "drizzle"), join(taskDir, "drizzle"), {
+      recursive: true,
+    });
+    const dates = tradingDates(62);
+    const preload = join(taskDir, "calendar.mjs");
+    writeFileSync(
+      preload,
+      `globalThis.fetch = async () => Response.json(${JSON.stringify({ data: { sh000001: { day: dates.map((date) => [date, "10", "10", "10", "10", "100"]) } } })});`,
+    );
+    for (const configured of [true, false]) {
+      const dbPath = join(
+        taskDir,
+        configured ? "configured/data.sqlite" : ".sites-runtime/local.sqlite",
+      );
+      mkdirSync(dirname(dbPath), { recursive: true });
+      let DB = localDatabase(dbPath);
+      await seedReviewHistory({ DB }, dates);
+      assert.equal(
+        (await DB.prepare("SELECT COUNT(*) AS n FROM reviews").first()).n,
+        61,
+      );
+      const { discoverMissingEvidenceWindows } = await import(
+        "../backend/services/evidence.js"
+      );
+      assert.equal((await discoverMissingEvidenceWindows({ DB })).length, 2);
+      DB.close();
+      const childEnv = { ...process.env };
+      if (configured) childEnv.LOCAL_DATABASE_PATH = dbPath;
+      else delete childEnv.LOCAL_DATABASE_PATH;
+      const args = [
+        "--import",
+        pathToFileURL(preload).href,
+        join(repoRoot, "scripts/evidence-worker.mjs"),
+        "--once",
+      ];
+      const first = await workerProcess(args, taskDir, childEnv);
+      assert.equal(first.code, 0, first.stderr);
+      assert.match(first.stdout, /发现 2 个缺失窗口，发布 2，失败 0/);
+      const second = await workerProcess(args, taskDir, childEnv);
+      assert.equal(second.code, 0, second.stderr);
+      DB = localDatabase(dbPath);
+      try {
+        const rows = (await DB.prepare("SELECT id FROM evidence_reports").all())
+          .results;
+        assert.equal(rows.length, 2, "重复单轮保持幂等");
+        for (const row of rows) {
+          const audit = await verifyEvidenceBundle(
+            await exportEvidence({ DB }, { id: row.id }),
+          );
+          assert.equal(audit.passed, true, JSON.stringify(audit));
+        }
+      } finally {
+        DB.close();
+      }
+    }
+  } finally {
+    assert.equal(dirname(taskDir), tmpdir());
+    rmSync(taskDir, { recursive: true, force: true });
+  }
+});
+
+test("验收 P1：官方常驻 worker 保持存活，等待中 SIGTERM 立即退出且无顶层 await 警告", async () => {
+  const taskDir = mkdtempSync(join(tmpdir(), "evidence-resident-"));
+  try {
+    cpSync(join(repoRoot, "drizzle"), join(taskDir, "drizzle"), {
+      recursive: true,
+    });
+    const preload = join(taskDir, "shutdown.mjs");
+    // 此定时器也 unref：它不帮 worker 保活，旧 worker 会提前以 13 退出。
+    writeFileSync(
+      preload,
+      'setTimeout(() => process.emit("SIGTERM"), 1200).unref();',
+    );
+    const result = await workerProcess(
+      [
+        "--import",
+        pathToFileURL(preload).href,
+        join(repoRoot, "scripts/evidence-worker.mjs"),
+      ],
+      taskDir,
+      {
+        ...process.env,
+        LOCAL_DATABASE_PATH: join(taskDir, "resident.sqlite"),
+        EVIDENCE_WORKER_INTERVAL_MS: "60000",
+      },
+    );
+    assert.match(result.stdout, /启动，间隔 60000ms/);
+    assert.equal(result.code, 0, result.stderr);
+    assert.ok(result.elapsedMs >= 1100, `提前退出：${result.elapsedMs}ms`);
+    assert.ok(result.elapsedMs < 5000, `停止未唤醒等待：${result.elapsedMs}ms`);
+    assert.doesNotMatch(result.stderr, /unsettled top-level await/i);
+  } finally {
+    assert.equal(dirname(taskDir), tmpdir());
+    rmSync(taskDir, { recursive: true, force: true });
   }
 });

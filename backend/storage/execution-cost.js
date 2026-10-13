@@ -87,6 +87,32 @@ export async function latestPolicyBundle(db) {
   return bundle;
 }
 
+// 参数摘要允许重复，历史引用必须按 ID/版本/模型定位，不能被新版替换。
+export async function policyBundleByReference(db, reference) {
+  const fallback = defaultExecutionCostPolicy();
+  if (
+    reference.policyId === fallback.id &&
+    reference.version === fallback.version &&
+    reference.modelVersion === fallback.modelVersion &&
+    reference.digest === fallback.payloadDigest
+  )
+    return fallback;
+  const row = await db
+    .prepare(
+      "SELECT * FROM execution_cost_policies WHERE id=? AND version=? AND model_version=?",
+    )
+    .bind(reference.policyId, reference.version, reference.modelVersion)
+    .first();
+  if (!row) return null;
+  const bundle = rowToBundle(row);
+  if (
+    !(await verifyPolicyBundle(bundle)) ||
+    bundle.payloadDigest !== reference.digest
+  )
+    throw new Error(`成本政策 v${row.version} 存储内容与摘要不一致`);
+  return bundle;
+}
+
 export class ExecutionCostRepository {
   constructor(env) {
     this.db = database(env);

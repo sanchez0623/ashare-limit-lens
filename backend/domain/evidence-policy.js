@@ -3,6 +3,9 @@
 // 独立于评分权重与 AI 参数；拒绝未知字段、非有限数与越界设置。
 import { digestOf } from "./research-lineage.js";
 
+// 输入格式进入 inputDigest：不能靠删字段把新报告降级为旧格式。
+export const EVIDENCE_INPUT_SCHEMA_VERSION = 2;
+
 export const EVIDENCE_PURPOSES = Object.freeze(["DIAGNOSTIC"]);
 export const EVIDENCE_MULTIPLICITY_METHODS = Object.freeze([
   "HOLM_WITHIN_ASOF_FAMILY",
@@ -25,6 +28,8 @@ export const EVIDENCE_TAGS = Object.freeze([
   "EXPLORATORY_REPEATED_LOOKS",
   "CONDITIONAL_ON_OBSERVED_DAYS",
   "COST_PRIOR_UNCALIBRATED",
+  "COST_QUOTE_PROXY_VALIDATED",
+  "COST_EXECUTION_CALIBRATED",
   "OBSERVATION_NOT_EXECUTABLE",
   "NO_COMPARABLE_BASELINE",
   "METHOD_SIMULATION_LIMITED",
@@ -49,6 +54,19 @@ export const SERIES_METRIC_FAMILIES = Object.freeze({
   [REVIEW_EVIDENCE_SERIES]: REVIEW_METRIC_FAMILY,
   [ACCOUNT_EVIDENCE_SERIES]: ACCOUNT_METRIC_FAMILY,
 });
+
+// 板块次要检验族（§3.2/§6.4，批次 C）：逐板块日均观察超额以独立声明的
+// 次要族输出，Holm 跨板块校正；板块聚合秩相关作为同批辅助视图。
+// 族规则事前固定为常量，不进入政策 schema（避免政策摘要漂移），也不随结果调整。
+export const SECTOR_SECONDARY_METRIC = "MEAN_SECTOR_EXCESS";
+export const SECTOR_AGGREGATE_METRIC = "SECTOR_RETURN_IC";
+export const SECTOR_MIN_VALID_STOCKS = 3;
+export const MIN_SECTOR_COUNT = 4;
+// 板块进入次要族的预登记规则：窗口内出现过、且至少一半有效日满足
+// 单日板块样本下限；样本不足的板块保留族大小（p=1 占名额），
+// 不删除后减少校正项。
+export const SECTOR_FAMILY_RULE =
+  "窗口内出现过且≥50%有效日满足单日板块样本下限的板块";
 
 export const EVIDENCE_POLICY_FIELDS = Object.freeze([
   { key: "windows", label: "滚动窗口（交易日）" },

@@ -130,6 +130,24 @@ async function renderDetail() {
     )
     .join("");
   const evaluation = detail.evaluation;
+  // 正式统计展示（statistical-evidence.md §9 批次 C）：展示两个对照的单侧
+  // 下界、实际 α、方法名与证据不足原因，不只画一个绿色"统计通过"。
+  const controlStats = (statistics) => {
+    if (!statistics)
+      return '<p class="small-muted">未评估（指纹或覆盖未通过）</p>';
+    const rows = [
+      { stat: statistics.againstParent, label: "对照=匹配父策略" },
+      { stat: statistics.againstBaseline, label: "对照=匹配固定基线" },
+    ].filter((row) => row.stat);
+    return (
+      rows
+        .map(
+          (row) =>
+            `<p class="small-muted">${row.label}：单侧下界 ${(row.stat.lowerBound * 100).toFixed(3)}pp · 观察均值 ${(row.stat.observedMean * 100).toFixed(3)}pp · α/对照 ${row.stat.alphaPerComparison?.toExponential(2)} · ${row.stat.days} 日 — ${escape(row.stat.reason)}</p>`,
+        )
+        .join("") || '<p class="small-muted">证据不足</p>'
+    );
+  };
   const verdicts = (evaluation?.verdicts ?? [])
     .map(
       (verdict) => `
@@ -139,10 +157,16 @@ async function renderDetail() {
         <td>${percent(verdict.metrics?.netReturn)}</td>
         <td>${percent(verdict.metrics?.windowDrawdown)}</td>
         <td>${verdict.rounds?.rounds ?? "—"}</td>
-        <td>${verdict.checks?.statistics ? "通过" : verdict.checks ? "未通过/未评估" : "—"}</td>
+        <td class="evidence-cell">${
+          verdict.statistics
+            ? `<details><summary>${verdict.checks?.statistics ? "统计通过" : "统计未通过"}</summary>${controlStats(verdict.statistics)}</details>`
+            : '<span class="small-muted">未评估</span>'
+        }</td>
       </tr>`,
     )
     .join("");
+  const budget = evaluation?.statisticsBudget;
+  const cost = evaluation?.fingerprint?.executionCost;
   container.innerHTML = `
     <div class="metrics panel-metrics strategy-metrics">
       <div><span class="mini-label">冠军</span><strong>${
@@ -161,6 +185,16 @@ async function renderDetail() {
         detail.evaluationDigest ? "已冻结" : "等待评估"
       }</strong><small>闸门与统计可重放</small></div>
     </div>
+    ${
+      budget
+        ? `<p class="panel-footnote">统计预算：α/对照 = ${budget.alphaPerComparison?.toExponential(2)}（全历史尝试序号 k 的误差预算）· 重采样 ${budget.resamples} · 区块 ${budget.blockLength} 日 · 方法 percentile 单侧下界（正式口径，与滚动诊断的 basic 区间为不同方法版本）</p>`
+        : ""
+    }
+    ${
+      cost
+        ? `<p class="panel-footnote">执行成本指纹：${cost.modelVersion} v${cost.version} · 校准 ${cost.calibrationStatus}${cost.matchesManifest === false ? " · 与捕获清单不一致（本批资格失效）" : cost.matchesManifest === true ? " · 与捕获清单一致" : ""}</p>`
+        : ""
+    }
     <div class="table-scroll">
       <table>
         <thead><tr><th>成员</th><th>状态</th><th>尝试序号 k</th><th>策略版本</th><th>参数距离</th><th>失败原因</th></tr></thead>

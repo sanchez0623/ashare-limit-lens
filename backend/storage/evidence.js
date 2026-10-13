@@ -160,6 +160,9 @@ export class EvidenceRepository {
       sourceDigests: inputs.sourceDigests,
       contextDigest: inputs.contextDigest,
       metrics: inputs.metrics ?? [],
+      ...(inputs.schemaVersion != null
+        ? { schemaVersion: inputs.schemaVersion, cost: inputs.cost ?? null }
+        : {}),
     };
     const reportStatement = this.db
       .prepare(
@@ -181,7 +184,7 @@ export class EvidenceRepository {
       );
     const inputsStatement = this.db
       .prepare(
-        "INSERT INTO evidence_report_inputs (report_id,ordered_dates,source_refs,source_digests,metrics_json,manifest_digest) VALUES (?,?,?,?,?,?) ON CONFLICT(report_id) DO NOTHING",
+        "INSERT INTO evidence_report_inputs (report_id,ordered_dates,source_refs,source_digests,metrics_json,manifest_digest,schema_version,cost_json) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(report_id) DO NOTHING",
       )
       .bind(
         id,
@@ -190,6 +193,10 @@ export class EvidenceRepository {
         JSON.stringify(manifest.sourceDigests),
         JSON.stringify(manifest.metrics),
         await digestOf(manifest),
+        inputs.schemaVersion ?? null,
+        inputs.schemaVersion != null
+          ? JSON.stringify(inputs.cost ?? null)
+          : null,
       );
     const results = await this.db.batch([reportStatement, inputsStatement]);
     const changes = results?.[0]?.meta?.changes ?? 0;
@@ -230,6 +237,12 @@ export class EvidenceRepository {
               ? JSON.parse(inputs.metrics_json)
               : null,
             manifestDigest: inputs.manifest_digest,
+            ...(inputs.schema_version != null
+              ? {
+                  schemaVersion: inputs.schema_version,
+                  cost: JSON.parse(inputs.cost_json),
+                }
+              : {}),
           }
         : null,
     };

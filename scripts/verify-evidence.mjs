@@ -11,6 +11,11 @@ import {
   REVIEW_EVIDENCE_SERIES,
   ACCOUNT_EVIDENCE_SERIES,
   METHOD_QUALIFIED_HORIZONS,
+  SECTOR_SECONDARY_METRIC,
+  SECTOR_AGGREGATE_METRIC,
+  SECTOR_MIN_VALID_STOCKS,
+  MIN_SECTOR_COUNT,
+  EVIDENCE_INPUT_SCHEMA_VERSION,
 } from "../backend/domain/evidence-policy.js";
 import {
   resampleSegmentIndexMatrix,
@@ -26,16 +31,198 @@ const metricValueKey = (metric) =>
     ? "ic"
     : metric === "MEAN_DAILY_EXCESS"
       ? "excessDecimal"
-      : "meanDailyReturn";
+      : metric === "SECTOR_RETURN_IC"
+        ? "sectorReturnIc"
+        : "meanDailyReturn";
 
 const metricUnit = (metric) =>
-  metric === "MEAN_DAILY_IC"
+  metric === "MEAN_DAILY_IC" || metric === "SECTOR_RETURN_IC"
     ? "CORRELATION"
-    : metric === "MEAN_DAILY_EXCESS" || metric === "MEAN_DAILY_RETURN"
+    : metric === "MEAN_DAILY_EXCESS" ||
+        metric === "MEAN_DAILY_RETURN" ||
+        metric === "MEAN_SECTOR_EXCESS"
       ? "DECIMAL_RETURN"
       : "UNKNOWN";
 
 const fail = (checks, reason) => ({ passed: false, checks, reason });
+
+// 板块次要检验族的独立重算（§3.2/§6.4 批次 C）：从冻结输入重建板块宇宙、
+// 逐板块向量与 Holm 校正。此处独立实现，不 import 发布端函数（§10：
+// 不能只用生产函数生成核验答案）。
+function expectedSecondaryFamilies({
+  policy,
+  validDates,
+  metricsByDate,
+  matrix,
+}) {
+  const payloads = validDates.map((date) => metricsByDate.get(date).payload);
+  const minSectorStocks = Math.min(
+    SECTOR_MIN_VALID_STOCKS,
+    policy.minValidStocks,
+  );
+  const universeDays = new Map();
+  for (const payload of payloads)
+    for (const sector of payload.sectors ?? [])
+      if (
+        Number.isFinite(sector.excessDecimal) &&
+        sector.validStocks >= minSectorStocks
+      )
+        universeDays.set(sector.name, (universeDays.get(sector.name) ?? 0) + 1);
+  const threshold = Math.ceil(validDates.length * 0.5);
+  const declared = [...universeDays.entries()]
+    .filter(([, days]) => days >= threshold)
+    .map(([name]) => name)
+    .sort();
+  const sectorValues = new Map(
+    declared.map((name) => [
+      name,
+      payloads.map((payload) => {
+        const sector = payload.sectors?.find((item) => item.name === name);
+        const value = sector?.excessDecimal;
+        // 与发布端同规则（P1 复核）：单日板块样本不足的日期置空，
+        // 不得计入有效天数或进入区间。
+        if (
+          !Number.isFinite(value) ||
+          (sector?.validStocks ?? 0) < minSectorStocks
+        )
+          return null;
+        return value;
+      }),
+    ]),
+  );
+  const sectorOutcomes = new Map();
+  const rawResults = [];
+  for (const name of declared) {
+    const values = sectorValues.get(name);
+    const complete = values.every((value) => value !== null);
+    const outcome = complete
+      ? bootstrapMeanEvidence({
+          values,
+          indexMatrix: matrix,
+          confidenceLevel: policy.confidenceLevel,
+          nullMean: 0,
+          side: "TWO_SIDED",
+          minValidDays: policy.minValidDays,
+        })
+      : {
+          status: "INSUFFICIENT_SAMPLE",
+          estimate: null,
+          ci: null,
+          pRaw: null,
+          standardError: null,
+          reasons: ["窗口内板块序列不完整（板块成员逐日变化），不输出区间"],
+          validDays: values.filter((value) => value !== null).length,
+        };
+    sectorOutcomes.set(name, { outcome, values });
+    rawResults.push({
+      key: name,
+      pRaw: outcome.pRaw,
+      reason: outcome.reasons?.at(0) ?? null,
+    });
+  }
+  // 族为空时没有可校正的假设：Holm 调用要求非空族（§6.4），直接空输出。
+  const excessFamily = declared.length
+    ? adjustEvidenceFamily({
+        declaredHypotheses: declared,
+        results: rawResults,
+        method: "HOLM",
+      })
+    : { hypotheses: [] };
+  const adjustedByKey = new Map(
+    excessFamily.hypotheses.map((row) => [row.key, row]),
+  );
+  const excessEntries = declared.map((name) => {
+    const { outcome, values } = sectorOutcomes.get(name);
+    const adjusted = adjustedByKey.get(name);
+    const degenerate =
+      outcome.status === "DEGENERATE" ||
+      (outcome.degenerateResampleRatio ?? 0) >
+        policy.maxDegenerateResampleRatio;
+    const ci =
+      outcome.status === "READY" && !degenerate
+        ? { ...outcome.ci, scope: "POINTWISE" }
+        : null;
+    return {
+      metric: SECTOR_SECONDARY_METRIC,
+      sector: name,
+      unit: metricUnit(SECTOR_SECONDARY_METRIC),
+      status: degenerate ? "DEGENERATE" : outcome.status,
+      estimate: outcome.estimate ?? null,
+      ci,
+      pRaw: outcome.pRaw ?? null,
+      pAdjustedWithinFamily: adjusted.pAdjustedWithinFamily,
+      standardError: outcome.standardError ?? null,
+      validDays: values.filter((value) => value !== null).length,
+      direction:
+        degenerate || outcome.status !== "READY" ? null : directionOf(ci),
+    };
+  });
+  // 板块聚合秩相关（辅助视图）。
+  const icValues = payloads.map((payload) => payload.values?.sectorReturnIc);
+  const icComplete = icValues.every((value) => Number.isFinite(value));
+  const icOutcome = icComplete
+    ? bootstrapMeanEvidence({
+        values: icValues,
+        indexMatrix: matrix,
+        confidenceLevel: policy.confidenceLevel,
+        nullMean: 0,
+        side: "TWO_SIDED",
+        minValidDays: policy.minValidDays,
+      })
+    : {
+        status: "INSUFFICIENT_SAMPLE",
+        estimate: null,
+        ci: null,
+        pRaw: null,
+        standardError: null,
+        validDays: icValues.filter((value) => Number.isFinite(value)).length,
+      };
+  const icDegenerate =
+    icOutcome.status === "DEGENERATE" ||
+    (icOutcome.degenerateResampleRatio ?? 0) >
+      policy.maxDegenerateResampleRatio;
+  const icCi =
+    icOutcome.status === "READY" && !icDegenerate
+      ? { ...icOutcome.ci, scope: "POINTWISE" }
+      : null;
+  const aggregateEntries = [
+    {
+      metric: SECTOR_AGGREGATE_METRIC,
+      unit: metricUnit(SECTOR_AGGREGATE_METRIC),
+      status: icDegenerate ? "DEGENERATE" : icOutcome.status,
+      estimate: icOutcome.estimate ?? null,
+      ci: icCi,
+      pRaw: icOutcome.pRaw ?? null,
+      pAdjustedWithinFamily: icOutcome.pRaw ?? null,
+      standardError: icOutcome.standardError ?? null,
+      validDays: icOutcome.validDays ?? validDates.length,
+      direction:
+        icDegenerate || icOutcome.status !== "READY" ? null : directionOf(icCi),
+    },
+  ];
+  return [
+    {
+      name: "SECTOR_SECONDARY_EXCESS",
+      role: "SECONDARY",
+      familySize: declared.length,
+      entries: excessEntries,
+      outcomes: sectorOutcomes,
+    },
+    {
+      name: "SECTOR_AGGREGATE_IC",
+      role: "SECONDARY",
+      familySize: 1,
+      entries: aggregateEntries,
+    },
+  ];
+}
+
+function directionOf(ci) {
+  if (!ci) return null;
+  if (ci.lower > 0) return "POSITIVE";
+  if (ci.upper < 0) return "NEGATIVE";
+  return "INCLUDES_ZERO";
+}
 
 // verifyEvidenceBundle：核验摘要、日期、纯指标、索引/种子、统计结果和用途限制。
 export async function verifyEvidenceBundle(bundle) {
@@ -56,6 +243,33 @@ export async function verifyEvidenceBundle(bundle) {
     )
       return fail(checks, "报告结构不完整");
     checks.structure = true;
+    const schemaVersion = report.inputs.schemaVersion;
+    if (
+      schemaVersion != null &&
+      schemaVersion !== EVIDENCE_INPUT_SCHEMA_VERSION
+    )
+      return fail(checks, "不支持的冻结输入格式版本");
+    const currentSchema = schemaVersion === EVIDENCE_INPUT_SCHEMA_VERSION;
+    if (
+      currentSchema &&
+      (!Array.isArray(report.inputs.metrics) ||
+        !Object.hasOwn(report.inputs, "cost"))
+    )
+      return fail(checks, "冻结输入缺少指标或成本上下文");
+    // 旧报告的格式由已绑定 inputDigest 的日指标判定，不能靠删输出字段降级。
+    const sectorInputs = (bundle.dailyMetrics ?? []).some(
+      (row) =>
+        Object.hasOwn(row.payload ?? {}, "sectors") ||
+        Object.hasOwn(row.payload?.values ?? {}, "sectorReturnIc"),
+    );
+    const recordedSecondary = report.payload.secondaryFamilies;
+    if (
+      !Array.isArray(recordedSecondary) &&
+      (currentSchema ||
+        sectorInputs ||
+        Object.hasOwn(report.payload, "secondaryFamilies"))
+    )
+      return fail(checks, "板块次要检验族必须是数组，不能降级为旧格式");
     // 导出内数据未被篡改：日指标、政策与报告 payload 摘要逐条重算。
     // 报告 payload 摘要覆盖 status/direction/tags 等全部字段（P1-6）。
     if ((await digestOf(report.payload)) !== report.digest)
@@ -92,6 +306,7 @@ export async function verifyEvidenceBundle(bundle) {
       ...(Array.isArray(report.inputs.metrics)
         ? { metrics: report.inputs.metrics }
         : {}),
+      ...(currentSchema ? { schemaVersion, cost: report.inputs.cost } : {}),
     };
     if ((await digestOf(manifest)) !== report.inputs.manifestDigest)
       return fail(checks, "输入清单摘要不一致");
@@ -161,6 +376,7 @@ export async function verifyEvidenceBundle(bundle) {
     )
       return fail(checks, "窗口覆盖率与有效日期不一致");
     const inputDigest = await digestOf({
+      ...(currentSchema ? { schemaVersion, cost: report.inputs.cost } : {}),
       seriesId: report.seriesId,
       window: {
         expectedDates: report.payload.window.expectedDates,
@@ -202,6 +418,12 @@ export async function verifyEvidenceBundle(bundle) {
       // 就跳过族核验——零样本报告塞入编造的区间与 p 值必须被拒绝。
       if ((report.payload.family ?? []).length)
         return fail(checks, "无有效日指标时不得输出检验结果");
+      if (
+        (report.payload.secondaryFamilies ?? []).some(
+          (family) => family.entries?.length,
+        )
+      )
+        return fail(checks, "无有效日指标时不得输出次要检验族结果");
     } else {
       // 检验族预登记核对（§6.4/P1-2）：已知系列的族不得删减或替换；
       // 空族的合法性由覆盖/片段状态在下方核验（发布端仅在覆盖不足、
@@ -243,6 +465,12 @@ export async function verifyEvidenceBundle(bundle) {
           return fail(checks, "片段短于区块长度时不得输出检验结果");
         if (report.payload.status !== "INCOMPLETE_DATA")
           return fail(checks, "片段短于区块长度时报告应标注 INCOMPLETE_DATA");
+        if (
+          (report.payload.secondaryFamilies ?? []).some(
+            (family) => family.entries?.length,
+          )
+        )
+          return fail(checks, "片段短于区块长度时不得输出次要检验族结果");
       } else if (!recordedMetrics.length) {
         // 可重采样时清空检验族改 PENDING 必须被拒绝（P1-2）：覆盖达标
         // 却无检验结果，或覆盖不足却未如实标注 INCOMPLETE_DATA。
@@ -250,6 +478,12 @@ export async function verifyEvidenceBundle(bundle) {
           return fail(checks, "窗口覆盖达标却无检验结果，不应输出空检验族");
         if (report.payload.status !== "INCOMPLETE_DATA")
           return fail(checks, "覆盖不足的空检验族报告应标注 INCOMPLETE_DATA");
+        if (
+          (report.payload.secondaryFamilies ?? []).some(
+            (family) => family.entries?.length,
+          )
+        )
+          return fail(checks, "覆盖不足时不得输出次要检验族结果");
       } else {
         // 覆盖闸门（P1-1）：发布端覆盖不足时族恒为空——即使攻击者用
         // 真实算法重算族塞入并改 READY，也必须被覆盖率闸门拒绝。
@@ -393,8 +627,166 @@ export async function verifyEvidenceBundle(bundle) {
           if (entry.direction !== expectedDirection)
             return fail(checks, `${entry.metric} 方向与区间不一致`);
         }
+        // 板块次要检验族核验（§3.2/§6.4 批次 C）：独立重算并与报告逐项
+        // 核对族大小、板块集合、状态、区间、p 值与 Holm 校正；账户系列
+        // 不输出板块族（口径不同，混入即拒绝）。
+        // 只有无版本、无板块输入且确实缺少该字段的历史报告可走旧口径。
+        const legacySecondary = recordedSecondary === undefined;
+        if (report.seriesId !== REVIEW_EVIDENCE_SERIES) {
+          if (
+            !legacySecondary &&
+            recordedSecondary.some((family) => family.entries?.length)
+          )
+            return fail(checks, "非复盘系列不得输出板块次要检验族");
+        } else if (!legacySecondary) {
+          const expectedFamilies = expectedSecondaryFamilies({
+            policy,
+            validDates,
+            metricsByDate,
+            matrix,
+          });
+          // 精确多重集比对（P1 复核）：族数量与族名必须与重算一致且无
+          // 重复——重复同名族夹带编造结果、塞入未预登记族名都在此被拒。
+          if (recordedSecondary.length !== expectedFamilies.length)
+            return fail(checks, "次要检验族数量与重算不一致");
+          const recordedNames = recordedSecondary
+            .map((family) => family.name)
+            .sort();
+          const expectedNames = expectedFamilies
+            .map((family) => family.name)
+            .sort();
+          if (JSON.stringify(recordedNames) !== JSON.stringify(expectedNames))
+            return fail(checks, "次要检验族名与预登记不一致");
+          if (new Set(recordedNames).size !== recordedNames.length)
+            return fail(checks, "次要检验族存在重复族名");
+          for (const expectedFamily of expectedFamilies) {
+            const recordedFamily = recordedSecondary.find(
+              (family) => family.name === expectedFamily.name,
+            );
+            if (recordedFamily.familySize !== expectedFamily.familySize)
+              return fail(
+                checks,
+                `${expectedFamily.name} 族大小与冻结输入不一致`,
+              );
+            if (recordedFamily.role !== "SECONDARY")
+              return fail(
+                checks,
+                `${expectedFamily.name} 角色必须为 SECONDARY`,
+              );
+            const recordedEntries = recordedFamily.entries ?? [];
+            const expectedEntries = expectedFamily.entries;
+            if (recordedEntries.length !== expectedEntries.length)
+              return fail(checks, `${expectedFamily.name} 成员数与重算不一致`);
+            for (const [index, expectedEntry] of expectedEntries.entries()) {
+              const recordedEntry = recordedEntries[index];
+              const label = `${expectedFamily.name}/${expectedEntry.sector ?? expectedEntry.metric}`;
+              if (expectedEntry.sector !== recordedEntry.sector)
+                return fail(checks, `${label} 板块与重算不一致`);
+              if (recordedEntry.metric !== expectedEntry.metric)
+                return fail(checks, `${label} 指标与重算不一致`);
+              if (recordedEntry.unit !== expectedEntry.unit)
+                return fail(checks, `${label} 单位与指标不一致`);
+              if (recordedEntry.status !== expectedEntry.status)
+                return fail(checks, `${label} 状态与重算不一致`);
+              if (recordedEntry.validDays !== expectedEntry.validDays)
+                return fail(checks, `${label} 有效天数与重算不一致`);
+              if (recordedEntry.direction !== expectedEntry.direction)
+                return fail(checks, `${label} 方向与区间不一致`);
+              if (expectedEntry.ci) {
+                if (!recordedEntry.ci)
+                  return fail(checks, `${label} 缺少应输出的区间`);
+                if (recordedEntry.ci.level !== policy.confidenceLevel)
+                  return fail(checks, `${label} 区间参数与政策不一致`);
+                if (recordedEntry.ci.scope !== "POINTWISE")
+                  return fail(checks, `${label} 区间范围标记不一致`);
+                assert.ok(
+                  Math.abs(
+                    (recordedEntry.estimate ?? NaN) - expectedEntry.estimate,
+                  ) < 1e-12,
+                  `${label} 点估计不一致`,
+                );
+                assert.ok(
+                  Math.abs(
+                    (recordedEntry.ci.lower ?? NaN) - expectedEntry.ci.lower,
+                  ) < 1e-12 &&
+                    Math.abs(
+                      (recordedEntry.ci.upper ?? NaN) - expectedEntry.ci.upper,
+                    ) < 1e-12,
+                  `${label} 区间不一致`,
+                );
+                assert.ok(
+                  Math.abs((recordedEntry.pRaw ?? NaN) - expectedEntry.pRaw) <
+                    1e-12,
+                  `${label} p 值不一致`,
+                );
+                assert.ok(
+                  Math.abs(
+                    (recordedEntry.pAdjustedWithinFamily ?? NaN) -
+                      expectedEntry.pAdjustedWithinFamily,
+                  ) < 1e-12,
+                  `${label} Holm 校正值不一致`,
+                );
+                assert.ok(
+                  Math.abs(
+                    (recordedEntry.standardError ?? NaN) -
+                      expectedEntry.standardError,
+                  ) < 1e-12,
+                  `${label} 标准误不一致`,
+                );
+              } else {
+                if (recordedEntry.ci)
+                  return fail(checks, `${label} 不应携带区间`);
+                if (recordedEntry.pRaw != null)
+                  return fail(checks, `${label} 不可估计时不应携带 p 值`);
+                if (recordedEntry.pAdjustedWithinFamily != null)
+                  return fail(checks, `${label} 不可估计时不应有校正 p 值`);
+              }
+            }
+          }
+        }
       }
     }
+    // 成本校准状态核验（P1 复核）：报告声明的校准等级必须由导出内的成本
+    // 政策记录支撑——按摘要找回政策行、重算其摘要并逐字段核对；无摘要
+    // （表未迁移兜底）只允许先验未校准，宣称已校准即拒绝。
+    const costClaim = report.payload.cost;
+    if (costClaim?.digest) {
+      const costRow = (bundle.executionCostPolicies ?? []).find(
+        (row) =>
+          row.policyId === costClaim.policyId &&
+          row.version === costClaim.version &&
+          row.modelVersion === costClaim.modelVersion &&
+          row.digest === costClaim.digest,
+      );
+      if (!costRow) return fail(checks, "导出缺少与报告成本指纹一致的成本政策");
+      if ((await digestOf(costRow.payload)) !== costRow.digest)
+        return fail(checks, "成本政策摘要不一致");
+      for (const key of [
+        "modelVersion",
+        "policyId",
+        "version",
+        "calibrationStatus",
+        ...(currentSchema ? ["calibrationCutoff", "effectiveFrom"] : []),
+      ])
+        if (costClaim[key] !== costRow[key])
+          return fail(checks, `成本指纹 ${key} 与成本政策不一致`);
+    } else if (
+      costClaim &&
+      costClaim.calibrationStatus &&
+      costClaim.calibrationStatus !== "PRIOR_UNCALIBRATED"
+    )
+      return fail(checks, "无成本政策摘要不得宣称已校准");
+    if (
+      !currentSchema &&
+      costClaim?.calibrationStatus &&
+      costClaim.calibrationStatus !== "PRIOR_UNCALIBRATED"
+    )
+      return fail(checks, "旧格式未冻结成本上下文，不得宣称已校准");
+    if (
+      currentSchema &&
+      (await digestOf(costClaim)) !== (await digestOf(report.inputs.cost))
+    )
+      return fail(checks, "成本指纹与冻结成本输入不一致");
     // 标签由窗口/政策/系列结构完全派生（§4/§7.1/§10）：篡改受限标注
     // （如 METHOD_SIMULATION_LIMITED）以美化展示在此被拒。
     const expectedTags = ["EXPLORATORY_REPEATED_LOOKS"];
@@ -405,8 +797,14 @@ export async function verifyEvidenceBundle(bundle) {
       expectedTags.push("CONDITIONAL_ON_OBSERVED_DAYS");
     if (report.seriesId === REVIEW_EVIDENCE_SERIES)
       expectedTags.push("OBSERVATION_NOT_EXECUTABLE");
-    if (report.seriesId === ACCOUNT_EVIDENCE_SERIES)
-      expectedTags.push("COST_PRIOR_UNCALIBRATED", "NO_COMPARABLE_BASELINE");
+    if (report.seriesId === ACCOUNT_EVIDENCE_SERIES) {
+      expectedTags.push("NO_COMPARABLE_BASELINE");
+      // 成本标签由执行成本政策校准状态派生（批次 C）：报告必须携带 cost
+      // 指纹；旧报告（无 cost 字段）按先验未校准兜底。
+      const calibration = report.payload.cost?.calibrationStatus;
+      if (calibration ? calibration !== "EXECUTION_CALIBRATED" : true)
+        expectedTags.push(`COST_${calibration ?? "PRIOR_UNCALIBRATED"}`);
+    }
     if (
       report.horizon !== policy.primaryWindow &&
       report.horizon === policy.windows[0]

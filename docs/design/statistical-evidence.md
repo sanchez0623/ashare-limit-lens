@@ -2,8 +2,16 @@
 
 > 状态：实施中；批次 A（口径与可核验日序列）与批次 B 核心（共用区块内核、
 > basic CI、居中 p、当日族 Holm 校正、存储、API、盘后发布、导出 verifier、
-> 方法模拟脚本）已实施；批次 C（赛马正式证据呈现与成本联动、板块次要族）
-> 与独立常驻 worker 进程尚未实施。
+> 方法模拟脚本）已实施；批次 C（赛马正式证据呈现与成本联动、板块次要族、
+> 晋级入口拒绝诊断报告、AI 输入同步）已实施；独立统计 worker
+> （scripts/evidence-worker.mjs，缺失窗口发现 + 幂等补齐 + server 派生）
+> 已实施。
+>
+> 复核修复（P1/P2）已合入：成本政策存储损坏时晋级/评估/发布失败而不静默
+> 放行；verifier 对次要检验族做精确多重集比对（重复同名族夹带编造结果
+> 被拒）；板块单日股票数不足的日期不计入板块有效样本；校准等级由导出内
+> 的成本政策记录支撑并逐字段核验；空样本报告与旧格式（无 secondaryFamilies/
+> cost 字段）报告按旧口径兼容核验。
 >
 > 方法模拟验收（evidence-simulation v1，公开种子，每配置 1000 条序列、
 > B=1000、区块 5）如实记录：120 日窗口在全部零效应情景下满足预登记阈值
@@ -247,10 +255,15 @@ evidence_reports
   input_digest, policy_digest, method_version,
   payload, digest, created_at
 evidence_report_inputs
-  report_id, ordered_dates, source_refs, source_digests, manifest_digest
+  report_id, ordered_dates, source_refs, source_digests, metrics_json,
+  schema_version, cost_json, manifest_digest
 ```
 
 同输入/政策/方法唯一发布；输入修订生成新报告 id，原证据不覆写。正式报告可引用现有 cohort 报告而不重复存全部输入，但导出必须带引用内容及摘要，不能只带不可访问的数据库主键。
+
+冻结输入格式 v2（迁移 `0015_evidence_input_context.sql`）将格式版本和完整成本指纹同时纳入 manifest 与 inputDigest。成本指纹包含政策 ID、版本、模型、参数摘要、校准等级、校准截止日及生效日；更改任何一项都生成新的输入摘要和报告 ID。历史成本记录按 ID/版本/模型定位，参数摘要相同的后续版本不能替换旧报告引用。
+
+核验时 v2 必须携带数组形式的次要族；历史报告仅在冻结输入没有板块字段时允许缺省该族，null 或对象不属于旧格式。迁移保留历史行的空格式版本，按原摘要规则核验；没有冻结成本上下文的旧报告只允许先验未校准声明，不能证明更高的校准等级。
 
 复用既有研究任务调度增加 `EVIDENCE_DIAGNOSTIC/EVIDENCE_VERIFY` 任务类型。统计读取/计算在事务外；发布报告、任务 DONE 及输出摘要在短的、带 owner/round 的提交中完成。过期 worker 不得发布迟到结果或覆盖新输入版本。
 

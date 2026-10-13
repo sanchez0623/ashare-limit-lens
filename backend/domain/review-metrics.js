@@ -2,6 +2,10 @@
 // 冻结样本与 Top 分组下的单日 IC 与观察超额。纯函数：无数据库/网络依赖；
 // 收益内核统一小数（0.003 = 0.3 个百分点 = 30bps），单位转换只在 DTO/显示边界。
 import { digestOf } from "./research-lineage.js";
+import {
+  MIN_SECTOR_COUNT,
+  SECTOR_MIN_VALID_STOCKS,
+} from "./evidence-policy.js";
 
 // 并列分数取平均秩（与既有 correlation 口径一致）；常数序列返回 null。
 export function averageRanks(values) {
@@ -89,7 +93,12 @@ export async function computeDailyReviewMetrics({
         outcome.reason ?? "观察收益非有限或低于 -100%";
       continue;
     }
-    valid.push({ code: stock.code, score: stock.score, returnDecimal: value });
+    valid.push({
+      code: stock.code,
+      score: stock.score,
+      returnDecimal: value,
+      sector: stock.sector,
+    });
   }
   const expectedStocks = frozenSnapshot.stocks.length;
   const stockCoverage = expectedStocks ? valid.length / expectedStocks : 0;
@@ -125,6 +134,51 @@ export async function computeDailyReviewMetrics({
       `股票覆盖 ${stockCoverage.toFixed(3)} 低于最低要求 ${policy.minStockCoverage}`,
     );
   if (ic === null) reasons.push("评分或收益序列退化，无法计算秩相关");
+  // 板块聚合（§3.2 批次 C）：用事前冻结的板块归属与板块评分，计算板块
+  // 评分与板块平均观察收益的每日秩相关，并给出逐板块观察超额。
+  // 多概念归属使用冻结主板块（stock.sector），一只股票不会被重复计为
+  // 多个独立样本；板块数不足时返回 null 与原因，不虚构秩相关。
+  const sectorScores = new Map(
+    (Array.isArray(frozenSnapshot.sectors) ? frozenSnapshot.sectors : []).map(
+      (sector) => [sector.name, sector.score],
+    ),
+  );
+  const bySector = new Map();
+  for (const stock of valid) {
+    if (!stock.sector || !sectorScores.has(stock.sector)) continue;
+    if (!bySector.has(stock.sector)) bySector.set(stock.sector, []);
+    bySector.get(stock.sector).push(stock);
+  }
+  const sectors = [...bySector.entries()]
+    .map(([name, members]) => ({
+      name,
+      score: sectorScores.get(name),
+      meanReturnDecimal: mean(members),
+      excessDecimal: allMean === null ? null : mean(members) - allMean,
+      validStocks: members.length,
+    }))
+    .filter(
+      (sector) =>
+        Number.isFinite(sector.score) &&
+        Number.isFinite(sector.meanReturnDecimal),
+    );
+  const sectorIc = (() => {
+    // 聚合秩相关只使用当日满足单日样本下限的板块（P1 复核）：1–2 只股票
+    // 的板块均值不是合格的板块观察，不得参与秩相关。
+    const sufficient = sectors.filter(
+      (sector) =>
+        sector.validStocks >=
+        Math.min(SECTOR_MIN_VALID_STOCKS, policy.minValidStocks),
+    );
+    return sufficient.length >= MIN_SECTOR_COUNT
+      ? spearman(
+          sufficient.map((sector) => sector.score),
+          sufficient.map((sector) => sector.meanReturnDecimal),
+        )
+      : null;
+  })();
+  // 板块不足不拖垮主指标的单日质量：IC/超额质量门与板块聚合门分开，
+  // sectorIc 为 null 时报告端按"板块序列不可估计"如实降级（§3.2）。
   const status = reasons.length ? "INSUFFICIENT_SAMPLE" : "READY";
   return {
     date: frozenSnapshot.resultDate,
@@ -135,6 +189,7 @@ export async function computeDailyReviewMetrics({
       excessDecimal: excess,
       allMeanDecimal: allMean,
       topMeanDecimal: topMean,
+      sectorReturnIc: sectorIc,
     },
     quality: {
       expectedStocks,
@@ -142,8 +197,10 @@ export async function computeDailyReviewMetrics({
       topStocks: top.length,
       topSize,
       stockCoverage,
+      sectorCount: sectors.length,
     },
     status,
+    sectors,
     exclusionReasons,
     reasons,
   };

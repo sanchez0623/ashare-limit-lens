@@ -39,6 +39,7 @@ import {
   unrealizedPnlCents,
 } from "../domain/cohort-metrics.js";
 import { safeError } from "../http.js";
+import { latestPolicyBundle } from "../storage/execution-cost.js";
 import { pollTrading } from "./realtime.js";
 import { marketClock, inSession } from "../domain/realtime.js";
 import { captureQuoteFrame } from "./quote-stream.js";
@@ -561,6 +562,10 @@ export async function scheduleCohortForward(
     };
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
+  // 捕获时点的执行成本政策快照（statistical-evidence.md §7.2 批次 C）。
+  // 存储损坏时 latestPolicyBundle 抛错，捕获失败——成本口径不可核验的
+  // 批次不得开跑（P1 复核：不静默吞掉完整性错误）。
+  const executionCostPolicy = await latestPolicyBundle(env.DB);
   if (!selectionPolicyMatches(cohort.reservationManifest, account.book)) {
     await closeCohort(
       cohorts,
@@ -751,6 +756,18 @@ export async function scheduleCohortForward(
     parentVersion: cohort.parentVersion,
     ...selectionPolicyFields(selectionPolicy),
     requiredDays: cohort.forwardDays,
+    // 成本指纹（statistical-evidence.md §7.2 批次 C）：捕获时点的执行成本
+    // 政策摘要随清单冻结；评估与晋级核验窗口期内成本口径未变化。
+    executionCost: executionCostPolicy
+      ? {
+          modelVersion: executionCostPolicy.modelVersion,
+          policyId: executionCostPolicy.id,
+          version: executionCostPolicy.version,
+          digest: executionCostPolicy.payloadDigest,
+          calibrationStatus: executionCostPolicy.calibrationStatus,
+        }
+      : null,
+    executionCostDigest: executionCostPolicy?.payloadDigest ?? null,
     // 固定窗口日历：随 runDaily 交易日历冻结，窗口结束日不因缺失顺延（§8.2）。
     windowDates: [],
     tradingDates: [],
@@ -1405,6 +1422,9 @@ export async function evaluateCohort(
       !row.registered,
   );
   // 环境指纹（闸门 6）：费用、父策略、执行/评分版本与冻结成员清单一致性。
+  // 成本联动（statistical-evidence.md §7.2 批次 C）：执行成本政策指纹
+  // 绑定到正式评估报告；捕获清单记录了成本摘要的批次在政策变化后失效，
+  // 旧批次（清单无此字段）不受影响。
   const members = await cohorts.members(cohortId);
   const membersIntact = (
     await Promise.all(
@@ -1418,6 +1438,21 @@ export async function evaluateCohort(
   const primary = await papers.account();
   const feeConfig = feesForBook(primary.book);
   const feeConfigDigest = await digestOf(feeConfig);
+  // 存储损坏时抛错：评估中止并在下一盘后重试，绝不以不可核验的成本口径
+  // 发布评估报告（P1 复核）。
+  const executionCostPolicy = await latestPolicyBundle(env.DB);
+  const executionCost = executionCostPolicy
+    ? {
+        modelVersion: executionCostPolicy.modelVersion,
+        policyId: executionCostPolicy.id,
+        version: executionCostPolicy.version,
+        digest: executionCostPolicy.payloadDigest,
+        calibrationStatus: executionCostPolicy.calibrationStatus,
+        matchesManifest: manifest.executionCostDigest
+          ? manifest.executionCostDigest === executionCostPolicy.payloadDigest
+          : null,
+      }
+    : null;
   const fingerprint = {
     selectionPolicyMatches: selectionPolicyMatches(manifest, primary.book),
     feeConfigMatches: feeConfigDigest === manifest.feeConfigDigest,
@@ -1425,10 +1460,12 @@ export async function evaluateCohort(
     membersIntact,
     executionVersion: EXECUTION_VERSION,
     scoringVersion: SCORING_VERSION,
+    executionCost,
     environmentValid:
       feeConfigDigest === manifest.feeConfigDigest &&
       primary.book.activeStrategy === cohort.parentVersion &&
-      membersIntact,
+      membersIntact &&
+      executionCost?.matchesManifest !== false,
     // 当前账户与窗口冻结政策必须相同；源码同时保留 v1/v2，部署本身不改窗口。
   };
   fingerprint.environmentValid &&= fingerprint.selectionPolicyMatches;
