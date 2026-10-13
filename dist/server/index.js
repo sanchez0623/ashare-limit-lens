@@ -6439,6 +6439,23 @@ async function latestPolicyBundle(db) {
     );
   return bundle;
 }
+async function policyBundleByDigest(db, digest2) {
+  const rows = (await db.prepare(
+    "SELECT * FROM execution_cost_policies ORDER BY version DESC LIMIT 50"
+  ).all()).results;
+  for (const row of rows) {
+    let bundle;
+    try {
+      bundle = rowToBundle(row);
+    } catch {
+      continue;
+    }
+    if (await policyDigest(bundle.payload) === digest2) return bundle;
+  }
+  const fallback = defaultExecutionCostPolicy();
+  if (await policyDigest(fallback.payload) === digest2) return fallback;
+  return null;
+}
 var ExecutionCostRepository = class {
   constructor(env) {
     this.db = database(env);
@@ -14397,6 +14414,9 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
   );
   if (initialAccountsDigest !== forwardManifest.initialAccountsDigest)
     throw new Error(`\u671F\u521D\u51C0\u503C\u6458\u8981\u4E0E\u6355\u83B7\u6E05\u5355\u4E0D\u4E00\u81F4\uFF1B${REPORT_UNTRUSTED}`);
+  const costPolicy = await latestPolicyBundle(env.DB);
+  if (forwardManifest.executionCostDigest && costPolicy.payloadDigest !== forwardManifest.executionCostDigest)
+    throw new Error("\u6267\u884C\u6210\u672C\u653F\u7B56\u5728\u7A97\u53E3\u671F\u5185\u53D8\u5316\u6216\u4E0D\u53EF\u6838\u9A8C\uFF0C\u672C\u6279\u8D44\u683C\u5931\u6548");
   const windowDates = report.windowDates ?? [];
   const tradingDates = Array.isArray(forwardManifest.tradingDates) ? forwardManifest.tradingDates : [];
   const requiredDays = forwardManifest.requiredDays ?? report.requiredDays ?? windowDates.length;
@@ -14469,9 +14489,6 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
   const feeConfigDigest = await digestOf(feeConfig);
   if (feeConfigDigest !== forwardManifest.feeConfigDigest)
     throw new Error("\u8D39\u7528\u914D\u7F6E\u5728\u7A97\u53E3\u671F\u5185\u53D8\u5316\uFF0C\u672C\u6279\u8D44\u683C\u5931\u6548");
-  const costPolicy = await latestPolicyBundle(env.DB).catch(() => null);
-  if (forwardManifest.executionCostDigest && costPolicy && costPolicy.payloadDigest !== forwardManifest.executionCostDigest)
-    throw new Error("\u6267\u884C\u6210\u672C\u653F\u7B56\u5728\u7A97\u53E3\u671F\u5185\u53D8\u5316\uFF0C\u672C\u6279\u8D44\u683C\u5931\u6548");
   if (account.book.activeStrategy !== cohort.parentVersion)
     throw new Error("\u4E3B\u8D26\u6237\u7236\u7B56\u7565\u5DF2\u53D8\u5316\uFF0C\u672C\u6279\u8D44\u683C\u5931\u6548");
   if (report.executionVersion !== EXECUTION_VERSION || report.scoringVersion !== SCORING_VERSION)
@@ -14995,9 +15012,7 @@ async function scheduleCohortForward(env, cohortId, { now = (/* @__PURE__ */ new
     };
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
-  const executionCostPolicy = await latestPolicyBundle(env.DB).catch(
-    () => null
-  );
+  const executionCostPolicy = await latestPolicyBundle(env.DB);
   if (!selectionPolicyMatches(cohort.reservationManifest, account.book)) {
     await closeCohort(
       cohorts,
@@ -15707,9 +15722,7 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
   const primary = await papers.account();
   const feeConfig = feesForBook(primary.book);
   const feeConfigDigest = await digestOf(feeConfig);
-  const executionCostPolicy = await latestPolicyBundle(env.DB).catch(
-    () => null
-  );
+  const executionCostPolicy = await latestPolicyBundle(env.DB);
   const executionCost = executionCostPolicy ? {
     modelVersion: executionCostPolicy.modelVersion,
     policyId: executionCostPolicy.id,
@@ -16376,10 +16389,15 @@ async function computeDailyReviewMetrics({
   })).filter(
     (sector) => Number.isFinite(sector.score) && Number.isFinite(sector.meanReturnDecimal)
   );
-  const sectorIc = sectors.length >= MIN_SECTOR_COUNT ? spearman(
-    sectors.map((sector) => sector.score),
-    sectors.map((sector) => sector.meanReturnDecimal)
-  ) : null;
+  const sectorIc = (() => {
+    const sufficient = sectors.filter(
+      (sector) => sector.validStocks >= Math.min(SECTOR_MIN_VALID_STOCKS, policy.minValidStocks)
+    );
+    return sufficient.length >= MIN_SECTOR_COUNT ? spearman(
+      sufficient.map((sector) => sector.score),
+      sufficient.map((sector) => sector.meanReturnDecimal)
+    ) : null;
+  })();
   const status = reasons.length ? "INSUFFICIENT_SAMPLE" : "READY";
   return {
     date: frozenSnapshot.resultDate,
@@ -16559,7 +16577,9 @@ function buildSectorSecondaryFamilies({
         payloads.map((payload) => {
           const sector = payload.sectors?.find((item) => item.name === name);
           const value = sector?.excessDecimal;
-          return Number.isFinite(value) ? value : null;
+          if (!Number.isFinite(value) || (sector?.validStocks ?? 0) < minSectorStocks)
+            return null;
+          return value;
         })
       ])
     );
@@ -16788,7 +16808,11 @@ async function publishWindowReport({
       noComparableBaseline,
       horizon,
       policy
-    })
+    }),
+    // 成本指纹进入 base（P2 复核）：样本不足/覆盖不足/短片段等提前返回
+    // 分支与正常分支携带同样的成本字段，校准声明在所有形态下可核验；
+    // 复盘系列 cost 为 null，不参与核验。
+    cost
   };
   const publish = (payload2) => repository.publishReport({
     namespace: NAMESPACE,
@@ -17070,19 +17094,19 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
     });
     previousEquity = equity;
   }
-  let executionCost = null;
-  try {
-    const bundle = await latestPolicyBundle(database(env));
-    executionCost = {
-      modelVersion: bundle.modelVersion,
-      policyId: bundle.id,
-      version: bundle.version,
-      digest: bundle.payloadDigest,
-      calibrationStatus: bundle.calibrationStatus
-    };
-  } catch {
-    executionCost = null;
-  }
+  const executionCostBundle = await latestPolicyBundle(database(env)).catch(
+    (error) => {
+      if (/no such table/i.test(String(error?.message ?? error))) return null;
+      throw error;
+    }
+  );
+  const executionCost = executionCostBundle ? {
+    modelVersion: executionCostBundle.modelVersion,
+    policyId: executionCostBundle.id,
+    version: executionCostBundle.version,
+    digest: executionCostBundle.payloadDigest,
+    calibrationStatus: executionCostBundle.calibrationStatus
+  } : { calibrationStatus: "PRIOR_UNCALIBRATED", digest: null };
   return publishWindowReport({
     repository,
     policy,
@@ -17150,12 +17174,31 @@ async function exportEvidence(env, { id }) {
         createdAt: null
       });
   }
+  let executionCostPolicies = [];
+  if (report.payload.cost?.digest) {
+    const costBundle = await policyBundleByDigest(
+      database(env),
+      report.payload.cost.digest
+    );
+    if (costBundle)
+      executionCostPolicies = [
+        {
+          policyId: costBundle.id,
+          version: costBundle.version,
+          modelVersion: costBundle.modelVersion,
+          payload: costBundle.payload,
+          digest: costBundle.payloadDigest,
+          calibrationStatus: costBundle.calibrationStatus
+        }
+      ];
+  }
   return {
     format: "limit-lens-evidence-v1",
     exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
     report,
     dailyMetrics,
     policies: policies2,
+    executionCostPolicies,
     note: "\u5BFC\u51FA\u53EF\u72EC\u7ACB\u91CD\u7B97\uFF1Averify:evidence \u6309\u51BB\u7ED3\u8F93\u5165\u3001\u653F\u7B56\u4E0E\u65B9\u6CD5\u6838\u9A8C\u6458\u8981\u3001\u533A\u95F4\u4E0E\u7528\u9014\u9650\u5236\u3002"
   };
 }

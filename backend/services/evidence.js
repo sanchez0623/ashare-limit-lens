@@ -520,6 +520,10 @@ async function publishWindowReport({
       horizon,
       policy,
     }),
+    // 成本指纹进入 base（P2 复核）：样本不足/覆盖不足/短片段等提前返回
+    // 分支与正常分支携带同样的成本字段，校准声明在所有形态下可核验；
+    // 复盘系列 cost 为 null，不参与核验。
+    cost,
   };
   const publish = (payload) =>
     repository.publishReport({
@@ -1070,39 +1074,49 @@ export async function refreshEvidence(env, { date, calendarDates } = {}) {
   return results;
 }
 
-// 独立统计 worker（§8.3）：发现尚无已发布报告的 (系列, 窗口, 来源日)
-// 组合并补齐发布。来源日 = 复盘已保存日 / 账户净值完整结算日；发布幂等
-// （同输入唯一），重复执行只补缺失。盘后流程（runDaily → refreshEvidence）
-// 仍是主路径，worker 用于补齐失败后的自愈与手动补偿，不重算已有报告。
+// 独立统计 worker（§8.3）：发现尚无已发布报告的 (系列, 窗口, 最新来源日)
+// 组合并补齐发布。来源日 = 复盘已保存日 / 账户净值完整结算日；来源日数量
+// 不足窗口长度时该窗口尚不可构建，跳过而不反复重试。发布幂等（同输入
+// 唯一），重复执行只补缺失；历史窗口回填走 recompute/refresh 指定日期，
+// 不由 worker 负责。盘后流程（runDaily → refreshEvidence）仍是主路径。
 export async function discoverMissingEvidenceWindows(env) {
   const repository = new EvidenceRepository(env);
   const windows = (await policyBundle(repository)).payload.windows;
-  const sourceDates = {
-    [REVIEW_SERIES]: (
-      await database(env)
-        .prepare(
-          "SELECT DISTINCT trade_date AS d FROM reviews ORDER BY d DESC LIMIT 10",
-        )
-        .all()
-    ).results.map((row) => row.d),
-    [ACCOUNT_SERIES]: (
-      await database(env)
-        .prepare(
-          "SELECT DISTINCT trade_date AS d FROM paper_equity WHERE json_extract(payload, '$.complete') = 1 ORDER BY d DESC LIMIT 10",
-        )
-        .all()
-    ).results.map((row) => row.d),
+  const db = database(env);
+  const sources = {
+    [REVIEW_SERIES]: {
+      latest: (
+        await db.prepare("SELECT MAX(trade_date) AS d FROM reviews").first()
+      )?.d,
+      count: (await db.prepare("SELECT COUNT(*) AS c FROM reviews").first()).c,
+    },
+    [ACCOUNT_SERIES]: {
+      latest: (
+        await db
+          .prepare(
+            "SELECT MAX(trade_date) AS d FROM paper_equity WHERE json_extract(payload, '$.complete') = 1",
+          )
+          .first()
+      )?.d,
+      count: (
+        await db
+          .prepare(
+            "SELECT COUNT(*) AS c FROM paper_equity WHERE json_extract(payload, '$.complete') = 1",
+          )
+          .first()
+      ).c,
+    },
   };
   const tasks = [];
-  for (const [seriesId, dates] of Object.entries(sourceDates)) {
+  for (const [seriesId, { latest, count }] of Object.entries(sources)) {
+    if (!latest) continue;
     for (const horizon of windows) {
-      const latest = (
+      if (count < horizon) continue;
+      const latestReport = (
         await repository.listReports({ seriesId, limit: 1, horizon })
       ).at(0);
-      for (const date of dates) {
-        if (latest && date <= latest.asOf) break;
-        tasks.push({ seriesId, asOf: date, horizon });
-      }
+      if (latestReport && latestReport.asOf >= latest) continue;
+      tasks.push({ seriesId, asOf: latest, horizon });
     }
   }
   return tasks;
@@ -1115,8 +1129,8 @@ export async function runEvidenceWorkerTick(env, { calendarDates } = {}) {
     try {
       const report =
         task.seriesId === REVIEW_SERIES
-          ? await buildReviewEvidence(env, task)
-          : await buildAccountEvidence(env, task);
+          ? await buildReviewEvidence(env, { ...task, calendarDates })
+          : await buildAccountEvidence(env, { ...task, calendarDates });
       results.push({
         ...task,
         reportId: report.id,
