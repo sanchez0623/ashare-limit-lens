@@ -78,7 +78,14 @@ function expectedSecondaryFamilies({
       payloads.map((payload) => {
         const sector = payload.sectors?.find((item) => item.name === name);
         const value = sector?.excessDecimal;
-        return Number.isFinite(value) ? value : null;
+        // 与发布端同规则（P1 复核）：单日板块样本不足的日期置空，
+        // 不得计入有效天数或进入区间。
+        if (
+          !Number.isFinite(value) ||
+          (sector?.validStocks ?? 0) < minSectorStocks
+        )
+          return null;
+        return value;
       }),
     ]),
   );
@@ -593,24 +600,41 @@ export async function verifyEvidenceBundle(bundle) {
         // 板块次要检验族核验（§3.2/§6.4 批次 C）：独立重算并与报告逐项
         // 核对族大小、板块集合、状态、区间、p 值与 Holm 校正；账户系列
         // 不输出板块族（口径不同，混入即拒绝）。
-        const recordedSecondary = report.payload.secondaryFamilies ?? [];
+        // 旧报告格式兼容（P2 复核）：无 secondaryFamilies 字段的迁移前
+        // 报告按旧口径只核主族；新格式必须携带完整次要族。
+        const recordedSecondary = report.payload.secondaryFamilies;
+        const legacySecondary = !Array.isArray(recordedSecondary);
         if (report.seriesId !== REVIEW_EVIDENCE_SERIES) {
-          if (recordedSecondary.some((family) => family.entries?.length))
+          if (
+            !legacySecondary &&
+            recordedSecondary.some((family) => family.entries?.length)
+          )
             return fail(checks, "非复盘系列不得输出板块次要检验族");
-        } else {
+        } else if (!legacySecondary) {
           const expectedFamilies = expectedSecondaryFamilies({
             policy,
             validDates,
             metricsByDate,
             matrix,
           });
-          const recordedByName = new Map(
-            recordedSecondary.map((family) => [family.name, family]),
-          );
+          // 精确多重集比对（P1 复核）：族数量与族名必须与重算一致且无
+          // 重复——重复同名族夹带编造结果、塞入未预登记族名都在此被拒。
+          if (recordedSecondary.length !== expectedFamilies.length)
+            return fail(checks, "次要检验族数量与重算不一致");
+          const recordedNames = recordedSecondary
+            .map((family) => family.name)
+            .sort();
+          const expectedNames = expectedFamilies
+            .map((family) => family.name)
+            .sort();
+          if (JSON.stringify(recordedNames) !== JSON.stringify(expectedNames))
+            return fail(checks, "次要检验族名与预登记不一致");
+          if (new Set(recordedNames).size !== recordedNames.length)
+            return fail(checks, "次要检验族存在重复族名");
           for (const expectedFamily of expectedFamilies) {
-            const recordedFamily = recordedByName.get(expectedFamily.name);
-            if (!recordedFamily)
-              return fail(checks, `缺少次要检验族 ${expectedFamily.name}`);
+            const recordedFamily = recordedSecondary.find(
+              (family) => family.name === expectedFamily.name,
+            );
             if (recordedFamily.familySize !== expectedFamily.familySize)
               return fail(
                 checks,
@@ -691,18 +715,34 @@ export async function verifyEvidenceBundle(bundle) {
               }
             }
           }
-          if (
-            recordedSecondary.some(
-              (family) =>
-                !["SECTOR_SECONDARY_EXCESS", "SECTOR_AGGREGATE_IC"].includes(
-                  family.name,
-                ),
-            )
-          )
-            return fail(checks, "次要检验族包含未预登记的族名");
         }
       }
     }
+    // 成本校准状态核验（P1 复核）：报告声明的校准等级必须由导出内的成本
+    // 政策记录支撑——按摘要找回政策行、重算其摘要并逐字段核对；无摘要
+    // （表未迁移兜底）只允许先验未校准，宣称已校准即拒绝。
+    const costClaim = report.payload.cost;
+    if (costClaim?.digest) {
+      const costRow = (bundle.executionCostPolicies ?? []).find(
+        (row) => row.digest === costClaim.digest,
+      );
+      if (!costRow) return fail(checks, "导出缺少与报告成本指纹一致的成本政策");
+      if ((await digestOf(costRow.payload)) !== costRow.digest)
+        return fail(checks, "成本政策摘要不一致");
+      for (const key of [
+        "modelVersion",
+        "policyId",
+        "version",
+        "calibrationStatus",
+      ])
+        if (costClaim[key] !== costRow[key])
+          return fail(checks, `成本指纹 ${key} 与成本政策不一致`);
+    } else if (
+      costClaim &&
+      costClaim.calibrationStatus &&
+      costClaim.calibrationStatus !== "PRIOR_UNCALIBRATED"
+    )
+      return fail(checks, "无成本政策摘要不得宣称已校准");
     // 标签由窗口/政策/系列结构完全派生（§4/§7.1/§10）：篡改受限标注
     // （如 METHOD_SIMULATION_LIMITED）以美化展示在此被拒。
     const expectedTags = ["EXPLORATORY_REPEATED_LOOKS"];

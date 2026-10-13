@@ -87,6 +87,31 @@ export async function latestPolicyBundle(db) {
   return bundle;
 }
 
+// 按政策摘要找回政策行（P1 复核）：证据导出据此附带成本政策记录，
+// verifier 重算摘要并逐字段核对校准等级，使报告声明的校准状态可验证。
+// 存储行内容损坏（rowToBundle 抛错）时跳过该行；找不到匹配返回 null。
+export async function policyBundleByDigest(db, digest) {
+  const rows = (
+    await db
+      .prepare(
+        "SELECT * FROM execution_cost_policies ORDER BY version DESC LIMIT 50",
+      )
+      .all()
+  ).results;
+  for (const row of rows) {
+    let bundle;
+    try {
+      bundle = rowToBundle(row);
+    } catch {
+      continue;
+    }
+    if ((await policyDigest(bundle.payload)) === digest) return bundle;
+  }
+  const fallback = defaultExecutionCostPolicy();
+  if ((await policyDigest(fallback.payload)) === digest) return fallback;
+  return null;
+}
+
 export class ExecutionCostRepository {
   constructor(env) {
     this.db = database(env);

@@ -563,9 +563,9 @@ export async function scheduleCohortForward(
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
   // 捕获时点的执行成本政策快照（statistical-evidence.md §7.2 批次 C）。
-  const executionCostPolicy = await latestPolicyBundle(env.DB).catch(
-    () => null,
-  );
+  // 存储损坏时 latestPolicyBundle 抛错，捕获失败——成本口径不可核验的
+  // 批次不得开跑（P1 复核：不静默吞掉完整性错误）。
+  const executionCostPolicy = await latestPolicyBundle(env.DB);
   if (!selectionPolicyMatches(cohort.reservationManifest, account.book)) {
     await closeCohort(
       cohorts,
@@ -1438,9 +1438,9 @@ export async function evaluateCohort(
   const primary = await papers.account();
   const feeConfig = feesForBook(primary.book);
   const feeConfigDigest = await digestOf(feeConfig);
-  const executionCostPolicy = await latestPolicyBundle(env.DB).catch(
-    () => null,
-  );
+  // 存储损坏时抛错：评估中止并在下一盘后重试，绝不以不可核验的成本口径
+  // 发布评估报告（P1 复核）。
+  const executionCostPolicy = await latestPolicyBundle(env.DB);
   const executionCost = executionCostPolicy
     ? {
         modelVersion: executionCostPolicy.modelVersion,

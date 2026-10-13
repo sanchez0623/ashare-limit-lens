@@ -2,7 +2,10 @@
 // 冻结样本与 Top 分组下的单日 IC 与观察超额。纯函数：无数据库/网络依赖；
 // 收益内核统一小数（0.003 = 0.3 个百分点 = 30bps），单位转换只在 DTO/显示边界。
 import { digestOf } from "./research-lineage.js";
-import { MIN_SECTOR_COUNT } from "./evidence-policy.js";
+import {
+  MIN_SECTOR_COUNT,
+  SECTOR_MIN_VALID_STOCKS,
+} from "./evidence-policy.js";
 
 // 并列分数取平均秩（与既有 correlation 口径一致）；常数序列返回 null。
 export function averageRanks(values) {
@@ -159,13 +162,21 @@ export async function computeDailyReviewMetrics({
         Number.isFinite(sector.score) &&
         Number.isFinite(sector.meanReturnDecimal),
     );
-  const sectorIc =
-    sectors.length >= MIN_SECTOR_COUNT
+  const sectorIc = (() => {
+    // 聚合秩相关只使用当日满足单日样本下限的板块（P1 复核）：1–2 只股票
+    // 的板块均值不是合格的板块观察，不得参与秩相关。
+    const sufficient = sectors.filter(
+      (sector) =>
+        sector.validStocks >=
+        Math.min(SECTOR_MIN_VALID_STOCKS, policy.minValidStocks),
+    );
+    return sufficient.length >= MIN_SECTOR_COUNT
       ? spearman(
-          sectors.map((sector) => sector.score),
-          sectors.map((sector) => sector.meanReturnDecimal),
+          sufficient.map((sector) => sector.score),
+          sufficient.map((sector) => sector.meanReturnDecimal),
         )
       : null;
+  })();
   // 板块不足不拖垮主指标的单日质量：IC/超额质量门与板块聚合门分开，
   // sectorIc 为 null 时报告端按"板块序列不可估计"如实降级（§3.2）。
   const status = reasons.length ? "INSUFFICIENT_SAMPLE" : "READY";

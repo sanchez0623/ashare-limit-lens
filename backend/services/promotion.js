@@ -68,6 +68,16 @@ export async function promoteCohortChampion(
   );
   if (initialAccountsDigest !== forwardManifest.initialAccountsDigest)
     throw new Error(`期初净值摘要与捕获清单不一致；${REPORT_UNTRUSTED}`);
+  // 成本指纹核验（statistical-evidence.md §7.2 批次 C）：捕获清单记录了
+  // 执行成本政策摘要的批次，在成本口径变化后不再晋级；旧批次无该字段不受
+  // 影响。latestPolicyBundle 只在表未迁移时回退默认政策，存储内容损坏会
+  // 抛错——成本口径不可核验时晋级必须失败，不得静默放行（P1 复核）。
+  const costPolicy = await latestPolicyBundle(env.DB);
+  if (
+    forwardManifest.executionCostDigest &&
+    costPolicy.payloadDigest !== forwardManifest.executionCostDigest
+  )
+    throw new Error("执行成本政策在窗口期内变化或不可核验，本批资格失效");
   // 共同日期占用与完整登记（§8.2）：报告窗口必须覆盖要求的共同市场日数，
   // 且每个窗口日都由主账户结算（dataset 落库）、登记在批次名下（claim）、
   // 并计入批次 tradingDates（claim、样本用途与窗口推进全部落库的完整日
@@ -173,15 +183,6 @@ export async function promoteCohortChampion(
   const feeConfigDigest = await digestOf(feeConfig);
   if (feeConfigDigest !== forwardManifest.feeConfigDigest)
     throw new Error("费用配置在窗口期内变化，本批资格失效");
-  // 成本指纹核验（statistical-evidence.md §7.2 批次 C）：捕获清单记录了
-  // 执行成本政策摘要的批次，在成本口径变化后不再晋级；旧批次无该字段不受影响。
-  const costPolicy = await latestPolicyBundle(env.DB).catch(() => null);
-  if (
-    forwardManifest.executionCostDigest &&
-    costPolicy &&
-    costPolicy.payloadDigest !== forwardManifest.executionCostDigest
-  )
-    throw new Error("执行成本政策在窗口期内变化，本批资格失效");
   if (account.book.activeStrategy !== cohort.parentVersion)
     throw new Error("主账户父策略已变化，本批资格失效");
   if (

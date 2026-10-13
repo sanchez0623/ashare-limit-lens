@@ -117,6 +117,25 @@ server.listen(port, host, () => {
         );
     });
   }
+  // 独立统计 worker（statistical-evidence.md §8.3）：补齐缺失证据窗口，
+  // 与盘后主流程幂等共存；EVIDENCE_WORKER_ENABLED=false 时禁用。
+  if (process.env.EVIDENCE_WORKER_ENABLED !== "false") {
+    const spawnEvidenceWorker = () =>
+      spawn(process.execPath, ["scripts/evidence-worker.mjs"], {
+        env: process.env,
+        stdio: "inherit",
+        detached: false,
+      });
+    let evidenceWorker = spawnEvidenceWorker();
+    evidenceWorker.on("exit", (code) => {
+      if (!stopped) {
+        console.log(`Evidence worker exited (${code}); restarting in 60s`);
+        setTimeout(() => {
+          evidenceWorker = spawnEvidenceWorker();
+        }, 60000);
+      }
+    });
+  }
 });
 let stopped = false;
 for (const signal of ["SIGTERM", "SIGINT"])

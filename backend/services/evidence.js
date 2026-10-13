@@ -27,7 +27,10 @@ import {
 } from "../domain/research-statistics.js";
 import { computeDailyReviewMetrics } from "../domain/review-metrics.js";
 import { tradingCalendar } from "./market.js";
-import { latestPolicyBundle } from "../storage/execution-cost.js";
+import {
+  latestPolicyBundle,
+  policyBundleByDigest,
+} from "../storage/execution-cost.js";
 
 const NAMESPACE = "main";
 // 系列与检验族常量统一从预登记政策导出（P1-2）：verifier 按同一来源核对。
@@ -236,7 +239,14 @@ function buildSectorSecondaryFamilies({
         payloads.map((payload) => {
           const sector = payload.sectors?.find((item) => item.name === name);
           const value = sector?.excessDecimal;
-          return Number.isFinite(value) ? value : null;
+          // 单日板块样本不足（有效股票少于下限）的日期不是该板块的有效
+          // 样本：置空处理（P1 复核），不得计入有效天数或进入区间。
+          if (
+            !Number.isFinite(value) ||
+            (sector?.validStocks ?? 0) < minSectorStocks
+          )
+            return null;
+          return value;
         }),
       ]),
     );
@@ -856,21 +866,25 @@ export async function buildAccountEvidence(
     });
     previousEquity = equity;
   }
-  // 成本联动（§7.2/§11 批次 C）：账户系列绑定执行成本指纹与校准等级；
-  // 校准状态由成本政策事实派生，不再硬编码为先验未校准。
-  let executionCost = null;
-  try {
-    const bundle = await latestPolicyBundle(database(env));
-    executionCost = {
-      modelVersion: bundle.modelVersion,
-      policyId: bundle.id,
-      version: bundle.version,
-      digest: bundle.payloadDigest,
-      calibrationStatus: bundle.calibrationStatus,
-    };
-  } catch {
-    executionCost = null;
-  }
+  // 成本联动（§7.2/§11 批次 C）：账户系列绑定执行成本指纹与校准等级。
+  // latestPolicyBundle 只在表未迁移时返回默认政策，存储损坏抛错并使本次
+  // 证据构建失败（P1 复核：不得静默降级为"先验未校准"掩盖损坏）；
+  // 表未迁移时以无摘要的先验未校准兜底，verifier 按同一规则核验。
+  const executionCostBundle = await latestPolicyBundle(database(env)).catch(
+    (error) => {
+      if (/no such table/i.test(String(error?.message ?? error))) return null;
+      throw error;
+    },
+  );
+  const executionCost = executionCostBundle
+    ? {
+        modelVersion: executionCostBundle.modelVersion,
+        policyId: executionCostBundle.id,
+        version: executionCostBundle.version,
+        digest: executionCostBundle.payloadDigest,
+        calibrationStatus: executionCostBundle.calibrationStatus,
+      }
+    : { calibrationStatus: "PRIOR_UNCALIBRATED", digest: null };
   return publishWindowReport({
     repository,
     policy,
@@ -952,12 +966,34 @@ export async function exportEvidence(env, { id }) {
         createdAt: null,
       });
   }
+  // 成本政策记录（P1 复核）：报告声明了成本指纹时，导出必须附带对应的
+  // 成本政策行，verifier 据此核验校准等级；报告无指纹（旧格式/复盘系列）
+  // 时不附带。
+  let executionCostPolicies = [];
+  if (report.payload.cost?.digest) {
+    const costBundle = await policyBundleByDigest(
+      database(env),
+      report.payload.cost.digest,
+    );
+    if (costBundle)
+      executionCostPolicies = [
+        {
+          policyId: costBundle.id,
+          version: costBundle.version,
+          modelVersion: costBundle.modelVersion,
+          payload: costBundle.payload,
+          digest: costBundle.payloadDigest,
+          calibrationStatus: costBundle.calibrationStatus,
+        },
+      ];
+  }
   return {
     format: "limit-lens-evidence-v1",
     exportedAt: new Date().toISOString(),
     report,
     dailyMetrics,
     policies,
+    executionCostPolicies,
     note: "导出可独立重算：verify:evidence 按冻结输入、政策与方法核验摘要、区间与用途限制。",
   };
 }
@@ -1032,4 +1068,63 @@ export async function refreshEvidence(env, { date, calendarDates } = {}) {
     }
   }
   return results;
+}
+
+// 独立统计 worker（§8.3）：发现尚无已发布报告的 (系列, 窗口, 来源日)
+// 组合并补齐发布。来源日 = 复盘已保存日 / 账户净值完整结算日；发布幂等
+// （同输入唯一），重复执行只补缺失。盘后流程（runDaily → refreshEvidence）
+// 仍是主路径，worker 用于补齐失败后的自愈与手动补偿，不重算已有报告。
+export async function discoverMissingEvidenceWindows(env) {
+  const repository = new EvidenceRepository(env);
+  const windows = (await policyBundle(repository)).payload.windows;
+  const sourceDates = {
+    [REVIEW_SERIES]: (
+      await database(env)
+        .prepare(
+          "SELECT DISTINCT trade_date AS d FROM reviews ORDER BY d DESC LIMIT 10",
+        )
+        .all()
+    ).results.map((row) => row.d),
+    [ACCOUNT_SERIES]: (
+      await database(env)
+        .prepare(
+          "SELECT DISTINCT trade_date AS d FROM paper_equity WHERE json_extract(payload, '$.complete') = 1 ORDER BY d DESC LIMIT 10",
+        )
+        .all()
+    ).results.map((row) => row.d),
+  };
+  const tasks = [];
+  for (const [seriesId, dates] of Object.entries(sourceDates)) {
+    for (const horizon of windows) {
+      const latest = (
+        await repository.listReports({ seriesId, limit: 1, horizon })
+      ).at(0);
+      for (const date of dates) {
+        if (latest && date <= latest.asOf) break;
+        tasks.push({ seriesId, asOf: date, horizon });
+      }
+    }
+  }
+  return tasks;
+}
+
+export async function runEvidenceWorkerTick(env, { calendarDates } = {}) {
+  const tasks = await discoverMissingEvidenceWindows(env);
+  const results = [];
+  for (const task of tasks) {
+    try {
+      const report =
+        task.seriesId === REVIEW_SERIES
+          ? await buildReviewEvidence(env, task)
+          : await buildAccountEvidence(env, task);
+      results.push({
+        ...task,
+        reportId: report.id,
+        status: report.payload.status,
+      });
+    } catch (error) {
+      results.push({ ...task, status: "FAILED", error: error.message });
+    }
+  }
+  return { discovered: tasks.length, results };
 }
