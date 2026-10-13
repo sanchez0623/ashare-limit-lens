@@ -72,7 +72,7 @@ export function validateProposal(output, base = BASE_STRATEGY) {
     rationale: output.rationale,
   };
 }
-export function replayStrategy(
+function* replayStrategySteps(
   pairs,
   strategy,
   initialCapital = DEFAULT_INITIAL_CAPITAL,
@@ -92,6 +92,7 @@ export function replayStrategy(
   const policyFields = selectionPolicyFields(policy);
   const equities = [],
     fills = [];
+  const executionDiagnostics = [];
   let covered = true;
   let reason = null;
   // 原始分跨日回查：逐日累积已见评分，持仓掉出当日评分池时取最近一次入池评分。
@@ -146,6 +147,33 @@ export function replayStrategy(
           covered = false;
         for (let i = 0; i < observations.length; i++) {
           const tick = observations[i];
+          if (options.strictExecutionCoverage) {
+            const required = new Set([
+              ...plan.orders
+                .filter((o) => o.side !== "NONE")
+                .map((o) => o.code),
+              ...book.positions.map((p) => p.code),
+            ]);
+            for (const code of required) {
+              const quote = tick.quotes[code];
+              const age = quote
+                ? Date.parse(tick.observedAt) - Date.parse(quote.timestamp)
+                : NaN;
+              if (
+                !quote ||
+                !Number.isFinite(age) ||
+                age < -3000 ||
+                age > 15000 ||
+                quote.date !== pair.dataset.date ||
+                !(quote.closeCents > 0) ||
+                !Number.isFinite(quote.volumeShares) ||
+                quote.volumeShares < 0
+              ) {
+                covered = false;
+                reason ??= "压力路径缺少完整、新鲜且可用的实时行情";
+              }
+            }
+          }
           if (
             i &&
             new Date(tick.observedAt) -
@@ -168,6 +196,7 @@ export function replayStrategy(
           book = step.book;
           session = step.session;
           liveFills.push(...step.ledger);
+          if (i % 100 === 99) yield;
         }
         result = closeSession(book, session, pair.dataset);
         result.ledger = liveFills;
@@ -176,6 +205,10 @@ export function replayStrategy(
       book = result.book;
       equities.push(result.equity);
       fills.push(...result.ledger);
+      executionDiagnostics.push({
+        date: pair.dataset.date,
+        outcomes: result.outcomes,
+      });
       // 日线观察与可信执行净收益必须隔离（§4.4）：DAILY_OBSERVATION_ONLY
       // 的窗口不构成覆盖，不能用于晋级或验证结论；观察口径评估除外。
       if (
@@ -209,6 +242,7 @@ export function replayStrategy(
       reason = error.message;
       break;
     }
+    yield;
   }
   return {
     days: equities.length,
@@ -228,7 +262,25 @@ export function replayStrategy(
     fills,
     feesCents: book.feesCents,
     equities,
+    executionDiagnostics,
   };
+}
+export function replayStrategy(...args) {
+  const iterator = replayStrategySteps(...args);
+  for (;;) {
+    const step = iterator.next();
+    if (step.done) return step.value;
+  }
+}
+
+export async function replayStrategyAsync(...args) {
+  const iterator = replayStrategySteps(...args);
+  for (;;) {
+    const step = iterator.next();
+    if (step.done) return step.value;
+    await args[6]?.onYield?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
 }
 export function validateCandidate(
   trainingPairs,

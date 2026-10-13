@@ -32,6 +32,7 @@ import {
   latestPolicyBundle,
   policyBundleByReference,
 } from "../storage/execution-cost.js";
+import { calibrationForPolicy } from "./execution-calibration.js";
 
 const NAMESPACE = "main";
 // 系列与检验族常量统一从预登记政策导出（P1-2）：verifier 按同一来源核对。
@@ -981,6 +982,7 @@ export async function exportEvidence(env, { id }) {
   // 成本政策行，verifier 据此核验校准等级；报告无指纹（旧格式/复盘系列）
   // 时不附带。
   let executionCostPolicies = [];
+  let executionCostCalibrations = [];
   if (report.payload.cost?.digest) {
     const costBundle = await policyBundleByReference(
       database(env),
@@ -999,6 +1001,10 @@ export async function exportEvidence(env, { id }) {
           effectiveFrom: costBundle.effectiveFrom,
         },
       ];
+    if (costBundle?.calibrationStatus !== "PRIOR_UNCALIBRATED" && costBundle) {
+      const calibration = await calibrationForPolicy(env, costBundle.id);
+      if (calibration) executionCostCalibrations = [calibration];
+    }
   }
   return {
     format: "limit-lens-evidence-v1",
@@ -1007,6 +1013,7 @@ export async function exportEvidence(env, { id }) {
     dailyMetrics,
     policies,
     executionCostPolicies,
+    executionCostCalibrations,
     note: "导出可独立重算：verify:evidence 按冻结输入、政策与方法核验摘要、区间与用途限制。",
   };
 }

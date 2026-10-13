@@ -15,6 +15,7 @@ import {
   frozenSelectionPolicy,
 } from "../domain/signal-selection.js";
 import { portfolioSelectionMatches } from "./portfolio-runner.js";
+import { assertCohortStressPromotion } from "./execution-stress.js";
 
 // 统一晋级入口（§8.3）：全部自动、人工和旧 API 启用入口共用。
 // 验证报告摘要、成员资格、当前父策略和配置指纹后，以主账户 revision CAS
@@ -190,6 +191,22 @@ export async function promoteCohortChampion(
     report.scoringVersion !== SCORING_VERSION
   )
     throw new Error("执行或评分源码版本与冻结清单不一致，本批资格失效");
+  await assertCohortStressPromotion(env, cohort, report);
+  if (
+    (await digestOf(costPolicy)) !==
+    (await digestOf(cohort.reservationManifest.executionStress.policy))
+  )
+    throw new Error("成本政策版本或校准声明与事前冻结不一致");
+  const championParamsRow = await papers.db
+    .prepare("SELECT params FROM strategy_versions WHERE id=?")
+    .bind(championVersionId)
+    .first();
+  if (
+    !championParamsRow ||
+    (await digestOf(JSON.parse(championParamsRow.params))) !==
+      member.paramsDigest
+  )
+    throw new Error("待启用策略版本与成本压力验证的冻结参数不一致");
   // 以主账户 revision CAS 更新未来策略引用；不复制影子持仓、不重置风险峰值。
   const revision = account.revision;
   const runId = crypto.randomUUID();
@@ -207,7 +224,7 @@ export async function promoteCohortChampion(
   const statements = [
     papers.db
       .prepare(
-        "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ?",
+        "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?)",
       )
       .bind(
         JSON.stringify(book),
@@ -215,6 +232,10 @@ export async function promoteCohortChampion(
         new Date().toISOString(),
         "primary",
         revision,
+        costPolicy.modelVersion,
+        costPolicy.id,
+        championVersionId,
+        championParamsRow.params,
       ),
     guarded(
       "UPDATE strategy_versions SET status = 'RETIRED' WHERE status = 'ACTIVE'",

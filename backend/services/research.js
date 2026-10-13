@@ -903,7 +903,9 @@ export async function promoteCandidate(repository, env, id) {
     throw new Error(
       `只有完成前瞻影子验证的实验才能启用（当前阶段：${experiment.stage}）；历史筛查通过不构成启用资格`,
     );
-  return repository.activate(id);
+  throw new Error(
+    "旧单候选报告未冻结成本压力闸门，请通过赛马批次重新验证后启用",
+  );
 }
 export async function researchStatus(env) {
   const research = new ResearchRepository(env);

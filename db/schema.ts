@@ -2,6 +2,7 @@ import {
   sqliteTable,
   text,
   integer,
+  real,
   index,
   primaryKey,
   uniqueIndex,
@@ -232,3 +233,112 @@ export const historyImportJobs = sqliteTable("history_import_jobs", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+export const executionStressReports = sqliteTable(
+  "execution_stress_reports",
+  {
+    id: text("id").primaryKey(),
+    cohortId: text("cohort_id").notNull(),
+    inputDigest: text("input_digest").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("execution_stress_cohort_input").on(
+      table.cohortId,
+      table.inputDigest,
+    ),
+  ],
+);
+
+export const executionCalibrationInputs = sqliteTable(
+  "execution_calibration_inputs",
+  {
+    id: text("id").primaryKey(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+    rawDigest: text("raw_digest").notNull().unique(),
+    sampleDigest: text("sample_digest"),
+    createdAt: text("created_at").notNull(),
+  },
+);
+
+export const executionStressPaths = sqliteTable(
+  "execution_stress_paths",
+  {
+    inputDigest: text("input_digest").notNull(),
+    multiplier: real("multiplier").notNull(),
+    strategyId: text("strategy_id").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.inputDigest, table.multiplier, table.strategyId],
+    }),
+  ],
+);
+
+export const executionCostPolicies = sqliteTable(
+  "execution_cost_policies",
+  {
+    id: text("id").primaryKey(),
+    version: integer("version").notNull(),
+    modelVersion: text("model_version").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+    calibrationStatus: text("calibration_status")
+      .notNull()
+      .default("PRIOR_UNCALIBRATED"),
+    calibrationCutoff: text("calibration_cutoff"),
+    effectiveFrom: text("effective_from"),
+    calibrationId: text("calibration_id"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("execution_cost_policies_model_version").on(
+      table.modelVersion,
+      table.version,
+    ),
+  ],
+);
+
+export const executionCostCalibrations = sqliteTable(
+  "execution_cost_calibrations",
+  {
+    id: text("id").primaryKey(),
+    inputDigest: text("input_digest").notNull(),
+    cutoff: text("cutoff").notNull(),
+    report: text("report").notNull(),
+    digest: text("digest").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+);
+
+export const executionCalibrationSampleSets = sqliteTable(
+  "execution_calibration_sample_sets",
+  {
+    sampleDigest: text("sample_digest").primaryKey(),
+    inputId: text("input_id").notNull(),
+  },
+);
+export const executionCalibrationSampleOwners = sqliteTable(
+  "execution_calibration_sample_owners",
+  {
+    sampleIdentity: text("sample_identity").primaryKey(),
+    inputId: text("input_id").notNull(),
+  },
+);
+export const executionCalibrationDateUses = sqliteTable(
+  "execution_calibration_date_uses",
+  {
+    inputId: text("input_id").notNull(),
+    outcomeDate: text("outcome_date").notNull(),
+    role: text("role").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.inputId, table.outcomeDate] }),
+    index("execution_calibration_date_idx").on(table.outcomeDate),
+  ],
+);

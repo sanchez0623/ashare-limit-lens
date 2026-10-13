@@ -13,6 +13,10 @@ import {
   policyDigest,
 } from "../storage/execution-cost.js";
 import { CohortRepository } from "../storage/cohorts.js";
+import {
+  exportExecutionCalibration,
+  calibrationForPolicy,
+} from "./execution-calibration.js";
 import { PaperRepository } from "../storage/paper.js";
 
 export async function effectiveExecutionCostPolicy(env) {
@@ -27,8 +31,15 @@ export async function getExecutionCostConfig(env) {
     default: defaultExecutionCostPolicy(),
     defaultPayload: DEFAULT_EXECUTION_COST_PAYLOAD,
     fields: EXECUTION_COST_FIELDS,
+    calibration:
+      policy.calibrationStatus === "PRIOR_UNCALIBRATED"
+        ? null
+        : (await calibrationForPolicy(env, policy.id))?.report,
     modelVersion: EXECUTION_COST_MODEL,
-    note: "所有参数是工程先验与压力假设，不是已测得的市场成本；修改产生新版本并从下一个尚未冻结的计划生效，活动研究窗口内不允许更换政策。",
+    note:
+      policy.calibrationStatus === "PRIOR_UNCALIBRATED"
+        ? "当前参数是工程先验与压力假设；修改产生新版本并从下一个尚未冻结的计划生效，活动研究窗口内不允许更换政策。"
+        : "校准范围与保留先验的分层以校准报告为准；修改产生新版本并从下一个尚未冻结的计划生效，活动研究窗口内不允许更换政策。",
   };
 }
 
@@ -41,18 +52,37 @@ export async function saveExecutionCostPolicy(env, input) {
     );
   const repository = new ExecutionCostRepository(env);
   const current = await repository.latest();
-  const payload = normalizeExecutionCostPayload({
-    ...DEFAULT_EXECUTION_COST_PAYLOAD,
-    ...input?.payload,
-    periodBaseBps: {
-      ...DEFAULT_EXECUTION_COST_PAYLOAD.periodBaseBps,
-      ...input?.payload?.periodBaseBps,
-    },
-  });
+  const calibration = input?.calibrationId
+    ? await exportExecutionCalibration(env, input.calibrationId)
+    : null;
+  if (
+    input?.calibrationStatus &&
+    input.calibrationStatus !== "PRIOR_UNCALIBRATED" &&
+    !calibration
+  )
+    throw new Error("不能手工声明成本已校准，请先导入真实数据并通过校准验证");
+  if (calibration && input?.payload)
+    throw new Error("采用校准政策时不能另传参数，须使用校准报告冻结的参数");
+  const payload = calibration
+    ? calibration.report.payload
+    : normalizeExecutionCostPayload({
+        ...DEFAULT_EXECUTION_COST_PAYLOAD,
+        ...input?.payload,
+        periodBaseBps: {
+          ...DEFAULT_EXECUTION_COST_PAYLOAD.periodBaseBps,
+          ...input?.payload?.periodBaseBps,
+        },
+      });
   const next = await repository.save({
     payload,
-    calibrationStatus: input?.calibrationStatus,
-    effectiveFrom: input?.effectiveFrom,
+    calibrationStatus:
+      calibration?.report.calibrationStatus ?? "PRIOR_UNCALIBRATED",
+    calibrationCutoff: calibration?.report.cutoff ?? null,
+    calibrationId: calibration?.id ?? null,
+    effectiveFrom: calibration
+      ? (input?.effectiveFrom ??
+        new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10))
+      : input?.effectiveFrom,
   });
   return {
     saved: true,

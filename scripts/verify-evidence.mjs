@@ -25,6 +25,7 @@ import {
   DIAGNOSTIC_METHOD_VERSION,
 } from "../backend/domain/research-statistics.js";
 import { digestOf } from "../backend/domain/research-lineage.js";
+import { verifyCalibratedPolicy } from "../backend/domain/execution-calibration.js";
 
 const metricValueKey = (metric) =>
   metric === "MEAN_DAILY_IC"
@@ -750,6 +751,7 @@ export async function verifyEvidenceBundle(bundle) {
     // 政策记录支撑——按摘要找回政策行、重算其摘要并逐字段核对；无摘要
     // （表未迁移兜底）只允许先验未校准，宣称已校准即拒绝。
     const costClaim = report.payload.cost;
+    let claimedCostPolicy = null;
     if (costClaim?.digest) {
       const costRow = (bundle.executionCostPolicies ?? []).find(
         (row) =>
@@ -770,6 +772,7 @@ export async function verifyEvidenceBundle(bundle) {
       ])
         if (costClaim[key] !== costRow[key])
           return fail(checks, `成本指纹 ${key} 与成本政策不一致`);
+      claimedCostPolicy = costRow;
     } else if (
       costClaim &&
       costClaim.calibrationStatus &&
@@ -787,6 +790,14 @@ export async function verifyEvidenceBundle(bundle) {
       (await digestOf(costClaim)) !== (await digestOf(report.inputs.cost))
     )
       return fail(checks, "成本指纹与冻结成本输入不一致");
+    await verifyCalibratedPolicy(
+      claimedCostPolicy,
+      (bundle.executionCostCalibrations ?? []).find(
+        (c) =>
+          c.report?.payloadDigest === claimedCostPolicy?.digest &&
+          c.report?.cutoff === claimedCostPolicy?.calibrationCutoff,
+      ),
+    );
     // 标签由窗口/政策/系列结构完全派生（§4/§7.1/§10）：篡改受限标注
     // （如 METHOD_SIMULATION_LIMITED）以美化展示在此被拒。
     const expectedTags = ["EXPLORATORY_REPEATED_LOOKS"];

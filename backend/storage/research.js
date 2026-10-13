@@ -287,6 +287,18 @@ export class ResearchRepository {
         )
         .bind(this.namespace, date)
         .first();
+      if (
+        this.namespace === "main" &&
+        (await this.db
+          .prepare(
+            "SELECT input_id FROM execution_calibration_date_uses WHERE outcome_date=? LIMIT 1",
+          )
+          .bind(date)
+          .first())
+      )
+        throw new Error(
+          `日期 ${date} 已登记为成本校准用途，不能作为正式研究测试数据`,
+        );
       if (used.n)
         throw new Error(
           `日期 ${date} 已被历史训练、测试或参数选择占用，不能作为新测试数据`,

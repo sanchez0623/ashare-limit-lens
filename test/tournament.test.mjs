@@ -191,6 +191,11 @@ function forwardFrames() {
 async function seedForwardData(DB, env, count = SEED, days = FORWARD_DAYS) {
   const forwardPairs = pairs(count + days + 5).slice(count);
   for (const pair of forwardPairs) {
+    // 前瞻合成环境：边际低分股弱于候选阈值，保留稳健晋级的正例。
+    pair.snapshot.stocks[1].score = 81;
+    pair.snapshot.stocks[1].factors.forEach((f) => {
+      f.value = 81;
+    });
     await DB.prepare(
       "INSERT OR IGNORE INTO snapshots (trade_date,created_at,payload) VALUES (?,?,?)",
     )
@@ -203,7 +208,11 @@ async function seedForwardData(DB, env, count = SEED, days = FORWARD_DAYS) {
     await DB.prepare(
       "INSERT INTO paper_market_days (trade_date,payload,digest) VALUES (?,?,?)",
     )
-      .bind(pair.dataset.date, JSON.stringify(pair.dataset), "fixture")
+      .bind(
+        pair.dataset.date,
+        JSON.stringify(pair.dataset),
+        await digest(pair.dataset),
+      )
       .run();
   }
   return forwardPairs;
@@ -942,7 +951,14 @@ test("完整前瞻窗口：固定窗口、闸门、固定排序与统一自动�
   assert.ok(evaluation, "窗口结束生成唯一最终报告");
   const verdicts = evaluation.payload.verdicts;
   const eligible = verdicts.filter((row) => row.stage === "ELIGIBLE");
-  assert.equal(eligible.length, 1, "只有通过全部闸门的成员合格");
+  assert.equal(
+    eligible.length,
+    1,
+    JSON.stringify({
+      error: evaluation.payload.executionStressError,
+      checks: verdicts.map((v) => v.checks),
+    }),
+  );
   assert.equal(eligible[0].memberId, championMember.memberId);
   assert.ok(evaluation.payload.champion);
   assert.equal(
@@ -1759,13 +1775,17 @@ test("晋级输入验证：报告摘要、净值摘要、共同占用与期末�
         `${dateAt(4)}T07:10:00.000Z`,
       ),
     );
-  const retried = await promoteCohortChampion(env, "c-promo", {
-    evaluation: retryable,
-    effectiveTradeDate: dateAt(6),
-  });
-  assert.equal(retried.promoted, true, "含失败晋级结果的定稿报告可合法重试");
+  await assert.rejects(
+    () =>
+      promoteCohortChampion(env, "c-promo", {
+        evaluation: retryable,
+        effectiveTradeDate: dateAt(6),
+      }),
+    /未事前冻结成本压力/,
+    "旧报告摘要自洽也不能跳过新增成本闸门",
+  );
   const after = await papers.account();
-  assert.equal(after.book.activeStrategy, "v-champ");
+  assert.equal(after.book.activeStrategy, "baseline-v1");
   DB.close();
 });
 

@@ -2,6 +2,7 @@
 // 政策追加不可变：修改参数产生新版本；读取时重新校验摘要。
 import { database } from "./database.js";
 import { RESEARCH_NAMESPACE } from "./cohorts.js";
+import { readExecutionCalibration } from "./calibration.js";
 import {
   EXECUTION_COST_MODEL,
   defaultExecutionCostPolicy,
@@ -41,6 +42,25 @@ function rowToBundle(row) {
     payload: JSON.parse(row.payload),
   });
   return bundle;
+}
+
+async function verifiedCalibration(db, id) {
+  const { report } = await readExecutionCalibration(db, id);
+  if (!report.passed) throw new Error("校准报告未通过后续验证闸门");
+  return report;
+}
+
+async function verifyCalibrationLink(db, row, bundle) {
+  if (bundle.calibrationStatus === "PRIOR_UNCALIBRATED") return;
+  const report = await verifiedCalibration(db, row.calibration_id);
+  if (
+    report.payloadDigest !== bundle.payloadDigest ||
+    report.calibrationStatus !== bundle.calibrationStatus ||
+    report.cutoff !== bundle.calibrationCutoff ||
+    !bundle.effectiveFrom ||
+    bundle.effectiveFrom <= report.cutoff
+  )
+    throw new Error("校准政策参数、证据等级、截止日或生效日期与报告不一致");
 }
 
 // 执行前核验：bundle 内嵌 payload 必须与摘要一致（§3.2/§5.4）。
@@ -84,6 +104,7 @@ export async function latestPolicyBundle(db) {
     throw new Error(
       `成本政策 v${row.version} 存储内容与摘要不一致，拒绝静默回退；请修复或删除该版本`,
     );
+  await verifyCalibrationLink(db, row, bundle);
   return bundle;
 }
 
@@ -110,6 +131,7 @@ export async function policyBundleByReference(db, reference) {
     bundle.payloadDigest !== reference.digest
   )
     throw new Error(`成本政策 v${row.version} 存储内容与摘要不一致`);
+  await verifyCalibrationLink(db, row, bundle);
   return bundle;
 }
 
@@ -134,9 +156,32 @@ export class ExecutionCostRepository {
     calibrationStatus = "PRIOR_UNCALIBRATED",
     calibrationCutoff = null,
     effectiveFrom = null,
+    calibrationId = null,
   }) {
     const normalized = normalizeExecutionCostPayload(payload);
     const digest = await policyDigest(normalized);
+    if (
+      calibrationStatus !== "PRIOR_UNCALIBRATED" &&
+      effectiveFrom !==
+        new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)
+    )
+      throw new Error(
+        "校准政策只允许从当前日期后的新计划生效，不能回填或预约生效日期",
+      );
+    if (calibrationStatus !== "PRIOR_UNCALIBRATED") {
+      const report = await verifiedCalibration(this.db, calibrationId);
+      if (
+        report.payloadDigest !== digest ||
+        report.calibrationStatus !== calibrationStatus ||
+        report.cutoff !== calibrationCutoff ||
+        !effectiveFrom ||
+        effectiveFrom <= calibrationCutoff
+      )
+        throw new Error(
+          "只有校准报告的冻结参数与证据等级可以发布，生效日必须晚于校准截止日",
+        );
+    } else if (calibrationId || calibrationCutoff)
+      throw new Error("未校准政策不能携带真实校准声明");
     const row = await this.db
       .prepare(
         "SELECT COALESCE(MAX(version), 0) AS version FROM execution_cost_policies WHERE model_version=?",
@@ -159,7 +204,7 @@ export class ExecutionCostRepository {
     // 的竞态——同一语句内 NOT EXISTS 判定，活动研究窗口存在时插入 0 行。
     const result = await this.db
       .prepare(
-        "INSERT INTO execution_cost_policies (id,version,model_version,payload,digest,calibration_status,calibration_cutoff,effective_from,created_at) SELECT ?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM research_window_owners WHERE namespace = ?)",
+        "INSERT INTO execution_cost_policies (id,version,model_version,payload,digest,calibration_status,calibration_cutoff,effective_from,created_at,calibration_id) SELECT ?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM research_window_owners WHERE namespace = ?)",
       )
       .bind(
         id,
@@ -171,6 +216,7 @@ export class ExecutionCostRepository {
         calibrationCutoff,
         effectiveFrom,
         new Date().toISOString(),
+        calibrationId,
         RESEARCH_NAMESPACE,
       )
       .run();
