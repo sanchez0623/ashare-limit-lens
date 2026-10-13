@@ -478,6 +478,38 @@ export async function paperOverview(env, attempt = 0) {
   const allLedger = (await repository.history("paper_ledger", 100000)).map(
     (row) => JSON.parse(row.payload),
   );
+  // 历史个股盈亏：按代码聚合全部成交的 FIFO 已实现盈亏（买入腿恒为 0，
+  // 口径与 auditLedger 的全账本合计一致）。history() 按日期倒序返回，
+  // 最近交易日用比较取最大值，不依赖输入顺序。
+  const stockPnl = [];
+  const stockPnlByCode = new Map();
+  for (const fill of allLedger) {
+    let row = stockPnlByCode.get(fill.code);
+    if (!row) {
+      row = {
+        code: fill.code,
+        name: fill.name,
+        lastDate: fill.date,
+        sellCount: 0,
+        winCount: 0,
+        lossCount: 0,
+        realizedPnlCents: 0,
+      };
+      stockPnlByCode.set(fill.code, row);
+      stockPnl.push(row);
+    }
+    if (fill.date > row.lastDate) row.lastDate = fill.date;
+    if (fill.side === "SELL") {
+      row.sellCount += 1;
+      if (fill.realizedPnlCents > 0) row.winCount += 1;
+      else if (fill.realizedPnlCents < 0) row.lossCount += 1;
+    }
+    row.realizedPnlCents += fill.realizedPnlCents || 0;
+  }
+  stockPnl.sort(
+    (a, b) =>
+      b.realizedPnlCents - a.realizedPnlCents || a.code.localeCompare(b.code),
+  );
   const audit = auditLedger(
     book.initialCashCents,
     allLedger,
@@ -531,6 +563,7 @@ export async function paperOverview(env, attempt = 0) {
     equities,
     benchmarkCode,
     ledger: rows[1].map((row) => JSON.parse(row.payload)),
+    stockPnl,
     plan: rows[2][0] ? JSON.parse(rows[2][0].payload) : null,
     run: rows[3][0] ? JSON.parse(rows[3][0].payload) : null,
     audit,

@@ -331,6 +331,20 @@ function render() {
         })
         .join("")
     : '<tr><td colspan="7"><div class="empty compact">当前空仓。下一交易日按照冻结计划与实际成交条件模拟执行。</div></td></tr>';
+  const heldQuantityByCode = new Map(
+    book.positions.map((position) => [
+      position.code,
+      position.lots.reduce((sum, lot) => sum + lot.quantity, 0),
+    ]),
+  );
+  $("paper-stock-pnl-rows").innerHTML = data.stockPnl.length
+    ? data.stockPnl
+        .map(
+          (row) =>
+            `<tr><td><strong>${escape(row.name)}</strong><span class="stock-code">${escape(row.code)}</span></td><td>${escape(row.lastDate)}</td><td>${row.sellCount}</td><td>${row.winCount} 盈 / ${row.lossCount} 亏</td><td class="${tone(row.realizedPnlCents)}">¥ ${money(row.realizedPnlCents)}</td><td>${heldQuantityByCode.get(row.code) ? `仍持有 ${heldQuantityByCode.get(row.code)} 股` : "已清仓"}</td></tr>`,
+        )
+        .join("")
+    : '<tr><td colspan="6"><div class="empty compact">尚无已实现盈亏。卖出成交后按 FIFO 核算逐笔盈亏。</div></td></tr>';
   $("paper-plan-date").textContent = plan
     ? `${plan.signalDate} 盘后制定 → 下一交易日`
     : "尚未生成计划";

@@ -520,6 +520,33 @@
               </div>
             </section>
             <section class="panel paper-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>历史个股盈亏</h2>
+                  <p>按个股汇总全部卖出的 FIFO 已实现盈亏，含卖出费用</p>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>个股</th>
+                      <th>最近交易日</th>
+                      <th>卖出笔数</th>
+                      <th>盈 / 亏笔数</th>
+                      <th>累计已实现盈亏</th>
+                      <th>当前状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paper-stock-pnl-rows"></tbody>
+                </table>
+              </div>
+              <div class="panel-footnote">
+                盈亏按 FIFO 摊入卖出成本核算，买入费用已计入持仓成本；做 T
+                的两腿分别按各自方向入账。汇总合计与账户已实现盈亏一致。
+              </div>
+            </section>
+            <section class="panel paper-panel">
               <div class="panel-heading paper-plan-heading">
                 <div>
                   <h2>下一交易日计划</h2>
