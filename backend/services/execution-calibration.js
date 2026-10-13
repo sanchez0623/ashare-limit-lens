@@ -3,30 +3,18 @@ import { digestOf } from "../domain/research-lineage.js";
 import {
   normalizeCalibrationInput,
   calibrateExecutionCost,
-  verifyExecutionCalibration,
   calibrationInputDigest,
 } from "../domain/execution-calibration.js";
-
-export async function assertIndependentCalibration(db, input) {
-  for (const date of new Set(
-    input.orders.map((o) =>
-      new Date(Date.parse(o.submittedAt) + 8 * 3600_000)
-        .toISOString()
-        .slice(0, 10),
-    ),
-  )) {
-    const claim = await db
-      .prepare(
-        "SELECT role FROM research_test_claims WHERE namespace='main' AND outcome_date=?",
-      )
-      .bind(date)
-      .first();
-    if (claim)
-      throw new Error(
-        `校准日期 ${date} 与正式研究测试/前瞻日期重叠，拒绝反调成本`,
-      );
-  }
-}
+import {
+  assertIndependentCalibration,
+  calibrationDates,
+  calibrationSamples,
+  ensureCalibrationIdentities,
+  readCalibrationInput,
+  readExecutionCalibration,
+  rememberGeneratedCalibration,
+} from "../storage/calibration.js";
+export { assertIndependentCalibration } from "../storage/calibration.js";
 
 export async function importExecutionCalibration(env, rawInput) {
   const input = normalizeCalibrationInput(rawInput);
@@ -34,58 +22,88 @@ export async function importExecutionCalibration(env, rawInput) {
   if (input.cutoff >= today)
     throw new Error("真实校准只能使用今日之前已完整结束的数据");
   await assertIndependentCalibration(env.DB, input);
+  await ensureCalibrationIdentities(env.DB);
+  const samples = await calibrationSamples(input);
   const rawDigest = await digestOf(input);
   const previous = await env.DB.prepare(
-    "SELECT id,digest FROM execution_calibration_inputs WHERE raw_digest=?",
+    "SELECT input_id FROM execution_calibration_sample_sets WHERE sample_digest=?",
   )
-    .bind(rawDigest)
+    .bind(samples.digest)
     .first();
-  if (previous)
-    return { ...previous, orders: input.orders.length, cutoff: input.cutoff };
+  const frozenResult = async (id) => {
+    const { row, input: original } = await readCalibrationInput(env.DB, id);
+    return {
+      id,
+      digest: row.digest,
+      orders: original.orders.length,
+      cutoff: original.cutoff,
+      trainingEnd: original.trainingEnd,
+    };
+  };
+  if (previous) return frozenResult(previous.input_id);
+  const reused = await env.DB.prepare(
+    "SELECT input_id FROM execution_calibration_sample_owners WHERE sample_identity IN (SELECT value FROM json_each(?)) LIMIT 1",
+  )
+    .bind(JSON.stringify(samples.identities))
+    .first();
+  if (reused)
+    throw new Error(
+      "实际委托/成交样本已用于校准，不能通过子集或补单重用验证样本",
+    );
   const basePolicy = await new ExecutionCostRepository(env).latest();
   const digest = await calibrationInputDigest(input, basePolicy);
   const id = `cal-input-${digest}`;
-  await env.DB.prepare(
-    "INSERT INTO execution_calibration_inputs (id,payload,digest,raw_digest,created_at) VALUES (?,?,?,?,?) ON CONFLICT(raw_digest) DO NOTHING",
-  )
-    .bind(
+  const ownsSet =
+    "EXISTS (SELECT 1 FROM execution_calibration_sample_sets WHERE sample_digest=? AND input_id=?)";
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO execution_calibration_inputs(id,payload,digest,raw_digest,created_at,sample_digest) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM execution_calibration_sample_sets WHERE sample_digest=?) ON CONFLICT(raw_digest) DO NOTHING",
+    ).bind(
       id,
       JSON.stringify({ input, basePolicy }),
       digest,
       rawDigest,
       new Date().toISOString(),
-    )
-    .run();
+      samples.digest,
+      samples.digest,
+    ),
+    env.DB.prepare(
+      "INSERT INTO execution_calibration_sample_sets(sample_digest,input_id) SELECT ?,? WHERE EXISTS (SELECT 1 FROM execution_calibration_inputs WHERE id=?) ON CONFLICT DO NOTHING",
+    ).bind(samples.digest, id, id),
+    env.DB.prepare(
+      `INSERT INTO execution_calibration_sample_owners(sample_identity,input_id) SELECT value,? FROM json_each(?) WHERE ${ownsSet} AND true ON CONFLICT(sample_identity) DO UPDATE SET input_id=excluded.input_id WHERE execution_calibration_sample_owners.input_id=excluded.input_id`,
+    ).bind(id, JSON.stringify(samples.identities), samples.digest, id),
+    ...calibrationDates(input).map((d) =>
+      env.DB.prepare(
+        `INSERT INTO execution_calibration_date_uses(input_id,outcome_date,role) SELECT ?,?,? WHERE ${ownsSet} ON CONFLICT DO NOTHING`,
+      ).bind(id, d.date, d.role, samples.digest, id),
+    ),
+  ]);
   const stored = await env.DB.prepare(
-    "SELECT id,digest FROM execution_calibration_inputs WHERE raw_digest=?",
+    "SELECT input_id FROM execution_calibration_sample_sets WHERE sample_digest=?",
   )
-    .bind(rawDigest)
+    .bind(samples.digest)
     .first();
-  return { ...stored, orders: input.orders.length, cutoff: input.cutoff };
-}
-
-async function loadInput(env, id) {
-  const row = await env.DB.prepare(
-    "SELECT * FROM execution_calibration_inputs WHERE id=?",
-  )
-    .bind(id)
-    .first();
-  if (!row) throw new Error("独立校准输入不存在");
-  const { input: rawInput, basePolicy } = JSON.parse(row.payload);
-  const input = normalizeCalibrationInput(rawInput);
-  const digest = await calibrationInputDigest(input, basePolicy);
-  if (
-    digest !== row.digest ||
-    id !== `cal-input-${digest}` ||
-    row.raw_digest !== (await digestOf(input))
-  )
-    throw new Error("校准输入 id 或摘要损坏");
-  await assertIndependentCalibration(env.DB, input);
-  return { input, basePolicy };
+  if (!stored) throw new Error("校准样本预留冲突，输入未完整登记");
+  return frozenResult(stored.input_id);
 }
 
 export async function runExecutionCalibration(env, inputId) {
-  const { input, basePolicy } = await loadInput(env, inputId);
+  const { input, basePolicy } = await readCalibrationInput(env.DB, inputId);
+  const existing = await env.DB.prepare(
+    "SELECT id FROM execution_cost_calibrations WHERE input_digest=? ORDER BY created_at LIMIT 1",
+  )
+    .bind(await calibrationInputDigest(input, basePolicy))
+    .first();
+  if (existing) {
+    const bundle = await readExecutionCalibration(env.DB, existing.id);
+    return {
+      id: bundle.id,
+      inputId,
+      digest: bundle.digest,
+      report: bundle.report,
+    };
+  }
   const report = await calibrateExecutionCost(input, basePolicy);
   const digest = await digestOf(report),
     id = `cal-${digest}`;
@@ -101,6 +119,13 @@ export async function runExecutionCalibration(env, inputId) {
       new Date().toISOString(),
     )
     .run();
+  await rememberGeneratedCalibration(env.DB, {
+    input,
+    inputId,
+    report,
+    digest,
+    id,
+  });
   return { id, inputId, digest, report };
 }
 
@@ -109,34 +134,7 @@ export async function exportExecutionCalibration(
   id,
   { verify = true } = {},
 ) {
-  const row = await env.DB.prepare(
-    "SELECT * FROM execution_cost_calibrations WHERE id=?",
-  )
-    .bind(id)
-    .first();
-  if (!row) throw new Error("成本校准报告不存在");
-  const { inputId, report } = JSON.parse(row.report);
-  const { input, basePolicy } = await loadInput(env, inputId);
-  const bundle = {
-    schemaVersion: 1,
-    id,
-    inputId,
-    digest: row.digest,
-    input,
-    report,
-  };
-  if (
-    (await digestOf(report)) !== row.digest ||
-    id !== `cal-${row.digest}` ||
-    inputId !==
-      `cal-input-${await calibrationInputDigest(input, basePolicy)}` ||
-    (await digestOf(basePolicy)) !== (await digestOf(report.basePolicy))
-  )
-    throw new Error("校准报告 id 或摘要不一致");
-  if (verify) await verifyExecutionCalibration(bundle);
-  if (row.input_digest !== report.inputDigest || row.cutoff !== report.cutoff)
-    throw new Error("校准记录元数据不一致");
-  return bundle;
+  return readExecutionCalibration(env.DB, id, { verify });
 }
 
 export async function listExecutionCalibrations(env) {

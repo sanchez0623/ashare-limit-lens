@@ -7034,6 +7034,203 @@ var CohortRepository = class {
   }
 };
 
+// backend/storage/calibration.js
+init_research_lineage();
+var verificationCaches = /* @__PURE__ */ new WeakMap();
+var identityBackfills = /* @__PURE__ */ new WeakMap();
+var inputCaches = /* @__PURE__ */ new WeakMap();
+function deepFreeze(value) {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.values(value).forEach(deepFreeze);
+    Object.freeze(value);
+  }
+  return value;
+}
+function calibrationDates(input) {
+  return [
+    ...new Set(
+      input.orders.map(
+        (o) => new Date(Date.parse(o.submittedAt) + 8 * 36e5).toISOString().slice(0, 10)
+      )
+    )
+  ].sort().map((date) => ({
+    date,
+    role: date <= input.trainingEnd ? "CALIBRATION_TRAIN" : "CALIBRATION_VALIDATION"
+  }));
+}
+async function calibrationSamples(input) {
+  const identities = input.orders.map(
+    (o) => canonicalJson({
+      code: o.code,
+      side: o.side,
+      quantity: o.quantity,
+      status: o.status,
+      submittedAt: new Date(o.submittedAt).toISOString(),
+      completedAt: new Date(o.completedAt).toISOString(),
+      fills: o.fills.map((f) => ({
+        executedAt: new Date(f.executedAt).toISOString(),
+        quantity: f.quantity,
+        priceCents: f.priceCents
+      })).sort((a, b) => canonicalJson(a).localeCompare(canonicalJson(b)))
+    })
+  ).sort();
+  return {
+    digest: await digestOf(identities),
+    identities: [...new Set(identities)]
+  };
+}
+async function assertIndependentCalibration(db, input) {
+  const dates = calibrationDates(input).map((d) => d.date);
+  const conflict = await db.prepare(
+    `SELECT outcome_date FROM research_test_claims WHERE namespace='main' AND outcome_date IN (SELECT value FROM json_each(?))
+    UNION SELECT outcome_date FROM research_sample_uses WHERE namespace='main' AND role NOT IN ('TRAIN','HISTORICAL_TRAIN') AND outcome_date IN (SELECT value FROM json_each(?)) LIMIT 1`
+  ).bind(JSON.stringify(dates), JSON.stringify(dates)).first();
+  if (conflict)
+    throw new Error(
+      `\u6821\u51C6\u65E5\u671F ${conflict.outcome_date} \u4E0E\u6B63\u5F0F\u7814\u7A76\u6D4B\u8BD5/\u524D\u77BB\u65E5\u671F\u91CD\u53E0\uFF0C\u62D2\u7EDD\u53CD\u8C03\u6210\u672C`
+    );
+}
+async function ensureCalibrationIdentities(db) {
+  if (identityBackfills.has(db)) return identityBackfills.get(db);
+  const pending = (async () => {
+    const rows = (await db.prepare(
+      "SELECT id,payload FROM execution_calibration_inputs WHERE sample_digest IS NULL ORDER BY created_at,rowid"
+    ).all()).results;
+    for (const row of rows) {
+      const input = normalizeCalibrationInput(JSON.parse(row.payload).input);
+      const samples = await calibrationSamples(input);
+      const statements = [
+        db.prepare(
+          "INSERT INTO execution_calibration_sample_sets(sample_digest,input_id) VALUES(?,?) ON CONFLICT DO NOTHING"
+        ).bind(samples.digest, row.id),
+        db.prepare(
+          "INSERT INTO execution_calibration_sample_owners(sample_identity,input_id) SELECT value,? FROM json_each(?) j WHERE NOT EXISTS (SELECT 1 FROM execution_calibration_sample_owners WHERE sample_identity=j.value) ON CONFLICT DO NOTHING"
+        ).bind(row.id, JSON.stringify(samples.identities)),
+        db.prepare(
+          "UPDATE execution_calibration_inputs SET sample_digest=? WHERE id=?"
+        ).bind(samples.digest, row.id)
+      ];
+      for (const statement of statements) await statement.run();
+    }
+  })();
+  identityBackfills.set(db, pending);
+  try {
+    await pending;
+  } finally {
+    identityBackfills.delete(db);
+  }
+}
+async function readCalibrationInput(db, id) {
+  await ensureCalibrationIdentities(db);
+  const row = await db.prepare("SELECT * FROM execution_calibration_inputs WHERE id=?").bind(id).first();
+  if (!row) throw new Error("\u72EC\u7ACB\u6821\u51C6\u8F93\u5165\u4E0D\u5B58\u5728");
+  let inputs = inputCaches.get(db);
+  if (!inputs) {
+    inputs = /* @__PURE__ */ new Map();
+    inputCaches.set(db, inputs);
+  }
+  const rulesDigest = await digestOf({
+    rules: CALIBRATION_RULES,
+    version: CALIBRATION_VERSION
+  });
+  let cached2 = inputs.get(id);
+  if (!cached2 || cached2.payload !== row.payload || cached2.digest !== row.digest || cached2.rawDigest !== row.raw_digest || cached2.sampleDigest !== row.sample_digest || cached2.rulesDigest !== rulesDigest) {
+    const { input: rawInput, basePolicy: basePolicy2 } = JSON.parse(row.payload);
+    const input2 = normalizeCalibrationInput(rawInput);
+    const digest2 = await calibrationInputDigest(input2, basePolicy2);
+    const samples2 = await calibrationSamples(input2);
+    if (digest2 !== row.digest || id !== `cal-input-${digest2}` || row.raw_digest !== await digestOf(input2) || row.sample_digest !== samples2.digest)
+      throw new Error("\u6821\u51C6\u8F93\u5165 id \u6216\u6458\u8981\u635F\u574F");
+    cached2 = {
+      payload: row.payload,
+      digest: row.digest,
+      rawDigest: row.raw_digest,
+      sampleDigest: row.sample_digest,
+      rulesDigest,
+      input: deepFreeze(input2),
+      basePolicy: deepFreeze(basePolicy2),
+      samples: samples2,
+      identitiesJson: JSON.stringify(samples2.identities)
+    };
+    inputs.set(id, cached2);
+    if (inputs.size > 4) inputs.delete(inputs.keys().next().value);
+  }
+  const { input, basePolicy, samples, identitiesJson } = cached2;
+  const owner = await db.prepare(
+    "SELECT input_id FROM execution_calibration_sample_sets WHERE sample_digest=?"
+  ).bind(samples.digest).first();
+  const owned = await db.prepare(
+    "SELECT COUNT(*) n FROM execution_calibration_sample_owners WHERE input_id=? AND sample_identity IN (SELECT value FROM json_each(?))"
+  ).bind(id, identitiesJson).first();
+  if (owner?.input_id !== id || owned.n !== samples.identities.length)
+    throw new Error("\u6821\u51C6\u6837\u672C\u5DF2\u5F52\u5C5E\u4E8E\u9996\u6B21\u51BB\u7ED3\u534F\u8BAE\uFF0C\u4E0D\u80FD\u91CD\u590D\u62DF\u5408\u6216\u6539\u53D8\u5212\u5206");
+  const registered = (await db.prepare(
+    "SELECT outcome_date date,role FROM execution_calibration_date_uses WHERE input_id=? ORDER BY outcome_date"
+  ).bind(id).all()).results;
+  if (await digestOf(registered) !== await digestOf(calibrationDates(input)))
+    throw new Error("\u6821\u51C6\u65E5\u671F\u7528\u9014\u767B\u8BB0\u7F3A\u5931\u6216\u4E0E\u9996\u6B21\u51BB\u7ED3\u5212\u5206\u4E0D\u4E00\u81F4");
+  await assertIndependentCalibration(db, input);
+  return { row, input, basePolicy };
+}
+function cacheFor(db) {
+  let cache = verificationCaches.get(db);
+  if (!cache) {
+    cache = /* @__PURE__ */ new Map();
+    verificationCaches.set(db, cache);
+  }
+  return cache;
+}
+async function verificationKey(bundle) {
+  return digestOf({
+    inputDigest: bundle.report.inputDigest,
+    reportDigest: bundle.digest,
+    rules: CALIBRATION_RULES,
+    version: CALIBRATION_VERSION
+  });
+}
+async function rememberGeneratedCalibration(db, bundle) {
+  cacheFor(db).set(await verificationKey(bundle), {
+    passed: true,
+    eligible: bundle.report.passed,
+    calibrationStatus: bundle.report.calibrationStatus
+  });
+}
+async function readExecutionCalibration(db, id, { verify = true } = {}) {
+  const row = await db.prepare("SELECT * FROM execution_cost_calibrations WHERE id=?").bind(id).first();
+  if (!row) throw new Error("\u6210\u672C\u6821\u51C6\u62A5\u544A\u4E0D\u5B58\u5728");
+  const { inputId, report } = JSON.parse(row.report);
+  const {
+    input,
+    basePolicy,
+    row: inputRow
+  } = await readCalibrationInput(db, inputId);
+  const bundle = {
+    schemaVersion: 1,
+    id,
+    inputId,
+    digest: row.digest,
+    input,
+    report
+  };
+  if (await digestOf(report) !== row.digest || id !== `cal-${row.digest}` || await digestOf(basePolicy) !== await digestOf(report.basePolicy) || row.input_digest !== inputRow.digest || row.input_digest !== report.inputDigest || row.cutoff !== report.cutoff)
+    throw new Error("\u6821\u51C6\u62A5\u544A id\u3001\u6458\u8981\u6216\u8BB0\u5F55\u5143\u6570\u636E\u4E0D\u4E00\u81F4");
+  if (verify) {
+    const key = await verificationKey(bundle), cache = cacheFor(db);
+    if (!cache.has(key)) {
+      const pending = verifyExecutionCalibration(bundle);
+      cache.set(key, pending);
+      try {
+        cache.set(key, await pending);
+      } catch (error) {
+        cache.delete(key);
+        throw error;
+      }
+    }
+    await cache.get(key);
+  }
+  return bundle;
+}
+
 // backend/storage/execution-cost.js
 function canonical2(value) {
   if (Array.isArray(value)) return value.map(canonical2);
@@ -7067,28 +7264,8 @@ function rowToBundle(row) {
   return bundle;
 }
 async function verifiedCalibration(db, id) {
-  const row = await db.prepare(
-    "SELECT report,digest,input_digest,cutoff FROM execution_cost_calibrations WHERE id=?"
-  ).bind(id).first();
-  if (!row) throw new Error("\u5DF2\u6821\u51C6\u653F\u7B56\u7F3A\u5C11\u53EF\u6838\u9A8C\u6821\u51C6\u62A5\u544A");
-  const { inputId, report } = JSON.parse(row.report);
-  const inputRow = await db.prepare(
-    "SELECT payload,digest FROM execution_calibration_inputs WHERE id=?"
-  ).bind(inputId).first();
-  if (!inputRow) throw new Error("\u5DF2\u6821\u51C6\u653F\u7B56\u7F3A\u5C11\u72EC\u7ACB\u539F\u59CB\u8F93\u5165");
-  const { input, basePolicy } = JSON.parse(inputRow.payload);
-  if (await policyDigest(basePolicy) !== await policyDigest(report.basePolicy))
-    throw new Error("\u6821\u51C6\u57FA\u7840\u653F\u7B56\u4E0E\u51BB\u7ED3\u8F93\u5165\u4E0D\u4E00\u81F4");
-  if (inputRow.digest !== row.input_digest || row.cutoff !== report.cutoff)
-    throw new Error("\u6821\u51C6\u8F93\u5165\u5143\u6570\u636E\u4E0D\u4E00\u81F4");
-  const audit = await verifyExecutionCalibration({
-    id,
-    inputId,
-    digest: row.digest,
-    input,
-    report
-  });
-  if (!audit.eligible) throw new Error("\u6821\u51C6\u62A5\u544A\u672A\u901A\u8FC7\u540E\u7EED\u9A8C\u8BC1\u95F8\u95E8");
+  const { report } = await readExecutionCalibration(db, id);
+  if (!report.passed) throw new Error("\u6821\u51C6\u62A5\u544A\u672A\u901A\u8FC7\u540E\u7EED\u9A8C\u8BC1\u95F8\u95E8");
   return report;
 }
 async function verifyCalibrationLink(db, row, bundle) {
@@ -9364,6 +9541,12 @@ var ResearchRepository = class {
       const used = await this.db.prepare(
         "SELECT COUNT(*) AS n FROM research_sample_uses WHERE namespace = ? AND outcome_date = ?"
       ).bind(this.namespace, date).first();
+      if (this.namespace === "main" && await this.db.prepare(
+        "SELECT input_id FROM execution_calibration_date_uses WHERE outcome_date=? LIMIT 1"
+      ).bind(date).first())
+        throw new Error(
+          `\u65E5\u671F ${date} \u5DF2\u767B\u8BB0\u4E3A\u6210\u672C\u6821\u51C6\u7528\u9014\uFF0C\u4E0D\u80FD\u4F5C\u4E3A\u6B63\u5F0F\u7814\u7A76\u6D4B\u8BD5\u6570\u636E`
+        );
       if (used.n)
         throw new Error(
           `\u65E5\u671F ${date} \u5DF2\u88AB\u5386\u53F2\u8BAD\u7EC3\u3001\u6D4B\u8BD5\u6216\u53C2\u6570\u9009\u62E9\u5360\u7528\uFF0C\u4E0D\u80FD\u4F5C\u4E3A\u65B0\u6D4B\u8BD5\u6570\u636E`
@@ -10922,65 +11105,84 @@ async function researchStatus(env) {
 
 // backend/services/execution-calibration.js
 init_research_lineage();
-async function assertIndependentCalibration(db, input) {
-  for (const date of new Set(
-    input.orders.map(
-      (o) => new Date(Date.parse(o.submittedAt) + 8 * 36e5).toISOString().slice(0, 10)
-    )
-  )) {
-    const claim = await db.prepare(
-      "SELECT role FROM research_test_claims WHERE namespace='main' AND outcome_date=?"
-    ).bind(date).first();
-    if (claim)
-      throw new Error(
-        `\u6821\u51C6\u65E5\u671F ${date} \u4E0E\u6B63\u5F0F\u7814\u7A76\u6D4B\u8BD5/\u524D\u77BB\u65E5\u671F\u91CD\u53E0\uFF0C\u62D2\u7EDD\u53CD\u8C03\u6210\u672C`
-      );
-  }
-}
 async function importExecutionCalibration(env, rawInput) {
   const input = normalizeCalibrationInput(rawInput);
   const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
   if (input.cutoff >= today)
     throw new Error("\u771F\u5B9E\u6821\u51C6\u53EA\u80FD\u4F7F\u7528\u4ECA\u65E5\u4E4B\u524D\u5DF2\u5B8C\u6574\u7ED3\u675F\u7684\u6570\u636E");
   await assertIndependentCalibration(env.DB, input);
+  await ensureCalibrationIdentities(env.DB);
+  const samples = await calibrationSamples(input);
   const rawDigest = await digestOf(input);
   const previous = await env.DB.prepare(
-    "SELECT id,digest FROM execution_calibration_inputs WHERE raw_digest=?"
-  ).bind(rawDigest).first();
-  if (previous)
-    return { ...previous, orders: input.orders.length, cutoff: input.cutoff };
+    "SELECT input_id FROM execution_calibration_sample_sets WHERE sample_digest=?"
+  ).bind(samples.digest).first();
+  const frozenResult = async (id2) => {
+    const { row, input: original } = await readCalibrationInput(env.DB, id2);
+    return {
+      id: id2,
+      digest: row.digest,
+      orders: original.orders.length,
+      cutoff: original.cutoff,
+      trainingEnd: original.trainingEnd
+    };
+  };
+  if (previous) return frozenResult(previous.input_id);
+  const reused = await env.DB.prepare(
+    "SELECT input_id FROM execution_calibration_sample_owners WHERE sample_identity IN (SELECT value FROM json_each(?)) LIMIT 1"
+  ).bind(JSON.stringify(samples.identities)).first();
+  if (reused)
+    throw new Error(
+      "\u5B9E\u9645\u59D4\u6258/\u6210\u4EA4\u6837\u672C\u5DF2\u7528\u4E8E\u6821\u51C6\uFF0C\u4E0D\u80FD\u901A\u8FC7\u5B50\u96C6\u6216\u8865\u5355\u91CD\u7528\u9A8C\u8BC1\u6837\u672C"
+    );
   const basePolicy = await new ExecutionCostRepository(env).latest();
   const digest2 = await calibrationInputDigest(input, basePolicy);
   const id = `cal-input-${digest2}`;
-  await env.DB.prepare(
-    "INSERT INTO execution_calibration_inputs (id,payload,digest,raw_digest,created_at) VALUES (?,?,?,?,?) ON CONFLICT(raw_digest) DO NOTHING"
-  ).bind(
-    id,
-    JSON.stringify({ input, basePolicy }),
-    digest2,
-    rawDigest,
-    (/* @__PURE__ */ new Date()).toISOString()
-  ).run();
+  const ownsSet = "EXISTS (SELECT 1 FROM execution_calibration_sample_sets WHERE sample_digest=? AND input_id=?)";
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO execution_calibration_inputs(id,payload,digest,raw_digest,created_at,sample_digest) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM execution_calibration_sample_sets WHERE sample_digest=?) ON CONFLICT(raw_digest) DO NOTHING"
+    ).bind(
+      id,
+      JSON.stringify({ input, basePolicy }),
+      digest2,
+      rawDigest,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      samples.digest,
+      samples.digest
+    ),
+    env.DB.prepare(
+      "INSERT INTO execution_calibration_sample_sets(sample_digest,input_id) SELECT ?,? WHERE EXISTS (SELECT 1 FROM execution_calibration_inputs WHERE id=?) ON CONFLICT DO NOTHING"
+    ).bind(samples.digest, id, id),
+    env.DB.prepare(
+      `INSERT INTO execution_calibration_sample_owners(sample_identity,input_id) SELECT value,? FROM json_each(?) WHERE ${ownsSet} AND true ON CONFLICT(sample_identity) DO UPDATE SET input_id=excluded.input_id WHERE execution_calibration_sample_owners.input_id=excluded.input_id`
+    ).bind(id, JSON.stringify(samples.identities), samples.digest, id),
+    ...calibrationDates(input).map(
+      (d) => env.DB.prepare(
+        `INSERT INTO execution_calibration_date_uses(input_id,outcome_date,role) SELECT ?,?,? WHERE ${ownsSet} ON CONFLICT DO NOTHING`
+      ).bind(id, d.date, d.role, samples.digest, id)
+    )
+  ]);
   const stored = await env.DB.prepare(
-    "SELECT id,digest FROM execution_calibration_inputs WHERE raw_digest=?"
-  ).bind(rawDigest).first();
-  return { ...stored, orders: input.orders.length, cutoff: input.cutoff };
-}
-async function loadInput(env, id) {
-  const row = await env.DB.prepare(
-    "SELECT * FROM execution_calibration_inputs WHERE id=?"
-  ).bind(id).first();
-  if (!row) throw new Error("\u72EC\u7ACB\u6821\u51C6\u8F93\u5165\u4E0D\u5B58\u5728");
-  const { input: rawInput, basePolicy } = JSON.parse(row.payload);
-  const input = normalizeCalibrationInput(rawInput);
-  const digest2 = await calibrationInputDigest(input, basePolicy);
-  if (digest2 !== row.digest || id !== `cal-input-${digest2}` || row.raw_digest !== await digestOf(input))
-    throw new Error("\u6821\u51C6\u8F93\u5165 id \u6216\u6458\u8981\u635F\u574F");
-  await assertIndependentCalibration(env.DB, input);
-  return { input, basePolicy };
+    "SELECT input_id FROM execution_calibration_sample_sets WHERE sample_digest=?"
+  ).bind(samples.digest).first();
+  if (!stored) throw new Error("\u6821\u51C6\u6837\u672C\u9884\u7559\u51B2\u7A81\uFF0C\u8F93\u5165\u672A\u5B8C\u6574\u767B\u8BB0");
+  return frozenResult(stored.input_id);
 }
 async function runExecutionCalibration(env, inputId) {
-  const { input, basePolicy } = await loadInput(env, inputId);
+  const { input, basePolicy } = await readCalibrationInput(env.DB, inputId);
+  const existing = await env.DB.prepare(
+    "SELECT id FROM execution_cost_calibrations WHERE input_digest=? ORDER BY created_at LIMIT 1"
+  ).bind(await calibrationInputDigest(input, basePolicy)).first();
+  if (existing) {
+    const bundle = await readExecutionCalibration(env.DB, existing.id);
+    return {
+      id: bundle.id,
+      inputId,
+      digest: bundle.digest,
+      report: bundle.report
+    };
+  }
   const report = await calibrateExecutionCost(input, basePolicy);
   const digest2 = await digestOf(report), id = `cal-${digest2}`;
   await env.DB.prepare(
@@ -10993,29 +11195,17 @@ async function runExecutionCalibration(env, inputId) {
     digest2,
     (/* @__PURE__ */ new Date()).toISOString()
   ).run();
+  await rememberGeneratedCalibration(env.DB, {
+    input,
+    inputId,
+    report,
+    digest: digest2,
+    id
+  });
   return { id, inputId, digest: digest2, report };
 }
 async function exportExecutionCalibration(env, id, { verify = true } = {}) {
-  const row = await env.DB.prepare(
-    "SELECT * FROM execution_cost_calibrations WHERE id=?"
-  ).bind(id).first();
-  if (!row) throw new Error("\u6210\u672C\u6821\u51C6\u62A5\u544A\u4E0D\u5B58\u5728");
-  const { inputId, report } = JSON.parse(row.report);
-  const { input, basePolicy } = await loadInput(env, inputId);
-  const bundle = {
-    schemaVersion: 1,
-    id,
-    inputId,
-    digest: row.digest,
-    input,
-    report
-  };
-  if (await digestOf(report) !== row.digest || id !== `cal-${row.digest}` || inputId !== `cal-input-${await calibrationInputDigest(input, basePolicy)}` || await digestOf(basePolicy) !== await digestOf(report.basePolicy))
-    throw new Error("\u6821\u51C6\u62A5\u544A id \u6216\u6458\u8981\u4E0D\u4E00\u81F4");
-  if (verify) await verifyExecutionCalibration(bundle);
-  if (row.input_digest !== report.inputDigest || row.cutoff !== report.cutoff)
-    throw new Error("\u6821\u51C6\u8BB0\u5F55\u5143\u6570\u636E\u4E0D\u4E00\u81F4");
-  return bundle;
+  return readExecutionCalibration(env.DB, id, { verify });
 }
 async function listExecutionCalibrations(env) {
   const rows = (await env.DB.prepare(

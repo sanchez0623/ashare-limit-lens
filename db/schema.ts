@@ -259,6 +259,7 @@ export const executionCalibrationInputs = sqliteTable(
     payload: text("payload").notNull(),
     digest: text("digest").notNull(),
     rawDigest: text("raw_digest").notNull().unique(),
+    sampleDigest: text("sample_digest"),
     createdAt: text("created_at").notNull(),
   },
 );
@@ -313,4 +314,31 @@ export const executionCostCalibrations = sqliteTable(
     digest: text("digest").notNull(),
     createdAt: text("created_at").notNull(),
   },
+);
+
+export const executionCalibrationSampleSets = sqliteTable(
+  "execution_calibration_sample_sets",
+  {
+    sampleDigest: text("sample_digest").primaryKey(),
+    inputId: text("input_id").notNull(),
+  },
+);
+export const executionCalibrationSampleOwners = sqliteTable(
+  "execution_calibration_sample_owners",
+  {
+    sampleIdentity: text("sample_identity").primaryKey(),
+    inputId: text("input_id").notNull(),
+  },
+);
+export const executionCalibrationDateUses = sqliteTable(
+  "execution_calibration_date_uses",
+  {
+    inputId: text("input_id").notNull(),
+    outcomeDate: text("outcome_date").notNull(),
+    role: text("role").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.inputId, table.outcomeDate] }),
+    index("execution_calibration_date_idx").on(table.outcomeDate),
+  ],
 );

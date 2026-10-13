@@ -2,7 +2,7 @@
 // 政策追加不可变：修改参数产生新版本；读取时重新校验摘要。
 import { database } from "./database.js";
 import { RESEARCH_NAMESPACE } from "./cohorts.js";
-import { verifyExecutionCalibration } from "../domain/execution-calibration.js";
+import { readExecutionCalibration } from "./calibration.js";
 import {
   EXECUTION_COST_MODEL,
   defaultExecutionCostPolicy,
@@ -45,36 +45,8 @@ function rowToBundle(row) {
 }
 
 async function verifiedCalibration(db, id) {
-  const row = await db
-    .prepare(
-      "SELECT report,digest,input_digest,cutoff FROM execution_cost_calibrations WHERE id=?",
-    )
-    .bind(id)
-    .first();
-  if (!row) throw new Error("已校准政策缺少可核验校准报告");
-  const { inputId, report } = JSON.parse(row.report);
-  const inputRow = await db
-    .prepare(
-      "SELECT payload,digest FROM execution_calibration_inputs WHERE id=?",
-    )
-    .bind(inputId)
-    .first();
-  if (!inputRow) throw new Error("已校准政策缺少独立原始输入");
-  const { input, basePolicy } = JSON.parse(inputRow.payload);
-  if (
-    (await policyDigest(basePolicy)) !== (await policyDigest(report.basePolicy))
-  )
-    throw new Error("校准基础政策与冻结输入不一致");
-  if (inputRow.digest !== row.input_digest || row.cutoff !== report.cutoff)
-    throw new Error("校准输入元数据不一致");
-  const audit = await verifyExecutionCalibration({
-    id,
-    inputId,
-    digest: row.digest,
-    input,
-    report,
-  });
-  if (!audit.eligible) throw new Error("校准报告未通过后续验证闸门");
+  const { report } = await readExecutionCalibration(db, id);
+  if (!report.passed) throw new Error("校准报告未通过后续验证闸门");
   return report;
 }
 

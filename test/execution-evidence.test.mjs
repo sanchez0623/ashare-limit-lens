@@ -22,12 +22,40 @@ import {
   runExecutionCalibration,
   exportExecutionCalibration,
 } from "../backend/services/execution-calibration.js";
-import { saveExecutionCostPolicy } from "../backend/services/execution-cost.js";
+import {
+  saveExecutionCostPolicy,
+  getExecutionCostConfig,
+} from "../backend/services/execution-cost.js";
 import { ExecutionCostRepository } from "../backend/storage/execution-cost.js";
 import { api } from "../backend/routes/api.js";
 import { runCohortExecutionStress } from "../backend/services/execution-stress.js";
 import { selectionPolicyFields } from "../backend/domain/signal-selection.js";
 import { pairs } from "./fixtures/trading.mjs";
+import { PaperRepository } from "../backend/storage/paper.js";
+import { ResearchRepository } from "../backend/storage/research.js";
+import { CohortRepository } from "../backend/storage/cohorts.js";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+async function reservationOptions(env, date = "2026-01-06") {
+  await new PaperRepository(env).initialize();
+  const research = new ResearchRepository(env),
+    cohorts = new CohortRepository(env);
+  await research.ensureRegistry();
+  return {
+    cohortPolicy: await cohorts.getTournamentPolicy(),
+    researchPolicy: await research.getPolicy(),
+    month: "2099-01",
+    parentVersion: "baseline-v1",
+    windowPayload: {},
+    testDates: [date],
+    samples: [],
+    forwardDays: 30,
+    selectionPolicy: selectionPolicyForBook(newBook()),
+  };
+}
 
 // 这些数据全部是合成边界样本；真实来源字符串仅用于测试导入者声明的格式。
 function executionInput({ failures = 0, quoteMissing = false } = {}) {
@@ -372,6 +400,449 @@ test("正式测试日期不能被重新用于成本校准", async () => {
       0,
     );
   } finally {
+    DB.close();
+  }
+});
+
+test("P1：先校准再正式预留，日期闸门原子回滚赛马和单候选预算，已校准读取保持自洽", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const options = await reservationOptions(env);
+    const imported = await importExecutionCalibration(env, executionInput());
+    const run = await runExecutionCalibration(env, imported.id);
+    await saveExecutionCostPolicy(env, { calibrationId: run.id });
+    const before = await DB.prepare(
+      "SELECT revision,attempt_sequence FROM research_registry WHERE namespace='main'",
+    ).first();
+    await assert.rejects(
+      () => new CohortRepository(env).reserveCohort(options),
+      /成本校准用途/,
+    );
+    await assert.rejects(
+      () =>
+        new ResearchRepository(env).reserveAttempt({
+          ...options,
+          policy: options.researchPolicy,
+        }),
+      /成本校准用途/,
+    );
+    assert.deepEqual(
+      await DB.prepare(
+        "SELECT revision,attempt_sequence FROM research_registry WHERE namespace='main'",
+      ).first(),
+      before,
+    );
+    for (const table of [
+      "strategy_cohorts",
+      "research_experiments",
+      "research_window_owners",
+      "research_generation_slots",
+      "research_test_claims",
+    ])
+      assert.equal(
+        (await DB.prepare(`SELECT COUNT(*) n FROM ${table}`).first()).n,
+        0,
+        `${table} 无部分预留`,
+      );
+    assert.equal(
+      (await exportExecutionCalibration(env, run.id)).report.passed,
+      true,
+    );
+    assert.equal(
+      (await getExecutionCostConfig(env)).policy.calibrationStatus,
+      "EXECUTION_CALIBRATED",
+    );
+    // 模拟 0016 期间留下的冲突，已热缓存也必须立即失效，不能继续返回已校准。
+    DB.exec("DROP TRIGGER research_claims_calibration_guard");
+    await DB.prepare(
+      "INSERT INTO research_test_claims(namespace,outcome_date,experiment_id,role,reserved_at) VALUES('main','2026-01-06','legacy-conflict','HISTORICAL_TEST','now')",
+    ).run();
+    await assert.rejects(
+      () => new ExecutionCostRepository(env).latest(),
+      /正式研究测试\/前瞻日期重叠/,
+    );
+    await assert.rejects(
+      () => getExecutionCostConfig(env),
+      /正式研究测试\/前瞻日期重叠/,
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+test("P1：导入检查后被研究抢占，输入、样本和日期登记整批回滚；前瞻/样本更新也不能绕过", async () => {
+  const DB = localDatabase(),
+    env = { DB },
+    batch = DB.batch.bind(DB);
+  try {
+    let inject = true;
+    DB.batch = async (statements) => {
+      if (inject) {
+        inject = false;
+        await DB.prepare(
+          "INSERT INTO research_test_claims(namespace,outcome_date,experiment_id,role,reserved_at) VALUES('main','2026-01-08','race','FORWARD_TEST','now')",
+        ).run();
+      }
+      return batch(statements);
+    };
+    await assert.rejects(
+      () => importExecutionCalibration(env, executionInput()),
+      /正式研究测试\/前瞻日期重叠/,
+    );
+    for (const table of [
+      "execution_calibration_inputs",
+      "execution_calibration_sample_sets",
+      "execution_calibration_sample_owners",
+      "execution_calibration_date_uses",
+    ])
+      assert.equal(
+        (await DB.prepare(`SELECT COUNT(*) n FROM ${table}`).first()).n,
+        0,
+        `${table} 全部回滚`,
+      );
+    DB.batch = batch;
+    await DB.prepare("DELETE FROM research_test_claims").run();
+    await importExecutionCalibration(env, executionInput());
+    await assert.rejects(
+      () =>
+        new CohortRepository(env).claimCohortForwardDate(
+          "2026-01-08",
+          "cohort-test",
+        ),
+      /成本校准用途/,
+    );
+    await assert.rejects(
+      () =>
+        DB.prepare(
+          "INSERT INTO research_sample_uses(namespace,experiment_id,role,outcome_date,sample_key,payload,digest) VALUES('main','x','HISTORICAL_TEST','2026-01-08','x','{}','d')",
+        ).run(),
+      /成本校准用途/,
+    );
+    await DB.prepare(
+      "INSERT INTO research_test_claims(namespace,outcome_date,experiment_id,role,reserved_at) VALUES('main','2026-02-01','safe','HISTORICAL_TEST','now')",
+    ).run();
+    await assert.rejects(
+      () =>
+        DB.prepare(
+          "UPDATE research_test_claims SET outcome_date='2026-01-08' WHERE experiment_id='safe'",
+        ).run(),
+      /成本校准用途/,
+    );
+  } finally {
+    DB.batch = batch;
+    DB.close();
+  }
+});
+
+test("P2：名称、来源、分界、外部 ID 和时区改名都复用首次实际样本协议，部分重用被拒绝", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const first = await importExecutionCalibration(env, executionInput());
+    const run = await runExecutionCalibration(env, first.id);
+    await new ExecutionCostRepository(env).save({
+      payload: {
+        ...defaultExecutionCostPolicy().payload,
+        previousLimitUpPremiumBps: 20,
+      },
+    });
+    const renamed = executionInput();
+    renamed.provenance.datasetRef = "renamed";
+    renamed.provenance.owner = "renamed-owner";
+    renamed.provenance.source = "new-broker-export";
+    renamed.trainingEnd = "2026-01-06";
+    renamed.cutoff = "2026-01-09";
+    renamed.orders.reverse();
+    for (const order of renamed.orders) {
+      order.id = `new-${order.id}`;
+      for (const field of [
+        "submittedAt",
+        "completedAt",
+        "marketVolumeObservedAt",
+      ])
+        order[field] = new Date(order[field]).toISOString();
+      order.quote.observedAt = new Date(order.quote.observedAt).toISOString();
+      for (const fill of order.fills) {
+        fill.id = `new-${fill.id}`;
+        fill.executedAt = new Date(fill.executedAt).toISOString();
+      }
+    }
+    const again = await importExecutionCalibration(env, renamed);
+    assert.equal(again.id, first.id);
+    assert.equal(again.trainingEnd, "2026-01-05");
+    assert.equal(again.cutoff, "2026-01-08");
+    assert.equal((await runExecutionCalibration(env, again.id)).id, run.id);
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT COUNT(*) n FROM execution_calibration_inputs",
+        ).first()
+      ).n,
+      1,
+    );
+    const subset = executionInput();
+    subset.orders.pop();
+    await assert.rejects(
+      () => importExecutionCalibration(env, subset),
+      /实际委托\/成交样本已用于校准/,
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+test("P2：并发别名导入只冻结一份协议，并发部分复用整批回滚", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const alias = executionInput();
+    alias.provenance.datasetRef = "alias";
+    const [first, second] = await Promise.all([
+      importExecutionCalibration(env, executionInput()),
+      importExecutionCalibration(env, alias),
+    ]);
+    assert.equal(first.id, second.id);
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT COUNT(*) n FROM execution_calibration_inputs",
+        ).first()
+      ).n,
+      1,
+    );
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT COUNT(*) n FROM execution_calibration_sample_sets",
+        ).first()
+      ).n,
+      1,
+    );
+  } finally {
+    DB.close();
+  }
+  const otherDB = localDatabase(),
+    otherEnv = { DB: otherDB };
+  try {
+    const subset = executionInput();
+    subset.orders.pop();
+    const results = await Promise.allSettled([
+      importExecutionCalibration(otherEnv, executionInput()),
+      importExecutionCalibration(otherEnv, subset),
+    ]);
+    assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+    assert.equal(results.filter((r) => r.status === "rejected").length, 1);
+    assert.equal(
+      (
+        await otherDB
+          .prepare("SELECT COUNT(*) n FROM execution_calibration_inputs")
+          .first()
+      ).n,
+      1,
+    );
+    assert.equal(
+      (
+        await otherDB
+          .prepare("SELECT COUNT(*) n FROM execution_calibration_sample_sets")
+          .first()
+      ).n,
+      1,
+    );
+  } finally {
+    otherDB.close();
+  }
+});
+
+test("0016 升级回填旧用途和首次身份，保留历史内容并拒绝遗留冲突及别名协议", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "calibration-upgrade-")),
+    path = join(directory, "legacy.sqlite");
+  let DB;
+  try {
+    const sqlite = new DatabaseSync(path);
+    sqlite.exec("CREATE TABLE local_migrations(name TEXT PRIMARY KEY)");
+    for (const file of readdirSync("drizzle")
+      .filter((f) => f.endsWith(".sql") && f < "0017")
+      .sort()) {
+      sqlite.exec(readFileSync(`drizzle/${file}`, "utf8"));
+      sqlite.prepare("INSERT INTO local_migrations(name) VALUES(?)").run(file);
+    }
+    const basePolicy = defaultExecutionCostPolicy(),
+      first = normalizeCalibrationInput(executionInput());
+    const alias = structuredClone(first);
+    alias.provenance.datasetRef = "legacy-alias";
+    const ids = [];
+    let primaryReport;
+    for (const [index, input] of [first, alias].entries()) {
+      const inputDigest = await calibrationInputDigest(input, basePolicy),
+        inputId = `cal-input-${inputDigest}`;
+      const report = await calibrateExecutionCost(input, basePolicy),
+        digest = await digestOf(report),
+        id = `cal-${digest}`;
+      sqlite
+        .prepare(
+          "INSERT INTO execution_calibration_inputs(id,payload,digest,raw_digest,created_at) VALUES(?,?,?,?,?)",
+        )
+        .run(
+          inputId,
+          JSON.stringify({ input, basePolicy }),
+          inputDigest,
+          await digestOf(input),
+          `2026-02-0${index + 1}`,
+        );
+      sqlite
+        .prepare(
+          "INSERT INTO execution_cost_calibrations(id,input_digest,cutoff,report,digest,created_at) VALUES(?,?,?,?,?,?)",
+        )
+        .run(
+          id,
+          inputDigest,
+          report.cutoff,
+          JSON.stringify({ inputId, report }),
+          digest,
+          `2026-02-0${index + 1}`,
+        );
+      ids.push(inputId);
+      if (!index) primaryReport = { id, report };
+    }
+    sqlite
+      .prepare(
+        "INSERT INTO execution_cost_policies(id,version,model_version,payload,digest,calibration_status,calibration_cutoff,effective_from,created_at,calibration_id) VALUES('legacy-policy',1,?,?,?,'EXECUTION_CALIBRATED',?,'2026-02-01','2026-02-01',?)",
+      )
+      .run(
+        basePolicy.modelVersion,
+        JSON.stringify(primaryReport.report.payload),
+        primaryReport.report.payloadDigest,
+        primaryReport.report.cutoff,
+        primaryReport.id,
+      );
+    sqlite
+      .prepare(
+        "INSERT INTO research_test_claims(namespace,outcome_date,experiment_id,role,reserved_at) VALUES('main','2026-01-06','legacy-conflict','HISTORICAL_TEST','now')",
+      )
+      .run();
+    const beforeInputs = sqlite
+      .prepare(
+        "SELECT id,payload,digest,raw_digest FROM execution_calibration_inputs ORDER BY id",
+      )
+      .all();
+    const beforeReports = sqlite
+      .prepare("SELECT * FROM execution_cost_calibrations ORDER BY id")
+      .all();
+    sqlite.close();
+    DB = localDatabase(path);
+    const env = { DB };
+    assert.deepEqual(
+      (
+        await DB.prepare(
+          "SELECT id,payload,digest,raw_digest FROM execution_calibration_inputs ORDER BY id",
+        ).all()
+      ).results,
+      beforeInputs,
+    );
+    assert.deepEqual(
+      (
+        await DB.prepare(
+          "SELECT * FROM execution_cost_calibrations ORDER BY id",
+        ).all()
+      ).results,
+      beforeReports,
+    );
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT COUNT(*) n FROM execution_calibration_date_uses",
+        ).first()
+      ).n,
+      16,
+    );
+    await assert.rejects(
+      () => DB.transaction(() => new ExecutionCostRepository(env).latest()),
+      /正式研究测试\/前瞻日期重叠/,
+    );
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT COUNT(*) n FROM execution_calibration_inputs WHERE sample_digest IS NULL",
+        ).first()
+      ).n,
+      2,
+      "研究预留的外层事务回滚时，身份回填也回滚；后续读取可恢复",
+    );
+    await assert.rejects(
+      () => new ExecutionCostRepository(env).latest(),
+      /正式研究测试\/前瞻日期重叠/,
+    );
+    await DB.prepare(
+      "DELETE FROM research_test_claims WHERE experiment_id='legacy-conflict'",
+    ).run();
+    assert.equal(
+      (await new ExecutionCostRepository(env).latest()).calibrationStatus,
+      "EXECUTION_CALIBRATED",
+    );
+    const renamed = executionInput();
+    renamed.provenance.datasetRef = "third-name";
+    renamed.trainingEnd = "2026-01-06";
+    assert.equal((await importExecutionCalibration(env, renamed)).id, ids[0]);
+    const aliasReport = await DB.prepare(
+      "SELECT id FROM execution_cost_calibrations WHERE id<>?",
+    )
+      .bind(primaryReport.id)
+      .first();
+    await assert.rejects(
+      () => exportExecutionCalibration(env, aliasReport.id),
+      /首次冻结协议/,
+    );
+  } finally {
+    DB?.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("问题 3（P2）：配置和政策热读取不重新拟合，离线核验仍独立重算，篡改使缓存失效", async () => {
+  const DB = localDatabase(),
+    env = { DB },
+    originalTimeout = globalThis.setTimeout;
+  try {
+    const imported = await importExecutionCalibration(env, executionInput());
+    const run = await runExecutionCalibration(env, imported.id);
+    await saveExecutionCostPolicy(env, { calibrationId: run.id });
+    let yields = 0;
+    globalThis.setTimeout = (...args) => {
+      yields++;
+      return originalTimeout(...args);
+    };
+    await getExecutionCostConfig(env);
+    await getExecutionCostConfig(env);
+    await new ExecutionCostRepository(env).latest();
+    const bundle = await exportExecutionCalibration(env, run.id);
+    assert.equal(yields, 0, "普通读取没有任何训练网格迭代");
+    await verifyExecutionCalibration(bundle);
+    assert.ok(yields > 0, "离线核验从冻结输入独立计算");
+    // 同步重写报告摘要、ID 和政策引用，新的报告指纹不能命中旧核验缓存。
+    bundle.report.validation.maeBps = 0;
+    const digest = await digestOf(bundle.report),
+      id = `cal-${digest}`;
+    await DB.prepare(
+      "INSERT INTO execution_cost_calibrations(id,input_digest,cutoff,report,digest,created_at) VALUES(?,?,?,?,?,'now')",
+    )
+      .bind(
+        id,
+        bundle.report.inputDigest,
+        bundle.report.cutoff,
+        JSON.stringify({ inputId: bundle.inputId, report: bundle.report }),
+        digest,
+      )
+      .run();
+    await DB.prepare("UPDATE execution_cost_policies SET calibration_id=?")
+      .bind(id)
+      .run();
+    await assert.rejects(
+      () => new ExecutionCostRepository(env).latest(),
+      /独立重算不一致/,
+    );
+  } finally {
+    globalThis.setTimeout = originalTimeout;
     DB.close();
   }
 });
