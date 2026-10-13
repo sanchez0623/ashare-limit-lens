@@ -62,6 +62,13 @@ import {
 } from "../services/execution-cost.js";
 import { runExecutionSensitivity } from "../services/execution-sensitivity.js";
 import { ExecutionCostRepository } from "../storage/execution-cost.js";
+import { exportExecutionStress } from "../services/execution-stress.js";
+import {
+  importExecutionCalibration,
+  runExecutionCalibration,
+  exportExecutionCalibration,
+  listExecutionCalibrations,
+} from "../services/execution-calibration.js";
 import {
   evidenceOverview,
   getEvidence,
@@ -158,6 +165,10 @@ export async function api(request, env) {
     "/api/paper/execution-cost": ["GET", "PUT"],
     "/api/paper/execution-cost/diagnostics": ["GET"],
     "/api/research/execution-sensitivity": ["GET", "POST"],
+    "/api/research/execution-stress/export": ["GET"],
+    "/api/research/execution-calibration": ["GET", "POST"],
+    "/api/research/execution-calibration/inputs": ["POST"],
+    "/api/research/execution-calibration/export": ["GET"],
     "/api/evidence": ["GET"],
     "/api/evidence/history": ["GET"],
     "/api/evidence/export": ["GET"],
@@ -204,13 +215,17 @@ export async function api(request, env) {
   if (!allowedMethods.includes(request.method))
     return json({ error: "不支持此请求方法" }, 405);
   if (
-    request.method === "POST" &&
+    ["POST", "PUT", "PATCH", "DELETE"].includes(request.method) &&
     ((request.headers.get("Origin") &&
       request.headers.get("Origin") !== url.origin) ||
       request.headers.get("Sec-Fetch-Site") === "cross-site")
   )
     return json({ error: "不接受跨站写入请求" }, 403);
-  if (Number(request.headers.get("Content-Length") || 0) > 12000)
+  const bodyLimit =
+    path === "/api/research/execution-calibration/inputs"
+      ? 8 * 1024 * 1024
+      : 12000;
+  if (Number(request.headers.get("Content-Length") || 0) > bodyLimit)
     return json({ error: "请求内容过长" }, 413);
   try {
     if (path === "/api/settings") {
@@ -524,6 +539,32 @@ export async function api(request, env) {
         }),
       );
     }
+    if (path === "/api/research/execution-stress/export")
+      return json(
+        await exportExecutionStress(env, url.searchParams.get("id"), {
+          verify: false,
+        }),
+      );
+    if (path === "/api/research/execution-calibration/inputs")
+      return json(
+        await importExecutionCalibration(
+          env,
+          await readJson(request, 8 * 1024 * 1024),
+        ),
+      );
+    if (path === "/api/research/execution-calibration") {
+      if (request.method === "GET")
+        return json(await listExecutionCalibrations(env));
+      return json(
+        await runExecutionCalibration(env, (await readJson(request)).inputId),
+      );
+    }
+    if (path === "/api/research/execution-calibration/export")
+      return json(
+        await exportExecutionCalibration(env, url.searchParams.get("id"), {
+          verify: false,
+        }),
+      );
     if (path === "/api/evidence" || path === "/api/evidence/history") {
       const asOf = url.searchParams.get("asOf") || undefined;
       if (asOf && !validDate(asOf)) return json({ error: "日期格式无效" }, 400);

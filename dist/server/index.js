@@ -537,890 +537,890 @@ var init_evidence = __esm({
 });
 
 // .sites-runtime/assets.js
-var ASSETS = { "/": { "body": `<!doctype html>\r
-<html lang="zh-CN">\r
-  <head>\r
-    <meta charset="UTF-8" />\r
-    <meta name="viewport" content="width=device-width, initial-scale=1" />\r
-    <meta name="theme-color" content="#101e2e" />\r
-    <title>\u6DA8\u505C\u7814\u7A76\u53F0 \xB7 A \u80A1\u590D\u76D8\u4E0E\u8BC4\u5206</title>\r
-    <meta\r
-      name="description"\r
-      content="\u6BCF\u65E5 A \u80A1\u6DA8\u505C\u590D\u76D8\uFF0C\u67E5\u770B\u53EF\u89E3\u91CA\u7684\u4E2A\u80A1\u8BC4\u5206\u3001\u884C\u4E1A\u677F\u5757\u5F3A\u5EA6\u548C\u5E02\u573A\u60C5\u7EEA\u3002"\r
-    />\r
-    <link\r
-      rel="icon"\r
-      type="image/svg+xml"\r
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101e2e'/%3E%3Cpath d='M7 24V17h4v7m3 0V12h4v12m3 0V7h4v17' stroke='%2356d3b5' stroke-width='3'/%3E%3C/svg%3E"\r
-    />\r
-    <link rel="stylesheet" href="/assets/styles.css" />\r
-  </head>\r
-  <body>\r
-    <div class="shell">\r
-      <aside class="sidebar">\r
-        <a class="brand" href="#overview" aria-label="\u6DA8\u505C\u7814\u7A76\u53F0\u9996\u9875"\r
-          ><span class="brand-mark"><i></i><i></i><i></i></span\r
-          ><span>\u6DA8\u505C\u7814\u7A76\u53F0<small>LIMIT LENS</small></span></a\r
-        >\r
-        <div class="nav-label">\u7814\u7A76\u5DE5\u4F5C\u53F0</div>\r
-        <nav aria-label="\u4E3B\u5BFC\u822A">\r
-          <button data-view="overview" class="nav-item active">\r
-            <span data-icon="dashboard"></span>\u603B\u89C8\u590D\u76D8\r
-          </button>\r
-          <button data-view="stocks" class="nav-item">\r
-            <span data-icon="chart"></span>\u4E2A\u80A1\u5206\u6790\r
-          </button>\r
-          <button data-view="sectors" class="nav-item">\r
-            <span data-icon="grid"></span>\u677F\u5757\u7814\u7A76\r
-          </button>\r
-          <button data-view="review" class="nav-item">\r
-            <span data-icon="shield"></span>\u6628\u65E5\u53CD\u9988\r
-          </button>\r
-          <button data-view="paper" class="nav-item">\r
-            <span data-icon="chart"></span>\u6A21\u62DF\u4EA4\u6613\r
-          </button>\r
-          <button data-view="strategies" class="nav-item">\r
-            <span data-icon="sliders"></span>\u7B56\u7565\u8D5B\u9A6C\r
-          </button>\r
-          <button data-view="alerts" class="nav-item">\r
-            <span data-icon="shield"></span>\u8FD0\u7EF4\u544A\u8B66\r
-          </button>\r
-          <button data-view="model" class="nav-item">\r
-            <span data-icon="sliders"></span>\u8BC4\u5206\u6A21\u578B\r
-          </button>\r
-        </nav>\r
-        <div class="sidebar-note">\r
-          <span class="mini-label">\u590D\u76D8\u95ED\u73AF</span\r
-          ><strong>\u8BC4\u5206 \xB7 \u68C0\u9A8C \xB7 \u6539\u8FDB</strong>\r
-          <p>\u4FDD\u5B58\u5F53\u65F6\u7684\u5224\u65AD\uFF0C\u518D\u7528\u4E0B\u4E00\u4EA4\u6613\u65E5\u7684\u7ED3\u679C\u68C0\u9A8C\u3002</p>\r
-          <div class="note-line"></div>\r
-          <span id="snapshot-status">\u6536\u76D8\u540E\u81EA\u52A8\u4FDD\u5B58\u8BC4\u5206\u5FEB\u7167</span>\r
-        </div>\r
-        <div class="sidebar-footer">\r
-          <span data-icon="database"></span>\r
-          <div>\r
-            \u516C\u5F00\u884C\u60C5\u63A5\u5165<small id="sidebar-source">\u6B63\u5728\u68C0\u67E5\u6570\u636E\u6E90</small>\r
-          </div>\r
-        </div>\r
-      </aside>\r
-      <div class="workspace">\r
-        <header class="topbar">\r
-          <div class="breadcrumb">\r
-            \u7814\u7A76\u5DE5\u4F5C\u53F0 <span>/</span> <strong id="crumb">\u603B\u89C8\u590D\u76D8</strong>\r
-          </div>\r
-          <div class="topbar-right">\r
-            <span class="session-label">A \u80A1 \xB7 \u6CAA\u6DF1\u5E02\u573A</span\r
-            ><button\r
-              class="icon-button"\r
-              id="help-btn"\r
-              aria-label="\u67E5\u770B\u6570\u636E\u53E3\u5F84"\r
-            >\r
-              <span data-icon="info"></span>\r
-            </button>\r
-          </div>\r
-        </header>\r
-        <main>\r
-          <div class="page-heading">\r
-            <div>\r
-              <div class="eyebrow">DAILY MARKET REVIEW</div>\r
-              <h1 id="page-title">\u6BCF\u65E5\u6DA8\u505C\u590D\u76D8</h1>\r
-              <p id="page-subtitle">\u628A\u6DA8\u505C\u62C6\u6210\u4FE1\u53F7\uFF0C\u628A\u5224\u65AD\u5EFA\u7ACB\u5728\u6570\u636E\u4E0A\u3002</p>\r
-            </div>\r
-            <div class="heading-actions">\r
-              <label class="date-control"\r
-                ><span data-icon="calendar"></span\r
-                ><input\r
-                  type="date"\r
-                  id="trade-date"\r
-                  aria-label="\u4EA4\u6613\u65E5\u671F" /></label\r
-              ><button class="primary" id="refresh-btn">\r
-                <span data-icon="refresh"></span>\u5237\u65B0\u884C\u60C5\r
-              </button>\r
-            </div>\r
-          </div>\r
-          <div class="data-strip">\r
-            <div>\r
-              <span class="source-tag" id="source-tag">\u884C\u60C5\u52A0\u8F7D\u4E2D</span\r
-              ><span id="data-time">\u6B63\u5728\u83B7\u53D6\u6240\u9009\u4EA4\u6613\u65E5\u6DA8\u505C\u6C60</span>\r
-            </div>\r
-            <button class="text-button" id="demo-btn">\u67E5\u770B\u6F14\u793A</button>\r
-          </div>\r
-          <div class="notice" id="notice" role="status" hidden></div>\r
-          <section id="summary" class="metrics" aria-label="\u5E02\u573A\u6982\u51B5"></section>\r
-          <div id="overview-content" class="overview-grid">\r
-            <section class="panel pool-panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\r
-                    \u6DA8\u505C\u4E2A\u80A1 <span class="count-chip" id="pool-count">\u2014</span>\r
-                  </h2>\r
-                  <p>\u6309\u7EFC\u5408\u8BC4\u5206\u6392\u5E8F\uFF0C\u70B9\u51FB\u4E2A\u80A1\u67E5\u770B\u5B8C\u6574\u8BCA\u65AD</p>\r
-                </div>\r
-                <span class="small-muted" id="coverage-label">\u516D\u7EF4\u8BC4\u5206</span>\r
-              </div>\r
-              <div class="filters">\r
-                <div class="search-control">\r
-                  <span data-icon="search"></span\r
-                  ><input\r
-                    id="search"\r
-                    placeholder="\u641C\u7D22\u540D\u79F0 / \u4EE3\u7801"\r
-                    aria-label="\u641C\u7D22\u6DA8\u505C\u4E2A\u80A1"\r
-                  />\r
-                </div>\r
-                <select id="sector-filter" aria-label="\u7B5B\u9009\u884C\u4E1A\u677F\u5757">\r
-                  <option value="">\u5168\u90E8\u884C\u4E1A</option>\r
-                </select>\r
-              </div>\r
-              <div class="table-subnav">\r
-                <div class="segments" role="group" aria-label="\u8FDE\u677F\u7B5B\u9009">\r
-                  <button data-height="all" class="active">\u5168\u90E8</button\r
-                  ><button data-height="first">\u9996\u677F</button\r
-                  ><button data-height="relay">\u8FDE\u677F</button>\r
-                </div>\r
-                <div class="sort-control">\r
-                  <label for="sort">\u6392\u5E8F</label\r
-                  ><select id="sort">\r
-                    <option value="score">\u7EFC\u5408\u8BC4\u5206</option>\r
-                    <option value="height">\u8FDE\u677F\u9AD8\u5EA6</option>\r
-                    <option value="seal">\u5C01\u5355\u91D1\u989D</option>\r
-                    <option value="first">\u9996\u5C01\u65F6\u95F4</option>\r
-                  </select>\r
-                </div>\r
-              </div>\r
-              <div class="table-scroll">\r
-                <table>\r
-                  <thead>\r
-                    <tr>\r
-                      <th>\u4E2A\u80A1 / \u4EE3\u7801</th>\r
-                      <th>\u7EFC\u5408\u8BC4\u5206</th>\r
-                      <th>\u884C\u4E1A\u677F\u5757</th>\r
-                      <th>\u8FDE\u677F</th>\r
-                      <th>\u9996\u5C01\u65F6\u95F4</th>\r
-                      <th>\u5C01\u5355\u91D1\u989D</th>\r
-                      <th>\u6362\u624B\u7387</th>\r
-                      <th>\u70B8\u677F</th>\r
-                    </tr>\r
-                  </thead>\r
-                  <tbody id="stock-rows"></tbody>\r
-                </table>\r
-              </div>\r
-              <div class="table-footer">\r
-                <span id="table-status">\u6B63\u5728\u8BFB\u53D6\u516C\u5F00\u884C\u60C5\u2026</span\r
-                ><span>\u8BC4\u5206\u533A\u95F4 0\u2013100</span>\r
-              </div>\r
-            </section>\r
-            <div class="right-column">\r
-              <section class="panel sector-panel">\r
-                <div class="panel-heading">\r
-                  <div>\r
-                    <h2>\u677F\u5757\u5F3A\u5EA6</h2>\r
-                    <p>\u6DA8\u505C\u96C6\u805A \xD7 \u8FDE\u677F\u9AD8\u5EA6 \xD7 \u5C01\u677F\u8868\u73B0</p>\r
-                  </div>\r
-                  <button\r
-                    class="icon-button"\r
-                    id="all-sectors"\r
-                    aria-label="\u67E5\u770B\u5168\u90E8\u884C\u4E1A\u677F\u5757"\r
-                  >\r
-                    <span data-icon="grid"></span>\r
-                  </button>\r
-                </div>\r
-                <div id="sector-rank"></div>\r
-                <div class="panel-footnote">\r
-                  \u884C\u4E1A\u5206\u7C7B\u53E3\u5F84\uFF0C\u4E0D\u7B49\u540C\u4E8E\u6982\u5FF5\u9898\u6750\u70ED\u5EA6\r
-                </div>\r
-              </section>\r
-              <section class="panel ladder-panel">\r
-                <div class="panel-heading">\r
-                  <div>\r
-                    <h2>\u8FDE\u677F\u68AF\u961F</h2>\r
-                    <p>\u89C2\u5BDF\u5E02\u573A\u9AD8\u5EA6\u4E0E\u63A5\u529B\u7ED3\u6784</p>\r
-                  </div>\r
-                  <span class="outline-tag">\u5F53\u65E5</span>\r
-                </div>\r
-                <div id="ladder-chart"></div>\r
-                <div id="ladder-insight" class="insight"></div>\r
-              </section>\r
-            </div>\r
-          </div>\r
-          <section id="sectors-view" class="panel" hidden>\r
-            <div class="panel-heading">\r
-              <div>\r
-                <h2>\u884C\u4E1A\u677F\u5757\u8BC4\u5206</h2>\r
-                <p>\u70B9\u51FB\u677F\u5757\uFF0C\u7B5B\u9009\u5B83\u7684\u6DA8\u505C\u4E2A\u80A1</p>\r
-              </div>\r
-              <span class="outline-tag">\u900F\u660E\u6743\u91CD</span>\r
-            </div>\r
-            <div class="sector-formula">\r
-              \u6DA8\u505C\u96C6\u805A 35% <span>+</span> \u8FDE\u677F\u9AD8\u5EA6 25% <span>+</span> \u5C01\u677F\u7A33\u5B9A\r
-              25% <span>+</span> \u65E9\u76D8\u8054\u52A8 15%\r
-            </div>\r
-            <div class="table-scroll">\r
-              <table>\r
-                <thead>\r
-                  <tr>\r
-                    <th>\u884C\u4E1A\u677F\u5757</th>\r
-                    <th>\u677F\u5757\u5F97\u5206</th>\r
-                    <th>\u6DA8\u505C\u5BB6\u6570</th>\r
-                    <th>\u6700\u9AD8\u8FDE\u677F</th>\r
-                    <th>\u5C01\u677F\u7A33\u5B9A</th>\r
-                    <th>\u65E9\u76D8\u8054\u52A8</th>\r
-                    <th>\u6DA8\u505C\u80A1\u6210\u4EA4\u989D</th>\r
-                  </tr>\r
-                </thead>\r
-                <tbody id="sector-rows"></tbody>\r
-              </table>\r
-            </div>\r
-          </section>\r
-          <section id="review-view" hidden>\r
-            <div class="review-intro">\r
-              <div>\r
-                <span class="outline-tag" id="review-date-label"\r
-                  >\u7B49\u5F85\u9996\u4E2A\u53CD\u9988\u65E5</span\r
-                >\r
-                <p id="review-status">\r
-                  \u5F53\u5929\u6536\u76D8\u540E\u4FDD\u5B58\u539F\u59CB\u8BC4\u5206\uFF0C\u4E0B\u4E00\u4E2A\u4EA4\u6613\u65E5\u6838\u9A8C\u5E02\u573A\u8868\u73B0\u3002\r
-                </p>\r
-              </div>\r
-              <button class="secondary" id="run-review">\r
-                <span data-icon="refresh"></span>\u66F4\u65B0\u53CD\u9988\r
-              </button>\r
-            </div>\r
-            <div id="review-metrics" class="metrics"></div>\r
-            <div class="review-grid">\r
-              <section class="panel">\r
-                <div class="panel-heading">\r
-                  <div>\r
-                    <h2>\u539F\u59CB\u8BC4\u5206\u4E0E\u5B9E\u9645\u8868\u73B0</h2>\r
-                    <p>\u56FA\u5B9A\u6628\u65E5\u6837\u672C\uFF0C\u68C0\u9A8C\u4ECA\u5929\u7684\u8868\u73B0\uFF0C\u907F\u514D\u4E8B\u540E\u6311\u9009\u8D62\u5BB6</p>\r
-                  </div>\r
-                  <span id="review-coverage" class="outline-tag">\u7B49\u5F85\u6837\u672C</span>\r
-                </div>\r
-                <div\r
-                  id="review-conclusion"\r
-                  class="review-conclusion"\r
-                  hidden\r
-                ></div>\r
-                <div class="table-scroll">\r
-                  <table>\r
-                    <thead>\r
-                      <tr>\r
-                        <th>\u6628\u65E5\u6DA8\u505C\u4E2A\u80A1</th>\r
-                        <th>\u539F\u59CB\u8BC4\u5206</th>\r
-                        <th>\u6B21\u65E5\u5F00\u76D8</th>\r
-                        <th>\u6B21\u65E5\u6536\u76D8</th>\r
-                        <th>\u76D8\u4E2D\u6700\u4F4E</th>\r
-                        <th>\u518D\u6B21\u6DA8\u505C</th>\r
-                      </tr>\r
-                    </thead>\r
-                    <tbody id="review-rows"></tbody>\r
-                  </table>\r
-                </div>\r
-                <div class="panel-footnote">\r
-                  \u6536\u76CA\u4EE5\u539F\u59CB\u6536\u76D8\u4EF7\u4E3A\u57FA\u51C6\uFF0C\u672A\u5047\u8BBE\u80FD\u5728\u6DA8\u505C\u4EF7\u6210\u4EA4\uFF1B\u4E0D\u7B49\u540C\u4E8E\u53EF\u5B9E\u73B0\u7B56\u7565\u6536\u76CA\u3002\r
-                </div>\r
-              </section>\r
-              <section class="panel ai-panel">\r
-                <div class="panel-heading">\r
-                  <div>\r
-                    <h2>AI \u7CFB\u7EDF\u8BC4\u4F30</h2>\r
-                    <p>\u7528\u5DF2\u6838\u9A8C\u7684\u5E02\u573A\u7ED3\u679C\uFF0C\u5BA1\u89C6\u8BC4\u5206\u8D28\u91CF</p>\r
-                  </div>\r
-                  <span class="outline-tag" id="ai-status-tag">\u68C0\u67E5\u8FDE\u63A5</span>\r
-                </div>\r
-                <div id="ai-content"></div>\r
-                <div class="ai-actions">\r
-                  <button class="primary" id="ai-grade-btn">\u751F\u6210 AI \u8BC4\u4EF7</button\r
-                  ><span id="ai-action-status" role="status"></span>\r
-                </div>\r
-              </section>\r
-            </div>\r
-            <section class="panel review-sector-panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u677F\u5757\u5224\u65AD\u53CD\u9988</h2>\r
-                  <p>\u4F7F\u7528\u6628\u65E5\u56FA\u5B9A\u7684\u6DA8\u505C\u6210\u5458\uFF0C\u6BD4\u8F83\u6B21\u65E5\u5E73\u5747\u8868\u73B0</p>\r
-                </div>\r
-              </div>\r
-              <div class="table-scroll">\r
-                <table>\r
-                  <thead>\r
-                    <tr>\r
-                      <th>\u6628\u65E5\u884C\u4E1A\u677F\u5757</th>\r
-                      <th>\u539F\u59CB\u677F\u5757\u5206</th>\r
-                      <th>\u6709\u6548 / \u539F\u59CB\u6837\u672C</th>\r
-                      <th>\u6B21\u65E5\u5E73\u5747\u6536\u76CA</th>\r
-                      <th>\u518D\u6B21\u6DA8\u505C\u6BD4\u4F8B</th>\r
-                    </tr>\r
-                  </thead>\r
-                  <tbody id="review-sector-rows"></tbody>\r
-                </table>\r
-              </div>\r
-            </section>\r
-            <section class="panel history-panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u53CD\u9988\u8BB0\u5F55</h2>\r
-                  <p>\u6301\u7EED\u79EF\u7D2F\u6837\u672C\uFF0C\u518D\u5224\u65AD\u6A21\u578B\u662F\u5426\u7A33\u5B9A\u6709\u6548</p>\r
-                </div>\r
-              </div>\r
-              <div id="review-history"></div>\r
-            </section>\r
-          </section>\r
-          <section id="model-view" hidden>\r
-            <div class="model-grid">\r
-              <section class="panel">\r
-                <div class="panel-heading">\r
-                  <div>\r
-                    <h2>\u4E2A\u80A1\u8BC4\u5206\u6743\u91CD</h2>\r
-                    <p>\u5373\u65F6\u91CD\u7B97\u5E76\u4FDD\u5B58\uFF1B\u5DF2\u5F52\u6863\u7684\u539F\u59CB\u8BC4\u5206\u4E0D\u4F1A\u88AB\u8986\u76D6</p>\r
-                  </div>\r
-                  <span id="weight-total" class="outline-tag">\u5408\u8BA1 100%</span>\r
-                </div>\r
-                <div class="preset-buttons">\r
-                  <button data-preset="balanced" class="active">\u7EFC\u5408\u590D\u76D8</button\r
-                  ><button data-preset="first">\u9996\u677F\u6316\u6398</button\r
-                  ><button data-preset="relay">\u77ED\u7EBF\u63A5\u529B</button>\r
-                </div>\r
-                <div id="weight-controls"></div>\r
-                <div class="model-actions">\r
-                  <button class="secondary" id="reset-model">\r
-                    \u6062\u590D\u7EFC\u5408\u590D\u76D8</button\r
-                  ><span id="model-status" role="status"\r
-                    >\u6743\u91CD\u76F8\u52A0\u540E\u5F52\u4E00\u5316\u8BA1\u7B97</span\r
-                  >\r
-                </div>\r
-              </section>\r
-              <section class="panel model-explain">\r
-                <div class="panel-heading"><h2>\u5206\u6570\u5982\u4F55\u4EA7\u751F</h2></div>\r
-                <div class="formula-box">\r
-                  \u7EFC\u5408\u5206 = \u6709\u6548\u6307\u6807\u52A0\u6743\u5747\u5206<br /><span\r
-                    >\u2212 \u98CE\u9669\u6263\u5206\uFF08\u6700\u591A 20 \u5206\uFF09</span\r
-                  >\r
-                </div>\r
-                <h3>\u6570\u636E\u4E0D\u5B8C\u6574\u65F6</h3>\r
-                <p>\r
-                  \u7F3A\u5931\u6307\u6807\u4E0D\u6309\u96F6\u5206\u8BA1\u5165\uFF0C\u5269\u4F59\u6743\u91CD\u91CD\u65B0\u5F52\u4E00\u5316\u3002\u6570\u636E\u8986\u76D6\u7387\u540C\u65F6\u663E\u793A\uFF0C\u8986\u76D6\u7387\u8F83\u4F4E\u7684\u5F97\u5206\u53EF\u6BD4\u6027\u8F83\u5F31\u3002\r
-                </p>\r
-                <h3>\u98CE\u9669\u6263\u5206</h3>\r
-                <dl>\r
-                  <div>\r
-                    <dt>5 \u677F\u53CA\u4EE5\u4E0A</dt>\r
-                    <dd>\u22128</dd>\r
-                  </div>\r
-                  <div>\r
-                    <dt>\u6362\u624B\u7387 > 40%</dt>\r
-                    <dd>\u22128</dd>\r
-                  </div>\r
-                  <div>\r
-                    <dt>\u70B8\u677F \u2265 3 \u6B21</dt>\r
-                    <dd>\u22125</dd>\r
-                  </div>\r
-                  <div>\r
-                    <dt>\u4F4E\u6362\u624B\u7ADE\u4EF7\u5C01\u677F\u7279\u5F81</dt>\r
-                    <dd>\u221210</dd>\r
-                  </div>\r
-                  <div>\r
-                    <dt>14:50 \u540E\u56DE\u5C01</dt>\r
-                    <dd>\u22124</dd>\r
-                  </div>\r
-                </dl>\r
-                <p class="model-limit">\r
-                  \u6B64\u6A21\u578B\u662F\u89C4\u5219\u8BC4\u5206\uFF0C\u5C1A\u672A\u8FDB\u884C\u5386\u53F2\u6536\u76CA\u6821\u51C6\u3002\u5206\u6570\u8861\u91CF\u89C2\u5BDF\u6307\u6807\uFF0C\u4E0D\u4EE3\u8868\u6B21\u65E5\u4E0A\u6DA8\u6982\u7387\u3002\r
-                </p>\r
-              </section>\r
-            </div>\r
-            <section class="panel model-connection">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u5927\u6A21\u578B\u8FDE\u63A5</h2>\r
-                  <p>DeepSeek\u3001OpenAI\u3001\u901A\u4E49\u517C\u5BB9\u63A5\u53E3</p>\r
-                </div>\r
-                <span class="outline-tag" id="model-ai-status">\u672A\u914D\u7F6E</span>\r
-              </div>\r
-              <p id="model-ai-detail">\r
-                \u670D\u52A1\u7AEF\u914D\u7F6E\u5BC6\u94A5\u3001\u63A5\u53E3\u5730\u5740\u548C\u6A21\u578B\u540E\uFF0CAI\r
-                \u4F1A\u6839\u636E\u51BB\u7ED3\u8BC4\u5206\u4E0E\u5DF2\u6838\u9A8C\u5E02\u573A\u7ED3\u679C\u751F\u6210\u8BC4\u4EF7\u3002\u5BC6\u94A5\u4E0D\u8FDB\u5165\u6D4F\u89C8\u5668\u3002\r
-              </p>\r
-              <p>\r
-                AI\r
-                \u7ED9\u51FA\u8BC1\u636E\u3001\u5224\u65AD\u5931\u8BEF\u4E0E\u53C2\u6570\u5019\u9009\uFF1B\u6A21\u62DF\u4EA4\u6613\u7B56\u7565\u4EC5\u5728\u72EC\u7ACB\u9A8C\u8BC1\u901A\u8FC7\u540E\u542F\u7528\uFF0C\u5386\u53F2\u8BB0\u5F55\u4FDD\u6301\u51BB\u7ED3\u3002\r
-              </p>\r
-            </section>\r
-          </section>\r
-          <section id="paper-view" hidden>\r
-            <div class="paper-toolbar">\r
-              <div>\r
-                <span id="paper-date" class="outline-tag">\u68C0\u67E5\u8D26\u6237</span\r
-                ><span id="paper-audit" class="outline-tag">\u68C0\u67E5\u8D26\u672C</span>\r
-              </div>\r
-              <div>\r
-                <a\r
-                  class="secondary"\r
-                  href="/api/paper/export?format=csv"\r
-                  download\r
-                  >\u6210\u4EA4 CSV</a\r
-                ><a class="secondary" href="/api/paper/export" download\r
-                  >\u5B8C\u6574\u8BB0\u5F55 JSON</a\r
-                ><button\r
-                  id="paper-verify"\r
-                  class="secondary"\r
-                  data-paper-operation\r
-                >\r
-                  \u6838\u9A8C\u6536\u76CA</button\r
-                ><button id="paper-run" class="primary" data-paper-operation>\r
-                  \u66F4\u65B0\u76D8\u540E\u8D26\u6237\r
-                </button>\r
-              </div>\r
-            </div>\r
-            <p class="paper-message" id="paper-message" role="status">\r
-              \u6A21\u62DF\u8D26\u6237\u6309\u4E8B\u524D\u8BA1\u5212\u6267\u884C\uFF0C\u771F\u5B9E\u6570\u636E\u5230\u8FBE\u540E\u66F4\u65B0\u6536\u76CA\u3002\r
-            </p>\r
-            <div id="paper-metrics" class="metrics"></div>\r
-            <section class="panel paper-panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u81EA\u52A8\u6267\u884C\u72B6\u6001</h2>\r
-                  <p id="paper-live-summary">\u68C0\u67E5\u6267\u884C\u5668\u5FC3\u8DF3\u4E0E\u817E\u8BAF\u884C\u60C5</p>\r
-                </div>\r
-                <span class="outline-tag" id="paper-live-tag">\u672A\u8FDE\u63A5</span>\r
-              </div>\r
-              <p class="panel-footnote" id="paper-live-health"></p>\r
-              <div class="table-scroll">\r
-                <table>\r
-                  <thead>\r
-                    <tr>\r
-                      <th>\u4E2A\u80A1 / \u52A8\u4F5C</th>\r
-                      <th>\u6267\u884C\u72B6\u6001</th>\r
-                      <th>\u8FDB\u5EA6</th>\r
-                      <th>\u6700\u8FD1\u5904\u7406\u7ED3\u679C</th>\r
-                    </tr>\r
-                  </thead>\r
-                  <tbody id="paper-live-orders"></tbody>\r
-                </table>\r
-              </div>\r
-            </section>\r
-            <div class="paper-grid">\r
-              <section class="panel">\r
-                <div class="panel-heading">\r
-                  <div>\r
-                    <h2>\u8D26\u6237\u6536\u76CA\u8F68\u8FF9</h2>\r
-                    <p>\u6BCF\u65E5\u6743\u76CA\u3001\u6210\u4EA4\u6210\u672C\u4E0E\u6307\u6570\u57FA\u51C6\u5747\u53EF\u91CD\u653E\u9A8C\u8BC1</p>\r
-                  </div>\r
-                  <span class="outline-tag">\u51C0\u6536\u76CA</span>\r
-                </div>\r
-                <div id="paper-chart"></div>\r
-                <div class="panel-footnote" id="paper-risk"></div>\r
-              </section>\r
-              <section class="panel ai-panel">\r
-                <div class="panel-heading">\r
-                  <div>\r
-                    <h2>AI \u7B56\u7565\u6539\u8FDB</h2>\r
-                    <p>\u5728\u5C01\u5B58\u6570\u636E\u4E0A\u9A8C\u8BC1\uFF0C\u518D\u542F\u7528\u65B0\u7248\u672C</p>\r
-                  </div>\r
-                  <span class="outline-tag" id="paper-ai-tag">\u68C0\u67E5\u8FDE\u63A5</span>\r
-                </div>\r
-                <div id="paper-ai-content"></div>\r
-                <div class="ai-actions">\r
-                  <button\r
-                    class="secondary"\r
-                    id="paper-improve"\r
-                    data-paper-operation\r
-                  >\r
-                    \u68C0\u67E5\u6539\u8FDB\u6761\u4EF6\r
-                  </button>\r
-                </div>\r
-                <div id="paper-version-list"></div>\r
-              </section>\r
-            </div>\r
-            <section class="panel paper-panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u5F53\u524D\u6301\u4ED3</h2>\r
-                  <p>\r
-                    \u542B\u4E70\u5165\u8D39\u7528\u7684\u6210\u672C\uFF0CFIFO \u6838\u7B97\u5DF2\u5B9E\u73B0\u76C8\u4E8F\uFF1B\u5F53\u65E5\u65B0\u4E70\u5165\u4EFD\u989D\u4E0D\u53EF\u5356\r
-                  </p>\r
-                </div>\r
-              </div>\r
-              <div class="table-scroll">\r
-                <table>\r
-                  <thead>\r
-                    <tr>\r
-                      <th>\u4E2A\u80A1</th>\r
-                      <th>\u6301\u80A1\u6570\u91CF</th>\r
-                      <th>\u6BCF\u80A1\u6210\u672C</th>\r
-                      <th>\u6700\u65B0\u4F30\u503C\u4EF7</th>\r
-                      <th>\u6301\u4ED3\u5E02\u503C</th>\r
-                      <th>\u6D6E\u52A8\u76C8\u4E8F</th>\r
-                      <th>\u6301\u4ED3\u65F6\u95F4</th>\r
-                    </tr>\r
-                  </thead>\r
-                  <tbody id="paper-position-rows"></tbody>\r
-                </table>\r
-              </div>\r
-            </section>\r
-            <section class="panel paper-panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u5386\u53F2\u4E2A\u80A1\u76C8\u4E8F</h2>\r
-                  <p>\u6309\u4E2A\u80A1\u6C47\u603B\u5168\u90E8\u5356\u51FA\u7684 FIFO \u5DF2\u5B9E\u73B0\u76C8\u4E8F\uFF0C\u542B\u5356\u51FA\u8D39\u7528</p>\r
-                </div>\r
-              </div>\r
-              <div class="table-scroll">\r
-                <table>\r
-                  <thead>\r
-                    <tr>\r
-                      <th>\u4E2A\u80A1</th>\r
-                      <th>\u6700\u8FD1\u4EA4\u6613\u65E5</th>\r
-                      <th>\u5356\u51FA\u7B14\u6570</th>\r
-                      <th>\u76C8 / \u4E8F\u7B14\u6570</th>\r
-                      <th>\u7D2F\u8BA1\u5DF2\u5B9E\u73B0\u76C8\u4E8F</th>\r
-                      <th>\u5F53\u524D\u72B6\u6001</th>\r
-                    </tr>\r
-                  </thead>\r
-                  <tbody id="paper-stock-pnl-rows"></tbody>\r
-                </table>\r
-              </div>\r
-              <div class="panel-footnote">\r
-                \u76C8\u4E8F\u6309 FIFO \u644A\u5165\u5356\u51FA\u6210\u672C\u6838\u7B97\uFF0C\u4E70\u5165\u8D39\u7528\u5DF2\u8BA1\u5165\u6301\u4ED3\u6210\u672C\uFF1B\u505A T\r
-                \u7684\u4E24\u817F\u5206\u522B\u6309\u5404\u81EA\u65B9\u5411\u5165\u8D26\u3002\u6C47\u603B\u5408\u8BA1\u4E0E\u8D26\u6237\u5DF2\u5B9E\u73B0\u76C8\u4E8F\u4E00\u81F4\u3002\r
-              </div>\r
-            </section>\r
-            <section class="panel paper-panel">\r
-              <div class="panel-heading paper-plan-heading">\r
-                <div>\r
-                  <h2>\u4E0B\u4E00\u4EA4\u6613\u65E5\u8BA1\u5212</h2>\r
-                  <p id="paper-plan-meta">\r
-                    \u76D8\u540E\u51BB\u7ED3\u6570\u91CF\u4E0E\u4EF7\u683C\u6761\u4EF6\uFF0C\u4E0B\u4E00\u4EA4\u6613\u65E5\u6309\u5B9E\u65F6\u884C\u60C5\u81EA\u52A8\u6A21\u62DF\u6210\u4EA4\r
-                  </p>\r
-                </div>\r
-                <span class="outline-tag" id="paper-plan-date">\u7B49\u5F85\u8BC4\u5206</span>\r
-              </div>\r
-              <div class="table-scroll">\r
-                <table>\r
-                  <thead>\r
-                    <tr>\r
-                      <th>\u4E2A\u80A1 / \u677F\u5757</th>\r
-                      <th>\u52A8\u4F5C</th>\r
-                      <th>\u7B56\u7565\u8BC4\u5206</th>\r
-                      <th>\u8BA1\u5212\u6570\u91CF</th>\r
-                      <th>\u4E8B\u524D\u4EF7\u683C\u6761\u4EF6</th>\r
-                      <th>\u89C4\u5212\u4F9D\u636E</th>\r
-                    </tr>\r
-                  </thead>\r
-                  <tbody id="paper-plan-rows"></tbody>\r
-                </table>\r
-              </div>\r
-              <div id="paper-selection-audit" class="paper-outcomes"></div>\r
-              <div id="paper-outcomes" class="paper-outcomes"></div>\r
-              <div class="panel-footnote">\r
-                \u5B9E\u65F6\u8F6E\u8BE2\u6309\u5DF2\u89C2\u5BDF\u5230\u7684\u62A5\u4EF7\u5148\u540E\u6267\u884C\u505A T\uFF1B14:50\r
-                \u8D77\u5C1D\u8BD5\u6062\u590D\u7B2C\u4E8C\u817F\uFF0C\u672A\u5B8C\u6210\u90E8\u5206\u4FDD\u7559\u4ED3\u4F4D\u5E76\u5EF6\u7EED\u5230\u4E0B\u4E00\u4EA4\u6613\u65E5\u3002\u4FDD\u62A4\u9000\u51FA\u9075\u5B88\r
-                T+1\uFF1B\u6DA8\u8DCC\u505C\u6216\u7F3A\u5C11\u884C\u60C5\u65F6\u53EF\u80FD\u65E0\u6CD5\u6210\u4EA4\u3002\u6240\u6709\u6301\u4ED3\u6301\u7EED\u83B7\u53D6\u884C\u60C5\uFF0C\u5373\u4F7F\u4E0D\u518D\u51FA\u73B0\u5728\u6DA8\u505C\u6C60\u4E2D\u3002\r
-              </div>\r
-            </section>\r
-            <section class="panel paper-panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u9010\u7B14\u6210\u4EA4\u8D26\u672C</h2>\r
-                  <p>\r
-                    \u5C55\u793A\u6700\u8FD1 100\r
-                    \u7B14\uFF1B\u5B8C\u6574\u5BFC\u51FA\u5305\u542B\u5168\u90E8\u6210\u4EA4\u3001\u8BA1\u5212\u3001\u884C\u60C5\u3001\u8D39\u7528\u4E0E\u6821\u9A8C\u503C\r
-                  </p>\r
-                </div>\r
-                <span class="outline-tag">\u8D39\u7528\u4E0E\u6ED1\u70B9\u5DF2\u8BA1\u5165</span>\r
-              </div>\r
-              <div class="table-scroll">\r
-                <table>\r
-                  <thead>\r
-                    <tr>\r
-                      <th>\u65E5\u671F / \u65F6\u95F4</th>\r
-                      <th>\u4E2A\u80A1</th>\r
-                      <th>\u52A8\u4F5C / \u65B9\u5411</th>\r
-                      <th>\u80A1\u6570</th>\r
-                      <th>\u6210\u4EA4\u4EF7</th>\r
-                      <th>\u8D39\u7528</th>\r
-                      <th>\u73B0\u91D1\u53D8\u52A8</th>\r
-                      <th>\u6210\u4EA4\u6A21\u578B</th>\r
-                    </tr>\r
-                  </thead>\r
-                  <tbody id="paper-ledger-rows"></tbody>\r
-                </table>\r
-              </div>\r
-              <div class="panel-footnote">\r
-                \u5206\u949F\u91C7\u6837\u4EF7\u683C\u52A0\u5165 10 bps \u6ED1\u70B9\u30011%\r
-                \u5206\u949F\u6210\u4EA4\u91CF\u53C2\u4E0E\u7387\uFF1B\u7F3A\u5C11\u5206\u949F\u884C\u60C5\u65F6\u4EC5\u4F7F\u7528\u660E\u786E\u6807\u8BB0\u7684\u5F00\u76D8\u6210\u4EA4\u5047\u8BBE\u3002\u65E0\u6CD5\u8FD8\u539F\u9010\u7B14\u6392\u961F\uFF0C\u4E0D\u7B49\u540C\u4E8E\u5B9E\u76D8\u6210\u4EA4\u3002\r
-              </div>\r
-            </section>\r
-            <section class="panel paper-panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u8D26\u6237\u8BBE\u7F6E</h2>\r
-                  <p id="paper-config-note">\u521D\u59CB\u8D44\u91D1\u4E0E\u6BCF\u9879\u8D39\u7528\u5747\u53EF\u81EA\u5B9A\u4E49</p>\r
-                </div>\r
-              </div>\r
-              <form id="paper-config-form" class="paper-config">\r
-                <label\r
-                  >\u521D\u59CB\u6A21\u62DF\u8D44\u91D1\uFF08\u5143\uFF09<input\r
-                    id="paper-initial-capital"\r
-                    type="number"\r
-                    min="10000"\r
-                    max="100000000"\r
-                    step="1000"\r
-                    value="1000000"\r
-                    required /></label\r
-                ><label\r
-                  >AI \u9A8C\u8BC1\u901A\u8FC7\u540E<select id="paper-improvement-mode">\r
-                    <option value="auto">\u81EA\u52A8\u542F\u7528\u65B0\u7B56\u7565</option>\r
-                    <option value="manual">\u4EBA\u5DE5\u9009\u62E9\u542F\u7528</option>\r
-                  </select></label\r
-                ><label\r
-                  >\u6536\u76CA\u57FA\u51C6\u6307\u6570<select id="paper-benchmark"></select\r
-                ></label>\r
-                <fieldset class="paper-fee-settings">\r
-                  <legend>\u8D39\u7528\u6784\u6210\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>\r
-                  <div class="fee-settings-heading">\r
-                    <p>\u8D39\u7387\u6309\u4E07\u5206\u4E4B\u8F93\u5165\uFF0C\u5206\u9879\u76F8\u52A0\uFF1B\u6700\u4F4E\u4F63\u91D1\u4EC5\u9002\u7528\u4E8E\u4F63\u91D1\u9879\u3002</p>\r
-                    <span class="outline-tag" id="paper-fee-version"\r
-                      >\u8D39\u7528\u914D\u7F6E v1</span\r
-                    >\r
-                  </div>\r
-                  <div id="paper-fee-controls" class="paper-fee-controls"></div>\r
-                  <p id="paper-fee-summary" class="fee-settings-note"></p>\r
-                  <button\r
-                    type="button"\r
-                    id="paper-fee-defaults"\r
-                    class="text-button"\r
-                  >\r
-                    \u6062\u590D\u56FE\u4E2D\u9ED8\u8BA4\u8D39\u7528\r
-                  </button>\r
-                </fieldset>\r
-                <fieldset class="paper-fee-settings">\r
-                  <legend>\u98CE\u63A7\u7EA6\u675F\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>\r
-                  <div class="fee-settings-heading">\r
-                    <p>\r
-                      \u5355\u80A1\u4E0E\u603B\u4ED3\u4F4D\u4E0A\u9650\u7EA6\u675F\u4E70\u5165\u89C4\u6A21\uFF0C\u56DE\u64A4\u7194\u65AD\u7EBF\u89E6\u53D1\u6E05\u4ED3\u5E76\u6682\u505C\u4E70\u5165\uFF1B\u6BD4\u4F8B\u6309\r
-                      % \u8F93\u5165\u3002\u65B0\u8BBE\u7F6E\u968F\u4E0B\u4E00\u8BA1\u5212\u51BB\u7ED3\uFF0C\u5386\u53F2\u6210\u4EA4\u6309\u5F53\u65F6\u914D\u7F6E\u6838\u9A8C\u3002\r
-                    </p>\r
-                    <span class="outline-tag" id="paper-risk-version"\r
-                      >\u98CE\u63A7\u914D\u7F6E v1</span\r
-                    >\r
-                  </div>\r
-                  <div\r
-                    id="paper-risk-controls"\r
-                    class="paper-fee-controls"\r
-                  ></div>\r
-                  <p id="paper-risk-summary" class="fee-settings-note"></p>\r
-                  <button\r
-                    type="button"\r
-                    id="paper-risk-defaults"\r
-                    class="text-button"\r
-                  >\r
-                    \u6062\u590D\u9ED8\u8BA4\u98CE\u63A7\r
-                  </button>\r
-                </fieldset>\r
-                <fieldset class="paper-fee-settings">\r
-                  <legend>\u7B56\u7565\u53C2\u6570\u4E0E\u60C5\u7EEA\u6863\u4F4D</legend>\r
-                  <div class="fee-settings-heading">\r
-                    <p>\r
-                      \u4FDD\u5B58\u540E\u767B\u8BB0\u4E3A\u65B0\u7B56\u7565\u7248\u672C\u5E76\u7528\u4E8E\u4E0B\u4E00\u4EFD\u8BA1\u5212\uFF0C\u5DF2\u51BB\u7ED3\u8BA1\u5212\u4FDD\u6301\u539F\u53C2\u6570\uFF1B\u56E0\u5B50\u6743\u91CD\u4E3A\u4EA4\u6613\u51B3\u7B56\u6743\u91CD\uFF0C\u72EC\u7ACB\u4E8E\u7814\u7A76\u9875\u89C2\u5BDF\u6743\u91CD\u3002\u60C5\u7EEA\u9608\u503C\u540C\u65F6\u51B3\u5B9A\u76EE\u6807\u655E\u53E3\u4E0E\u52A0\u4ED3\u3001\u505A\r
-                      T\u3001\u5F00\u65B0\u4ED3\u3001\u51CF\u4ED3\u95F8\u95E8\u3002\r
-                    </p>\r
-                    <span class="outline-tag" id="paper-strategy-version"\r
-                      >\u7B56\u7565 baseline-v1</span\r
-                    >\r
-                  </div>\r
-                  <div\r
-                    id="paper-strategy-controls"\r
-                    class="paper-fee-controls"\r
-                  ></div>\r
-                  <p id="paper-strategy-summary" class="fee-settings-note"></p>\r
-                  <button\r
-                    type="button"\r
-                    id="paper-strategy-defaults"\r
-                    class="text-button"\r
-                  >\r
-                    \u6062\u590D\u9ED8\u8BA4\u7B56\u7565\u53C2\u6570\r
-                  </button>\r
-                </fieldset>\r
-                <button class="secondary" type="submit" data-paper-operation>\r
-                  \u4FDD\u5B58\u8BBE\u7F6E\r
-                </button>\r
-              </form>\r
-            </section>\r
-          </section>\r
-          <section id="strategies-view" hidden>\r
-            <div class="paper-toolbar">\r
-              <div>\r
-                <span id="strategies-status-note" class="outline-tag"\r
-                  >\u540C\u4E00\u51BB\u7ED3\u6279\u6B21\u5185\u56FA\u5B9A\u5019\u9009\u5E76\u884C\u524D\u77BB\uFF1B\u6279\u6B21\u7ED3\u675F\u81F3\u591A\u542F\u7528\u4E00\u4E2A\u5019\u9009</span\r
-                >\r
-              </div>\r
-              <div>\r
-                <button id="strategies-reserve" class="primary">\r
-                  \u53D1\u8D77\u65B0\u6279\u6B21\r
-                </button>\r
-              </div>\r
-            </div>\r
-            <section class="panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u6279\u6B21\u4E0E\u653F\u7B56</h2>\r
-                  <p>\u7EDF\u4E00\u7814\u7A76\u7A97\u53E3\u9501\u3001\u751F\u6210\u9884\u7B97\u4E0E\u7EDF\u8BA1\u9884\u7B97\uFF1B\u5931\u8D25\u6279\u6B21\u540C\u6837\u53EF\u67E5</p>\r
-                </div>\r
-                <span class="outline-tag">\u53D7\u63A7\u664B\u7EA7</span>\r
-              </div>\r
-              <div id="strategies-status"></div>\r
-            </section>\r
-            <section class="panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u6279\u6B21\u5217\u8868</h2>\r
-                  <p>\u70B9\u51FB\u6279\u6B21\u67E5\u770B\u56FA\u5B9A\u6210\u5458\u3001\u5339\u914D\u8D26\u6237\u51C0\u503C\u4E0E\u8D44\u683C</p>\r
-                </div>\r
-              </div>\r
-              <div class="table-scroll">\r
-                <table>\r
-                  <thead>\r
-                    <tr>\r
-                      <th>\u6279\u6B21</th>\r
-                      <th>\u9636\u6BB5</th>\r
-                      <th>\u7236\u7B56\u7565</th>\r
-                      <th>\u5019\u9009\u6570</th>\r
-                      <th>\u521B\u5EFA\u65F6\u95F4</th>\r
-                    </tr>\r
-                  </thead>\r
-                  <tbody id="strategies-cohort-rows"></tbody>\r
-                </table>\r
-              </div>\r
-            </section>\r
-            <section class="panel" id="strategies-detail"></section>\r
-          </section>\r
-          <section id="alerts-view" hidden>\r
-            <div class="paper-toolbar">\r
-              <div>\r
-                <span id="alerts-status-note" class="outline-tag"\r
-                  >\u68C0\u67E5\u544A\u8B66\u914D\u7F6E</span\r
-                >\r
-              </div>\r
-              <div>\r
-                <button id="alerts-test" class="secondary">\u53D1\u9001\u6D4B\u8BD5\u901A\u77E5</button>\r
-                <button id="alerts-maintenance" class="secondary">\r
-                  \u8BBE\u7F6E\u7EF4\u62A4\u7A97\u53E3\r
-                </button>\r
-                <button id="alerts-refresh" class="primary">\u5237\u65B0</button>\r
-              </div>\r
-            </div>\r
-            <section class="panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u901A\u9053\u4E0E\u5916\u90E8\u76D1\u6D4B</h2>\r
-                  <p>\u98DE\u4E66\u673A\u5668\u4EBA\u63A5\u6536\u4E1A\u52A1\u544A\u8B66\uFF1B\u5916\u90E8\u76D1\u6D4B\u53D1\u73B0\u6574\u673A\u79BB\u7EBF</p>\r
-                </div>\r
-                <span class="outline-tag" id="alerts-enabled-tag">\u672A\u542F\u7528</span>\r
-              </div>\r
-              <div\r
-                id="alerts-channel-list"\r
-                class="metrics panel-metrics alert-channel-metrics"\r
-              ></div>\r
-              <p class="panel-footnote">\r
-                \u5BC6\u94A5\uFF08FEISHU_WEBHOOK_URL / FEISHU_SECRET /\r
-                WATCHDOG_*_URL\uFF09\u53EA\u4FDD\u5B58\u5728\u670D\u52A1\u7AEF\r
-                .env\uFF0C\u9875\u9762\u53EA\u663E\u793A\u914D\u7F6E\u72B6\u6001\u3002\u65AD\u7535\u6216\u65AD\u7F51\u65F6\u672C\u673A\u65E0\u6CD5\u53D1\u6D88\u606F\uFF0C\u7531\u5916\u90E8\u76D1\u6D4B\u6309\u7F3A\u5931\u4FE1\u53F7\u544A\u8B66\u3002\r
-              </p>\r
-            </section>\r
-            <section class="panel">\r
-              <div class="panel-heading">\r
-                <div>\r
-                  <h2>\u544A\u8B66\u4E8B\u4EF6</h2>\r
-                  <p>\u6309\u6301\u7EED\u65F6\u95F4\u53BB\u91CD\u4E0E\u5347\u7EA7\uFF1B\u786E\u8BA4\u53EA\u9759\u9ED8\u63D0\u9192\uFF0C\u4E0D\u63A9\u76D6\u672A\u6062\u590D</p>\r
-                </div>\r
-                <label class="text-button"\r
-                  ><input\r
-                    type="checkbox"\r
-                    id="alerts-active-only"\r
-                  />\u53EA\u770B\u672A\u6062\u590D</label\r
-                >\r
-              </div>\r
-              <div class="table-scroll">\r
-                <table>\r
-                  <thead>\r
-                    <tr>\r
-                      <th>\u89C4\u5219</th>\r
-                      <th>\u7EA7\u522B</th>\r
-                      <th>\u72B6\u6001</th>\r
-                      <th>\u9996\u6B21\u53D1\u751F</th>\r
-                      <th>\u6700\u8FD1\u53D1\u751F</th>\r
-                      <th>\u64CD\u4F5C</th>\r
-                    </tr>\r
-                  </thead>\r
-                  <tbody id="alerts-incident-rows"></tbody>\r
-                </table>\r
-              </div>\r
-              <div class="table-footer">\r
-                <span id="alerts-list-status">\u6B63\u5728\u8BFB\u53D6\u2026</span>\r
-                <button class="text-button" id="alerts-more" hidden>\r
-                  \u52A0\u8F7D\u66F4\u591A\r
-                </button>\r
-              </div>\r
-            </section>\r
-          </section>\r
-          <footer class="page-footer">\r
-            <span>LIMIT LENS <i>\xB7</i> \u6BCF\u65E5\u6DA8\u505C\u7814\u7A76</span\r
-            ><span\r
-              >\u7814\u7A76\u8BC4\u5206\u7528\u4E8E\u8F85\u52A9\u590D\u76D8\uFF1B\u5B9E\u76D8\u5224\u65AD\u9700\u7ED3\u5408\u516C\u544A\u3001\u9898\u6750\u4E0E\u6B21\u65E5\u627F\u63A5\u3002</span\r
-            >\r
-          </footer>\r
-        </main>\r
-      </div>\r
-    </div>\r
-    <dialog id="stock-dialog" class="detail-dialog">\r
-      <div class="dialog-top">\r
-        <span class="eyebrow">STOCK DIAGNOSTICS</span\r
-        ><button class="icon-button close-dialog" aria-label="\u5173\u95ED\u4E2A\u80A1\u8BCA\u65AD">\r
-          <span data-icon="close"></span>\r
-        </button>\r
-      </div>\r
-      <div id="stock-detail"></div>\r
-    </dialog>\r
-    <dialog id="help-dialog" class="help-dialog">\r
-      <div class="dialog-top">\r
-        <h2>\u6570\u636E\u4E0E\u8BA1\u7B97\u53E3\u5F84</h2>\r
-        <button class="icon-button close-dialog" aria-label="\u5173\u95ED\u6570\u636E\u8BF4\u660E">\r
-          <span data-icon="close"></span>\r
-        </button>\r
-      </div>\r
-      <div class="help-content">\r
-        <p>\r
-          \u6DA8\u505C\u6C60\u4F18\u5148\u8BFB\u53D6\u4E1C\u65B9\u8D22\u5BCC\u516C\u5F00\u884C\u60C5\uFF1B\u6307\u6570\u8BFB\u53D6\u817E\u8BAF\u516C\u5F00\u884C\u60C5\u3002\u9875\u9762\u4F1A\u6807\u660E\u5B9E\u9645\u6765\u6E90\u3001\u8BF7\u6C42\u65F6\u95F4\u548C\u4EA4\u6613\u65E5\u671F\u3002\u516C\u5F00\u63A5\u53E3\u53EF\u80FD\u9650\u6D41\u3001\u5EF6\u8FDF\u6216\u505C\u6B62\u670D\u52A1\u3002\r
-        </p>\r
-        <p>\r
-          \u6DA8\u505C\u6C60\u4EE5\u6765\u6E90\u7684\u6CAA\u6DF1\u6536\u76D8\u5C01\u677F\u5217\u8868\u4E3A\u51C6\u3002ST\r
-          \u4E0E\u9000\u5E02\u6807\u8BC6\u80A1\u7968\u4ECE\u8BC4\u5206\u4E2D\u5254\u9664\uFF1B\u5F53\u524D\u6765\u6E90\u4E0D\u542B\u79D1\u521B\u677F\u3001\u5317\u4EA4\u6240\u53CA\u672A\u4E2D\u65AD\u8FDE\u7EED\u4E00\u5B57\u6DA8\u505C\u7684\u65B0\u80A1\u3002\r
-        </p>\r
-        <p>\r
-          \u5C01\u5355\u989D\u4F7F\u7528\u5F53\u524D\u5C01\u5355\u91D1\u989D\uFF0C\u5C01\u5355\u6BD4\u4E3A\u5C01\u5355\u989D \xF7\r
-          \u5F53\u65E5\u6210\u4EA4\u989D\uFF1B\u9996\u5C01\u548C\u6700\u540E\u5C01\u677F\u65F6\u95F4\u6765\u81EA\u884C\u60C5\u5B57\u6BB5\uFF0C\u4E24\u8005\u7684\u95F4\u9694\u4E0D\u80FD\u89E3\u91CA\u4E3A\u5B9E\u9645\u5F00\u677F\u65F6\u957F\u3002\r
-        </p>\r
-        <p>\r
-          \u677F\u5757\u4EC5\u6309\u884C\u60C5\u63D0\u4F9B\u7684\u884C\u4E1A\u5206\u7C7B\u805A\u5408\uFF0C\u4E0D\u63A8\u65AD\u65B0\u95FB\u9898\u6750\u3002\u677F\u5757\u6DA8\u505C\u6570\u91CF\u672A\u9664\u4EE5\u884C\u4E1A\u603B\u6210\u5206\u6570\uFF0C\u56E0\u6B64\u5206\u6570\u4F1A\u53D7\u884C\u4E1A\u89C4\u6A21\u5F71\u54CD\u3002\r
-        </p>\r
-        <p>\r
-          \u5C01\u677F\u7387 = \u6DA8\u505C\u6C60\u5BB6\u6570 \xF7\uFF08\u6DA8\u505C\u6C60\u5BB6\u6570 +\r
-          \u6536\u76D8\u672A\u5C01\u4F4F\u7684\u70B8\u677F\u6C60\u5BB6\u6570\uFF09\u3002\u60C5\u7EEA\u5F3A\u5EA6\u7531\u6DA8\u505C\u5BB6\u6570\uFF0840%\uFF09\u3001\u5C01\u677F\u7387\uFF0835%\uFF09\u3001\u5E02\u573A\u9AD8\u5EA6\uFF0825%\uFF09\u6784\u6210\uFF1B\u6570\u636E\u7F3A\u5931\u4F1A\u91CD\u65B0\u5F52\u4E00\u5316\u3002\r
-        </p>\r
-        <p>\r
-          \u664B\u7EA7\u7387\u9700\u8981\u4E0A\u4E00\u53EF\u7528\u4EA4\u6613\u65E5\u6DA8\u505C\u5217\u8868\uFF1B\u6628\u65E5\u6C60\u63A5\u53E3\u7528\u4E8E\u5F53\u65E5\u664B\u7EA7\u7EDF\u8BA1\uFF1B\u8DE8\u65E5\u53CD\u9988\u53E6\u7528\u6307\u6570\u65E5\u671F\u5E8F\u5217\u786E\u8BA4\u76F8\u90BB\u4EA4\u6613\u65E5\u3002\u83B7\u53D6\u4E0D\u5230\u5386\u53F2\u6570\u636E\u65F6\u663E\u793A\u201C\u2014\u201D\u3002\r
-        </p>\r
-        <p>\r
-          \u6A21\u62DF\u4EA4\u6613\u6309\u524D\u4E00\u4EA4\u6613\u65E5\u51BB\u7ED3\u7684\u6570\u91CF\u548C\u4EF7\u683C\u6761\u4EF6\uFF0C\u4EE5\u817E\u8BAF HTTP\r
-          \u5B9E\u65F6\u62A5\u4EF7\u81EA\u52A8\u6267\u884C\u5E76\u8BA1\u5165\u8D39\u7528\uFF1B\u6240\u6709\u6301\u4ED3\u6301\u7EED\u8DDF\u8E2A\uFF0C\u76D8\u540E\u6309\u5B9E\u9645\u6A21\u62DF\u6210\u4EA4\u66F4\u65B0\u6536\u76CA\u3002\u9010\u7B14\u6392\u961F\u3001\u9F99\u864E\u699C\u4E0E\u516C\u544A\u5C1A\u672A\u63A5\u5165\uFF1B\u7CFB\u7EDF\u53EA\u64CD\u4F5C\u6A21\u62DF\u8D26\u6237\u3002\r
-        </p>\r
-      </div>\r
-    </dialog>\r
-    <script type="module" src="/assets/app.js"><\/script>\r
-  </body>\r
-</html>\r
-`, "type": "text/html; charset=utf-8" }, "/assets/app.js": { "body": 'var ft=[{key:"quality",name:"\\u5C01\\u677F\\u8D28\\u91CF",weight:30,description:"100 \\u2212 \\u70B8\\u677F\\u6B21\\u6570 \\xD7 15\\uFF0C\\u6700\\u4F4E 10 \\u5206"},{key:"capital",name:"\\u5C01\\u5355\\u5F3A\\u5EA6",weight:20,description:"\\u5C01\\u5355\\u91D1\\u989D \\xF7 \\u6210\\u4EA4\\u989D \\xF7 10%\\uFF0C\\u4E0A\\u9650 100 \\u5206"},{key:"liquidity",name:"\\u6362\\u624B\\u7ED3\\u6784",weight:15,description:"4\\u201312%\\uFF1A95\\uFF1B12\\u201325%\\uFF1A80\\uFF1B1\\u20134%\\uFF1A65\\uFF1B25\\u201340%\\uFF1A50\\uFF1B\\u5176\\u4F59\\uFF1A30"},{key:"timing",name:"\\u9996\\u5C01\\u65F6\\u70B9",weight:15,description:"09:45 \\u524D 100\\uFF1B10:30 \\u524D 85\\uFF1B11:30 \\u524D 65\\uFF1B14:00 \\u524D 45\\uFF1B\\u5176\\u4F59 25"},{key:"sector",name:"\\u677F\\u5757\\u534F\\u540C",weight:15,description:"\\u4F7F\\u7528\\u540C\\u65E5\\u3001\\u540C\\u4E00\\u884C\\u4E1A\\u7684\\u677F\\u5757\\u8BC4\\u5206"},{key:"ladder",name:"\\u8FDE\\u677F\\u7ED3\\u6784",weight:5,description:"\\u9996\\u677F 75\\uFF1B2\\u20133 \\u677F 100\\uFF1B4 \\u677F 65\\uFF1B5 \\u677F\\u53CA\\u4EE5\\u4E0A 40"}],R={balanced:[30,20,15,15,15,5],first:[30,20,15,20,12,3],relay:[30,20,10,10,20,10]},N=(t,e=0,a=100)=>Math.max(e,Math.min(a,t)),T=t=>t==null||t===""||!Number.isFinite(Number(t))?null:Number(t);function at(t){if(t==null)return"\\u2014";let e=String(t).padStart(6,"0");return/^\\d{6}$/.test(e)?`${e.slice(0,2)}:${e.slice(2,4)}`:"\\u2014"}function yt(t){return{code:String(t.c||""),name:String(t.n||""),sector:String(t.hybk||"\\u672A\\u5206\\u7C7B"),price:T(t.p)===null?null:Number(t.p)/1e3,change:T(t.zdp),amount:T(t.amount),floatCap:T(t.ltsz),seal:T(t.fund),turnover:T(t.hs),first:T(t.fbt),last:T(t.lbt),breaks:T(t.zbc),height:T(t.lbc)??T(t.ylbc),history:t.zttj?`${t.zttj.days} \\u5929 ${t.zttj.ct} \\u677F`:null}}function Jt(t,e){let a=t.map(n=>n[e]).filter(Number.isFinite);return a.length?a.reduce((n,r)=>n+r,0)/a.length:null}function te(t){let e=new Map;return t.forEach(a=>{e.has(a.sector)||e.set(a.sector,[]),e.get(a.sector).push(a)}),[...e].map(([a,n])=>{let r=n.filter(c=>c.breaks!==null),u=r.length?Jt(r.map(c=>({...c,q:N(100-c.breaks*15,10)})),"q"):null,o=Math.max(0,...n.map(c=>c.height||0)),g=[{name:"\\u6DA8\\u505C\\u96C6\\u805A",weight:35,value:N(n.length/6*100)},{name:"\\u8FDE\\u677F\\u9AD8\\u5EA6",weight:25,value:N(o/5*100)},{name:"\\u5C01\\u677F\\u7A33\\u5B9A",weight:25,value:u},{name:"\\u65E9\\u76D8\\u8054\\u52A8",weight:15,value:n.filter(c=>c.first!==null).length?n.filter(c=>c.first!==null&&c.first<103e3).length/n.filter(c=>c.first!==null).length*100:null}],f=g.filter(c=>c.value!==null).reduce((c,p)=>c+p.weight,0),y=Math.round(g.reduce((c,p)=>c+(p.value===null?0:p.value*p.weight),0)/f);return{name:a,count:n.length,height:o,quality:u,score:y,coverage:f,components:g,amount:n.reduce((c,p)=>c+(p.amount||0),0),members:n.map(c=>c.code)}}).sort((a,n)=>n.score-a.score||n.count-a.count)}function ee(t,e,a=R.balanced){let n={quality:t.breaks===null?null:N(100-t.breaks*15,10),capital:t.seal===null||!t.amount?null:N(t.seal/t.amount/.1*100),liquidity:t.turnover===null?null:t.turnover>=4&&t.turnover<=12?95:t.turnover>12&&t.turnover<=25?80:t.turnover>=1&&t.turnover<4?65:t.turnover>25&&t.turnover<=40?50:30,timing:t.first===null?null:t.first<94500?100:t.first<103e3?85:t.first<113e3?65:t.first<14e4?45:25,sector:e??null,ladder:t.height===null?null:t.height===1?75:t.height<=3?100:t.height===4?65:40},r=[];t.height>=5&&r.push({text:"\\u9AD8\\u4F4D\\u8FDE\\u677F",penalty:8,detail:"5 \\u677F\\u53CA\\u4EE5\\u4E0A\\uFF0C\\u5206\\u6B67\\u4E0E\\u9000\\u6F6E\\u98CE\\u9669\\u4E0A\\u5347\\u3002"}),t.turnover>40&&r.push({text:"\\u9AD8\\u6362\\u624B",penalty:8,detail:"\\u6362\\u624B\\u7387\\u8D85\\u8FC7 40%\\uFF0C\\u7B79\\u7801\\u4EA4\\u6362\\u5267\\u70C8\\u3002"}),t.breaks>=3&&r.push({text:"\\u53CD\\u590D\\u70B8\\u677F",penalty:5,detail:"\\u76D8\\u4E2D\\u81F3\\u5C11 3 \\u6B21\\u5F00\\u677F\\uFF0C\\u5C01\\u677F\\u7A33\\u5B9A\\u6027\\u504F\\u5F31\\u3002"}),t.first===92500&&t.last===92500&&t.turnover!==null&&t.turnover<1&&r.push({text:"\\u4E00\\u5B57\\u7279\\u5F81",penalty:10,detail:"\\u7ADE\\u4EF7\\u5C01\\u677F\\u4E14\\u4F4E\\u6362\\u624B\\uFF0C\\u5B9E\\u9645\\u6210\\u4EA4\\u673A\\u4F1A\\u53EF\\u80FD\\u6709\\u9650\\u3002"}),t.last!==null&&t.last>=145e3&&r.push({text:"\\u5C3E\\u76D8\\u56DE\\u5C01",penalty:4,detail:"\\u6700\\u540E\\u5C01\\u677F\\u65F6\\u95F4\\u63A5\\u8FD1\\u6536\\u76D8\\uFF0C\\u9700\\u89C2\\u5BDF\\u6B21\\u65E5\\u627F\\u63A5\\u3002"});let u=ft.map((p,h)=>({...p,weight:a[h],value:n[p.key]})),o=u.filter(p=>p.value!==null),g=o.reduce((p,h)=>p+h.weight,0),f=a.reduce((p,h)=>p+h,0),y=g?o.reduce((p,h)=>p+h.value*h.weight,0)/g:null,c=Math.min(20,r.reduce((p,h)=>p+h.penalty,0));return{...t,score:y===null?null:Math.round(N(y-c)),rawScore:y,deduction:c,factors:u,risks:r,coverage:f?Math.round(g/f*100):0,sealRatio:t.seal!==null&&t.amount>0?t.seal/t.amount:null}}function ae(t,e=null){let a=t.filter(u=>u.code&&!/ST|\u9000/.test(u.name)),n=e?new Set(e.map(u=>u.code)):null,r=e?.filter(u=>Number.isInteger(u.height)&&u.height>0);return{promotion:r?.length?r.filter(u=>a.some(o=>o.code===u.code&&Number.isInteger(o.height)&&o.height>u.height)).length/r.length*100:null,previousCount:n?n.size:null}}function Mt(t,e=null,a=null,n=R.balanced){let r=t.filter(v=>v.code&&!/ST|\u9000/.test(v.name)),u=te(r),o=new Map(u.map(v=>[v.name,v.score])),g=r.map(v=>ee(v,o.get(v.sector),n)).sort((v,i)=>(i.score??-1)-(v.score??-1)),f=e===null?null:t.length+e?t.length/(t.length+e)*100:null,y=Math.max(0,...r.map(v=>v.height||0)),c=r.filter(v=>v.height===1).length,p=r.filter(v=>v.height>1).length,h=[{weight:40,value:N(r.length/80*100)},{weight:35,value:f},{weight:25,value:N(y/7*100)}],D=h.filter(v=>v.value!==null).reduce((v,i)=>v+i.weight,0),$t=r.length?Math.round(h.reduce((v,i)=>v+(i.value??0)*i.weight,0)/D):null,{promotion:et,previousCount:Rt}=ae(r,a);return{stocks:g,sectors:u,count:r.length,excluded:t.length-r.length,first:c,relay:p,height:y,sealRate:f,emotion:$t,emotionCoverage:D,promotion:et,previousCount:Rt}}var U=Object.freeze([{key:"commission_rate",label:"\\u4F63\\u91D1\\u7387",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"commission_min",label:"\\u6700\\u4F4E\\u4F63\\u91D1",unit:"\\u5143",direction:"\\u53CC\\u8FB9"},{key:"stamp_tax",label:"\\u5370\\u82B1\\u7A0E",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u4EC5\\u5356\\u51FA"},{key:"handling_fee",label:"\\u7ECF\\u624B\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"regulatory_fee",label:"\\u8BC1\\u7BA1\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"transfer_fee",label:"\\u8FC7\\u6237\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"}]),vt=Object.freeze({commission_rate:5e-5,commission_min:5,stamp_tax:5e-4,handling_fee:341e-7,regulatory_fee:2e-5,transfer_fee:1e-5}),Te=Object.freeze({commission_rate:25e-5,commission_min:5,stamp_tax:5e-4,handling_fee:0,regulatory_fee:0,transfer_fee:1e-5});var bt=Object.freeze({maxPositionWeight:.2,maxGrossExposure:.6,maxDrawdown:.1,maxParticipation:.01,slippageBps:10}),F=Object.freeze([{key:"maxPositionWeight",label:"\\u5355\\u80A1\\u4ED3\\u4F4D\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u5355\\u53EA\\u4E2A\\u80A1\\u5E02\\u503C\\u5360\\u8D26\\u6237\\u6743\\u76CA\\u7684\\u4E0A\\u9650"},{key:"maxGrossExposure",label:"\\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u5168\\u90E8\\u6301\\u4ED3\\u5E02\\u503C\\u5360\\u8D26\\u6237\\u6743\\u76CA\\u7684\\u4E0A\\u9650"},{key:"maxDrawdown",label:"\\u56DE\\u64A4\\u7194\\u65AD\\u7EBF",unit:"%",percent:!0,hint:"\\u6743\\u76CA\\u81EA\\u5CF0\\u503C\\u56DE\\u64A4\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u65F6\\u6E05\\u4ED3\\u5E76\\u6682\\u505C\\u4E70\\u5165"},{key:"maxParticipation",label:"\\u5206\\u949F\\u6210\\u4EA4\\u91CF\\u53C2\\u4E0E\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u65E7\\u6210\\u672C\\u6A21\\u578B\\u4E0B\\u5355\\u5206\\u949F\\u6700\\u591A\\u6D88\\u8017\\u7684\\u6210\\u4EA4\\u91CF\\u6BD4\\u4F8B"},{key:"slippageBps",label:"\\u65E7\\u6A21\\u578B\\u56FA\\u5B9A\\u6ED1\\u70B9",unit:"bps",percent:!1,hint:"\\u65E7\\u6210\\u672C\\u6A21\\u578B\\u6210\\u4EA4\\u4EF7\\u76F8\\u5BF9\\u53C2\\u8003\\u4EF7\\u7684\\u56FA\\u5B9A\\u504F\\u79FB"}]),Le=Object.freeze({maxPositionWeight:[.01,1],maxGrossExposure:[.01,1],maxDrawdown:[.005,1],maxParticipation:[1e-4,.1],slippageBps:[0,200]});var xt=Object.freeze({highEmotion:65,midEmotion:40,high:.55,mid:.35,low:.15}),Re=Object.freeze({minScore:[70,95],minSectorScore:[40,80],maxPositions:[2,5],maxHoldDays:[2,10],stopLoss:[.02,.08],takeProfit:[.06,.2],maxBuyGap:[0,.04],tFraction:[.1,.25],tBuyDip:[.01,.04],tSellRise:[.01,.04]}),Me=Object.freeze(["minScore","minSectorScore","maxPositions","maxHoldDays"]),nt=Object.freeze([{key:"quality",label:"\\u5C01\\u677F\\u8D28\\u91CF"},{key:"capital",label:"\\u5C01\\u5355\\u5F3A\\u5EA6"},{key:"liquidity",label:"\\u6362\\u624B\\u7ED3\\u6784"},{key:"timing",label:"\\u9996\\u5C01\\u65F6\\u70B9"},{key:"sector",label:"\\u677F\\u5757\\u534F\\u540C"},{key:"ladder",label:"\\u8FDE\\u677F\\u7ED3\\u6784"}]),st=Object.freeze([{key:"maxPositions",label:"\\u6700\\u5927\\u6301\\u4ED3\\u6570",unit:"\\u53EA",percent:!1,min:2,max:5,step:1,hint:"\\u540C\\u65F6\\u6301\\u6709\\u7684\\u80A1\\u7968\\u6570\\u91CF\\u4E0A\\u9650"},{key:"minScore",label:"\\u5EFA\\u4ED3\\u6700\\u4F4E\\u8BC4\\u5206",unit:"\\u5206",percent:!1,min:70,max:95,step:1,hint:"\\u65B0\\u5F00\\u4ED3\\u8981\\u6C42\\u7684\\u7B56\\u7565\\u8BC4\\u5206\\u4E0B\\u9650"},{key:"minSectorScore",label:"\\u5EFA\\u4ED3\\u6700\\u4F4E\\u677F\\u5757\\u5206",unit:"\\u5206",percent:!1,min:40,max:80,step:1,hint:"\\u65B0\\u5F00\\u4ED3\\u8981\\u6C42\\u7684\\u677F\\u5757\\u534F\\u540C\\u8BC4\\u5206\\u4E0B\\u9650"},{key:"maxHoldDays",label:"\\u6700\\u957F\\u6301\\u6709\\u5929\\u6570",unit:"\\u5929",percent:!1,min:2,max:10,step:1,hint:"\\u6301\\u6709\\u8FBE\\u5230\\u8BE5\\u5929\\u6570\\u540E\\u6E05\\u4ED3"},{key:"stopLoss",label:"\\u6B62\\u635F\\u5E45\\u5EA6",unit:"%",percent:!0,min:2,max:8,step:.1,hint:"\\u4E8F\\u635F\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u89E6\\u53D1\\u6E05\\u4ED3"},{key:"takeProfit",label:"\\u5206\\u6279\\u6B62\\u76C8\\u5E45\\u5EA6",unit:"%",percent:!0,min:6,max:20,step:.1,hint:"\\u76C8\\u5229\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u89E6\\u53D1\\u51CF\\u4ED3\\u5151\\u73B0"},{key:"maxBuyGap",label:"\\u5F00\\u76D8\\u4E70\\u5165\\u4E0A\\u9650",unit:"%",percent:!0,min:0,max:4,step:.1,hint:"\\u4E70\\u5165\\u4EF7\\u76F8\\u5BF9\\u6628\\u6536\\u7684\\u6700\\u5927\\u4E0A\\u6D6E\\uFF0C\\u8D85\\u51FA\\u5219\\u653E\\u5F03"},{key:"tFraction",label:"\\u505A T \\u4ED3\\u4F4D\\u6BD4\\u4F8B",unit:"%",percent:!0,min:10,max:25,step:.1,hint:"\\u6BCF\\u6B21\\u505A T \\u4F7F\\u7528\\u5E95\\u4ED3\\u7684\\u6BD4\\u4F8B"},{key:"tBuyDip",label:"\\u505A T \\u4F4E\\u5438\\u4EF7\\u5DEE",unit:"%",percent:!0,min:1,max:4,step:.1,hint:"\\u6B63\\u5411 T \\u7684\\u4E70\\u5165\\u89E6\\u53D1\\u56DE\\u843D\\u5E45\\u5EA6"},{key:"tSellRise",label:"\\u505A T \\u5151\\u73B0\\u4EF7\\u5DEE",unit:"%",percent:!0,min:1,max:4,step:.1,hint:"\\u6B63\\u5411 T \\u7684\\u5356\\u51FA\\u89E6\\u53D1\\u4E0A\\u6D6E\\u5E45\\u5EA6"}]),it=Object.freeze([{key:"highEmotion",label:"\\u9AD8\\u6863\\u60C5\\u7EEA\\u9608\\u503C",unit:"\\u5206",percent:!1,min:0,max:100,step:1,hint:"\\u60C5\\u7EEA\\u8FBE\\u5230\\u8BE5\\u503C\\u8FDB\\u5165\\u9AD8\\u6863\\uFF1A\\u76EE\\u6807\\u655E\\u53E3\\u53D6\\u9AD8\\u6863\\uFF0C\\u5E76\\u5141\\u8BB8\\u52A0\\u4ED3"},{key:"midEmotion",label:"\\u4F4E\\u6863\\u60C5\\u7EEA\\u9608\\u503C",unit:"\\u5206",percent:!1,min:0,max:100,step:1,hint:"\\u60C5\\u7EEA\\u4F4E\\u4E8E\\u8BE5\\u503C\\u8FDB\\u5165\\u9632\\u5B88\\uFF1A\\u76EE\\u6807\\u655E\\u53E3\\u53D6\\u4F4E\\u6863\\uFF0C\\u505C\\u6B62\\u5F00\\u65B0\\u4ED3\\u4E0E\\u505A T \\u5E76\\u51CF\\u4ED3"},{key:"high",label:"\\u9AD8\\u6863\\u76EE\\u6807\\u655E\\u53E3",unit:"%",percent:!0,min:5,max:95,step:.1,hint:"\\u9AD8\\u6863\\u60C5\\u7EEA\\u4E0B\\u7684\\u76EE\\u6807\\u603B\\u4ED3\\u4F4D"},{key:"mid",label:"\\u4E2D\\u6863\\u76EE\\u6807\\u655E\\u53E3",unit:"%",percent:!0,min:5,max:95,step:.1,hint:"\\u4E2D\\u6027\\u60C5\\u7EEA\\u4E0B\\u7684\\u76EE\\u6807\\u603B\\u4ED3\\u4F4D"},{key:"low",label:"\\u4F4E\\u6863\\u76EE\\u6807\\u655E\\u53E3",unit:"%",percent:!0,min:5,max:95,step:.1,hint:"\\u9632\\u5B88\\u60C5\\u7EEA\\u4E0B\\u7684\\u76EE\\u6807\\u603B\\u4ED3\\u4F4D"}]),Nt=Object.freeze({weights:Object.freeze([...R.balanced]),minScore:80,minSectorScore:55,maxPositions:4,maxHoldDays:5,stopLoss:.06,takeProfit:.12,maxBuyGap:.03,tFraction:.2,tBuyDip:.02,tSellRise:.02,exposureTiers:xt}),Ne=Object.freeze({highEmotion:[0,100],midEmotion:[0,100],high:[.05,.95],mid:[.05,.95],low:[.05,.95]});var Et="sh000001",rt=[{code:"sh000001",name:"\\u4E0A\\u8BC1\\u6307\\u6570"},{code:"sz399001",name:"\\u6DF1\\u8BC1\\u6210\\u6307"},{code:"sh000300",name:"\\u6CAA\\u6DF1300"},{code:"sh000905",name:"\\u4E2D\\u8BC1500"},{code:"sh000852",name:"\\u4E2D\\u8BC11000"},{code:"sz399006",name:"\\u521B\\u4E1A\\u677F\\u6307"},{code:"sh000688",name:"\\u79D1\\u521B50"}],_e=new Set(rt.map(t=>t.code)),Ot=t=>rt.find(e=>e.code===t)?.name||"\\u4E0A\\u8BC1\\u6307\\u6570";var d=t=>document.getElementById(t),m=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),x=t=>(Number(t||0)/100).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2}),Ct=t=>Math.abs(t||0)>=1e10?`${(t/1e10).toFixed(2)} \\u4EBF`:Math.abs(t||0)>=1e6?`${(t/1e6).toFixed(2)} \\u4E07`:x(t),C=t=>t==null?"\\u2014":`${t>0?"+":""}${(t*100).toFixed(2)}%`,V=t=>t>0?"up":t<0?"down":"",ot={OPEN:"\\u5EFA\\u4ED3",ADD:"\\u52A0\\u4ED3",REDUCE:"\\u51CF\\u4ED3",EXIT:"\\u6E05\\u4ED3",T_FORWARD:"\\u6B63\\u5411 T",T_REVERSE:"\\u53CD\\u5411 T",HOLD:"\\u6301\\u6709"},Pt={ACTIVE:"\\u4F7F\\u7528\\u4E2D",VALIDATED:"\\u9A8C\\u8BC1\\u901A\\u8FC7",LEGACY_VALIDATED:"\\u5386\\u53F2\\u901A\\u8FC7\\uFF08\\u65E0\\u542F\\u7528\\u8D44\\u683C\\uFF09",SHADOW_PENDING:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",AWAITING_SHADOW:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",REJECTED:"\\u672A\\u901A\\u8FC7",ERROR:"\\u8C03\\u7528\\u5931\\u8D25",PROPOSING:"\\u6B63\\u5728\\u9A8C\\u8BC1",RETIRED:"\\u5DF2\\u5F52\\u6863",COLLECTING:"\\u6570\\u636E\\u79EF\\u7D2F\\u4E2D",NOT_CONFIGURED:"\\u672A\\u914D\\u7F6E\\u5927\\u6A21\\u578B",BUSY:"\\u5DF2\\u6709\\u8FDB\\u884C\\u4E2D\\u7684\\u5B9E\\u9A8C",BUDGET_EXHAUSTED:"\\u672C\\u6708\\u63D0\\u6848\\u6B21\\u6570\\u5DF2\\u7528\\u5B8C",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u73AF\\u5883\\u53D8\\u5316\\u5DF2\\u5931\\u6548",APPROVED:"\\u5DF2\\u6279\\u51C6\\u5F85\\u6392\\u671F",SCHEDULED:"\\u5DF2\\u6392\\u671F",PROMOTED:"\\u5DF2\\u542F\\u7528"},_t={PENDING:"\\u7B49\\u5F85\\u89E6\\u53D1",BLOCKED:"\\u53D7\\u7EA6\\u675F\\uFF0C\\u91CD\\u8BD5\\u4E2D",PARTIAL:"\\u90E8\\u5206\\u6210\\u4EA4",FIRST_LEG:"\\u505A T \\u7B2C\\u4E00\\u817F",SECOND_LEG:"\\u6062\\u590D\\u7B2C\\u4E8C\\u817F",FILLED:"\\u5B8C\\u6210",CANCELLED:"\\u5DF2\\u53D6\\u6D88",EXPIRED:"\\u5F53\\u65E5\\u5230\\u671F",EXPIRED_PARTIAL:"\\u90E8\\u5206\\u5B8C\\u6210\\u540E\\u5230\\u671F",INCOMPLETE_T:"\\u7B2C\\u4E8C\\u817F\\u8F6C\\u4E0B\\u65E5",RUNNING:"\\u8F6E\\u8BE2\\u8FD0\\u884C\\u4E2D",STALE_QUOTES:"\\u62A5\\u4EF7\\u9648\\u65E7\\uFF0C\\u6682\\u505C\\u6210\\u4EA4",MARKET_CLOSED:"\\u7B49\\u5F85\\u4EA4\\u6613\\u65F6\\u6BB5",ERROR:"\\u5F02\\u5E38\\uFF0C\\u81EA\\u52A8\\u91CD\\u8BD5",NON_TRADING_DAY:"\\u975E\\u4EA4\\u6613\\u65E5",CONFLICT:"\\u5E76\\u53D1\\u7ED3\\u679C\\u5DF2\\u4E22\\u5F03",SETTLED:"\\u5DF2\\u7ED3\\u7B97"},E=null,lt=!1,A=!1;async function P(t,e){let a=await fetch(t,{...e===void 0?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)},signal:AbortSignal.timeout(13e4)}),n=await a.json();if(!a.ok)throw new Error(n.error||"\\u670D\\u52A1\\u6682\\u4E0D\\u53EF\\u7528");return n}function _(t){d("paper-message").textContent=t}var kt=(t,e)=>t==="commission_min"?e:Number((e*1e4).toFixed(5));function qt(t){for(let{key:e}of U)d(`fee-${e}`).value=kt(e,t[e])}function ne(t){return U.map(({key:e,label:a,unit:n})=>`${a} ${kt(e,t[e])}${n==="\\u5143"?" \\u5143":" / \\u4E07"}`).join(" \\xB7 ")}var St=(t,e)=>F.find(a=>a.key===t)?.percent?Number((e*100).toFixed(4)):e;function Ht(t){for(let{key:e}of F)d(`risk-${e}`).value=St(e,t[e])}function se(t){return F.map(({key:e,label:a,unit:n})=>`${a} ${St(e,t[e])}${n}`).join(" \\xB7 ")}var jt=(t,e)=>t.percent?Number((e*100).toFixed(2)):e;function zt(t){let e={...xt,...t.exposureTiers};nt.forEach(({key:a},n)=>d(`strat-weight-${a}`).value=t.weights[n]);for(let a of st)d(`strat-${a.key}`).value=jt(a,t[a.key]);for(let a of it)d(`strat-tier-${a.key}`).value=jt(a,e[a.key])}function ie(){return{weights:nt.map(({key:t})=>Number(d(`strat-weight-${t}`).value)),...Object.fromEntries(st.map(({key:t,percent:e})=>[t,e?Number(d(`strat-${t}`).value)/100:Number(d(`strat-${t}`).value)])),exposureTiers:Object.fromEntries(it.map(({key:t,percent:e})=>[t,e?Number(d(`strat-tier-${t}`).value)/100:Number(d(`strat-tier-${t}`).value)]))}}function Ft(t){return Object.entries({commission:"\\u4F63\\u91D1",stamp:"\\u5370\\u82B1\\u7A0E",handling:"\\u7ECF\\u624B\\u8D39",regulatory:"\\u8BC1\\u7BA1\\u8D39",transfer:"\\u8FC7\\u6237\\u8D39"}).map(([a,n])=>`${n} \\xA5 ${x(t.feeBreakdown[a]||0)}`).join("\\uFF1B")}function re(t){let e=`<span class="stock-code">\\u53C2\\u8003\\u4EF7 \\xA5 ${x(t.referenceCents)}</span>`,a=`<span class="stock-code">\\u6B62\\u635F \\u2264 \\xA5 ${x(t.stopCents)}<br>\\u5206\\u6279\\u6B62\\u76C8 \\u2265 \\xA5 ${x(t.takeProfitCents)}</span>`,n=t.side==="PAIR"?`\\u4F4E\\u5438 \\u2264 \\xA5 ${x(t.buyTriggerCents)}<br>\\u5151\\u73B0 \\u2265 \\xA5 ${x(t.sellTriggerCents)}<span class="stock-code">09:35 \\u8D77\\u89E6\\u53D1 \\xB7 14:50 \\u8D77\\u6062\\u590D\\u7B2C\\u4E8C\\u817F</span>`:t.side==="BUY"&&t.recovery?`\\u6062\\u590D\\u4E70\\u56DE \\xB7 \\u53C2\\u8003 \\xA5 ${x(t.referenceCents)}<span class="stock-code">\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u6309\\u5B9E\\u65F6\\u4EF7 + 0.1% \\u6ED1\\u70B9<br>\\u53D7\\u73B0\\u91D1\\u3001\\u4ED3\\u4F4D\\u4E0E\\u6DA8\\u505C\\u8FB9\\u754C\\u9650\\u5236</span>`:t.side==="BUY"?`\\u4E70\\u5165\\u4E0A\\u9650 \\xA5 ${x(t.maxPriceCents)}<span class="stock-code">\\u542B\\u6ED1\\u70B9 \\xB7 09:30\\u201309:35 \\u5185\\u6EE1\\u8DB3\\u65F6\\u6210\\u4EA4</span>`:t.side==="SELL"?`\\u53C2\\u8003\\u5356\\u4EF7 \\xA5 ${x(Math.round(t.referenceCents*.999))}<span class="stock-code">\\u5B9E\\u9645\\u5356\\u4EF7 = \\u5B9E\\u65F6\\u62A5\\u4EF7 \\u2212 0.1% \\u6ED1\\u70B9<br>\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u91CD\\u8BD5\\uFF0C\\u8DCC\\u505C\\u4E0D\\u5047\\u8BBE\\u6210\\u4EA4</span>`:"\\u6301\\u6709\\u5E76\\u76D1\\u63A7\\u4FDD\\u62A4\\u9608\\u503C";return e+n+a}function oe(t,e="\\u4E0A\\u8BC1\\u6307\\u6570"){if(!t.length)return\'<div class="empty"><strong>\\u6536\\u76CA\\u66F2\\u7EBF\\u4ECE\\u9996\\u4E2A\\u7ED3\\u7B97\\u65E5\\u5F00\\u59CB</strong>\\u4FDD\\u5B58\\u771F\\u5B9E\\u8BA1\\u5212\\u5E76\\u6267\\u884C\\u540E\\uFF0C\\u9010\\u65E5\\u79EF\\u7D2F\\u51C0\\u503C\\u3002</div>\';let a=760,n=200,r=30,u=[0,...t.map(p=>p.totalReturn),...t.map(p=>p.benchmarkReturn).filter(p=>p!=null)],o=Math.min(...u)-.005,g=Math.max(...u)+.005,f=p=>r+p/Math.max(1,t.length-1)*(a-2*r),y=p=>n-r-(p-o)/(g-o)*(n-r*2),c=p=>t.map((h,D)=>h[p]===null||h[p]===void 0?null:`${f(D)},${y(h[p])}`).filter(Boolean).join(" ");return`<svg class="equity-chart" viewBox="0 0 ${a} ${n}" role="img" aria-label="\\u8D26\\u6237\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387\\u4E0E${m(e)}\\u6536\\u76CA\\u7387"><line x1="${r}" x2="${a-r}" y1="${y(0)}" y2="${y(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${r}" y="18" class="chart-axis">${C(g)}</text><text x="${r}" y="${n-7}" class="chart-axis">${C(o)}</text><polyline points="${c("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${c("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${t.map((p,h)=>`<circle cx="${f(h)}" cy="${y(p.totalReturn)}" r="3" fill="#13977e"><title>${m(p.date)}\\uFF1A\\u8D26\\u6237 ${C(p.totalReturn)}\\uFF1B\\u57FA\\u51C6 ${C(p.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>\\u6A21\\u62DF\\u8D26\\u6237</span><span><i class="benchmark"></i>${m(e)}</span><span>${m(t[0].date)} \\u2014 ${m(t.at(-1).date)} \\xB7 ${t.length} \\u4E2A\\u7ED3\\u7B97\\u65E5</span></div>${t.length===1?\'<p class="panel-footnote">\\u9996\\u6B21\\u7ED3\\u7B97\\u53EA\\u5EFA\\u7ACB\\u6536\\u76CA\\u57FA\\u51C6\\uFF1B\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8D77\\u6267\\u884C\\u4E8B\\u524D\\u8BA1\\u5212\\u3002</p>\':""}`}function le(){if(!E)return;let{book:t,equity:e,lastSettled:a,plan:n,run:r,versions:u,riskLimits:o}=E,g=E.realtime,f=g?.health;d("paper-live-tag").textContent=g?.running?"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5DF2\\u8FDE\\u63A5":"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u672A\\u8FDE\\u63A5",d("paper-live-summary").textContent=g?.session?`${g.session.date} \\xB7 ${g.session.sequence} \\u6B21\\u89C2\\u6D4B \\xB7 ${g.session.fillCount} \\u7B14\\u6210\\u4EA4`:"\\u5C1A\\u65E0\\u4ECA\\u65E5\\u5B9E\\u65F6\\u4EA4\\u6613\\u8BB0\\u5F55",d("paper-live-health").textContent=`${f?`${_t[f.status]||f.status} \\xB7 \\u6700\\u8FD1\\u5FC3\\u8DF3 ${new Date(f.checkedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\xB7 ${f.pollIntervalSeconds} \\u79D2\\u8F6E\\u8BE2\\u3002`:"\\u5C1A\\u672A\\u6536\\u5230\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5FC3\\u8DF3\\u3002"} ${g?.running?"\\u5173\\u95ED\\u7F51\\u9875\\u540E\\u670D\\u52A1\\u7EE7\\u7EED\\u6267\\u884C\\uFF1B\\u76D8\\u540E\\u6309\\u5DF2\\u8BB0\\u5F55\\u6210\\u4EA4\\u7ED3\\u7B97\\u3002":g?.requirement||""}`,d("paper-live-orders").innerHTML=g?.session?.orders.length?g.session.orders.map(i=>`<tr><td><strong>${m(i.name)} \\xB7 ${ot[i.action]}</strong><span class="stock-code">${m(i.code)}</span></td><td>${_t[i.status]||m(i.status)}</td><td>${i.side==="PAIR"?`\\u7B2C\\u4E00\\u817F ${i.firstFilled} / \\u7B2C\\u4E8C\\u817F ${i.secondFilled}`:`${i.filledQuantity} / ${i.quantity}`} \\u80A1</td><td>${m(i.reason)}</td></tr>`).join(""):\'<tr><td colspan="4"><div class="empty compact">\\u7B49\\u5F85\\u5E38\\u9A7B\\u670D\\u52A1\\u5728\\u4EA4\\u6613\\u65F6\\u6BB5\\u6267\\u884C\\u51BB\\u7ED3\\u8BA1\\u5212\\u3002</div></td></tr>\';let y=t.positions.reduce((i,k)=>i+k.lots.reduce((I,z)=>I+z.quantity,0)*k.markCents,0),c=a&&e&&e.date!==a.date?a:null,p=[["\\u8D26\\u6237\\u603B\\u6743\\u76CA",`\\xA5 ${Ct(t.equityCents)}`,`\\u521D\\u59CB\\u8D44\\u91D1 \\xA5 ${x(t.initialCashCents)}`,""],["\\u5F53\\u65E5\\u76C8\\u4E8F",`\\xA5 ${Ct(e?.dailyPnlCents)}`,c?`\\u5F53\\u65E5\\u6536\\u76CA ${C(e?.dailyReturn??0)} \\xB7 \\u524D\\u7ED3\\u7B97 ${c.date.slice(5)} ${C(c.dailyReturn)}`:`\\u5F53\\u65E5\\u6536\\u76CA ${C(e?.dailyReturn??0)}`,V(e?.dailyPnlCents)],["\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387",C(t.equityCents/t.initialCashCents-1),`\\u5DF2\\u6263\\u8D39\\u7528 \\xA5 ${x(t.feesCents)}`,V(t.equityCents-t.initialCashCents)],["\\u5F53\\u524D\\u6301\\u4ED3\\u6BD4\\u4F8B",C(y/t.equityCents),`\\u53EF\\u7528\\u73B0\\u91D1 \\xA5 ${x(t.cashCents)}`,""]];d("paper-metrics").innerHTML=p.map(([i,k,I,z])=>`<article class="metric"><div class="metric-head">${i}</div><div class="metric-value ${z}">${k}</div><div class="metric-caption">${I}</div></article>`).join(""),d("paper-date").textContent=t.lastDate?`\\u5DF2\\u7ED3\\u7B97\\u81F3 ${t.lastDate}`:"\\u7B49\\u5F85\\u9996\\u6B21\\u76D8\\u540E\\u7ED3\\u7B97",d("paper-audit").textContent=E.audit.passed?"\\u8D44\\u91D1\\u8D26\\u672C\\u4E00\\u81F4":"\\u8D26\\u672C\\u6838\\u5BF9\\u5F02\\u5E38",d("paper-audit").className=`outline-tag ${E.audit.passed?"verified":"down"}`,d("paper-chart").innerHTML=oe(E.equities,Ot(E.benchmarkCode||t.benchmarkCode)),d("paper-risk").textContent=`\\u5355\\u80A1\\u4E0A\\u9650 ${C(o.maxPositionWeight)} \\xB7 \\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650 ${C(o.maxGrossExposure)} \\xB7 \\u56DE\\u64A4 ${C(e?.drawdown??0)} / ${C(o.maxDrawdown)} \\xB7 \\u4E0D\\u900F\\u652F`,d("paper-position-rows").innerHTML=t.positions.length?t.positions.map(i=>{let k=i.lots.reduce((O,B)=>O+B.quantity,0),I=i.lots.reduce((O,B)=>O+B.costCents,0),z=i.lots.filter(O=>O.acquiredDate<(g?.session?.date||new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"}))).reduce((O,B)=>O+B.quantity,0);return`<tr><td><strong>${m(i.name)}</strong><span class="stock-code">${m(i.code)}</span></td><td>${k}<span class="stock-code">\\u5F53\\u65E5\\u53EF\\u5356 ${z}</span></td><td>${x(I/k)}</td><td>${x(i.markCents)}</td><td>\\xA5 ${x(k*i.markCents)}</td><td class="${V(k*i.markCents-I)}">\\xA5 ${x(k*i.markCents-I)}</td><td>${i.heldDays} \\u65E5</td></tr>`}).join(""):\'<tr><td colspan="7"><div class="empty compact">\\u5F53\\u524D\\u7A7A\\u4ED3\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6309\\u7167\\u51BB\\u7ED3\\u8BA1\\u5212\\u4E0E\\u5B9E\\u9645\\u6210\\u4EA4\\u6761\\u4EF6\\u6A21\\u62DF\\u6267\\u884C\\u3002</div></td></tr>\';let h=new Map(t.positions.map(i=>[i.code,i.lots.reduce((k,I)=>k+I.quantity,0)]));d("paper-stock-pnl-rows").innerHTML=E.stockPnl.length?E.stockPnl.map(i=>`<tr><td><strong>${m(i.name)}</strong><span class="stock-code">${m(i.code)}</span></td><td>${m(i.lastDate)}</td><td>${i.sellCount}</td><td>${i.winCount} \\u76C8 / ${i.lossCount} \\u4E8F</td><td class="${V(i.realizedPnlCents)}">\\xA5 ${x(i.realizedPnlCents)}</td><td>${h.get(i.code)?`\\u4ECD\\u6301\\u6709 ${h.get(i.code)} \\u80A1`:"\\u5DF2\\u6E05\\u4ED3"}</td></tr>`).join(""):\'<tr><td colspan="6"><div class="empty compact">\\u5C1A\\u65E0\\u5DF2\\u5B9E\\u73B0\\u76C8\\u4E8F\\u3002\\u5356\\u51FA\\u6210\\u4EA4\\u540E\\u6309 FIFO \\u6838\\u7B97\\u9010\\u7B14\\u76C8\\u4E8F\\u3002</div></td></tr>\',d("paper-plan-date").textContent=n?`${n.signalDate} \\u76D8\\u540E\\u5236\\u5B9A \\u2192 \\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5`:"\\u5C1A\\u672A\\u751F\\u6210\\u8BA1\\u5212",d("paper-plan-meta").textContent=n?`\\u7B56\\u7565 ${n.strategyVersion} \\xB7 \\u9009\\u80A1 ${n.selectionPolicy?.version==="signal-ranking-v2"?"\\u7CBE\\u786E\\u5206 \\u2192 \\u6210\\u4EA4\\u989D \\u2192 \\u4EE3\\u7801":"\\u6574\\u6570\\u5206 \\u2192 \\u4EE3\\u7801"} \\xB7 \\u8D39\\u7528 v${n.feeConfigVersion||0} \\xB7 \\u6210\\u672C ${n.executionCostPolicy?`${n.executionCostPolicy.modelVersion} v${n.executionCostPolicy.version||0}`:"\\u65E7\\u7248\\u56FA\\u5B9A 10bps"}${n.sourceSnapshotMissing?" \\xB7 \\u8BC4\\u5206\\u7F3A\\u5931\\uFF0C\\u4EC5\\u6267\\u884C\\u98CE\\u9669\\u4FDD\\u62A4":""} \\xB7 \\u76EE\\u6807\\u4ED3\\u4F4D ${C(n.targetExposure)} \\xB7 ${new Date(n.createdAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\u51BB\\u7ED3`:"\\u5F53\\u65E5\\u8BC4\\u5206\\u4FDD\\u5B58\\u540E\\uFF0C\\u751F\\u6210\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8BA1\\u5212\\u3002",d("paper-plan-rows").innerHTML=n?.orders.length?n.orders.map(i=>`<tr><td><strong>${m(i.name)}</strong><span class="stock-code">${m(i.code)} \\xB7 ${m(i.sector)}</span></td><td><span class="action-tag">${ot[i.action]}</span></td><td>${i.score??"\\u2014"}${Number.isFinite(i.scoreValue)?`<span class="stock-code">\\u7CBE\\u786E ${Number(i.scoreValue.toFixed(6))}</span>`:""}<span class="stock-code">\\u539F\\u59CB ${i.originalScore??"\\u2014"}</span></td><td>${i.quantity||"\\u2014"} \\u80A1</td><td class="plan-price-conditions">${re(i)}</td><td class="plan-reason">${m(i.reason)}</td></tr>`).join(""):`<tr><td colspan="6"><div class="empty compact">${n?"\\u5F53\\u524D\\u6CA1\\u6709\\u6EE1\\u8DB3\\u5EFA\\u4ED3\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1\\uFF0C\\u4FDD\\u6301\\u7A7A\\u4ED3\\u3002":"\\u7B49\\u5F85\\u6709\\u6548\\u76D8\\u540E\\u8BC4\\u5206\\u3002"}</div></td></tr>`;let D=n?.selectionAudit?.candidates??[],$t=d("paper-selection-audit").querySelector("details")?.open??!1;d("paper-selection-audit").innerHTML=D.length?`<details><summary>\\u9009\\u80A1\\u4F9D\\u636E \\xB7 ${D.filter(i=>i.status==="SELECTED").length} \\u53EA\\u5165\\u9009 / ${D.length} \\u53EA\\u5019\\u9009</summary><div class="table-scroll"><table><thead><tr><th>\\u987A\\u5E8F</th><th>\\u4E2A\\u80A1</th><th>\\u7CBE\\u786E\\u8BC4\\u5206</th><th>\\u4FE1\\u53F7\\u65E5\\u6210\\u4EA4\\u989D</th><th>\\u9009\\u62E9\\u7ED3\\u679C</th></tr></thead><tbody>${D.map(i=>`<tr><td>${i.rank}</td><td>${m(i.name)}<span class="stock-code">${m(i.code)}</span></td><td>${Number.isFinite(i.scoreValue)?Number(i.scoreValue.toFixed(6)):"\\u2014"}</td><td>${Number.isFinite(i.liquidityAmountCents)?`\\xA5 ${Ct(i.liquidityAmountCents)}`:"\\u672A\\u77E5"}</td><td>${i.status==="SELECTED"?"\\u5DF2\\u5165\\u9009":"\\u672A\\u5165\\u9009"}<span class="stock-code">${m(i.reason)}</span></td></tr>`).join("")}</tbody></table></div><p class="small-muted">\\u6210\\u4EA4\\u989D\\u53D6\\u81EA\\u4FE1\\u53F7\\u65E5\\u51BB\\u7ED3\\u6570\\u636E\\uFF0C\\u4EC5\\u4F5C\\u540C\\u5206\\u51B3\\u80DC\\uFF1B\\u5B9E\\u9645\\u6210\\u4EA4\\u4ECD\\u53D7\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3001\\u8D44\\u91D1\\u53CA\\u5BB9\\u91CF\\u9650\\u5236\\u3002</p></details>`:"";let et=d("paper-selection-audit").querySelector("details");et&&(et.open=$t),d("paper-outcomes").innerHTML=r?.outcomes?.length?`<details><summary>\\u6700\\u8FD1\\u6267\\u884C\\u53CD\\u9988 \\xB7 ${m(r.date)}</summary><div class="execution-feedback">${r.outcomes.map(i=>`<p><strong>${m(i.name)} \\xB7 ${ot[i.action]}</strong><span>${i.status==="FILLED"?"\\u5DF2\\u6210\\u4EA4":i.status==="PARTIAL"?"\\u90E8\\u5206\\u5B8C\\u6210":"\\u672A\\u6267\\u884C"} ${i.filledQuantity?`${i.filledQuantity} \\u80A1`:""} \\xB7 ${m(i.reason||"")}</span></p>`).join("")}</div></details>`:"",d("paper-ledger-rows").innerHTML=E.ledger.length?[...E.ledger].sort((i,k)=>k.date.localeCompare(i.date)||k.sequence-i.sequence).map(i=>`<tr><td>${m(i.date)}<span class="stock-code">${m(i.time)}</span></td><td><strong>${m(i.name)}</strong><span class="stock-code">${m(i.code)}</span></td><td>${ot[i.action]} \\xB7 ${i.side==="BUY"?"\\u4E70":"\\u5356"}</td><td>${i.quantity}</td><td>${x(i.priceCents)}</td><td title="${m(Ft(i))}"><details class="fee-breakdown"><summary>\\xA5 ${x(i.feeCents)}</summary><span>${m(Ft(i))}</span></details><span class="stock-code">\\u8D39\\u7528 v${i.feeConfigVersion||0}</span></td><td class="${V(i.cashDeltaCents)}">${x(i.cashDeltaCents)}</td><td>${i.dataQuality==="realtime_poll"?"\\u5B9E\\u65F6 HTTP \\u8F6E\\u8BE2":i.dataQuality==="minute"?"\\u5386\\u53F2\\u5206\\u949F\\u91C7\\u6837":"\\u5F00\\u76D8\\u5047\\u8BBE"}${i.executionCost?`<span class="stock-code">\\u6ED1\\u70B9 ${i.executionCost.totalBps}bps \\xB7 ${i.executionCost.spreadSource==="BOOK"?"\\u76D8\\u53E3\\u4EF7\\u5DEE":"\\u56DE\\u9000\\u4EF7\\u5DEE"}</span>`:""}</td></tr>`).join(""):\'<tr><td colspan="8"><div class="empty compact">\\u5C1A\\u65E0\\u6210\\u4EA4\\u8BB0\\u5F55\\u3002\\u672A\\u6EE1\\u8DB3\\u6210\\u4EA4\\u6761\\u4EF6\\u7684\\u8BA1\\u5212\\u4E0D\\u4F1A\\u8BB0\\u4E3A\\u6536\\u76CA\\u3002</div></td></tr>\';let v=r?.improvement?.days??Math.max(0,t.settlementCount-1);d("paper-ai-tag").textContent=E.ai.configured?"\\u5DF2\\u914D\\u7F6E\\u6A21\\u578B":"\\u6A21\\u578B\\u5F85\\u914D\\u7F6E",d("paper-ai-content").innerHTML=`<div class="strategy-active"><span>\\u5F53\\u524D\\u7B56\\u7565</span><strong>${m(t.activeStrategy)}</strong></div><p>${E.ai.configured?`\\u5DF2\\u79EF\\u7D2F ${v} \\u4E2A\\u53EF\\u9A8C\\u8BC1\\u4EA4\\u6613\\u65E5\\u3002\\u81F3\\u5C11 20 \\u65E5\\u8BAD\\u7EC3 + 10 \\u65E5\\u5C01\\u5B58\\u9A8C\\u8BC1\\u540E\\u63D0\\u51FA\\u65B0\\u5019\\u9009\\u3002`:"\\u5C1A\\u672A\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5927\\u6A21\\u578B\\u5BC6\\u94A5\\u3002\\u89C4\\u5219\\u7B56\\u7565\\u6B63\\u5E38\\u8FD0\\u884C\\uFF1B\\u914D\\u7F6E\\u540E\\u63A5\\u5165\\u771F\\u5B9E AI \\u63D0\\u6848\\u4E0E\\u9A8C\\u8BC1\\u3002"}</p><div class="ai-process">\\u771F\\u5B9E\\u6210\\u4EA4\\u4E0E\\u8D39\\u7528<span>\\u2193</span>AI \\u8BAD\\u7EC3\\u7A97\\u53E3\\u5EFA\\u8BAE<span>\\u2193</span>\\u72EC\\u7ACB\\u9A8C\\u8BC1 \\xB7 \\u6536\\u76CA\\u4E0E\\u56DE\\u64A4<span>\\u2193</span>\\u901A\\u8FC7\\u540E\\u542F\\u7528\\u65B0\\u7248\\u672C</div><p class="ai-note">\\u6BCF\\u4E2A\\u5C01\\u5B58\\u7A97\\u53E3\\u53EA\\u9A8C\\u8BC1\\u4E00\\u4E2A\\u5019\\u9009\\uFF1B\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u548C\\u5386\\u53F2\\u4EA4\\u6613\\u4FDD\\u7559\\u539F\\u7248\\u672C\\u3002</p>`,d("paper-version-list").innerHTML=u.filter(i=>i.id!=="baseline-v1").slice(0,6).map(i=>`<div class="version-row"><div><strong>${m(i.id)}</strong><span>${Pt[i.status]||m(i.status)}</span></div><p>${m(i.evidence.rationale||i.evidence.error||"\\u7B49\\u5F85\\u9A8C\\u8BC1\\u7ED3\\u679C")}</p>${i.evidence.baseline?`<small>\\u5C01\\u5B58\\u9A8C\\u8BC1 ${m(i.evidence.validationStart)} \\u2014 ${m(i.evidence.validationEnd)}<br>\\u57FA\\u7EBF ${C(i.evidence.baseline.totalReturn)} \\u2192 \\u5019\\u9009 ${C(i.evidence.candidate.totalReturn)} \\xB7 \\u56DE\\u64A4 ${C(i.evidence.candidate.maxDrawdown)}</small>`:""}${i.status==="VALIDATED"?`<button class="secondary" data-activate="${m(i.id)}">\\u542F\\u7528\\u6B64\\u7248\\u672C</button>`:""}</div>`).join("")||\'<div class="small-muted">\\u5C1A\\u65E0 AI \\u5019\\u9009\\u7248\\u672C\\uFF0C\\u6301\\u7EED\\u79EF\\u7D2F\\u771F\\u5B9E\\u6570\\u636E\\u3002</div>\',A||(d("paper-initial-capital").value=t.initialCashCents/100),d("paper-initial-capital").disabled=!E.canEditCapital,A||qt(E.feeConfig),d("paper-fee-version").textContent=`\\u8D39\\u7528\\u914D\\u7F6E v${t.feeConfigVersion||0}`,d("paper-fee-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${n?.feeConfig?ne(n.feeConfig):"\\u65E7\\u7248\\u56FA\\u5B9A\\u8D39\\u7528"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,A||Ht(E.riskLimits),d("paper-risk-version").textContent=`\\u98CE\\u63A7\\u914D\\u7F6E v${t.riskLimitsVersion||0}`,d("paper-risk-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${n?.riskLimits?se(n.riskLimits):"\\u9ED8\\u8BA4\\u98CE\\u63A7"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,A||zt(E.strategyParams),d("paper-strategy-version").textContent=`\\u7B56\\u7565 ${t.activeStrategy}`,d("paper-strategy-summary").textContent=`\\u5F53\\u524D\\u7248\\u672C ${t.activeStrategy}${n?` \\xB7 \\u4E0B\\u4E00\\u8BA1\\u5212 ${n.strategyVersion}`:""}\\u3002\\u4FDD\\u5B58\\u540E\\u767B\\u8BB0\\u4E3A\\u65B0\\u7248\\u672C\\u5E76\\u7528\\u4E8E\\u4E0B\\u4E00\\u4EFD\\u8BA1\\u5212\\uFF0C\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u4FDD\\u6301\\u539F\\u53C2\\u6570\\u3002`,A||(d("paper-improvement-mode").value=t.improvementMode||"auto"),A||(d("paper-benchmark").value=t.benchmarkCode||Et),d("paper-config-note").textContent=E.canEditCapital?"\\u4EA4\\u6613\\u8BA1\\u5212\\u5F00\\u59CB\\u6267\\u884C\\u524D\\u53EF\\u81EA\\u5B9A\\u4E49\\u521D\\u59CB\\u8D44\\u91D1\\uFF1B\\u8D39\\u7528\\u4E0E\\u98CE\\u63A7\\u968F\\u65F6\\u53EF\\u8C03\\u6574\\u3002":"\\u521D\\u59CB\\u8D44\\u91D1\\u4F5C\\u4E3A\\u6536\\u76CA\\u57FA\\u51C6\\u5DF2\\u51BB\\u7ED3\\uFF1B\\u8D39\\u7528\\u4E0E\\u98CE\\u63A7\\u4ECD\\u53EF\\u81EA\\u5B9A\\u4E49\\uFF0C\\u9002\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212\\u3002",document.querySelectorAll("[data-activate]").forEach(i=>i.onclick=()=>W(async()=>(await P("/api/paper/activate",{id:i.dataset.activate})).activated?"\\u65B0\\u7248\\u672C\\u5DF2\\u542F\\u7528\\uFF0C\\u5C06\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212":"\\u8D26\\u6237\\u540C\\u65F6\\u66F4\\u65B0\\uFF0C\\u8BF7\\u91CD\\u8BD5"))}async function G(){try{E=await P("/api/paper"),le()}catch(t){_(t.message)}}async function W(t){if(!lt){lt=!0,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!0),_("\\u6B63\\u5728\\u5904\\u7406\\uFF0C\\u7ED3\\u679C\\u5C06\\u4FDD\\u5B58\\u5230\\u8D26\\u672C\\u2026");try{let e=await t();await G(),_(e)}catch(e){_(e.message)}finally{lt=!1,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!1)}}}function Bt(){return d("paper-config-form").addEventListener("input",()=>{A=!0}),d("paper-fee-controls").innerHTML=U.map(({key:t,label:e,unit:a,direction:n})=>`<label for="fee-${t}">${e}\\uFF08${a}\\uFF09<input id="fee-${t}" type="number" min="0" max="${t==="commission_min"?1e4:100}" step="${t==="commission_min"?"0.01":"0.001"}" value="${kt(t,vt[t])}" required><span>${n}</span></label>`).join(""),d("paper-risk-controls").innerHTML=F.map(({key:t,label:e,unit:a,percent:n,hint:r})=>`<label for="risk-${t}" title="${m(r)}">${e}\\uFF08${a}\\uFF09<input id="risk-${t}" type="number" min="${n?.01:0}" max="${n?100:200}" step="${n?"0.01":"1"}" value="${St(t,bt[t])}" required></label>`).join(""),d("paper-strategy-controls").innerHTML=[...nt.map(({key:t,label:e})=>`<label for="strat-weight-${t}" title="\\u7B56\\u7565\\u8BC4\\u5206\\u4E2D\\u300C${e}\\u300D\\u56E0\\u5B50\\u7684\\u6743\\u91CD\\uFF0C\\u4E0E\\u7814\\u7A76\\u9875\\u89C2\\u5BDF\\u6743\\u91CD\\u76F8\\u4E92\\u72EC\\u7ACB">${e}\\u6743\\u91CD\\uFF08%\\uFF09<input id="strat-weight-${t}" type="number" min="0" max="50" step="1" required></label>`),...st.map(({key:t,label:e,unit:a,min:n,max:r,step:u,hint:o})=>`<label for="strat-${t}" title="${m(o)}">${e}\\uFF08${a}\\uFF09<input id="strat-${t}" type="number" min="${n}" max="${r}" step="${u}" required></label>`),...it.map(({key:t,label:e,unit:a,min:n,max:r,step:u,hint:o})=>`<label for="strat-tier-${t}" title="${m(o)}">${e}\\uFF08${a}\\uFF09<input id="strat-tier-${t}" type="number" min="${n}" max="${r}" step="${u}" required></label>`)].join(""),d("paper-benchmark").innerHTML=rt.map(({code:t,name:e})=>`<option value="${t}">${e}</option>`).join(""),d("paper-fee-defaults").onclick=()=>{qt(vt),A=!0,_("\\u5DF2\\u586B\\u5165\\u56FE\\u4E2D\\u9ED8\\u8BA4\\u8D39\\u7528\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},d("paper-risk-defaults").onclick=()=>{Ht(bt),A=!0,_("\\u5DF2\\u586B\\u5165\\u9ED8\\u8BA4\\u98CE\\u63A7\\u7EA6\\u675F\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},d("paper-strategy-defaults").onclick=()=>{zt(Nt),A=!0,_("\\u5DF2\\u586B\\u5165\\u9ED8\\u8BA4\\u7B56\\u7565\\u53C2\\u6570\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u767B\\u8BB0\\u4E3A\\u65B0\\u7248\\u672C\\u5E76\\u7528\\u4E8E\\u4E0B\\u4E00\\u4EFD\\u8BA1\\u5212\\u3002")},d("paper-run").onclick=()=>W(async()=>{let t=await P("/api/run-daily",{});return window.dispatchEvent(new Event("paper-updated")),t.paper?.reason||t.snapshot?.reason||"\\u5DF2\\u5B8C\\u6210\\u76D8\\u540E\\u66F4\\u65B0"}),d("paper-verify").onclick=()=>W(async()=>{let t=await P("/api/paper/verify");return t.passed?`\\u5B8C\\u6574\\u91CD\\u653E\\u901A\\u8FC7\\uFF1A${t.days} \\u4E2A\\u7ED3\\u7B97\\u65E5\\u3001${t.fills} \\u7B14\\u6210\\u4EA4\\uFF0C\\u8D44\\u91D1\\u3001\\u8D39\\u7528\\u4E0E\\u6536\\u76CA\\u5747\\u4E00\\u81F4\\u3002`:"\\u9A8C\\u8BC1\\u672A\\u901A\\u8FC7\\uFF0C\\u8BF7\\u68C0\\u67E5\\u5BFC\\u51FA\\u8BB0\\u5F55\\u4E0E\\u884C\\u60C5\\u5B8C\\u6574\\u5EA6\\u3002"}),d("paper-improve").onclick=()=>W(async()=>{let t=await P("/api/paper/improve",{});return t.reason||`AI \\u6539\\u8FDB\\u72B6\\u6001\\uFF1A${Pt[t.status]||t.status}`}),d("paper-config-form").onsubmit=t=>{t.preventDefault(),W(async()=>{let e=await P("/api/paper/settings",{...E?.canEditCapital?{initialCapital:Number(d("paper-initial-capital").value)}:{},improvementMode:d("paper-improvement-mode").value,benchmarkCode:d("paper-benchmark").value||Et,fees:Object.fromEntries(U.map(({key:a})=>[a,a==="commission_min"?Number(d(`fee-${a}`).value):Number(d(`fee-${a}`).value)/1e4])),riskLimits:Object.fromEntries(F.map(({key:a,percent:n})=>[a,n?Number(d(`risk-${a}`).value)/100:Number(d(`risk-${a}`).value)])),strategyParams:ie()});return A=!1,`\\u8BBE\\u7F6E\\u5DF2\\u4FDD\\u5B58\\uFF1B\\u7B56\\u7565\\u53C2\\u6570\\u767B\\u8BB0\\u4E3A ${e.book.activeStrategy}\\uFF0C\\u5C06\\u7528\\u4E8E\\u4E0B\\u4E00\\u4EFD\\u8BA1\\u5212\\uFF0C\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u4FDD\\u6301\\u539F\\u53C2\\u6570\\u3002`})},window.addEventListener("paper-updated",G),setInterval(()=>{!document.hidden&&!lt&&G()},15e3),G(),{refresh:G}}var j={status:null,detailId:null,initialized:!1};async function Tt(t,e={}){let a=await fetch(t,{headers:{"Content-Type":"application/json"},...e}),n=await a.json().catch(()=>({}));if(!a.ok)throw new Error(n.error||"\\u8BF7\\u6C42\\u5931\\u8D25");return n}var Ut=t=>t==null?"\\u2014":`${(t*100).toFixed(2)}%`,ce=t=>t==null?"\\u2014":(t/100).toLocaleString("zh-CN",{maximumFractionDigits:2}),ct={RESERVED:"\\u5DF2\\u9884\\u7559",PROPOSING:"\\u5019\\u9009\\u751F\\u6210\\u4E2D",FROZEN:"\\u5019\\u9009\\u5DF2\\u51BB\\u7ED3",HISTORICAL_CHECK:"\\u5386\\u53F2\\u7B5B\\u67E5\\u4E2D",SCHEDULED:"\\u5DF2\\u6392\\u671F",RUNNING:"\\u524D\\u77BB\\u8FD0\\u884C\\u4E2D",EVALUATING:"\\u8BC4\\u4F30\\u4E2D",CLOSED:"\\u5DF2\\u7ED3\\u675F",ELIGIBLE:"\\u7B26\\u5408\\u664B\\u7EA7\\u6761\\u4EF6",PROMOTED:"\\u5DF2\\u542F\\u7528",REJECTED:"\\u5386\\u53F2\\u7B5B\\u67E5\\u672A\\u901A\\u8FC7",ERROR:"\\u51FA\\u9519",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u5DF2\\u5931\\u6548"};function L(t){return document.getElementById(t)}function de(){let{status:t}=j,e=L("strategies-status");if(!t){e.innerHTML="<p>\\u5C1A\\u672A\\u83B7\\u53D6\\u6279\\u6B21\\u72B6\\u6001\\u3002</p>";return}let a=t.activeCohort;e.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u6D3B\\u52A8\\u6279\\u6B21</span><strong>${a?`${a.id.slice(0,18)}\\u2026`:"\\u65E0"}</strong><small>${a?ct[a.stage]??a.stage:"\\u53EF\\u53D1\\u8D77\\u65B0\\u6279\\u6B21"}</small></div>\n      <div><span class="mini-label">\\u5019\\u9009\\u4E0A\\u9650</span><strong>${t.policy.maxCandidates}</strong><small>\\u6BCF\\u6708\\u751F\\u6210\\u6279\\u6B21 ${t.policy.monthlyGenerationLimit} \\u6B21</small></div>\n      <div><span class="mini-label">\\u524D\\u77BB\\u7A97\\u53E3</span><strong>${t.policy.forwardDays} \\u4EA4\\u6613\\u65E5</strong><small>\\u5B8C\\u6574\\u8F6E\\u6B21\\u95E8\\u69DB ${t.policy.minimumCompletedRounds}</small></div>\n      <div><span class="mini-label">\\u5F53\\u524D\\u7B56\\u7565</span><strong>${a?.parentVersion??"baseline-v1"}</strong><small>${a?"\\u8D5B\\u9A6C\\u671F\\u95F4\\u4FDD\\u6301\\u7236\\u7B56\\u7565":"\\u7B49\\u5F85\\u6279\\u6B21\\u7ED3\\u8BBA"}</small></div>\n    </div>\n    <p class="panel-footnote">${t.note??""}</p>`}function ue(){let{status:t,detailId:e}=j,a=(t?.cohorts??[]).map(n=>`\n      <tr data-cohort="${n.id}" class="${n.id===e?"active":""}">\n        <td>${n.id.slice(0,22)}\\u2026</td>\n        <td>${ct[n.stage]??n.stage}</td>\n        <td>${n.parentVersion}</td>\n        <td>${n.maxCandidates}</td>\n        <td>${(n.createdAt??"").replace("T"," ").slice(0,16)}</td>\n      </tr>`).join("");L("strategies-cohort-rows").innerHTML=a||\'<tr><td colspan="5">\\u5C1A\\u65E0\\u6279\\u6B21\\u8BB0\\u5F55</td></tr>\',L("strategies-cohort-rows").querySelectorAll("tr[data-cohort]").forEach(n=>{n.onclick=()=>{j.detailId=n.dataset.cohort,wt()}})}async function pe(){let t=L("strategies-detail"),{detailId:e}=j;if(!e){t.innerHTML="<p class=\'panel-footnote\'>\\u70B9\\u51FB\\u4E0A\\u65B9\\u6279\\u6B21\\u67E5\\u770B\\u56FA\\u5B9A\\u6210\\u5458\\u3001\\u51C0\\u503C\\u4E0E\\u8D44\\u683C\\u3002</p>";return}let a;try{a=await Tt(`/api/strategies/cohorts/${e}`)}catch(c){t.innerHTML=`<p>${c.message}</p>`;return}let n=(a.members??[]).map(c=>`\n      <tr>\n        <td>${c.memberId}</td>\n        <td>${ct[c.stage]??c.stage}</td>\n        <td>${c.k}</td>\n        <td>${c.strategyVersion?`${c.strategyVersion.slice(0,18)}\\u2026`:"\\u2014"}</td>\n        <td>${c.paramsDistance??"\\u2014"}</td>\n        <td>${c.failureReason??"\\u2014"}</td>\n      </tr>`).join(""),r=(a.accounts??[]).map(c=>`\n      <tr>\n        <td>${c.kind}</td>\n        <td>${c.memberId??"\\u2014"}</td>\n        <td>${ce(c.book?.equityCents)}</td>\n        <td>${c.cursor?.date??"\\u2014"} #${c.cursor?.sequence??0}</td>\n        <td>${c.book?.lastDate??"\\u2014"}</td>\n      </tr>`).join(""),u=a.evaluation,o=c=>c?[{stat:c.againstParent,label:"\\u5BF9\\u7167=\\u5339\\u914D\\u7236\\u7B56\\u7565"},{stat:c.againstBaseline,label:"\\u5BF9\\u7167=\\u5339\\u914D\\u56FA\\u5B9A\\u57FA\\u7EBF"}].filter(h=>h.stat).map(h=>`<p class="small-muted">${h.label}\\uFF1A\\u5355\\u4FA7\\u4E0B\\u754C ${(h.stat.lowerBound*100).toFixed(3)}pp \\xB7 \\u89C2\\u5BDF\\u5747\\u503C ${(h.stat.observedMean*100).toFixed(3)}pp \\xB7 \\u03B1/\\u5BF9\\u7167 ${h.stat.alphaPerComparison?.toExponential(2)} \\xB7 ${h.stat.days} \\u65E5 \\u2014 ${escape(h.stat.reason)}</p>`).join("")||\'<p class="small-muted">\\u8BC1\\u636E\\u4E0D\\u8DB3</p>\':\'<p class="small-muted">\\u672A\\u8BC4\\u4F30\\uFF08\\u6307\\u7EB9\\u6216\\u8986\\u76D6\\u672A\\u901A\\u8FC7\\uFF09</p>\',g=(u?.verdicts??[]).map(c=>`\n      <tr>\n        <td>${c.memberId}</td>\n        <td>${ct[c.stage]??c.stage}</td>\n        <td>${Ut(c.metrics?.netReturn)}</td>\n        <td>${Ut(c.metrics?.windowDrawdown)}</td>\n        <td>${c.rounds?.rounds??"\\u2014"}</td>\n        <td class="evidence-cell">${c.statistics?`<details><summary>${c.checks?.statistics?"\\u7EDF\\u8BA1\\u901A\\u8FC7":"\\u7EDF\\u8BA1\\u672A\\u901A\\u8FC7"}</summary>${o(c.statistics)}</details>`:\'<span class="small-muted">\\u672A\\u8BC4\\u4F30</span>\'}</td>\n      </tr>`).join(""),f=u?.statisticsBudget,y=u?.fingerprint?.executionCost;t.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u51A0\\u519B</span><strong>${u?.champion?.memberId??"\\u65E0"}</strong><small>${u?.promotion?.promoted?`\\u5DF2\\u542F\\u7528\\uFF0C\\u751F\\u6548\\u65E5 ${u.promotion.effectiveTradeDate??"\\u5F85\\u5B9A"}`:"\\u4EC5\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528"}</small></div>\n      <div><span class="mini-label">\\u7A97\\u53E3</span><strong>${a.cohort.forwardManifest?.tradingDates?.length??0}/${a.cohort.forwardDays}</strong><small>\\u6355\\u83B7\\u65E5 ${a.cohort.forwardManifest?.captureDate??"\\u2014"}</small></div>\n      <div><span class="mini-label">\\u62A5\\u544A\\u6458\\u8981</span><strong>${a.evaluationDigest?"\\u5DF2\\u51BB\\u7ED3":"\\u7B49\\u5F85\\u8BC4\\u4F30"}</strong><small>\\u95F8\\u95E8\\u4E0E\\u7EDF\\u8BA1\\u53EF\\u91CD\\u653E</small></div>\n    </div>\n    ${f?`<p class="panel-footnote">\\u7EDF\\u8BA1\\u9884\\u7B97\\uFF1A\\u03B1/\\u5BF9\\u7167 = ${f.alphaPerComparison?.toExponential(2)}\\uFF08\\u5168\\u5386\\u53F2\\u5C1D\\u8BD5\\u5E8F\\u53F7 k \\u7684\\u8BEF\\u5DEE\\u9884\\u7B97\\uFF09\\xB7 \\u91CD\\u91C7\\u6837 ${f.resamples} \\xB7 \\u533A\\u5757 ${f.blockLength} \\u65E5 \\xB7 \\u65B9\\u6CD5 percentile \\u5355\\u4FA7\\u4E0B\\u754C\\uFF08\\u6B63\\u5F0F\\u53E3\\u5F84\\uFF0C\\u4E0E\\u6EDA\\u52A8\\u8BCA\\u65AD\\u7684 basic \\u533A\\u95F4\\u4E3A\\u4E0D\\u540C\\u65B9\\u6CD5\\u7248\\u672C\\uFF09</p>`:""}\n    ${y?`<p class="panel-footnote">\\u6267\\u884C\\u6210\\u672C\\u6307\\u7EB9\\uFF1A${y.modelVersion} v${y.version} \\xB7 \\u6821\\u51C6 ${y.calibrationStatus}${y.matchesManifest===!1?" \\xB7 \\u4E0E\\u6355\\u83B7\\u6E05\\u5355\\u4E0D\\u4E00\\u81F4\\uFF08\\u672C\\u6279\\u8D44\\u683C\\u5931\\u6548\\uFF09":y.matchesManifest===!0?" \\xB7 \\u4E0E\\u6355\\u83B7\\u6E05\\u5355\\u4E00\\u81F4":""}</p>`:""}\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u6210\\u5458</th><th>\\u72B6\\u6001</th><th>\\u5C1D\\u8BD5\\u5E8F\\u53F7 k</th><th>\\u7B56\\u7565\\u7248\\u672C</th><th>\\u53C2\\u6570\\u8DDD\\u79BB</th><th>\\u5931\\u8D25\\u539F\\u56E0</th></tr></thead>\n        <tbody>${n||"<tr><td colspan=\'6\'>\\u65E0\\u6210\\u5458</td></tr>"}</tbody>\n      </table>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u8D26\\u6237</th><th>\\u89D2\\u8272</th><th>\\u671F\\u672B\\u6743\\u76CA\\uFF08\\u5206\\uFF09</th><th>\\u6D88\\u8D39\\u6E38\\u6807</th><th>\\u5DF2\\u7ED3\\u7B97\\u65E5</th></tr></thead>\n        <tbody>${r||"<tr><td colspan=\'5\'>\\u5C1A\\u65E0\\u5339\\u914D\\u8D26\\u6237</td></tr>"}</tbody>\n      </table>\n    </div>\n    ${g?`<div class="table-scroll">\n        <table>\n          <thead><tr><th>\\u6210\\u5458</th><th>\\u7ED3\\u8BBA</th><th>\\u671F\\u95F4\\u51C0\\u6536\\u76CA</th><th>\\u7A97\\u53E3\\u56DE\\u64A4</th><th>\\u5B8C\\u6574\\u8F6E\\u6B21</th><th>\\u7EDF\\u8BA1\\u68C0\\u9A8C</th></tr></thead>\n          <tbody>${g}</tbody>\n        </table>\n      </div>`:""}\n    <p class="panel-footnote">\\u6536\\u76CA\\u4E0D\\u5728\\u72EC\\u7ACB\\u5019\\u9009\\u4E4B\\u95F4\\u6C42\\u548C\\uFF1B\\u7EB8\\u9762\\u9886\\u5148\\u4E0D\\u7B49\\u4E8E\\u53EF\\u542F\\u7528\\u8D44\\u683C\\u3002</p>\n    <a class="secondary" href="/api/strategies/cohorts/${e}/export" download>\\u5BFC\\u51FA\\u6279\\u6B21\\u68C0\\u67E5\\u70B9</a>`}async function wt(){try{j.status=await Tt("/api/strategies/cohorts"),de(),ue(),await pe()}catch(t){L("strategies-status").innerHTML=`<p>${t.message}</p>`}}function Vt(){j.initialized||(j.initialized=!0,L("strategies-reserve").onclick=async()=>{let t=L("strategies-reserve");t.disabled=!0,L("strategies-status-note").textContent="\\u6B63\\u5728\\u9884\\u7559\\u6279\\u6B21\\u5E76\\u8C03\\u7528\\u6A21\\u578B\\u751F\\u6210\\u5019\\u9009\\u2026";try{let e=await Tt("/api/strategies/cohorts",{method:"POST",body:"{}"});L("strategies-status-note").textContent=e.reason??e.status??"\\u6279\\u6B21\\u5DF2\\u9884\\u7559"}catch(e){L("strategies-status-note").textContent=e.message}finally{t.disabled=!1,await wt()}},wt())}var S={initialized:!1,cursor:0,status:null},b=t=>document.getElementById(t),Y=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]);async function X(t,e={}){let a=await fetch(t,{headers:{"content-type":"application/json"},...e,body:e.body?JSON.stringify(e.body):void 0}),n=await a.json().catch(()=>({}));if(!a.ok)throw new Error(n.error||`\\u8BF7\\u6C42\\u5931\\u8D25\\uFF08${a.status}\\uFF09`);return n}function q(t){return t?t.replace("T"," ").slice(0,19):"\\u2014"}var me={RUNNER_STALLED:"\\u6267\\u884C\\u5FAA\\u73AF\\u505C\\u6EDE",LOOP_FAILED:"\\u5FAA\\u73AF\\u8FDE\\u7EED\\u5931\\u8D25",SESSION_BLOCKED:"\\u4F1A\\u8BDD\\u88AB\\u963B\\u585E",REQUIRED_QUOTE_STALE:"\\u5173\\u952E\\u62A5\\u4EF7\\u9648\\u65E7",DRAWDOWN_TRIPPED:"\\u56DE\\u64A4\\u89E6\\u53CA\\u786C\\u7EA6\\u675F",PROTECTIVE_EXIT_BLOCKED:"\\u4FDD\\u62A4\\u9000\\u51FA\\u65E0\\u6CD5\\u6210\\u4EA4",T_RECOVERY_INCOMPLETE:"\\u505A T \\u7B2C\\u4E8C\\u817F\\u672A\\u6062\\u590D",SETTLEMENT_LATE:"\\u76D8\\u540E\\u7ED3\\u7B97\\u8FDF\\u5EF6",LEDGER_INVARIANT_FAILED:"\\u8D26\\u672C\\u4E0D\\u53D8\\u5F0F\\u5F02\\u5E38",ALERT_PIPELINE_STALLED:"\\u544A\\u8B66\\u5206\\u53D1\\u505C\\u6EDE",AI_OR_RESEARCH_FAILED:"AI/\\u7814\\u7A76\\u4EFB\\u52A1\\u5931\\u8D25"};function he(){let{status:t}=S;if(!t)return;b("alerts-enabled-tag").textContent=t.enabled?"\\u5DF2\\u542F\\u7528":"\\u672A\\u542F\\u7528",b("alerts-status-note").textContent=t.note??"";let e=t.channels.map(n=>`<div><span class="outline-tag">${Y(n.name)}</span><div class="panel-metric-value">${n.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E\\uFF08\\u670D\\u52A1\\u7AEF .env\\uFF09"}</div></div>`).join(""),a=t.watchdog??{};b("alerts-channel-list").innerHTML=e+`<div><span class="outline-tag">\\u5916\\u90E8\\u76D1\\u6D4B</span><div class="panel-metric-value"><span>${a.progressConfigured?`\\u8FDB\\u5EA6\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E${a.lastProgressAt?`\\uFF0C\\u6700\\u8FD1 ${q(a.lastProgressAt)}`:""}`:"\\u672A\\u914D\\u7F6E\\uFF08WATCHDOG_PROGRESS_URL\\uFF09"}</span><span>${a.pipelineConfigured?"\\u7BA1\\u9053\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E":"\\u7BA1\\u9053\\u4FE1\\u53F7\\u672A\\u914D\\u7F6E"}</span></div></div>\n    <div><span class="outline-tag">\\u53D1\\u9001\\u961F\\u5217</span><div class="panel-metric-value">\\u5F85\\u53D1\\u9001 ${t.outbox?.pending??0}\\uFF0C\\u903E\\u671F\\u672A\\u9886 ${t.outbox?.overdue??0}\\uFF0C\\u5DF2\\u53D1\\u9001 ${t.outbox?.sent??0}\\uFF0C\\u8FC7\\u671F ${t.outbox?.expired??0}</div></div>`}function ge(t){let e=S.incidents??[];b("alerts-incident-rows").innerHTML=e.map(a=>`<tr>\n      <td>${Y(me[a.ruleType]??a.ruleType)}<small class="small-muted"> ${Y(a.fingerprint)}</small></td>\n      <td>${a.severity==="CRITICAL"?"\\u4E25\\u91CD":"\\u8B66\\u544A"}</td>\n      <td>${a.status==="RESOLVED"?`\\u5DF2\\u6062\\u590D ${q(a.resolvedAt)}`:a.status==="OPEN"?"\\u672A\\u6062\\u590D":Y(a.status)}${a.ackUntil&&a.ackUntil>new Date().toISOString()?`\\uFF08\\u786E\\u8BA4\\u81F3 ${q(a.ackUntil)}\\uFF09`:""}</td>\n      <td>${q(a.firstSeen)}</td>\n      <td>${q(a.lastSeen)}</td>\n      <td>${a.status!=="RESOLVED"?`<button class="text-button" data-ack="${Y(a.id)}">\\u786E\\u8BA4 2 \\u5C0F\\u65F6</button>`:""}</td>\n    </tr>`).join("");for(let a of b("alerts-incident-rows").querySelectorAll("[data-ack]"))a.onclick=async()=>{a.disabled=!0;try{await X(`/api/alerts/incidents/${a.dataset.ack}/ack`,{method:"POST",body:{hours:2}})}catch(n){b("alerts-list-status").textContent=n.message}await K(!0)};b("alerts-more").hidden=!S.nextCursor,b("alerts-list-status").textContent=t?`\\u5171 ${e.length} \\u6761${S.nextCursor?"\\uFF08\\u53EF\\u52A0\\u8F7D\\u66F4\\u591A\\uFF09":""}`:b("alerts-list-status").textContent}async function K(t=!1){try{S.status=await X("/api/alerts/status"),he(),t&&(S.cursor=0);let e=await X(`/api/alerts/incidents?cursor=${S.cursor}&active=${b("alerts-active-only").checked}`);S.incidents=t?e.incidents:[...S.incidents??[],...e.incidents],S.nextCursor=e.nextCursor,ge(t)}catch(e){b("alerts-list-status").textContent=e.message}}function Gt(){S.initialized||(S.initialized=!0,b("alerts-refresh").onclick=()=>K(!0),b("alerts-active-only").onchange=()=>K(!0),b("alerts-more").onclick=()=>{S.cursor=S.nextCursor,K(!1)},b("alerts-test").onclick=async()=>{let t=b("alerts-test");t.disabled=!0,b("alerts-status-note").textContent="\\u6B63\\u5728\\u53D1\\u9001\\u6D4B\\u8BD5\\u901A\\u77E5\\u2026";try{await X("/api/alerts/test",{method:"POST",body:{}}),b("alerts-status-note").textContent="\\u6D4B\\u8BD5\\u901A\\u77E5\\u5DF2\\u53D1\\u9001\\uFF0C\\u8BF7\\u5728\\u98DE\\u4E66\\u67E5\\u6536"}catch(e){b("alerts-status-note").textContent=e.message}finally{t.disabled=!1}},b("alerts-maintenance").onclick=async()=>{let t=Number(prompt("\\u7EF4\\u62A4\\u7A97\\u53E3\\u5206\\u949F\\u6570\\uFF0815\\u20131440\\uFF09\\uFF1A","60"));if(!Number.isInteger(t))return;let e=prompt("\\u7EF4\\u62A4\\u539F\\u56E0\\uFF08\\u53EF\\u9009\\uFF09\\uFF1A","")??"";try{let a=await X("/api/alerts/maintenance",{method:"POST",body:{minutes:t,reason:e}});b("alerts-status-note").textContent=`\\u7EF4\\u62A4\\u7A97\\u53E3\\u81F3 ${q(a.until)}`}catch(a){b("alerts-status-note").textContent=a.message}},K(!0))}var l=t=>document.getElementById(t),$=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),Wt={dashboard:\'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>\',chart:\'<path d="M4 3v17h17M8 15l4-6 4 3 5-7"/>\',grid:\'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 11h18M11 4v16"/>\',sliders:\'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/>\',database:\'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/>\',calendar:\'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>\',refresh:\'<path d="M20 7a8 8 0 0 0-14-2L3 8m0-5v5h5M4 17a8 8 0 0 0 14 2l3-3m0 5v-5h-5"/>\',search:\'<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>\',info:\'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>\',close:\'<path d="m6 6 12 12M6 18 18 6"/>\',flame:\'<path d="M12 3c1 6 7 6 7 12a7 7 0 0 1-14 0c0-3 2-5 4-7 0 3 1 3 2 4 2-3 2-6 1-9Z"/>\',shield:\'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>\'};function Q(t){return`<svg viewBox="0 0 24 24" aria-hidden="true">${Wt[t]||Wt.chart}</svg>`}document.querySelectorAll("[data-icon]").forEach(t=>t.innerHTML=Q(t.dataset.icon));var s={view:"overview",height:"all",weights:[...R.balanced],payload:null,analysis:null,loading:!0,error:null,demo:!1,request:0,review:null,ai:null,aiConfig:{configured:!1},history:null,reviewBusy:!1,reviewMessage:"",storageAvailable:!1};try{let t=JSON.parse(localStorage.getItem("limitLensWeights"));Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)&&(s.weights=t)}catch{}var Z=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date);l("trade-date").value=Z;l("trade-date").max=Z;var $e=Bt(),dt={paper:["\\u6A21\\u62DF\\u4EA4\\u6613","\\u8BA9\\u8BC4\\u5206\\u63A5\\u53D7\\u8D26\\u6237\\u68C0\\u9A8C","\\u5236\\u5B9A\\u8BA1\\u5212\\u3001\\u6A21\\u62DF\\u6267\\u884C\\u3001\\u6838\\u5BF9\\u6536\\u76CA\\uFF0C\\u7528\\u771F\\u5B9E\\u7ED3\\u679C\\u6539\\u8FDB\\u7B56\\u7565\\u3002"],overview:["\\u603B\\u89C8\\u590D\\u76D8","\\u6BCF\\u65E5\\u6DA8\\u505C\\u590D\\u76D8","\\u628A\\u6DA8\\u505C\\u62C6\\u6210\\u4FE1\\u53F7\\uFF0C\\u628A\\u5224\\u65AD\\u5EFA\\u7ACB\\u5728\\u6570\\u636E\\u4E0A\\u3002"],stocks:["\\u4E2A\\u80A1\\u5206\\u6790","\\u6DA8\\u505C\\u4E2A\\u80A1\\u5206\\u6790","\\u62C6\\u89E3\\u5C01\\u677F\\u8868\\u73B0\\uFF0C\\u6BD4\\u8F83\\u5F3A\\u5EA6\\u4E0E\\u98CE\\u9669\\u3002"],sectors:["\\u677F\\u5757\\u7814\\u7A76","\\u884C\\u4E1A\\u677F\\u5757\\u7814\\u7A76","\\u4ECE\\u6DA8\\u505C\\u96C6\\u805A\\u4E0E\\u8FDE\\u677F\\u68AF\\u961F\\uFF0C\\u89C2\\u5BDF\\u8D44\\u91D1\\u7684\\u5171\\u540C\\u65B9\\u5411\\u3002"],review:["\\u6628\\u65E5\\u53CD\\u9988","\\u8BA9\\u6628\\u65E5\\u5224\\u65AD\\u63A5\\u53D7\\u68C0\\u9A8C","\\u4FDD\\u5B58\\u5F53\\u65F6\\u7684\\u5224\\u65AD\\uFF0C\\u7528\\u5B9E\\u9645\\u8868\\u73B0\\u68C0\\u9A8C\\uFF0C\\u518D\\u7531 AI \\u5BA1\\u89C6\\u3002"],model:["\\u8BC4\\u5206\\u6A21\\u578B","\\u53EF\\u89E3\\u91CA\\u7684\\u8BC4\\u5206\\u6A21\\u578B","\\u6BCF\\u4E00\\u5206\\u90FD\\u6709\\u4F9D\\u636E\\uFF0C\\u6BCF\\u4E00\\u9879\\u6743\\u91CD\\u90FD\\u53EF\\u4EE5\\u8C03\\u6574\\u3002"],strategies:["\\u7B56\\u7565\\u8D5B\\u9A6C","\\u591A\\u7B56\\u7565\\u5E76\\u884C\\u8D5B\\u9A6C\\u4E0E\\u53D7\\u63A7\\u664B\\u7EA7","\\u540C\\u4E00\\u4EFD\\u884C\\u60C5\\u3001\\u540C\\u4E00\\u51BB\\u7ED3\\u8D77\\u70B9\\uFF0C\\u56FA\\u5B9A\\u7A97\\u53E3\\u5185\\u6BD4\\u8F83\\uFF0C\\u53EA\\u6709\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528\\u3002"],alerts:["\\u8FD0\\u7EF4\\u544A\\u8B66","\\u5E38\\u9A7B\\u6267\\u884C\\u4E0D\\u9759\\u9ED8\\u5931\\u8054","\\u6267\\u884C\\u9519\\u8BEF\\u3001\\u98CE\\u9669\\u5904\\u7F6E\\u4E0E\\u76D8\\u540E\\u5931\\u8D25\\u4E3B\\u52A8\\u901A\\u77E5\\uFF1B\\u6574\\u673A\\u79BB\\u7EBF\\u7531\\u5916\\u90E8\\u76D1\\u6D4B\\u53D1\\u73B0\\u3002"]};function ht(t){dt[t]&&(s.view=t,document.querySelectorAll("[data-view]").forEach(e=>{e.classList.toggle("active",e.dataset.view===t),e.setAttribute("aria-current",e.dataset.view===t?"page":"false")}),l("crumb").textContent=dt[t][0],l("page-title").textContent=dt[t][1],l("page-subtitle").textContent=dt[t][2],l("overview-content").hidden=!["overview","stocks"].includes(t),l("sectors-view").hidden=t!=="sectors",l("model-view").hidden=t!=="model",l("review-view").hidden=t!=="review",l("summary").hidden=["model","review","paper","strategies","alerts"].includes(t),l("paper-view").hidden=t!=="paper",l("strategies-view").hidden=t!=="strategies",l("alerts-view").hidden=t!=="alerts",document.querySelector(".heading-actions").hidden=t==="paper"||t==="strategies"||t==="alerts",document.querySelector(".data-strip").hidden=t==="paper"||t==="strategies"||t==="alerts",t==="paper"&&$e.refresh(),t==="strategies"&&Vt(),t==="alerts"&&Gt(),document.querySelector(".right-column").hidden=t==="stocks",l("overview-content").style.gridTemplateColumns=t==="stocks"?"minmax(0,1fr)":"",H(),M())}document.querySelectorAll("[data-view]").forEach(t=>t.onclick=()=>ht(t.dataset.view));document.querySelector(".brand").onclick=t=>{t.preventDefault(),ht("overview")};function w(t,e=1){return t==null?"\\u2014":Number(t).toFixed(e)}function At(t){return t==null?"\\u2014":t>=1e8?`${(t/1e8).toFixed(2)} \\u4EBF`:`${(t/1e4).toFixed(0)} \\u4E07`}function fe(t){return t>=80?"":t>=60?"mid":"low"}function pt(t){return`<div class="score-cell"><span class="score-number ${fe(t)}">${t??"\\u2014"}</span><span class="score-track"><i style="width:${t??0}%"></i></span></div>`}function Lt(){s.analysis=s.payload?.archived?structuredClone(s.payload.analysis):s.payload?Mt(s.payload.rows.map(yt),s.payload.broken,s.payload.previous?.map(yt)||null,s.weights):null}function H(){let t=s.analysis,e=t!==null,a=s.loading,n=[{name:"\\u6DA8\\u505C\\u5BB6\\u6570",value:e?t.count:"\\u2014",unit:"\\u5BB6",caption:e?`\\u9996\\u677F ${t.first} \\u5BB6 \\xB7 \\u8FDE\\u677F ${t.relay} \\u5BB6`:"\\u9996\\u677F\\u4E0E\\u8FDE\\u677F\\u5206\\u5E03",icon:"flame",pct:e?Math.min(t.count/80*100,100):0},{name:"\\u5C01\\u677F\\u7387",value:e?w(t.sealRate):"\\u2014",unit:"%",caption:e?s.payload.broken===null?"\\u70B8\\u677F\\u6C60\\u6570\\u636E\\u6682\\u7F3A":`\\u70B8\\u677F ${s.payload.broken} \\u5BB6 \\xB7 \\u5F53\\u524D\\u672A\\u5C01\\u4F4F`:"\\u6DA8\\u505C /\\uFF08\\u6DA8\\u505C + \\u70B8\\u677F\\uFF09",icon:"shield",pct:e?t.sealRate??0:0},{name:"\\u6700\\u9AD8\\u8FDE\\u677F",value:e?t.height:"\\u2014",unit:"\\u677F",caption:e?`\\u8FDE\\u677F\\u80A1\\u5360\\u6BD4 ${t.count?w(t.relay/t.count*100):"\\u2014"}%`:"\\u8861\\u91CF\\u5F53\\u65E5\\u5E02\\u573A\\u9AD8\\u5EA6",icon:"chart",pct:e?Math.min(t.height/7*100,100):0,amber:!0},{name:"\\u60C5\\u7EEA\\u5F3A\\u5EA6",value:e?t.emotion??"\\u2014":"\\u2014",unit:"/ 100",caption:e?t.emotion===null?"\\u5F53\\u65E5\\u65E0\\u6709\\u6548\\u8BC4\\u5206\\u6837\\u672C":`${t.emotion>=75?"\\u5F3A\\u5EA6\\u8F83\\u9AD8":t.emotion>=45?"\\u5F3A\\u5EA6\\u4E2D\\u7B49":"\\u5F3A\\u5EA6\\u8F83\\u4F4E"} \\xB7 ${t.emotionCoverage==null?"\\u5DF2\\u5F52\\u6863\\u7684\\u6536\\u76D8\\u5224\\u65AD":`\\u6570\\u636E\\u8986\\u76D6 ${t.emotionCoverage}%`}`:"\\u6DA8\\u505C\\u89C4\\u6A21 \\xB7 \\u5C01\\u677F\\u7387 \\xB7 \\u9AD8\\u5EA6",icon:"dashboard",pct:e?t.emotion??0:0,accent:!0}];l("summary").innerHTML=n.map(r=>`<article class="metric ${a?"loading":""}"><div class="metric-head">${r.name}${Q(r.icon)}</div><div class="metric-value ${r.accent?"accent":""}">${r.value}<small>${r.unit}</small></div><div class="metric-caption">${r.caption}</div><div class="metric-line ${r.amber?"amber":""}"><i style="width:${r.pct}%"></i></div></article>`).join(""),l("pool-count").textContent=e?t.count:"\\u2014",J(),ve(),be()}function ye(){let t=s.analysis?.stocks||[],e=l("search").value.trim().toLowerCase(),a=l("sector-filter").value;t=t.filter(r=>(!e||r.name.toLowerCase().includes(e)||r.code.includes(e))&&(!a||r.sector===a)&&(s.height==="all"||(s.height==="first"?r.height===1:r.height>1)));let n=l("sort").value;return t.slice().sort(n==="height"?(r,u)=>(u.height??0)-(r.height??0):n==="seal"?(r,u)=>(u.seal??-1)-(r.seal??-1):n==="first"?(r,u)=>(r.first??999999)-(u.first??999999):(r,u)=>(u.score??-1)-(r.score??-1))}function J(){let t=ye(),e=s.analysis!==null,a=s.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u884C\\u60C5":e?"\\u6CA1\\u6709\\u7B26\\u5408\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1":"\\u6682\\u65E0\\u53EF\\u7528\\u884C\\u60C5",n=s.loading?"\\u6B63\\u5728\\u8BFB\\u53D6\\u516C\\u5F00\\u6DA8\\u505C\\u6C60\\u3001\\u70B8\\u677F\\u6C60\\u4E0E\\u6628\\u65E5\\u6DA8\\u505C\\u6C60\\u2026":e?"\\u5C1D\\u8BD5\\u8C03\\u6574\\u641C\\u7D22\\u3001\\u884C\\u4E1A\\u6216\\u8FDE\\u677F\\u7B5B\\u9009\\u3002":"\\u5207\\u6362\\u8FD1\\u671F\\u4EA4\\u6613\\u65E5\\u671F\\u6216\\u7A0D\\u540E\\u5237\\u65B0\\uFF0C\\u4E5F\\u53EF\\u4EE5\\u67E5\\u770B\\u660E\\u786E\\u6807\\u6CE8\\u7684\\u6F14\\u793A\\u3002";l("stock-rows").innerHTML=t.length?t.map(r=>`<tr><td><button class="stock-name" data-stock="${$(r.code)}">${$(r.name)}</button><span class="stock-code">${$(r.code)}</span></td><td>${pt(r.score)}</td><td><span class="sector-tag">${$(r.sector)}</span></td><td><span class="height-tag ${r.height>=4?"high":""}">${r.height===1?"\\u9996\\u677F":r.height?`${r.height} \\u677F`:"\\u2014"}</span></td><td class="money">${at(r.first)}</td><td class="money">${At(r.seal)}</td><td class="money">${w(r.turnover)}%</td><td class="money">${r.breaks??"\\u2014"}</td></tr>`).join(""):`<tr><td colspan="8"><div class="empty"><strong>${a}</strong>${n}</div></td></tr>`,document.querySelectorAll("[data-stock]").forEach(r=>r.onclick=()=>xe(r.dataset.stock)),l("table-status").textContent=e?`\\u663E\\u793A ${t.length} / ${s.analysis.count} \\u5BB6${s.analysis.excluded?` \\xB7 \\u5DF2\\u5254\\u9664 ${s.analysis.excluded} \\u5BB6 ST / \\u9000\\u5E02\\u6807\\u8BC6\\u4E2A\\u80A1`:""}`:s.loading?"\\u516C\\u5F00\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":"\\u7B49\\u5F85\\u6709\\u6548\\u6570\\u636E"}function ve(){let t=s.analysis?.sectors||[];l("sector-rank").innerHTML=t.length?t.slice(0,5).map((e,a)=>`<button class="sector-row" data-sector="${$(e.name)}"><div class="sector-row-label"><div><span class="rank-index">0${a+1}</span>${$(e.name)}</div><span class="sector-score">${e.score}</span></div><div class="sector-bar"><i style="width:${e.score}%"></i></div><div class="sector-row-meta">${e.count} \\u5BB6\\u6DA8\\u505C \\xB7 \\u6700\\u9AD8 ${e.height} \\u677F</div></button>`).join(""):\'<div class="empty compact">\\u6709\\u6548\\u884C\\u60C5\\u5230\\u8FBE\\u540E\\uFF0C\\u663E\\u793A\\u884C\\u4E1A\\u5F3A\\u5EA6\\u6392\\u540D\\u3002</div>\',l("sector-rows").innerHTML=t.length?t.map(e=>`<tr><td><button class="stock-name" data-sector="${$(e.name)}">${$(e.name)}</button></td><td>${pt(e.score)}</td><td>${e.count}</td><td>${e.height} \\u677F</td><td>${w(e.quality)} / 100</td><td>${w(e.components[3].value)}%</td><td>${At(e.amount)}</td></tr>`).join(""):\'<tr><td colspan="7"><div class="empty"><strong>\\u6682\\u65E0\\u677F\\u5757\\u8BC4\\u5206</strong>\\u8BF7\\u5148\\u83B7\\u53D6\\u6709\\u6548\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3002</div></td></tr>\',document.querySelectorAll("[data-sector]").forEach(e=>e.onclick=()=>{l("sector-filter").value=e.dataset.sector,ht("stocks")})}function be(){let t=s.analysis,e=[{name:"5\\u677F+",count:t?t.stocks.filter(n=>n.height>=5).length:0},{name:"4\\u677F",count:t?t.stocks.filter(n=>n.height===4).length:0},{name:"3\\u677F",count:t?t.stocks.filter(n=>n.height===3).length:0},{name:"2\\u677F",count:t?t.stocks.filter(n=>n.height===2).length:0},{name:"\\u9996\\u677F",count:t?t.first:0}],a=Math.max(1,...e.map(n=>n.count));l("ladder-chart").innerHTML=e.map(n=>`<div class="ladder-row"><span class="label">${n.name}</span><div class="ladder-track"><i style="width:${n.count/a*100}%"></i></div><span class="ladder-count">${t?n.count:"\\u2014"}</span></div>`).join(""),l("ladder-insight").textContent=t?`\\u4E0A\\u4E00\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u80A1\\u664B\\u7EA7\\u7387\\uFF1A${t.promotion==null?"\\u6682\\u7F3A":`${w(t.promotion)}%`}${t.previousCount!==null?`\\uFF08\\u6837\\u672C ${t.previousCount} \\u5BB6\\uFF09`:"\\uFF0C\\u6628\\u65E5\\u6570\\u636E\\u6682\\u7F3A"}${s.payload?.promotionBackfilled?"\\uFF0C\\u6309\\u5F52\\u6863\\u6837\\u672C\\u8865\\u7B97":""}\\u3002\\u8FDE\\u677F\\u68AF\\u961F\\u4EC5\\u53CD\\u6620\\u5F53\\u65E5\\u7ED3\\u6784\\u3002`:"\\u7528\\u9996\\u677F\\u4F9B\\u7ED9\\u4E0E\\u8FDE\\u677F\\u9AD8\\u5EA6\\u5171\\u540C\\u89C2\\u5BDF\\u63A5\\u529B\\u7ED3\\u6784\\u3002"}function mt(){let t=s.payload;l("source-tag").className=`source-tag ${s.demo?"demo":s.error?"unavailable":""}`,l("source-tag").textContent=s.loading?"\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":s.demo?"\\u6F14\\u793A\\u6570\\u636E":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863":"\\u516C\\u5F00\\u884C\\u60C5":"\\u6570\\u636E\\u6682\\u4E0D\\u53EF\\u7528",l("data-time").textContent=s.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u6240\\u9009\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u6C60":t?s.demo?"\\u865A\\u6784\\u6837\\u672C\\uFF0C\\u4EC5\\u7528\\u4E8E\\u4F53\\u9A8C\\u8BC4\\u5206\\u548C\\u4EA4\\u4E92":t.archived?`${t.date} \\xB7 ${t.source} \\xB7 \\u5F52\\u6863\\u4E8E ${new Date(t.archivedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09`:`${t.date} \\xB7 ${t.source} \\xB7 \\u83B7\\u53D6\\u4E8E ${new Date(t.fetchedAt).toLocaleTimeString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09${t.cached?" \\xB7 2 \\u5206\\u949F\\u7F13\\u5B58":""}`:"\\u672A\\u4F7F\\u7528\\u6F14\\u793A\\u6570\\u636E\\u66FF\\u4EE3\\u771F\\u5B9E\\u884C\\u60C5",l("sidebar-source").textContent=s.demo?"\\u6F14\\u793A\\u6A21\\u5F0F":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863 \\xB7 \\u5DF2\\u8BFB\\u53D6":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u5DF2\\u63A5\\u5165":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u7B49\\u5F85\\u6570\\u636E",l("demo-btn").textContent=s.demo?"\\u8FD4\\u56DE\\u516C\\u5F00\\u884C\\u60C5":"\\u67E5\\u770B\\u6F14\\u793A",l("notice").hidden=!s.error&&!s.demo&&!t?.warnings?.length,l("notice").textContent=s.error||(s.demo?"\\u5F53\\u524D\\u4E3A\\u865A\\u6784\\u6F14\\u793A\\u6837\\u672C\\uFF0C\\u6240\\u6709\\u4E2A\\u80A1\\u3001\\u65E5\\u671F\\u5173\\u8054\\u4E0E\\u5F97\\u5206\\u5747\\u4E0D\\u4EE3\\u8868\\u5B9E\\u9645\\u884C\\u60C5\\u3002":t?.warnings?.join(" "))||"",l("refresh-btn").disabled=s.loading,l("refresh-btn").innerHTML=`${Q("refresh")}${s.loading?"\\u83B7\\u53D6\\u4E2D\\u2026":"\\u5237\\u65B0\\u884C\\u60C5"}`}async function tt(){let t=++s.request,e=l("trade-date").value;s.demo=!1,s.loading=!0,s.error=null,s.payload=null,s.analysis=null,s.review=null,s.ai=null,s.reviewMessage="\\u6B63\\u5728\\u68C0\\u67E5\\u5386\\u53F2\\u53CD\\u9988",mt(),H(),M();try{let a=await fetch(`/api/market?date=${encodeURIComponent(e)}`,{signal:AbortSignal.timeout(2e4)}),n=await a.json();if(t!==s.request)return;let r=n.archived===!0&&Array.isArray(n.analysis?.stocks)&&Array.isArray(n.analysis?.sectors);if(!a.ok||!Array.isArray(n.rows)&&!r)throw new Error(n.error||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25");if(n.date!==e)throw new Error("\\u8FD4\\u56DE\\u7684\\u6570\\u636E\\u65E5\\u671F\\u4E0E\\u6240\\u9009\\u65E5\\u671F\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u91CD\\u65B0\\u5237\\u65B0");s.payload=n,Lt()}catch(a){if(t!==s.request)return;s.error=a.name==="TimeoutError"?"\\u884C\\u60C5\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u8BF7\\u7A0D\\u540E\\u5237\\u65B0\\u3002":a.message||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25"}finally{t===s.request&&(s.loading=!1,Kt(),mt(),Dt(),H(),s.payload?.date===Z&&!s.payload.archived&&s.storageAvailable?Zt(t):Qt(t))}}function Kt(){let t=l("sector-filter").value;l("sector-filter").innerHTML=\'<option value="">\\u5168\\u90E8\\u884C\\u4E1A</option>\'+(s.analysis?.sectors||[]).map(e=>`<option value="${$(e.name)}">${$(e.name)}</option>`).join(""),s.analysis?.sectors.some(e=>e.name===t)&&(l("sector-filter").value=t)}function xe(t){let e=s.analysis?.stocks.find(o=>o.code===t);if(!e)return;let a=s.analysis.sectors.find(o=>o.name===e.sector),n=e.factors.filter(o=>o.value!==null).sort((o,g)=>g.value-o.value)[0],r=e.factors.filter(o=>o.value!==null).sort((o,g)=>o.value-g.value)[0],u=`${e.name}\\u4E3A${e.height===1?"\\u9996\\u677F":e.height?`${e.height}\\u8FDE\\u677F`:"\\u8FDE\\u677F\\u9AD8\\u5EA6\\u6682\\u7F3A"}\\uFF0C${at(e.first)}\\u9996\\u6B21\\u5C01\\u677F${e.breaks!==null?`\\uFF0C\\u76D8\\u4E2D\\u70B8\\u677F ${e.breaks} \\u6B21`:""}\\u3002${n?`${n.name}\\u662F\\u5F53\\u524D\\u8F83\\u5F3A\\u6307\\u6807\\uFF08${Math.round(n.value)} \\u5206\\uFF09\\u3002`:""}${r&&r!==n?`${r.name}\\u76F8\\u5BF9\\u504F\\u5F31\\uFF08${Math.round(r.value)} \\u5206\\uFF09\\u3002`:""}\\u6240\\u5C5E\\u884C\\u4E1A ${a?.count||0} \\u5BB6\\u6DA8\\u505C\\uFF0C\\u677F\\u5757\\u5F97\\u5206 ${a?.score??"\\u2014"}\\u3002`;l("stock-detail").innerHTML=`<div class="detail-head"><div><h2>${$(e.name)}</h2><span class="stock-code">${$(e.code)}${s.demo?" \\xB7 \\u6F14\\u793A\\u6837\\u672C":""}</span><div class="detail-tags"><span class="sector-tag">${$(e.sector)}</span><span class="height-tag">${e.height===1?"\\u9996\\u677F":`${e.height??"\\u2014"} \\u677F`}</span></div></div><div class="detail-score">${e.score??"\\u2014"}<small>\\u7EFC\\u5408\\u8BC4\\u5206 / 100</small></div></div><div class="detail-facts"><div><label>\\u5C01\\u5355\\u91D1\\u989D</label><strong>${At(e.seal)}</strong></div><div><label>\\u5C01\\u5355 / \\u6210\\u4EA4\\u989D</label><strong>${e.sealRatio===null?"\\u2014":w(e.sealRatio*100)}%</strong></div><div><label>\\u6362\\u624B\\u7387</label><strong>${w(e.turnover)}%</strong></div><div><label>\\u6700\\u540E\\u5C01\\u677F</label><strong>${at(e.last)}</strong></div></div><div class="detail-section"><h3>\\u516D\\u7EF4\\u8BC4\\u5206\\u62C6\\u89E3</h3>${e.factors.map(o=>`<div class="factor-row"><span>${o.name}</span><span class="factor-track"><i style="width:${o.value??0}%"></i></span><strong>${o.value===null?"\\u2014":Math.round(o.value)}</strong><span class="weight">\\u6743\\u91CD ${o.weight}</span></div>`).join("")}<p class="detail-footnote">\\u6709\\u6548\\u6307\\u6807\\u5747\\u5206 ${w(e.rawScore)} \\u2212 \\u98CE\\u9669\\u6263\\u5206 ${e.deduction} = ${e.score??"\\u2014"} \\u5206 \\xB7 \\u8986\\u76D6\\u7387 ${e.coverage}%</p></div><div class="detail-section"><h3>\\u98CE\\u9669\\u89C2\\u5BDF</h3>${e.risks.length?e.risks.map(o=>`<div class="risk-row"><strong>${o.text} \\u2212${o.penalty}</strong><span>${o.detail}</span></div>`).join(""):\'<p class="detail-footnote">\\u5F53\\u524D\\u5B57\\u6BB5\\u672A\\u89E6\\u53D1\\u6A21\\u578B\\u98CE\\u9669\\u6263\\u5206\\u9879\\uFF1B\\u516C\\u544A\\u3001\\u57FA\\u672C\\u9762\\u4E0E\\u9898\\u6750\\u98CE\\u9669\\u4ECD\\u9700\\u5355\\u72EC\\u6838\\u5B9E\\u3002</p>\'}</div><div class="detail-section"><h3>\\u76D8\\u540E\\u8BCA\\u65AD</h3><p class="detail-text">${$(u)}</p></div><p class="detail-footnote">\\u6B21\\u65E5\\u89C2\\u5BDF\\uFF1A\\u7ADE\\u4EF7\\u662F\\u5426\\u6709\\u627F\\u63A5\\u3001\\u540C\\u677F\\u5757\\u662F\\u5426\\u5F62\\u6210\\u5408\\u529B\\u3001\\u5F00\\u677F\\u540E\\u80FD\\u5426\\u56DE\\u5C01\\u3002\\u5F53\\u524D\\u89C4\\u5219\\u5206\\u6570\\u5C1A\\u672A\\u7ECF\\u8FC7\\u5386\\u53F2\\u6536\\u76CA\\u6821\\u51C6\\uFF0C\\u4E0D\\u4EE3\\u8868\\u4E0A\\u6DA8\\u6982\\u7387\\u3002</p>`,l("stock-dialog").showModal()}document.querySelectorAll(".close-dialog").forEach(t=>t.onclick=()=>t.closest("dialog").close());document.querySelectorAll("dialog").forEach(t=>t.onclick=e=>{if(e.target===t){let a=t.getBoundingClientRect();(e.clientX<a.left||e.clientX>a.right||e.clientY<a.top||e.clientY>a.bottom)&&t.close()}});l("help-btn").onclick=()=>l("help-dialog").showModal();l("all-sectors").onclick=()=>ht("sectors");l("refresh-btn").onclick=tt;l("trade-date").onchange=tt;l("search").oninput=J;l("sector-filter").onchange=J;l("sort").onchange=J;document.querySelectorAll("[data-height]").forEach(t=>t.onclick=()=>{s.height=t.dataset.height,document.querySelectorAll("[data-height]").forEach(e=>e.classList.toggle("active",e===t)),J()});function gt(){l("weight-controls").innerHTML=ft.map((t,e)=>`<div class="weight-item"><div class="weight-heading"><label for="weight-${e}">${t.name}</label><output id="weight-output-${e}" for="weight-${e}">${s.weights[e]}%</output></div><input id="weight-${e}" data-weight="${e}" type="range" min="0" max="50" step="1" value="${s.weights[e]}" aria-describedby="weight-desc-${e}"><p id="weight-desc-${e}">${t.description}</p></div>`).join(""),document.querySelectorAll("[data-weight]").forEach(t=>t.oninput=()=>{let e=[...s.weights];if(e[Number(t.dataset.weight)]=Number(t.value),!e.some(a=>a>0)){t.value=s.weights[Number(t.dataset.weight)],l("model-status").textContent="\\u81F3\\u5C11\\u4FDD\\u7559\\u4E00\\u9879\\u6709\\u6548\\u6743\\u91CD";return}s.weights=e,l(`weight-output-${t.dataset.weight}`).textContent=`${t.value}%`,It()}),Dt()}function Dt(){let t=s.weights.reduce((e,a)=>e+a,0);l("weight-total").textContent=`\\u5408\\u8BA1 ${t}%`,l("model-status").textContent=s.payload?.archived?"\\u5F53\\u524D\\u5C55\\u793A\\u5F53\\u5929\\u51BB\\u7ED3\\u8BC4\\u5206\\uFF1B\\u4FEE\\u6539\\u6743\\u91CD\\u4E0D\\u4F1A\\u91CD\\u7B97\\u5386\\u53F2\\u5F52\\u6863":t===100?"\\u5DF2\\u5373\\u65F6\\u91CD\\u7B97 \\xB7 \\u5373\\u65F6\\u91CD\\u7B97":`\\u5408\\u8BA1 ${t}%\\uFF0C\\u8BA1\\u7B97\\u65F6\\u81EA\\u52A8\\u5F52\\u4E00\\u5316`,document.querySelectorAll("[data-preset]").forEach(e=>e.classList.toggle("active",R[e.dataset.preset].every((a,n)=>a===s.weights[n])))}var Yt;function It(){try{localStorage.setItem("limitLensWeights",JSON.stringify(s.weights))}catch{}Dt(),Lt(),H(),clearTimeout(Yt),Yt=setTimeout(async()=>{try{let t=await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({weights:s.weights})}),e=await t.json();if(!t.ok)throw new Error(e.error);l("model-status").textContent="\\u6743\\u91CD\\u5DF2\\u4FDD\\u5B58 \\xB7 \\u5DF2\\u5F52\\u6863\\u8BC4\\u5206\\u4FDD\\u6301\\u539F\\u6837"}catch{l("model-status").textContent="\\u670D\\u52A1\\u5668\\u4FDD\\u5B58\\u5931\\u8D25\\uFF0C\\u5F53\\u524D\\u8C03\\u6574\\u4ECD\\u53EF\\u4F7F\\u7528\\uFF0C\\u8BF7\\u7A0D\\u540E\\u91CD\\u8BD5\\u3002"}},500)}document.querySelectorAll("[data-preset]").forEach(t=>t.onclick=()=>{s.weights=[...R[t.dataset.preset]],It(),gt()});l("reset-model").onclick=()=>{s.weights=[...R.balanced],It(),gt()};function Ee(){let t=["\\u793A\\u4F8B\\xB7\\u8F6F\\u4EF6\\u670D\\u52A1","\\u793A\\u4F8B\\xB7\\u7535\\u5B50\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u673A\\u68B0\\u5236\\u9020","\\u793A\\u4F8B\\xB7\\u7535\\u529B\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u533B\\u836F\\u5236\\u9020"];return Array.from({length:22},(e,a)=>({c:`DEMO${String(a+1).padStart(3,"0")}`,n:`\\u793A\\u4F8B\\u4E2A\\u80A1 ${String(a+1).padStart(2,"0")}`,hybk:t[Math.min(4,Math.floor(a/5))],p:(12+a)*1e3,zdp:a%4===0?20:10,amount:(2+a%6)*1e8,ltsz:(18+a)*1e8,fund:(.3+(21-a)/10)*1e8,hs:4+a%16,lbc:a===0?6:a===1?4:a<5?3:a<9?2:1,fbt:a%6===0?92500:93e3+a*700,lbt:a===0?145500:1e5+a*800,zbc:a%5===0?3:a%3===0?1:0,zttj:{days:3,ct:1}}))}l("demo-btn").onclick=()=>{if(s.demo){tt();return}++s.request,s.loading=!1,s.demo=!0,s.error=null,s.review=null,s.ai=null,s.reviewMessage="\\u6F14\\u793A\\u6837\\u672C\\u4E0D\\u4F1A\\u4FDD\\u5B58\\u8BC4\\u5206\\u6216\\u751F\\u6210\\u5E02\\u573A\\u53CD\\u9988\\u3002",s.payload={date:"\\u6F14\\u793A",source:"\\u865A\\u6784\\u6837\\u672C",fetchedAt:new Date().toISOString(),rows:Ee(),broken:6,previous:null,warnings:[]},Lt(),Kt(),mt(),H(),M()};function Xt(t){return t==null?"\\u2014":`${t>0?"+":""}${Number(t).toFixed(2)}%`}function ut(t){return`<span class="${t>0?"up":t<0?"down":""}">${Xt(t)}</span>`}function M(){let t=s.review,e=s.ai;l("review-date-label").textContent=t?`${t.snapshotDate} \\u8BC4\\u5206 \\u2192 ${t.date} \\u8868\\u73B0`:"\\u7B49\\u5F85\\u9996\\u4E2A\\u53CD\\u9988\\u65E5",l("review-status").textContent=s.reviewBusy?"\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C\\u6536\\u76D8\\u7ED3\\u679C\\u2026":s.reviewMessage||"\\u5F53\\u5929\\u6536\\u76D8\\u540E\\u4FDD\\u5B58\\u539F\\u59CB\\u8BC4\\u5206\\uFF0C\\u4E0B\\u4E00\\u4E2A\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5E02\\u573A\\u8868\\u73B0\\u3002",l("run-review").disabled=s.reviewBusy||s.demo,l("review-coverage").textContent=t?`${t.validCount} / ${t.total} \\u5BB6\\u6709\\u6548`:"\\u7B49\\u5F85\\u6837\\u672C";let a=[{name:"\\u7CFB\\u7EDF\\u5BA2\\u89C2\\u53CD\\u9988\\u5206",value:t?.systemScore??"\\u2014",unit:"/ 100",caption:"\\u5355\\u65E5\\u6392\\u5E8F\\u4E0E\\u76F8\\u5BF9\\u8868\\u73B0\\uFF0C\\u89C4\\u5219\\u8BA1\\u7B97"},{name:"\\u9AD8\\u5206\\u7EC4\\u6B21\\u65E5\\u6536\\u76CA",value:t?.topMean===null||!t?"\\u2014":w(t.topMean,2),unit:"%",caption:t?`\\u6709\\u6548 ${t.topValid} \\u5BB6 \\xB7 \\u8BC4\\u5206\\u524D 20%`:"\\u6309\\u6628\\u65E5\\u8BC4\\u5206\\u56FA\\u5B9A\\u89C2\\u5BDF\\u7EC4"},{name:"\\u76F8\\u5BF9\\u6837\\u672C\\u8D85\\u989D",value:t?.excess===null||!t?"\\u2014":w(t.excess,2),unit:"\\u767E\\u5206\\u70B9",caption:t?`\\u5168\\u6837\\u672C\\u5747\\u503C ${Xt(t.allMean)}`:"\\u9AD8\\u5206\\u7EC4\\u5747\\u503C \\u2212 \\u5168\\u6837\\u672C\\u5747\\u503C"},{name:"\\u8BC4\\u5206\\u4E0E\\u8868\\u73B0\\u76F8\\u5173",value:t?.rho===null||!t?"\\u2014":w(t.rho,2),unit:"\\u03C1",caption:"Spearman \\u79E9\\u76F8\\u5173\\uFF0C\\u8303\\u56F4 \\u22121 \\u81F3 1"}];l("review-metrics").innerHTML=a.map(o=>`<article class="metric"><div class="metric-head">${o.name}${Q("shield")}</div><div class="metric-value">${o.value}<small>${o.unit}</small></div><div class="metric-caption">${o.caption}</div></article>`).join(""),l("review-conclusion").hidden=!t;let n=s.evidence?.review?.report,r="";if(n){let o=n.payload.family?.find(h=>h.metric==="MEAN_DAILY_IC"),g=n.payload.tags?.includes("METHOD_SIMULATION_LIMITED"),f=n.horizon,y=n.payload.window.validDates.length;o?.ci?r=`${f} \\u65E5\\u6EDA\\u52A8\\u8BC1\\u636E\\uFF08\\u63A2\\u7D22\\u8BCA\\u65AD\\uFF09\\uFF1A\\u5E73\\u5747\\u65E5 IC ${o.estimate.toFixed(2)}\\uFF0C95% \\u533A\\u95F4 [${o.ci.lower.toFixed(2)}, ${o.ci.upper.toFixed(2)}]\\uFF0C${y}/${n.payload.window.expectedDates.length} \\u4E2A\\u6709\\u6548\\u4EA4\\u6613\\u65E5${g?"\\uFF1B\\u65B9\\u6CD5\\u6A21\\u62DF\\u53D7\\u9650\\uFF0C\\u4EC5\\u4F5C\\u63A2\\u7D22\\u5C55\\u793A":""}\\u3002\\u533A\\u95F4\\u8DE8\\u96F6\\u8868\\u793A\\u8BC1\\u636E\\u4E0D\\u8DB3\\uFF0C\\u4E0D\\u7B49\\u4E8E\\u7B56\\u7565\\u65E0\\u6548\\u3002`:r=`${f} \\u65E5\\u6EDA\\u52A8\\u8BC1\\u636E\\uFF1A${n.payload.status}${n.payload.reasons?.length?`\\uFF08${n.payload.reasons[0]}\\uFF09`:"\\uFF0C\\u6837\\u672C\\u79EF\\u7D2F\\u4E2D"}\\u3002`;let c=n.payload.secondaryFamilies?.find(h=>h.name==="SECTOR_SECONDARY_EXCESS"),p=(c?.entries??[]).filter(h=>h.direction==="POSITIVE");c?.familySize&&(r+=` \\u677F\\u5757\\u6B21\\u8981\\u65CF ${c.familySize} \\u4E2A\\uFF08Holm \\u8DE8\\u677F\\u5757\\u6821\\u6B63\\uFF09\\uFF1A${p.length?`${p.map(h=>h.sector).join("\\u3001")} \\u533A\\u95F4\\u4E3A\\u6B63\\uFF08\\u63A2\\u7D22\\uFF09`:"\\u65E0\\u533A\\u95F4\\u4E3A\\u6B63\\u7684\\u677F\\u5757"}`)}l("review-conclusion").textContent=`${t?.conclusion||""}${r?` ${r}`:""}`,l("review-rows").innerHTML=t?t.rows.map((o,g)=>`<tr><td><strong class="review-stock">${$(o.name)}${g<t.topSize?\'<span class="top-group">\\u9AD8\\u5206\\u7EC4</span>\':""}</strong><span class="stock-code">${$(o.code)}</span></td><td>${pt(o.score)}</td><td>${o.available?ut(o.openReturn):"\\u2014"}</td><td>${o.available?ut(o.closeReturn):"\\u2014"}</td><td>${o.available?ut(o.lowReturn):"\\u2014"}</td><td>${o.available?o.continued?\'<span class="height-tag high">\\u662F</span>\':"\\u5426":`<span class="small-muted" title="${$(o.reason)}">\\u4E0D\\u53EF\\u6BD4</span>`}</td></tr>`).join(""):\'<tr><td colspan="6"><div class="empty"><strong>\\u5148\\u4FDD\\u5B58\\u5224\\u65AD\\uFF0C\\u518D\\u68C0\\u9A8C\\u7ED3\\u679C</strong>\\u6536\\u76D8\\u540E\\u8BBF\\u95EE\\u5DE5\\u4F5C\\u53F0\\u4F1A\\u81EA\\u52A8\\u4FDD\\u5B58\\u5F53\\u65E5\\u8BC4\\u5206\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u7684\\u771F\\u5B9E\\u53CD\\u9988\\u5230\\u8FBE\\u524D\\uFF0C\\u6B64\\u5904\\u4FDD\\u6301\\u7A7A\\u767D\\u3002</div></td></tr>\',l("review-sector-rows").innerHTML=t?t.sectors.map(o=>`<tr><td>${$(o.name)}</td><td>${pt(o.score)}</td><td>${o.available} / ${o.count}</td><td>${ut(o.averageReturn)}</td><td>${o.continuationRate===null?"\\u2014":w(o.continuationRate*100)}%</td></tr>`).join(""):\'<tr><td colspan="5"><div class="empty compact">\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5DF2\\u4FDD\\u5B58\\u7684\\u677F\\u5757\\u8BC4\\u5206\\u3002</div></td></tr>\',l("ai-status-tag").textContent=s.aiConfig.configured?"\\u5DF2\\u8FDE\\u63A5":"\\u5F85\\u914D\\u7F6E",l("model-ai-status").textContent=s.aiConfig.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E",l("model-ai-detail").textContent=s.aiConfig.configured?`\\u5DF2\\u914D\\u7F6E ${s.aiConfig.model}\\u3002\\u53EA\\u5411\\u6A21\\u578B\\u53D1\\u9001\\u51BB\\u7ED3\\u8BC4\\u5206\\u3001\\u6838\\u9A8C\\u7ED3\\u679C\\u4E0E\\u8FD1\\u671F\\u5BA2\\u89C2\\u6307\\u6807\\uFF08\\u4E0D\\u542B\\u8FC7\\u5F80AI\\u610F\\u89C1\\uFF09\\uFF0C\\u8BC4\\u4EF7\\u4F1A\\u4E0E\\u539F\\u59CB\\u6570\\u636E\\u4E00\\u5E76\\u4FDD\\u5B58\\u3002`:"\\u670D\\u52A1\\u7AEF\\u914D\\u7F6E\\u5BC6\\u94A5\\u3001\\u63A5\\u53E3\\u5730\\u5740\\u548C\\u6A21\\u578B\\u540E\\uFF0CAI \\u4F1A\\u6839\\u636E\\u51BB\\u7ED3\\u8BC4\\u5206\\u3001\\u5DF2\\u6838\\u9A8C\\u5E02\\u573A\\u7ED3\\u679C\\u4E0E\\u8FD1\\u671F\\u5BA2\\u89C2\\u6307\\u6807\\u8D8B\\u52BF\\u751F\\u6210\\u8BC4\\u4EF7\\u3002\\u5BC6\\u94A5\\u4E0D\\u8FDB\\u5165\\u6D4F\\u89C8\\u5668\\u3002",l("ai-content").innerHTML=e?`<div class="ai-score"><strong>${e.score}</strong><span>AI \\u4E3B\\u89C2\\u8BC4\\u4EF7 / 100<small>${$(e.model)} \\xB7 AI \\u4E3B\\u89C2\\u628A\\u63E1${e.confidence==="high"?"\\u8F83\\u9AD8":e.confidence==="medium"?"\\u4E2D\\u7B49":"\\u8F83\\u4F4E"}\\uFF08\\u4E3B\\u89C2\\u8BC4\\u4EF7\\uFF0C\\u4E0D\\u662F\\u7EDF\\u8BA1\\u7F6E\\u4FE1\\u533A\\u95F4\\uFF09</small></span></div><p class="ai-summary">${$(e.summary)}</p><h3>\\u8BC4\\u4EF7\\u4F9D\\u636E</h3><ul>${e.evidence.map(o=>`<li>${$(o)}</li>`).join("")}</ul>${e.failures.length?`<h3>\\u5224\\u65AD\\u4E0D\\u8DB3</h3><ul>${e.failures.map(o=>`<li>${$(o)}</li>`).join("")}</ul>`:""}${e.suggestions.length?`<h3>\\u6539\\u8FDB\\u5EFA\\u8BAE</h3><ul>${e.suggestions.map(o=>`<li>${$(o)}</li>`).join("")}</ul>`:""}<p class="ai-note">AI \\u8BC4\\u4EF7\\u4E0E\\u89C4\\u5219\\u53CD\\u9988\\u5206\\u5206\\u522B\\u4FDD\\u7559\\u3002\\u7EDF\\u8BA1\\u533A\\u95F4\\u89C1\\u4E0A\\u65B9\\u6EDA\\u52A8\\u8BC1\\u636E\\u6458\\u8981\\uFF1B\\u5EFA\\u8BAE\\u4E0D\\u4F1A\\u81EA\\u52A8\\u6539\\u5199\\u6A21\\u578B\\u3002</p>`:`<div class="ai-empty"><span class="ai-symbol">${Q("sliders")}</span><h3>${s.aiConfig.configured?"\\u7B49\\u5F85\\u5DF2\\u6838\\u9A8C\\u7ED3\\u679C":"\\u5927\\u6A21\\u578B\\u5C1A\\u672A\\u914D\\u7F6E"}</h3><p>${s.aiConfig.configured?"\\u79EF\\u7D2F\\u4E8B\\u524D\\u5FEB\\u7167\\u5E76\\u53D6\\u5F97\\u6B21\\u65E5\\u6536\\u76D8\\u7ED3\\u679C\\u540E\\uFF0CAI \\u624D\\u5BF9\\u7CFB\\u7EDF\\u8BC4\\u4EF7\\u3002":"\\u5DF2\\u9884\\u7559 DeepSeek\\u3001OpenAI\\u3001\\u901A\\u4E49\\u517C\\u5BB9\\u63A5\\u53E3\\u3002\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5BC6\\u94A5\\u540E\\u542F\\u7528\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6A21\\u62DF AI \\u7ED3\\u8BBA\\u66FF\\u4EE3\\u771F\\u5B9E\\u8C03\\u7528\\u3002"}</p><div class="ai-process">\\u51BB\\u7ED3\\u6628\\u65E5\\u8BC4\\u5206<span>\\u2193</span>\\u6838\\u9A8C\\u4ECA\\u65E5\\u5E02\\u573A\\u7ED3\\u679C<span>\\u2193</span>AI \\u8BC4\\u5206\\u3001\\u8BC1\\u636E\\u4E0E\\u6539\\u8FDB\\u5EFA\\u8BAE</div></div>`,l("ai-grade-btn").disabled=s.demo||s.reviewBusy||!s.aiConfig.configured||!t||!!e,l("ai-grade-btn").textContent=e?"\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58":"\\u751F\\u6210 AI \\u8BC4\\u4EF7";let u=s.history?.reviews||[];l("review-history").innerHTML=u.length?`<div class="history-list">${u.map(o=>`<button data-history="${$(o.date)}"><span>${$(o.snapshotDate)} \\u2192 ${$(o.date)}</span><span>\\u5BA2\\u89C2 ${o.systemScore??"\\u2014"} \\u5206 \\xB7 AI ${o.aiScore??"\\u2014"} \\u5206</span></button>`).join("")}</div>`:\'<div class="empty compact">\\u5C1A\\u65E0\\u53CD\\u9988\\u8BB0\\u5F55\\u3002\\u5FEB\\u7167\\u4E0E\\u53CD\\u9988\\u4F1A\\u4FDD\\u5B58\\u5230\\u670D\\u52A1\\u7AEF\\uFF0C\\u8DE8\\u8BBE\\u5907\\u53EF\\u67E5\\u770B\\u3002</div>\',document.querySelectorAll("[data-history]").forEach(o=>o.onclick=()=>{l("trade-date").value=o.dataset.history,tt()})}async function Qt(t=s.request){try{let[e,a,n]=await Promise.all([fetch(`/api/review?date=${encodeURIComponent(l("trade-date").value)}`),fetch("/api/history"),fetch(`/api/evidence?asOf=${encodeURIComponent(l("trade-date").value)}`)]),r=await e.json(),u=await a.json();if(t!==s.request||s.demo)return;if(!e.ok)throw new Error(r.error);s.review=r.review,s.ai=r.ai,s.aiConfig=r.aiStatus||s.aiConfig,s.history=a.ok?u:s.history,s.evidence=n.ok?await n.json():null,s.reviewMessage=r.reason||"\\u5DF2\\u52A0\\u8F7D\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5B9E\\u9645\\u7ED3\\u679C\\u3002"}catch(e){t===s.request&&(s.reviewMessage=e.message||"\\u5386\\u53F2\\u53CD\\u9988\\u6682\\u65F6\\u4E0D\\u53EF\\u7528")}t===s.request&&M()}async function Zt(t=s.request){if(!(s.demo||s.reviewBusy)){s.reviewBusy=!0,s.reviewMessage="\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C",M();try{let e=await fetch("/api/run-daily",{method:"POST",signal:AbortSignal.timeout(13e4)}),a=await e.json();if(t!==s.request||s.demo)return;if(!e.ok)throw new Error(a.error);s.review=a.review,s.ai=a.ai||null,s.aiConfig=a.aiStatus||s.aiConfig,s.history=a.history||s.history,s.reviewMessage=a.aiError||a.reason||(a.review?"\\u5DF2\\u5B8C\\u6210\\u6628\\u65E5\\u5224\\u65AD\\u6838\\u9A8C\\uFF1B\\u539F\\u59CB\\u8BC4\\u5206\\u4E0E\\u7ED3\\u679C\\u5747\\u5DF2\\u4FDD\\u5B58\\u3002":"\\u4ECA\\u65E5\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863\\uFF0C\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u751F\\u6210\\u53CD\\u9988\\u3002"),l("snapshot-status").textContent=a.snapshot?.saved?`${a.snapshot.date} \\u539F\\u59CB\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863`:a.snapshot?.reason||"\\u7B49\\u5F85\\u6536\\u76D8\\u540E\\u4FDD\\u5B58"}catch(e){t===s.request&&(s.reviewMessage=e.name==="TimeoutError"?"\\u53CD\\u9988\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u53EF\\u5237\\u65B0\\u8BFB\\u53D6\\u5DF2\\u4FDD\\u5B58\\u7684\\u8FDB\\u5EA6\\u3002":e.message,l("snapshot-status").textContent="\\u5F52\\u6863\\u6682\\u4E0D\\u53EF\\u7528\\uFF0C\\u53EF\\u7A0D\\u540E\\u91CD\\u8BD5")}finally{s.reviewBusy=!1,M(),window.dispatchEvent(new Event("paper-updated"))}}}l("run-review").onclick=()=>{l("trade-date").value===Z?Zt():Qt()};l("ai-grade-btn").onclick=async()=>{if(!s.review)return;let t=s.review.date;s.reviewBusy=!0,M(),l("ai-action-status").textContent="\\u6A21\\u578B\\u6B63\\u5728\\u8BC4\\u4EF7\\u2026";try{let e=await fetch("/api/ai-grade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:t}),signal:AbortSignal.timeout(55e3)}),a=await e.json();if(!e.ok)throw new Error(a.error);s.review?.date===t&&(s.ai=a.ai),l("ai-action-status").textContent="\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58"}catch(e){l("ai-action-status").textContent=e.message||"AI \\u8C03\\u7528\\u5931\\u8D25"}finally{s.reviewBusy=!1,M()}};async function Ce(){try{let t=await fetch("/api/market/latest-date",{signal:AbortSignal.timeout(6e3)}),e=await t.json();t.ok&&/^\\d{4}-\\d{2}-\\d{2}$/.test(e.date)&&e.date<=Z&&(l("trade-date").value=e.date)}catch{}}async function ke(){let t=fetch("/api/settings",{signal:AbortSignal.timeout(5e3)}).then(async a=>a.ok?a.json():null).catch(()=>null),[e]=await Promise.all([t,Ce()]);e&&(s.storageAvailable=!0,Se(e.weights)&&(s.weights=e.weights),s.aiConfig=e.ai,gt()),await tt()}function Se(t){return Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)}gt();mt();H();M();ke();if(document.modelContext?.registerTool){let t=new AbortController;try{Promise.resolve(document.modelContext.registerTool({name:"read_limit_up_analysis",title:"\\u8BFB\\u53D6\\u6DA8\\u505C\\u5206\\u6790",description:"\\u8BFB\\u53D6\\u5F53\\u524D\\u4EA4\\u6613\\u65E5\\u7684\\u4E2A\\u80A1\\u4E0E\\u884C\\u4E1A\\u8BC4\\u5206\\uFF0C\\u5E76\\u660E\\u786E\\u8FD4\\u56DE\\u771F\\u5B9E\\u6216\\u6F14\\u793A\\u6570\\u636E\\u72B6\\u6001\\u3002",inputSchema:{type:"object",properties:{},additionalProperties:!1},annotations:{readOnlyHint:!0,untrustedContentHint:!0},execute(e){if(e===null||typeof e!="object"||Array.isArray(e)||Object.keys(e).length)throw new Error("\\u8F93\\u5165\\u5FC5\\u987B\\u662F\\u7A7A\\u5BF9\\u8C61");return{date:s.payload?.date??null,mode:s.demo?"demo":"public",loading:s.loading,error:s.error,stocks:s.analysis?.stocks.map(a=>({code:a.code,name:a.name,sector:a.sector,score:a.score,coverage:a.coverage,risks:a.risks.map(n=>n.text)}))||[],sectors:s.analysis?.sectors.map(a=>({name:a.name,score:a.score,count:a.count}))||[]}}},{signal:t.signal})).catch(()=>{}),window.addEventListener("pagehide",()=>t.abort(),{once:!0})}catch{}}\n', "type": "text/javascript; charset=utf-8" }, "/assets/styles.css": { "body": '* {\r\n  box-sizing: border-box;\r\n}\r\n:root {\r\n  --navy: #101e2e;\r\n  --ink: #1b2c3f;\r\n  --muted: #7c8795;\r\n  --line: #e7ebf0;\r\n  --bg: #f4f6f9;\r\n  --teal: #148775;\r\n  --red: #db5a55;\r\n  --green: #309477;\r\n  --amber: #c18a31;\r\n}\r\nbody {\r\n  margin: 0;\r\n  background: var(--bg);\r\n  color: var(--ink);\r\n  font:\r\n    14px/1.55 -apple-system,\r\n    BlinkMacSystemFont,\r\n    "Segoe UI",\r\n    "PingFang SC",\r\n    "Microsoft YaHei",\r\n    sans-serif;\r\n}\r\nbutton,\r\ninput,\r\nselect {\r\n  font: inherit;\r\n}\r\nbutton,\r\na,\r\ninput,\r\nselect {\r\n  touch-action: manipulation;\r\n}\r\nbutton {\r\n  cursor: pointer;\r\n}\r\nbutton {\r\n  border: 0;\r\n}\r\nbutton:focus-visible,\r\na:focus-visible,\r\ninput:focus-visible,\r\nselect:focus-visible {\r\n  outline: 3px solid #66c5ba;\r\n  outline-offset: 3px;\r\n}\r\nbutton:disabled {\r\n  opacity: 0.65;\r\n  cursor: wait;\r\n}\r\na {\r\n  text-decoration: none;\r\n  color: inherit;\r\n}\r\n[hidden] {\r\n  display: none !important;\r\n}\r\nh1,\r\nh2,\r\nh3,\r\np {\r\n  margin: 0;\r\n}\r\nh2 {\r\n  font-size: 16px;\r\n  font-weight: 650;\r\n}\r\nh3 {\r\n  font-size: 14px;\r\n}\r\nsvg {\r\n  width: 19px;\r\n  height: 19px;\r\n  display: block;\r\n  fill: none;\r\n  stroke: currentColor;\r\n  stroke-width: 1.6;\r\n  stroke-linecap: round;\r\n  stroke-linejoin: round;\r\n}\r\n.shell {\r\n  display: flex;\r\n  min-height: 100vh;\r\n}\r\n.sidebar {\r\n  width: 222px;\r\n  position: fixed;\r\n  inset: 0 auto 0 0;\r\n  background: var(--navy);\r\n  color: #b4c0cd;\r\n  padding: 32px 18px;\r\n  display: flex;\r\n  flex-direction: column;\r\n}\r\n.brand {\r\n  display: flex;\r\n  gap: 12px;\r\n  align-items: center;\r\n  color: #fff;\r\n  font-size: 19px;\r\n  font-weight: 650;\r\n  padding: 0 10px;\r\n}\r\n.brand small {\r\n  display: block;\r\n  font-size: 10px;\r\n  letter-spacing: 2.8px;\r\n  font-weight: 450;\r\n  color: #7e93aa;\r\n  margin-top: 3px;\r\n}\r\n.brand-mark {\r\n  display: flex;\r\n  gap: 4px;\r\n  align-items: flex-end;\r\n  width: 29px;\r\n  height: 29px;\r\n}\r\n.brand-mark i {\r\n  display: block;\r\n  background: #55c9b0;\r\n  width: 6px;\r\n  border-radius: 2px;\r\n}\r\n.brand-mark i:nth-child(1) {\r\n  height: 12px;\r\n}\r\n.brand-mark i:nth-child(2) {\r\n  height: 20px;\r\n}\r\n.brand-mark i:nth-child(3) {\r\n  height: 29px;\r\n}\r\n.nav-label {\r\n  font-size: 12px;\r\n  color: #718398;\r\n  letter-spacing: 1px;\r\n  margin: 46px 16px 13px;\r\n}\r\n.nav-item {\r\n  background: transparent;\r\n  color: #91a4b8;\r\n  display: flex;\r\n  gap: 13px;\r\n  align-items: center;\r\n  padding: 13px 16px;\r\n  width: 100%;\r\n  text-align: left;\r\n  margin-bottom: 7px;\r\n  border-radius: 7px;\r\n  font-size: 14px;\r\n}\r\n.nav-item.active {\r\n  background: #223847;\r\n  color: #70d6c2;\r\n}\r\n.nav-item:hover {\r\n  background: #1d3042;\r\n}\r\n.sidebar-note {\r\n  margin-top: auto;\r\n  background: #152738;\r\n  border: 1px solid #293b4e;\r\n  padding: 19px 15px;\r\n  border-radius: 8px;\r\n}\r\n.mini-label {\r\n  display: block;\r\n  color: #6d8b9d;\r\n  font-size: 12px;\r\n  margin-bottom: 9px;\r\n}\r\n.sidebar-note strong {\r\n  font-size: 14px;\r\n  color: #d5dee7;\r\n  font-weight: 500;\r\n}\r\n.sidebar-note p {\r\n  font-size: 12px;\r\n  color: #8a9bae;\r\n  margin: 9px 0 15px;\r\n  line-height: 1.8;\r\n}\r\n.note-line {\r\n  height: 1px;\r\n  background: #2b3b4d;\r\n  margin-bottom: 12px;\r\n}\r\n.sidebar-note > span:last-child {\r\n  font-size: 12px;\r\n  color: #90a3b7;\r\n}\r\n.sidebar-footer {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: center;\r\n  margin: 22px 12px 0;\r\n  font-size: 12px;\r\n}\r\n.sidebar-footer small {\r\n  display: block;\r\n  color: #60768c;\r\n  font-size: 12px;\r\n}\r\n.workspace {\r\n  margin-left: 222px;\r\n  width: calc(100% - 222px);\r\n}\r\n.topbar {\r\n  height: 68px;\r\n  background: #fff;\r\n  border-bottom: 1px solid var(--line);\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  padding: 0 35px;\r\n}\r\n.breadcrumb {\r\n  font-size: 13px;\r\n  color: #8a95a2;\r\n  display: flex;\r\n  gap: 14px;\r\n}\r\n.breadcrumb strong {\r\n  color: #526073;\r\n  font-weight: 500;\r\n}\r\n.topbar-right {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 24px;\r\n}\r\n.session-label {\r\n  font-size: 13px;\r\n  color: #7d8897;\r\n}\r\n.icon-button {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  background: transparent;\r\n  width: 32px;\r\n  height: 32px;\r\n  color: #8b98a6;\r\n  border-radius: 5px;\r\n}\r\n.icon-button:hover {\r\n  background: #eef4f4;\r\n  color: var(--teal);\r\n}\r\nmain {\r\n  max-width: 1680px;\r\n  margin: auto;\r\n  padding: 31px 35px 20px;\r\n}\r\n.page-heading {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  margin-bottom: 25px;\r\n}\r\n.eyebrow {\r\n  font-size: 11px;\r\n  letter-spacing: 1.9px;\r\n  color: #8290a0;\r\n  font-weight: 650;\r\n}\r\n.page-heading h1 {\r\n  font-size: 28px;\r\n  letter-spacing: -0.7px;\r\n  font-weight: 650;\r\n  margin-top: 5px;\r\n}\r\n.page-heading p {\r\n  font-size: 14px;\r\n  color: #86909d;\r\n  margin-top: 6px;\r\n}\r\n.heading-actions {\r\n  display: flex;\r\n  gap: 12px;\r\n  align-items: center;\r\n}\r\n.date-control {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  background: #fff;\r\n  border: 1px solid #e0e5ec;\r\n  padding: 9px 12px;\r\n  border-radius: 6px;\r\n  color: #8391a0;\r\n}\r\n.date-control input {\r\n  border: 0;\r\n  outline: 0;\r\n  color: #536276;\r\n  width: 130px;\r\n  background: transparent;\r\n}\r\n.primary,\r\n.secondary {\r\n  padding: 10px 16px;\r\n  border-radius: 6px;\r\n  font-weight: 550;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 9px;\r\n  white-space: nowrap;\r\n}\r\n.primary {\r\n  background: var(--teal);\r\n  color: #fff;\r\n}\r\n.primary:hover {\r\n  background: #106f62;\r\n}\r\n.secondary {\r\n  background: #f3f5f8;\r\n  color: #4f6275;\r\n  border: 1px solid var(--line);\r\n}\r\n.data-strip {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  margin-bottom: 21px;\r\n  gap: 12px;\r\n  color: #8a96a3;\r\n  font-size: 12px;\r\n}\r\n.data-strip > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 12px;\r\n  flex-wrap: wrap;\r\n}\r\n.source-tag {\r\n  display: inline-flex;\r\n  background: #e5f1ed;\r\n  color: #3b8b7b;\r\n  font-size: 12px;\r\n  border-radius: 4px;\r\n  padding: 3px 8px;\r\n}\r\n.source-tag.unavailable {\r\n  background: #fff1df;\r\n  color: #a27428;\r\n}\r\n.source-tag.demo {\r\n  background: #edf0f7;\r\n  color: #6e7ba1;\r\n}\r\n.text-button {\r\n  background: transparent;\r\n  color: #74839b;\r\n  font-size: 12px;\r\n  white-space: nowrap;\r\n  padding: 4px;\r\n}\r\n.text-button:hover {\r\n  color: var(--teal);\r\n}\r\n.notice {\r\n  padding: 13px 17px;\r\n  background: #fff8ed;\r\n  border: 1px solid #eedfc6;\r\n  color: #91703b;\r\n  border-radius: 6px;\r\n  margin-bottom: 19px;\r\n  font-size: 14px;\r\n}\r\n.metrics {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, minmax(0, 1fr));\r\n  gap: 17px;\r\n  margin-bottom: 24px;\r\n}\r\n.metric {\r\n  background: white;\r\n  border: 1px solid var(--line);\r\n  border-radius: 8px;\r\n  padding: 20px 21px;\r\n  position: relative;\r\n  overflow: hidden;\r\n}\r\n.metric-head {\r\n  color: #7c8999;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  font-size: 13px;\r\n}\r\n.metric-head svg {\r\n  width: 17px;\r\n  height: 17px;\r\n  color: #aab4c1;\r\n}\r\n.metric-value {\r\n  font-size: 36px;\r\n  font-family: ui-sans-serif, system-ui, sans-serif;\r\n  font-weight: 600;\r\n  letter-spacing: -1.7px;\r\n  margin-top: 8px;\r\n  line-height: 1.25;\r\n}\r\n.metric-value small {\r\n  font-size: 14px;\r\n  color: #94a0ae;\r\n  font-weight: 400;\r\n  letter-spacing: 0;\r\n  margin-left: 5px;\r\n}\r\n.metric-caption {\r\n  font-size: 12px;\r\n  color: #8a96a4;\r\n  margin-top: 10px;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n}\r\n.metric-line {\r\n  height: 3px;\r\n  background: #edf2f3;\r\n  border-radius: 3px;\r\n  margin-top: 15px;\r\n}\r\n.metric-line i {\r\n  display: block;\r\n  height: 100%;\r\n  border-radius: 3px;\r\n  background: #80bfad;\r\n}\r\n.metric-line.amber i {\r\n  background: #e0b065;\r\n}\r\n.metric-value.accent {\r\n  color: var(--teal);\r\n}\r\n.overview-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1fr) 300px;\r\n  gap: 22px;\r\n  align-items: start;\r\n}\r\n.panel {\r\n  --panel-inline-padding: 22px;\r\n  background: #fff;\r\n  border: 1px solid var(--line);\r\n  border-radius: 8px;\r\n  overflow: hidden;\r\n}\r\n.panel-heading {\r\n  padding: 21px var(--panel-inline-padding) 17px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  gap: 12px;\r\n}\r\n.panel-heading h2 {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 9px;\r\n}\r\n.panel-heading p {\r\n  font-size: 12px;\r\n  color: #929ca9;\r\n  margin-top: 5px;\r\n}\r\n.count-chip {\r\n  font-size: 11px;\r\n  font-weight: 500;\r\n  background: #eef3f6;\r\n  padding: 0 7px;\r\n  line-height: 20px;\r\n  border-radius: 4px;\r\n  color: #7990a2;\r\n}\r\n.small-muted {\r\n  font-size: 12px;\r\n  color: #9ca6b0;\r\n  white-space: nowrap;\r\n}\r\n.filters {\r\n  display: flex;\r\n  gap: 12px;\r\n  padding: 0 22px 17px;\r\n}\r\n.search-control {\r\n  display: flex;\r\n  gap: 9px;\r\n  align-items: center;\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  padding: 8px 10px;\r\n  flex: 1;\r\n  min-width: 100px;\r\n  color: #9ca8b5;\r\n  background: #fcfdfe;\r\n}\r\n.search-control svg {\r\n  width: 15px;\r\n  height: 15px;\r\n}\r\n.search-control input {\r\n  border: 0;\r\n  background: transparent;\r\n  outline: 0;\r\n  width: 100%;\r\n  min-width: 0;\r\n  font-size: 13px;\r\n  color: var(--ink);\r\n}\r\ninput::placeholder {\r\n  color: #a1aab6;\r\n}\r\nselect {\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  color: #6b798b;\r\n  padding: 7px 9px;\r\n  background: #fff;\r\n  max-width: 180px;\r\n  font-size: 13px;\r\n}\r\n.table-subnav {\r\n  padding: 0 22px 13px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  align-items: center;\r\n}\r\n.segments {\r\n  display: flex;\r\n  gap: 6px;\r\n}\r\n.segments button {\r\n  background: transparent;\r\n  color: #8c97a4;\r\n  padding: 5px 12px;\r\n  font-size: 13px;\r\n  border-radius: 4px;\r\n}\r\n.segments button.active {\r\n  background: #e8f3ef;\r\n  color: var(--teal);\r\n  font-weight: 550;\r\n}\r\n.sort-control {\r\n  display: flex;\r\n  gap: 8px;\r\n  align-items: center;\r\n  font-size: 12px;\r\n  color: #9aa4af;\r\n}\r\n.sort-control select {\r\n  border: 0;\r\n  padding: 4px;\r\n  font-size: 12px;\r\n}\r\n.table-scroll {\r\n  overflow-x: auto;\r\n}\r\ntable {\r\n  border-collapse: collapse;\r\n  width: 100%;\r\n  white-space: nowrap;\r\n  font-size: 13px;\r\n  text-align: left;\r\n}\r\nth {\r\n  padding: 11px 16px;\r\n  background: #f8fafc;\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n  color: #8b97a5;\r\n  border-block: 1px solid #edf0f3;\r\n}\r\ntd {\r\n  padding: 17px 16px;\r\n  border-bottom: 1px solid #eef1f5;\r\n  vertical-align: middle;\r\n}\r\ntd:first-child,\r\nth:first-child {\r\n  padding-left: 22px;\r\n}\r\ntd:last-child,\r\nth:last-child {\r\n  padding-right: 22px;\r\n}\r\ntbody tr:hover {\r\n  background: #f8fbfa;\r\n}\r\n.stock-name {\r\n  background: transparent;\r\n  text-align: left;\r\n  display: block;\r\n  padding: 0;\r\n  color: #253a4d;\r\n  font-size: 14px;\r\n  font-weight: 550;\r\n  max-width: 145px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n.stock-name:hover {\r\n  color: var(--teal);\r\n}\r\n.stock-code {\r\n  font-size: 11px;\r\n  color: #9ba5b0;\r\n  display: block;\r\n  margin-top: 3px;\r\n  font-variant-numeric: tabular-nums;\r\n  letter-spacing: 0.3px;\r\n}\r\n.score-cell {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 7px;\r\n}\r\n.score-number {\r\n  font-size: 18px;\r\n  font-weight: 650;\r\n  color: var(--teal);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.score-number.mid {\r\n  color: #b18745;\r\n}\r\n.score-number.low {\r\n  color: #8695a5;\r\n}\r\n.score-track {\r\n  height: 3px;\r\n  background: #eaf1ee;\r\n  width: 36px;\r\n  border-radius: 2px;\r\n}\r\n.score-track i {\r\n  height: 100%;\r\n  display: block;\r\n  background: #78bda9;\r\n  border-radius: 2px;\r\n}\r\n.sector-tag {\r\n  background: #f4f6f9;\r\n  color: #7b8da0;\r\n  padding: 4px 7px;\r\n  border-radius: 4px;\r\n  font-size: 12px;\r\n}\r\n.height-tag {\r\n  color: #61758a;\r\n  background: #edf2f8;\r\n  padding: 3px 7px;\r\n  border-radius: 4px;\r\n  font-size: 12px;\r\n}\r\n.height-tag.high {\r\n  color: #b38742;\r\n  background: #fbf1df;\r\n}\r\n.money {\r\n  font-variant-numeric: tabular-nums;\r\n  color: #556a7d;\r\n}\r\n.table-footer {\r\n  font-size: 12px;\r\n  color: #9aa4b0;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  padding: 15px 22px;\r\n}\r\n.right-column {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 20px;\r\n}\r\n.sector-row {\r\n  display: block;\r\n  background: transparent;\r\n  width: 100%;\r\n  padding: 10px 22px;\r\n  text-align: left;\r\n}\r\n.sector-row:hover {\r\n  background: #f6faf8;\r\n}\r\n.sector-row-label {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  font-size: 14px;\r\n  color: #4e6478;\r\n}\r\n.sector-row-label > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 10px;\r\n}\r\n.rank-index {\r\n  color: #a8b3bf;\r\n  font:\r\n    12px/1 ui-monospace,\r\n    monospace;\r\n}\r\n.sector-score {\r\n  color: #3d8474;\r\n  font-weight: 650;\r\n  font-size: 17px;\r\n}\r\n.sector-bar {\r\n  height: 5px;\r\n  border-radius: 2px;\r\n  background: #f1f4f7;\r\n  margin: 9px 0 4px 25px;\r\n}\r\n.sector-bar i {\r\n  height: 100%;\r\n  display: block;\r\n  border-radius: 2px;\r\n  background: #71b7a3;\r\n}\r\n.sector-row:nth-child(2) .sector-bar i {\r\n  background: #8fc4b5;\r\n}\r\n.sector-row:nth-child(n + 3) .sector-bar i {\r\n  background: #b3d6cc;\r\n}\r\n.sector-row-meta {\r\n  font-size: 11px;\r\n  color: #a0aab5;\r\n  margin-left: 25px;\r\n}\r\n.panel-footnote {\r\n  font-size: 11px;\r\n  color: #9da7b1;\r\n  border-top: 1px solid #f0f2f5;\r\n  margin-top: 15px;\r\n  padding: 12px var(--panel-inline-padding);\r\n  overflow-wrap: anywhere;\r\n}\r\n.outline-tag {\r\n  font-size: 11px;\r\n  color: #8e9dac;\r\n  border: 1px solid #e5eaf0;\r\n  border-radius: 4px;\r\n  padding: 2px 7px;\r\n  white-space: nowrap;\r\n}\r\n#ladder-chart {\r\n  padding: 0 22px 10px;\r\n}\r\n.ladder-row {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: center;\r\n  padding: 8px 0;\r\n  font-size: 12px;\r\n  color: #8b99a8;\r\n}\r\n.ladder-row .label {\r\n  width: 38px;\r\n}\r\n.ladder-track {\r\n  background: #f3f5f8;\r\n  height: 18px;\r\n  flex: 1;\r\n  border-radius: 3px;\r\n  overflow: hidden;\r\n}\r\n.ladder-track i {\r\n  display: block;\r\n  height: 100%;\r\n  background: #b8c9d7;\r\n  border-radius: 3px;\r\n  min-width: 0;\r\n}\r\n.ladder-row:first-child .ladder-track i {\r\n  background: #dbb879;\r\n}\r\n.ladder-row:last-child .ladder-track i {\r\n  background: #81bba9;\r\n}\r\n.ladder-count {\r\n  width: 21px;\r\n  text-align: right;\r\n  color: #61778c;\r\n}\r\n.insight {\r\n  margin: 8px 22px 19px;\r\n  padding: 12px;\r\n  background: #f5f8fa;\r\n  border-radius: 5px;\r\n  color: #7a8a9a;\r\n  font-size: 12px;\r\n  line-height: 1.8;\r\n}\r\n.empty {\r\n  padding: 60px 24px;\r\n  text-align: center;\r\n  color: #8b9baa;\r\n  font-size: 14px;\r\n  white-space: normal;\r\n}\r\n.empty strong {\r\n  display: block;\r\n  font-size: 16px;\r\n  font-weight: 500;\r\n  color: #596d80;\r\n  margin-bottom: 8px;\r\n}\r\n.empty.compact {\r\n  padding: 27px 20px;\r\n  font-size: 12px;\r\n}\r\n.page-footer {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  font-size: 11px;\r\n  color: #a0aab5;\r\n  margin-top: 25px;\r\n}\r\n.page-footer > span:first-child {\r\n  white-space: nowrap;\r\n  letter-spacing: 0.5px;\r\n}\r\n.page-footer i {\r\n  margin: 0 5px;\r\n  font-style: normal;\r\n}\r\n.sector-formula {\r\n  padding: 13px 22px;\r\n  background: #f5faf8;\r\n  color: #6b8d80;\r\n  font-size: 13px;\r\n}\r\n.sector-formula span {\r\n  margin: 0 9px;\r\n  color: #b2c6bd;\r\n}\r\n.model-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);\r\n  gap: 22px;\r\n}\r\n.preset-buttons {\r\n  display: flex;\r\n  gap: 9px;\r\n  padding: 0 22px 22px;\r\n}\r\n.preset-buttons button {\r\n  font-size: 13px;\r\n  padding: 8px 13px;\r\n  border: 1px solid var(--line);\r\n  border-radius: 5px;\r\n  background: #fff;\r\n  color: #8897a5;\r\n}\r\n.preset-buttons button.active {\r\n  background: #edf6f2;\r\n  color: var(--teal);\r\n  border-color: #c9e3d9;\r\n}\r\n.weight-item {\r\n  padding: 17px 22px;\r\n  border-top: 1px solid #eff2f5;\r\n}\r\n.weight-heading {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  font-size: 14px;\r\n  margin-bottom: 10px;\r\n}\r\n.weight-heading output {\r\n  font-weight: 600;\r\n  color: var(--teal);\r\n}\r\n.weight-item input {\r\n  width: 100%;\r\n  accent-color: var(--teal);\r\n  height: 5px;\r\n}\r\n.weight-item p {\r\n  color: #96a2ae;\r\n  font-size: 12px;\r\n  margin-top: 10px;\r\n}\r\n.model-actions {\r\n  padding: 18px 22px;\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  gap: 12px;\r\n  border-top: 1px solid var(--line);\r\n}\r\n.model-actions span {\r\n  color: #8b9aa7;\r\n  font-size: 12px;\r\n}\r\n.model-explain {\r\n  padding-bottom: 22px;\r\n}\r\n.formula-box {\r\n  padding: 20px 22px;\r\n  background: #f1f7f4;\r\n  margin: 0 22px 22px;\r\n  color: #4d8e79;\r\n  font-size: 16px;\r\n  font-weight: 550;\r\n  line-height: 1.9;\r\n  border-radius: 6px;\r\n}\r\n.formula-box span {\r\n  font-size: 13px;\r\n  font-weight: 400;\r\n}\r\n.model-explain h3 {\r\n  margin: 18px 22px 9px;\r\n}\r\n.model-explain p {\r\n  margin: 0 22px;\r\n  color: #8898a6;\r\n  line-height: 1.8;\r\n}\r\n.model-explain dl {\r\n  margin: 0 22px;\r\n}\r\n.model-explain dl div {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  padding: 8px 0;\r\n  color: #6d7d8d;\r\n  font-size: 13px;\r\n  border-bottom: 1px solid #f1f3f6;\r\n}\r\n.model-explain dd {\r\n  color: var(--amber);\r\n}\r\n.model-explain .model-limit {\r\n  margin-top: 22px;\r\n  font-size: 12px;\r\n}\r\n.detail-dialog,\r\n.help-dialog {\r\n  border: 1px solid var(--line);\r\n  border-radius: 12px;\r\n  box-shadow: 0 20px 80px #10213540;\r\n  width: min(720px, calc(100vw - 32px));\r\n  padding: 25px 29px;\r\n  max-height: 90vh;\r\n  color: var(--ink);\r\n}\r\ndialog::backdrop {\r\n  background: #10213580;\r\n  backdrop-filter: blur(3px);\r\n}\r\n.dialog-top {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  margin-bottom: 20px;\r\n}\r\n.detail-head {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 20px;\r\n  align-items: center;\r\n}\r\n.detail-head h2 {\r\n  font-size: 26px;\r\n}\r\n.detail-head .stock-code {\r\n  font-size: 13px;\r\n  margin-top: 6px;\r\n}\r\n.detail-score {\r\n  font-size: 54px;\r\n  line-height: 1;\r\n  color: var(--teal);\r\n  font-weight: 600;\r\n  letter-spacing: -2px;\r\n}\r\n.detail-score small {\r\n  display: block;\r\n  font-size: 12px;\r\n  letter-spacing: 0;\r\n  font-weight: 400;\r\n  color: #94a4b0;\r\n  text-align: right;\r\n  margin-top: 8px;\r\n}\r\n.detail-tags {\r\n  display: flex;\r\n  gap: 8px;\r\n  margin-top: 15px;\r\n}\r\n.detail-facts {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, 1fr);\r\n  gap: 15px;\r\n  background: #f6f8fa;\r\n  padding: 18px;\r\n  margin: 22px 0;\r\n  border-radius: 6px;\r\n}\r\n.detail-facts label {\r\n  display: block;\r\n  color: #91a0ae;\r\n  font-size: 12px;\r\n  margin-bottom: 5px;\r\n}\r\n.detail-facts strong {\r\n  font-size: 16px;\r\n  font-weight: 550;\r\n}\r\n.factor-row {\r\n  display: grid;\r\n  grid-template-columns: 90px 1fr 40px 56px;\r\n  gap: 12px;\r\n  align-items: center;\r\n  margin: 14px 0;\r\n  font-size: 13px;\r\n}\r\n.factor-row .factor-track {\r\n  height: 7px;\r\n  background: #edf2f4;\r\n  border-radius: 4px;\r\n}\r\n.factor-track i {\r\n  display: block;\r\n  height: 100%;\r\n  border-radius: 4px;\r\n  background: #7dbda9;\r\n}\r\n.factor-row .weight {\r\n  font-size: 12px;\r\n  color: #97a6b3;\r\n  text-align: right;\r\n}\r\n.detail-section h3 {\r\n  font-size: 15px;\r\n  margin: 23px 0 13px;\r\n}\r\n.risk-row {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: flex-start;\r\n  font-size: 13px;\r\n  line-height: 1.8;\r\n  margin: 10px 0;\r\n  color: #8593a0;\r\n}\r\n.risk-row strong {\r\n  color: #b18442;\r\n  font-size: 12px;\r\n  white-space: nowrap;\r\n  background: #fbf2e4;\r\n  padding: 2px 6px;\r\n  border-radius: 4px;\r\n}\r\n.detail-text {\r\n  padding: 15px 18px;\r\n  background: #f4f8f7;\r\n  color: #6e8a81;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  border-radius: 6px;\r\n}\r\n.detail-footnote {\r\n  font-size: 12px;\r\n  color: #97a5b2;\r\n  margin-top: 18px;\r\n  line-height: 1.8;\r\n}\r\n.help-content p {\r\n  margin: 15px 0;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #6c7f90;\r\n}\r\n.loading {\r\n  animation: pulse 1.5s ease-in-out infinite;\r\n}\r\n@keyframes pulse {\r\n  50% {\r\n    opacity: 0.4;\r\n  }\r\n}\r\n@media (min-width: 1500px) {\r\n  .overview-grid {\r\n    grid-template-columns: minmax(0, 1fr) 330px;\r\n  }\r\n  td {\r\n    padding: 19px 18px;\r\n  }\r\n  main {\r\n    padding: 38px 42px;\r\n  }\r\n  .metric {\r\n    padding: 23px 26px;\r\n  }\r\n}\r\n@media (max-width: 1200px) {\r\n  .sidebar {\r\n    width: 190px;\r\n    padding-inline: 12px;\r\n  }\r\n  .workspace {\r\n    margin-left: 190px;\r\n    width: calc(100% - 190px);\r\n  }\r\n  main {\r\n    padding: 25px 24px;\r\n  }\r\n  .topbar {\r\n    padding-inline: 24px;\r\n  }\r\n  .overview-grid {\r\n    grid-template-columns: minmax(0, 1fr) 270px;\r\n    gap: 17px;\r\n  }\r\n  .metric {\r\n    padding: 17px;\r\n  }\r\n  .metric-value {\r\n    font-size: 31px;\r\n  }\r\n  .brand {\r\n    font-size: 17px;\r\n    padding: 0 5px;\r\n  }\r\n  .brand small {\r\n    font-size: 9px;\r\n  }\r\n  .metric-caption {\r\n    font-size: 11px;\r\n  }\r\n  .heading-actions {\r\n    gap: 8px;\r\n  }\r\n  .primary {\r\n    padding-inline: 13px;\r\n  }\r\n  .page-footer {\r\n    font-size: 10px;\r\n  }\r\n}\r\n@media (max-width: 1000px) {\r\n  .overview-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .right-column {\r\n    display: grid;\r\n    grid-template-columns: 1fr 1fr;\r\n  }\r\n  .model-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .sidebar {\r\n    width: 175px;\r\n  }\r\n  .workspace {\r\n    margin-left: 175px;\r\n    width: calc(100% - 175px);\r\n  }\r\n  .page-heading {\r\n    align-items: flex-start;\r\n    flex-wrap: wrap;\r\n  }\r\n  .metric-caption {\r\n    flex-direction: column;\r\n    align-items: flex-start;\r\n    gap: 2px;\r\n  }\r\n  .metric-head {\r\n    font-size: 12px;\r\n  }\r\n  .metric-value {\r\n    font-size: 28px;\r\n  }\r\n  .page-footer {\r\n    flex-direction: column;\r\n    gap: 6px;\r\n  }\r\n}\r\n@media (max-width: 720px) {\r\n  .shell {\r\n    display: block;\r\n  }\r\n  .sidebar {\r\n    position: static;\r\n    width: 100%;\r\n    padding: 18px 20px 0;\r\n  }\r\n  .brand {\r\n    font-size: 18px;\r\n  }\r\n  .brand small {\r\n    font-size: 9px;\r\n  }\r\n  .brand-mark {\r\n    height: 25px;\r\n  }\r\n  .brand-mark i:nth-child(3) {\r\n    height: 25px;\r\n  }\r\n  .nav-label,\r\n  .sidebar-note,\r\n  .sidebar-footer {\r\n    display: none;\r\n  }\r\n  .sidebar nav {\r\n    display: flex;\r\n    margin-top: 17px;\r\n    gap: 6px;\r\n  }\r\n  .nav-item {\r\n    padding: 11px 8px;\r\n    font-size: 13px;\r\n    justify-content: center;\r\n    gap: 7px;\r\n    margin: 0;\r\n    border-radius: 6px 6px 0 0;\r\n  }\r\n  .nav-item svg {\r\n    width: 15px;\r\n    height: 15px;\r\n  }\r\n  .workspace {\r\n    width: 100%;\r\n    margin: 0;\r\n  }\r\n  .topbar {\r\n    height: 48px;\r\n    padding-inline: 20px;\r\n  }\r\n  .session-label {\r\n    font-size: 11px;\r\n  }\r\n  .topbar-right {\r\n    gap: 10px;\r\n  }\r\n  .breadcrumb {\r\n    font-size: 12px;\r\n    gap: 10px;\r\n  }\r\n  main {\r\n    padding: 23px 18px 18px;\r\n  }\r\n  .page-heading {\r\n    gap: 17px;\r\n    margin-bottom: 20px;\r\n  }\r\n  .page-heading h1 {\r\n    font-size: 25px;\r\n  }\r\n  .page-heading p {\r\n    font-size: 13px;\r\n  }\r\n  .eyebrow {\r\n    font-size: 10px;\r\n  }\r\n  .heading-actions {\r\n    width: 100%;\r\n    justify-content: space-between;\r\n  }\r\n  .date-control {\r\n    flex: 1;\r\n    max-width: 225px;\r\n  }\r\n  .date-control input {\r\n    width: 100%;\r\n  }\r\n  .data-strip {\r\n    font-size: 11px;\r\n    align-items: flex-start;\r\n  }\r\n  .data-strip > div {\r\n    gap: 6px;\r\n    align-items: flex-start;\r\n    flex-direction: column;\r\n  }\r\n  .metrics {\r\n    grid-template-columns: repeat(2, minmax(0, 1fr));\r\n    gap: 12px;\r\n    margin-bottom: 17px;\r\n  }\r\n  .metric {\r\n    padding: 16px;\r\n  }\r\n  .metric-head {\r\n    font-size: 13px;\r\n  }\r\n  .metric-value {\r\n    font-size: 32px;\r\n  }\r\n  .metric-caption {\r\n    font-size: 12px;\r\n  }\r\n  .right-column {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .panel {\r\n    --panel-inline-padding: 17px;\r\n  }\r\n  .panel-heading {\r\n    padding: 19px var(--panel-inline-padding) 15px;\r\n  }\r\n  .filters {\r\n    padding-inline: 17px;\r\n    gap: 8px;\r\n  }\r\n  .filters select {\r\n    max-width: 130px;\r\n  }\r\n  .table-subnav {\r\n    padding-inline: 17px;\r\n  }\r\n  .table-footer {\r\n    padding-inline: 17px;\r\n  }\r\n  .table-footer span:last-child {\r\n    display: none;\r\n  }\r\n  .small-muted {\r\n    font-size: 11px;\r\n  }\r\n  .detail-dialog,\r\n  .help-dialog {\r\n    padding: 20px;\r\n  }\r\n  .detail-facts {\r\n    grid-template-columns: 1fr 1fr;\r\n  }\r\n  .detail-head h2 {\r\n    font-size: 22px;\r\n  }\r\n  .detail-score {\r\n    font-size: 45px;\r\n  }\r\n  .factor-row {\r\n    grid-template-columns: 76px 1fr 26px 42px;\r\n    gap: 8px;\r\n    font-size: 12px;\r\n  }\r\n  .sector-formula {\r\n    line-height: 2;\r\n  }\r\n  .model-actions {\r\n    flex-wrap: wrap;\r\n  }\r\n  .preset-buttons {\r\n    padding-inline: 17px;\r\n    gap: 6px;\r\n  }\r\n  .preset-buttons button {\r\n    padding-inline: 11px;\r\n  }\r\n  .detail-facts strong {\r\n    font-size: 16px;\r\n  }\r\n  .page-footer {\r\n    font-size: 11px;\r\n  }\r\n  .sidebar .brand small {\r\n    font-size: 10px;\r\n  }\r\n}\r\n@media (prefers-reduced-motion: reduce) {\r\n  * {\r\n    animation: none !important;\r\n    scroll-behavior: auto !important;\r\n  }\r\n}\r\n.review-intro {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  align-items: center;\r\n  margin-bottom: 22px;\r\n  gap: 20px;\r\n}\r\n.review-intro p {\r\n  font-size: 14px;\r\n  color: #8395a3;\r\n  margin-top: 9px;\r\n}\r\n.review-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);\r\n  gap: 22px;\r\n  align-items: start;\r\n}\r\n.review-conclusion {\r\n  background: #eff7f3;\r\n  color: #628b79;\r\n  padding: 12px 22px;\r\n  font-size: 13px;\r\n}\r\n.review-stock {\r\n  font-weight: 500;\r\n  font-size: 14px;\r\n}\r\n.top-group {\r\n  color: #b58d48;\r\n  background: #fbf3e5;\r\n  font-size: 10px;\r\n  padding: 2px 5px;\r\n  margin-left: 7px;\r\n  border-radius: 3px;\r\n}\r\n.up {\r\n  color: var(--red);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.down {\r\n  color: var(--green);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n.ai-content {\r\n  padding: 0 22px;\r\n}\r\n.ai-empty {\r\n  text-align: center;\r\n  padding: 17px 25px 20px;\r\n  color: #8b9aa8;\r\n}\r\n.ai-symbol {\r\n  display: flex;\r\n  justify-content: center;\r\n  width: 45px;\r\n  height: 45px;\r\n  align-items: center;\r\n  background: #eef5f2;\r\n  color: #69a991;\r\n  border-radius: 12px;\r\n  margin: 0 auto 15px;\r\n}\r\n.ai-symbol svg {\r\n  width: 25px;\r\n  height: 25px;\r\n}\r\n.ai-empty h3 {\r\n  font-size: 16px;\r\n  color: #617587;\r\n  font-weight: 500;\r\n  margin-bottom: 9px;\r\n}\r\n.ai-empty p {\r\n  font-size: 13px;\r\n  line-height: 1.9;\r\n}\r\n.ai-process {\r\n  font-size: 12px;\r\n  background: #f7f9fb;\r\n  padding: 16px;\r\n  margin-top: 23px;\r\n  color: #9aabba;\r\n}\r\n.ai-process span {\r\n  display: block;\r\n  color: #c0ccd5;\r\n  line-height: 1.8;\r\n}\r\n.ai-actions {\r\n  padding: 17px 22px;\r\n  border-top: 1px solid var(--line);\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 13px;\r\n}\r\n.ai-actions button {\r\n  font-size: 13px;\r\n}\r\n.ai-actions > span {\r\n  font-size: 12px;\r\n  color: #9b8a6b;\r\n}\r\n.ai-score {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 14px;\r\n  padding: 8px 22px 16px;\r\n}\r\n.ai-score strong {\r\n  font-size: 48px;\r\n  color: #588b79;\r\n  line-height: 1.1;\r\n}\r\n.ai-score > span {\r\n  font-size: 13px;\r\n  color: #789285;\r\n}\r\n.ai-score small {\r\n  display: block;\r\n  font-size: 11px;\r\n  color: #9aa9a1;\r\n  margin-top: 4px;\r\n}\r\n.ai-summary {\r\n  padding: 0 22px;\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #637889;\r\n}\r\n.ai-panel h3 {\r\n  margin: 20px 22px 10px;\r\n  font-size: 14px;\r\n}\r\n.ai-panel ul {\r\n  padding: 0 22px 0 38px;\r\n  color: #8192a1;\r\n  font-size: 13px;\r\n  line-height: 1.9;\r\n}\r\n.ai-panel li {\r\n  margin-bottom: 8px;\r\n}\r\n.ai-note {\r\n  padding: 10px 22px 20px;\r\n  font-size: 12px;\r\n  color: #9ba8b2;\r\n}\r\n.review-sector-panel,\r\n.history-panel,\r\n.model-connection {\r\n  margin-top: 22px;\r\n}\r\n.history-list {\r\n  padding: 0 22px 18px;\r\n}\r\n.history-list button {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 14px;\r\n  padding: 12px;\r\n  width: 100%;\r\n  background: #f8fafb;\r\n  color: #718699;\r\n  border-bottom: 1px solid #e8eef1;\r\n  text-align: left;\r\n  font-size: 13px;\r\n}\r\n.history-list button:hover {\r\n  background: #eef6f1;\r\n}\r\n.model-connection > p {\r\n  font-size: 14px;\r\n  line-height: 1.9;\r\n  color: #81929f;\r\n  margin: 0 22px 14px;\r\n}\r\n.model-connection > p:last-child {\r\n  font-size: 12px;\r\n  margin-bottom: 22px;\r\n}\r\n@media (max-width: 1200px) {\r\n  .review-grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n  .ai-panel {\r\n    max-width: none;\r\n  }\r\n}\r\n@media (max-width: 720px) {\r\n  .sidebar nav {\r\n    overflow-x: auto;\r\n  }\r\n  .nav-item {\r\n    min-width: 83px;\r\n    flex-shrink: 0;\r\n  }\r\n  .review-intro {\r\n    flex-wrap: wrap;\r\n    gap: 12px;\r\n  }\r\n  .history-list button {\r\n    flex-direction: column;\r\n    gap: 4px;\r\n  }\r\n  .top-group {\r\n    display: none;\r\n  }\r\n  .review-intro p {\r\n    font-size: 13px;\r\n  }\r\n  .review-grid {\r\n    gap: 17px;\r\n  }\r\n}\r\n.pool-panel .table-scroll {\r\n  max-height: 650px;\r\n}\r\n.pool-panel th {\r\n  position: sticky;\r\n  top: 0;\r\n  z-index: 1;\r\n}\r\n.stock-code,\r\n.sector-row-meta,\r\n.panel-footnote,\r\n.outline-tag,\r\n.page-footer,\r\n.sidebar-note p,\r\n.sidebar-footer small {\r\n  font-size: 12px;\r\n}\r\ntable {\r\n  font-size: 14px;\r\n}\r\n.sector-tag,\r\n.height-tag {\r\n  font-size: 12px;\r\n}\r\n.page-footer {\r\n  line-height: 1.7;\r\n}\r\n@media (max-width: 720px) {\r\n  .pool-panel .table-scroll {\r\n    max-height: 560px;\r\n  }\r\n}\r\n\r\n/* Paper account uses the same research workspace visual language. */\r\n.paper-toolbar {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 14px;\r\n  flex-wrap: wrap;\r\n}\r\n.paper-toolbar > div {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  flex-wrap: wrap;\r\n}\r\n.paper-toolbar a {\r\n  text-decoration: none;\r\n  font-size: 12px;\r\n  display: inline-flex;\r\n  align-items: center;\r\n}\r\n.paper-message {\r\n  font-size: 12px;\r\n  color: var(--muted);\r\n  min-height: 18px;\r\n  margin: 12px 0 20px;\r\n}\r\n.paper-grid {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);\r\n  gap: 20px;\r\n  align-items: start;\r\n}\r\n.paper-panel {\r\n  margin-top: 20px;\r\n}\r\n.equity-chart {\r\n  display: block;\r\n  width: 100%;\r\n  height: auto;\r\n  padding: 4px 18px 0;\r\n}\r\n.chart-axis {\r\n  font-size: 11px;\r\n  fill: #758396;\r\n}\r\n.chart-legend {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 14px;\r\n  padding: 0 24px 18px;\r\n  font-size: 11px;\r\n  color: #758396;\r\n}\r\n.chart-legend i {\r\n  display: inline-block;\r\n  width: 12px;\r\n  height: 3px;\r\n  vertical-align: middle;\r\n  background: #13977e;\r\n  margin-right: 6px;\r\n}\r\n.chart-legend i.benchmark {\r\n  background: #acb6c4;\r\n}\r\n.verified {\r\n  color: #14846f;\r\n  border-color: #bfe5d9;\r\n  background: #f0faf6;\r\n}\r\n.action-tag {\r\n  background: #edf4f8;\r\n  color: #405c73;\r\n  border-radius: 5px;\r\n  padding: 5px 8px;\r\n  font-size: 11px;\r\n  white-space: nowrap;\r\n}\r\n.plan-reason {\r\n  min-width: 220px;\r\n  max-width: 330px;\r\n  white-space: normal !important;\r\n  line-height: 1.7;\r\n}\r\n.paper-config {\r\n  display: flex;\r\n  align-items: end;\r\n  gap: 20px;\r\n  flex-wrap: wrap;\r\n  padding: 0 24px 24px;\r\n}\r\n.paper-config label {\r\n  display: grid;\r\n  gap: 9px;\r\n  font-size: 12px;\r\n  color: #758396;\r\n}\r\n.paper-config input,\r\n.paper-config select {\r\n  border: 1px solid #dce3eb;\r\n  border-radius: 6px;\r\n  background: #fff;\r\n  padding: 10px 12px;\r\n  color: #21384b;\r\n  min-width: 220px;\r\n}\r\n.paper-config input:disabled {\r\n  background: #f2f5f8;\r\n  color: #8896a6;\r\n}\r\n.paper-outcomes {\r\n  padding: 0 24px;\r\n}\r\n.paper-outcomes summary {\r\n  cursor: pointer;\r\n  padding: 16px 0;\r\n  font-size: 12px;\r\n  color: #526b80;\r\n}\r\n.execution-feedback p {\r\n  display: flex;\r\n  gap: 14px;\r\n  justify-content: space-between;\r\n  border-top: 1px solid #edf1f5;\r\n  padding: 12px 0;\r\n  margin: 0;\r\n  font-size: 12px;\r\n}\r\n.execution-feedback span {\r\n  color: #758396;\r\n}\r\n.strategy-active {\r\n  display: grid;\r\n  gap: 8px;\r\n  padding: 0 24px 16px;\r\n}\r\n.strategy-active span {\r\n  font-size: 11px;\r\n  color: #758396;\r\n}\r\n.strategy-active strong {\r\n  font-size: 18px;\r\n  letter-spacing: 0.2px;\r\n}\r\n/* In-panel metrics share heading/footer gutters and stack labels above values. */\r\n.panel-metrics {\r\n  padding-inline: var(--panel-inline-padding);\r\n}\r\n.panel-metrics > div {\r\n  display: grid;\r\n  align-content: start;\r\n  gap: 6px;\r\n  min-width: 0;\r\n  overflow-wrap: anywhere;\r\n}\r\n.panel-metrics .mini-label {\r\n  margin-bottom: 0;\r\n}\r\n.panel-metrics .outline-tag {\r\n  justify-self: start;\r\n  max-width: 100%;\r\n  white-space: normal;\r\n}\r\n.panel-metric-value {\r\n  display: grid;\r\n  grid-template-columns: minmax(0, 1fr);\r\n  gap: 4px;\r\n  min-width: 0;\r\n  overflow-wrap: anywhere;\r\n  font-size: 14px;\r\n  line-height: 1.7;\r\n  line-break: anywhere;\r\n}\r\n.alert-channel-metrics {\r\n  grid-template-columns: repeat(3, minmax(0, 1fr));\r\n}\r\n.strategy-metrics strong {\r\n  font-size: 16px;\r\n  overflow-wrap: anywhere;\r\n}\r\n.strategy-metrics small {\r\n  font-size: 12px;\r\n  color: var(--muted);\r\n  overflow-wrap: anywhere;\r\n}\r\n#strategies-status .strategy-metrics {\r\n  margin-bottom: 0;\r\n}\r\n@media (max-width: 720px) {\r\n  .alert-channel-metrics {\r\n    grid-template-columns: minmax(0, 1fr);\r\n  }\r\n}\r\n.version-row {\r\n  margin: 16px 24px;\r\n  padding: 14px 0;\r\n  border-top: 1px solid #edf1f5;\r\n  font-size: 12px;\r\n}\r\n.version-row > div {\r\n  display: flex;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n}\r\n.version-row p {\r\n  line-height: 1.7;\r\n  color: #758396;\r\n}\r\n.version-row small {\r\n  line-height: 1.8;\r\n  color: #758396;\r\n}\r\n.version-row button {\r\n  margin-top: 12px;\r\n}\r\n.paper-grid .ai-panel > div > p {\r\n  padding: 0 24px;\r\n  color: #758396;\r\n  font-size: 12px;\r\n  line-height: 1.8;\r\n}\r\n.paper-grid .ai-panel .small-muted {\r\n  padding: 0 24px 24px;\r\n}\r\n.paper-grid .ai-process {\r\n  margin: 0 24px;\r\n}\r\n.paper-grid .ai-note {\r\n  margin: 14px 0;\r\n}\r\n.paper-grid .panel-footnote {\r\n  line-height: 1.8;\r\n}\r\n.paper-panel .panel-footnote {\r\n  line-height: 1.8;\r\n}\r\n.paper-panel td {\r\n  vertical-align: top;\r\n}\r\n.paper-message:empty {\r\n  display: none;\r\n}\r\n@media (max-width: 1100px) {\r\n  .paper-grid {\r\n    grid-template-columns: minmax(0, 1fr);\r\n  }\r\n  .paper-toolbar {\r\n    align-items: start;\r\n  }\r\n  .paper-config {\r\n    gap: 14px;\r\n  }\r\n}\r\n@media (max-width: 650px) {\r\n  .paper-toolbar .secondary,\r\n  .paper-toolbar .primary {\r\n    font-size: 11px;\r\n    padding: 9px 10px;\r\n  }\r\n  .paper-toolbar > div {\r\n    gap: 6px;\r\n  }\r\n  .paper-config {\r\n    padding: 0 16px 20px;\r\n  }\r\n  .paper-config label,\r\n  .paper-config input,\r\n  .paper-config select {\r\n    width: 100%;\r\n    min-width: 0;\r\n  }\r\n  .execution-feedback p {\r\n    display: block;\r\n  }\r\n  .execution-feedback span {\r\n    display: block;\r\n    margin-top: 6px;\r\n  }\r\n  .chart-legend {\r\n    padding: 0 16px 16px;\r\n    gap: 9px;\r\n  }\r\n  .paper-grid {\r\n    gap: 16px;\r\n  }\r\n}\r\n\r\n.paper-fee-settings {\r\n  border: 1px solid #dce3eb;\r\n  border-radius: 8px;\r\n  width: 100%;\r\n  padding: 18px 20px;\r\n  margin: 0;\r\n  min-width: 0;\r\n}\r\n.paper-fee-settings legend {\r\n  font-size: 14px;\r\n  font-weight: 600;\r\n  color: #21384b;\r\n  padding: 0 8px;\r\n}\r\n.fee-settings-heading {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  flex-wrap: wrap;\r\n  margin-bottom: 16px;\r\n}\r\n.fee-settings-heading p,\r\n.fee-settings-note {\r\n  font-size: 12px;\r\n  color: #758396;\r\n  line-height: 1.8;\r\n  margin: 0;\r\n}\r\n.paper-fee-controls {\r\n  display: grid;\r\n  grid-template-columns: repeat(3, minmax(0, 1fr));\r\n  gap: 18px 24px;\r\n}\r\n.paper-config .paper-fee-controls input {\r\n  min-width: 0;\r\n  width: 100%;\r\n  font-size: 14px;\r\n}\r\n.paper-fee-controls span {\r\n  font-size: 12px;\r\n  color: #8896a6;\r\n}\r\n.fee-settings-note {\r\n  margin-top: 18px;\r\n}\r\n.paper-fee-settings .text-button {\r\n  margin-top: 8px;\r\n}\r\n.fee-breakdown {\r\n  max-width: 200px;\r\n  white-space: normal;\r\n  line-height: 1.7;\r\n}\r\n.fee-breakdown summary {\r\n  cursor: pointer;\r\n  white-space: nowrap;\r\n}\r\n.fee-breakdown > span {\r\n  display: block;\r\n  color: #758396;\r\n  font-size: 12px;\r\n  margin-top: 8px;\r\n  min-width: 160px;\r\n}\r\n@media (max-width: 650px) {\r\n  .paper-fee-settings {\r\n    padding: 16px 12px;\r\n  }\r\n  .paper-fee-controls {\r\n    grid-template-columns: repeat(2, minmax(0, 1fr));\r\n    gap: 16px 12px;\r\n  }\r\n  .paper-config .paper-fee-controls label {\r\n    font-size: 12px;\r\n  }\r\n  .fee-settings-heading p {\r\n    max-width: 100%;\r\n  }\r\n}\r\n\r\n#paper-metrics .metric-value {\r\n  font-size: clamp(22px, 2.2vw, 32px);\r\n}\r\n.plan-price-conditions {\r\n  min-width: 220px;\r\n  line-height: 1.65;\r\n}\r\n\r\n@media (max-width: 700px) {\r\n  .paper-plan-heading {\r\n    flex-direction: column;\r\n    align-items: flex-start;\r\n  }\r\n  .paper-plan-heading #paper-plan-date {\r\n    max-width: 100%;\r\n    white-space: normal;\r\n  }\r\n}\r\n', "type": "text/css; charset=utf-8" } };
+var ASSETS = { "/": { "body": `<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101e2e" />
+    <title>\u6DA8\u505C\u7814\u7A76\u53F0 \xB7 A \u80A1\u590D\u76D8\u4E0E\u8BC4\u5206</title>
+    <meta
+      name="description"
+      content="\u6BCF\u65E5 A \u80A1\u6DA8\u505C\u590D\u76D8\uFF0C\u67E5\u770B\u53EF\u89E3\u91CA\u7684\u4E2A\u80A1\u8BC4\u5206\u3001\u884C\u4E1A\u677F\u5757\u5F3A\u5EA6\u548C\u5E02\u573A\u60C5\u7EEA\u3002"
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101e2e'/%3E%3Cpath d='M7 24V17h4v7m3 0V12h4v12m3 0V7h4v17' stroke='%2356d3b5' stroke-width='3'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="#overview" aria-label="\u6DA8\u505C\u7814\u7A76\u53F0\u9996\u9875"
+          ><span class="brand-mark"><i></i><i></i><i></i></span
+          ><span>\u6DA8\u505C\u7814\u7A76\u53F0<small>LIMIT LENS</small></span></a
+        >
+        <div class="nav-label">\u7814\u7A76\u5DE5\u4F5C\u53F0</div>
+        <nav aria-label="\u4E3B\u5BFC\u822A">
+          <button data-view="overview" class="nav-item active">
+            <span data-icon="dashboard"></span>\u603B\u89C8\u590D\u76D8
+          </button>
+          <button data-view="stocks" class="nav-item">
+            <span data-icon="chart"></span>\u4E2A\u80A1\u5206\u6790
+          </button>
+          <button data-view="sectors" class="nav-item">
+            <span data-icon="grid"></span>\u677F\u5757\u7814\u7A76
+          </button>
+          <button data-view="review" class="nav-item">
+            <span data-icon="shield"></span>\u6628\u65E5\u53CD\u9988
+          </button>
+          <button data-view="paper" class="nav-item">
+            <span data-icon="chart"></span>\u6A21\u62DF\u4EA4\u6613
+          </button>
+          <button data-view="strategies" class="nav-item">
+            <span data-icon="sliders"></span>\u7B56\u7565\u8D5B\u9A6C
+          </button>
+          <button data-view="alerts" class="nav-item">
+            <span data-icon="shield"></span>\u8FD0\u7EF4\u544A\u8B66
+          </button>
+          <button data-view="model" class="nav-item">
+            <span data-icon="sliders"></span>\u8BC4\u5206\u6A21\u578B
+          </button>
+        </nav>
+        <div class="sidebar-note">
+          <span class="mini-label">\u590D\u76D8\u95ED\u73AF</span
+          ><strong>\u8BC4\u5206 \xB7 \u68C0\u9A8C \xB7 \u6539\u8FDB</strong>
+          <p>\u4FDD\u5B58\u5F53\u65F6\u7684\u5224\u65AD\uFF0C\u518D\u7528\u4E0B\u4E00\u4EA4\u6613\u65E5\u7684\u7ED3\u679C\u68C0\u9A8C\u3002</p>
+          <div class="note-line"></div>
+          <span id="snapshot-status">\u6536\u76D8\u540E\u81EA\u52A8\u4FDD\u5B58\u8BC4\u5206\u5FEB\u7167</span>
+        </div>
+        <div class="sidebar-footer">
+          <span data-icon="database"></span>
+          <div>
+            \u516C\u5F00\u884C\u60C5\u63A5\u5165<small id="sidebar-source">\u6B63\u5728\u68C0\u67E5\u6570\u636E\u6E90</small>
+          </div>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <div class="breadcrumb">
+            \u7814\u7A76\u5DE5\u4F5C\u53F0 <span>/</span> <strong id="crumb">\u603B\u89C8\u590D\u76D8</strong>
+          </div>
+          <div class="topbar-right">
+            <span class="session-label">A \u80A1 \xB7 \u6CAA\u6DF1\u5E02\u573A</span
+            ><button
+              class="icon-button"
+              id="help-btn"
+              aria-label="\u67E5\u770B\u6570\u636E\u53E3\u5F84"
+            >
+              <span data-icon="info"></span>
+            </button>
+          </div>
+        </header>
+        <main>
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow">DAILY MARKET REVIEW</div>
+              <h1 id="page-title">\u6BCF\u65E5\u6DA8\u505C\u590D\u76D8</h1>
+              <p id="page-subtitle">\u628A\u6DA8\u505C\u62C6\u6210\u4FE1\u53F7\uFF0C\u628A\u5224\u65AD\u5EFA\u7ACB\u5728\u6570\u636E\u4E0A\u3002</p>
+            </div>
+            <div class="heading-actions">
+              <label class="date-control"
+                ><span data-icon="calendar"></span
+                ><input
+                  type="date"
+                  id="trade-date"
+                  aria-label="\u4EA4\u6613\u65E5\u671F" /></label
+              ><button class="primary" id="refresh-btn">
+                <span data-icon="refresh"></span>\u5237\u65B0\u884C\u60C5
+              </button>
+            </div>
+          </div>
+          <div class="data-strip">
+            <div>
+              <span class="source-tag" id="source-tag">\u884C\u60C5\u52A0\u8F7D\u4E2D</span
+              ><span id="data-time">\u6B63\u5728\u83B7\u53D6\u6240\u9009\u4EA4\u6613\u65E5\u6DA8\u505C\u6C60</span>
+            </div>
+            <button class="text-button" id="demo-btn">\u67E5\u770B\u6F14\u793A</button>
+          </div>
+          <div class="notice" id="notice" role="status" hidden></div>
+          <section id="summary" class="metrics" aria-label="\u5E02\u573A\u6982\u51B5"></section>
+          <div id="overview-content" class="overview-grid">
+            <section class="panel pool-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>
+                    \u6DA8\u505C\u4E2A\u80A1 <span class="count-chip" id="pool-count">\u2014</span>
+                  </h2>
+                  <p>\u6309\u7EFC\u5408\u8BC4\u5206\u6392\u5E8F\uFF0C\u70B9\u51FB\u4E2A\u80A1\u67E5\u770B\u5B8C\u6574\u8BCA\u65AD</p>
+                </div>
+                <span class="small-muted" id="coverage-label">\u516D\u7EF4\u8BC4\u5206</span>
+              </div>
+              <div class="filters">
+                <div class="search-control">
+                  <span data-icon="search"></span
+                  ><input
+                    id="search"
+                    placeholder="\u641C\u7D22\u540D\u79F0 / \u4EE3\u7801"
+                    aria-label="\u641C\u7D22\u6DA8\u505C\u4E2A\u80A1"
+                  />
+                </div>
+                <select id="sector-filter" aria-label="\u7B5B\u9009\u884C\u4E1A\u677F\u5757">
+                  <option value="">\u5168\u90E8\u884C\u4E1A</option>
+                </select>
+              </div>
+              <div class="table-subnav">
+                <div class="segments" role="group" aria-label="\u8FDE\u677F\u7B5B\u9009">
+                  <button data-height="all" class="active">\u5168\u90E8</button
+                  ><button data-height="first">\u9996\u677F</button
+                  ><button data-height="relay">\u8FDE\u677F</button>
+                </div>
+                <div class="sort-control">
+                  <label for="sort">\u6392\u5E8F</label
+                  ><select id="sort">
+                    <option value="score">\u7EFC\u5408\u8BC4\u5206</option>
+                    <option value="height">\u8FDE\u677F\u9AD8\u5EA6</option>
+                    <option value="seal">\u5C01\u5355\u91D1\u989D</option>
+                    <option value="first">\u9996\u5C01\u65F6\u95F4</option>
+                  </select>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>\u4E2A\u80A1 / \u4EE3\u7801</th>
+                      <th>\u7EFC\u5408\u8BC4\u5206</th>
+                      <th>\u884C\u4E1A\u677F\u5757</th>
+                      <th>\u8FDE\u677F</th>
+                      <th>\u9996\u5C01\u65F6\u95F4</th>
+                      <th>\u5C01\u5355\u91D1\u989D</th>
+                      <th>\u6362\u624B\u7387</th>
+                      <th>\u70B8\u677F</th>
+                    </tr>
+                  </thead>
+                  <tbody id="stock-rows"></tbody>
+                </table>
+              </div>
+              <div class="table-footer">
+                <span id="table-status">\u6B63\u5728\u8BFB\u53D6\u516C\u5F00\u884C\u60C5\u2026</span
+                ><span>\u8BC4\u5206\u533A\u95F4 0\u2013100</span>
+              </div>
+            </section>
+            <div class="right-column">
+              <section class="panel sector-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>\u677F\u5757\u5F3A\u5EA6</h2>
+                    <p>\u6DA8\u505C\u96C6\u805A \xD7 \u8FDE\u677F\u9AD8\u5EA6 \xD7 \u5C01\u677F\u8868\u73B0</p>
+                  </div>
+                  <button
+                    class="icon-button"
+                    id="all-sectors"
+                    aria-label="\u67E5\u770B\u5168\u90E8\u884C\u4E1A\u677F\u5757"
+                  >
+                    <span data-icon="grid"></span>
+                  </button>
+                </div>
+                <div id="sector-rank"></div>
+                <div class="panel-footnote">
+                  \u884C\u4E1A\u5206\u7C7B\u53E3\u5F84\uFF0C\u4E0D\u7B49\u540C\u4E8E\u6982\u5FF5\u9898\u6750\u70ED\u5EA6
+                </div>
+              </section>
+              <section class="panel ladder-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>\u8FDE\u677F\u68AF\u961F</h2>
+                    <p>\u89C2\u5BDF\u5E02\u573A\u9AD8\u5EA6\u4E0E\u63A5\u529B\u7ED3\u6784</p>
+                  </div>
+                  <span class="outline-tag">\u5F53\u65E5</span>
+                </div>
+                <div id="ladder-chart"></div>
+                <div id="ladder-insight" class="insight"></div>
+              </section>
+            </div>
+          </div>
+          <section id="sectors-view" class="panel" hidden>
+            <div class="panel-heading">
+              <div>
+                <h2>\u884C\u4E1A\u677F\u5757\u8BC4\u5206</h2>
+                <p>\u70B9\u51FB\u677F\u5757\uFF0C\u7B5B\u9009\u5B83\u7684\u6DA8\u505C\u4E2A\u80A1</p>
+              </div>
+              <span class="outline-tag">\u900F\u660E\u6743\u91CD</span>
+            </div>
+            <div class="sector-formula">
+              \u6DA8\u505C\u96C6\u805A 35% <span>+</span> \u8FDE\u677F\u9AD8\u5EA6 25% <span>+</span> \u5C01\u677F\u7A33\u5B9A
+              25% <span>+</span> \u65E9\u76D8\u8054\u52A8 15%
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>\u884C\u4E1A\u677F\u5757</th>
+                    <th>\u677F\u5757\u5F97\u5206</th>
+                    <th>\u6DA8\u505C\u5BB6\u6570</th>
+                    <th>\u6700\u9AD8\u8FDE\u677F</th>
+                    <th>\u5C01\u677F\u7A33\u5B9A</th>
+                    <th>\u65E9\u76D8\u8054\u52A8</th>
+                    <th>\u6DA8\u505C\u80A1\u6210\u4EA4\u989D</th>
+                  </tr>
+                </thead>
+                <tbody id="sector-rows"></tbody>
+              </table>
+            </div>
+          </section>
+          <section id="review-view" hidden>
+            <div class="review-intro">
+              <div>
+                <span class="outline-tag" id="review-date-label"
+                  >\u7B49\u5F85\u9996\u4E2A\u53CD\u9988\u65E5</span
+                >
+                <p id="review-status">
+                  \u5F53\u5929\u6536\u76D8\u540E\u4FDD\u5B58\u539F\u59CB\u8BC4\u5206\uFF0C\u4E0B\u4E00\u4E2A\u4EA4\u6613\u65E5\u6838\u9A8C\u5E02\u573A\u8868\u73B0\u3002
+                </p>
+              </div>
+              <button class="secondary" id="run-review">
+                <span data-icon="refresh"></span>\u66F4\u65B0\u53CD\u9988
+              </button>
+            </div>
+            <div id="review-metrics" class="metrics"></div>
+            <div class="review-grid">
+              <section class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>\u539F\u59CB\u8BC4\u5206\u4E0E\u5B9E\u9645\u8868\u73B0</h2>
+                    <p>\u56FA\u5B9A\u6628\u65E5\u6837\u672C\uFF0C\u68C0\u9A8C\u4ECA\u5929\u7684\u8868\u73B0\uFF0C\u907F\u514D\u4E8B\u540E\u6311\u9009\u8D62\u5BB6</p>
+                  </div>
+                  <span id="review-coverage" class="outline-tag">\u7B49\u5F85\u6837\u672C</span>
+                </div>
+                <div
+                  id="review-conclusion"
+                  class="review-conclusion"
+                  hidden
+                ></div>
+                <div class="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>\u6628\u65E5\u6DA8\u505C\u4E2A\u80A1</th>
+                        <th>\u539F\u59CB\u8BC4\u5206</th>
+                        <th>\u6B21\u65E5\u5F00\u76D8</th>
+                        <th>\u6B21\u65E5\u6536\u76D8</th>
+                        <th>\u76D8\u4E2D\u6700\u4F4E</th>
+                        <th>\u518D\u6B21\u6DA8\u505C</th>
+                      </tr>
+                    </thead>
+                    <tbody id="review-rows"></tbody>
+                  </table>
+                </div>
+                <div class="panel-footnote">
+                  \u6536\u76CA\u4EE5\u539F\u59CB\u6536\u76D8\u4EF7\u4E3A\u57FA\u51C6\uFF0C\u672A\u5047\u8BBE\u80FD\u5728\u6DA8\u505C\u4EF7\u6210\u4EA4\uFF1B\u4E0D\u7B49\u540C\u4E8E\u53EF\u5B9E\u73B0\u7B56\u7565\u6536\u76CA\u3002
+                </div>
+              </section>
+              <section class="panel ai-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>AI \u7CFB\u7EDF\u8BC4\u4F30</h2>
+                    <p>\u7528\u5DF2\u6838\u9A8C\u7684\u5E02\u573A\u7ED3\u679C\uFF0C\u5BA1\u89C6\u8BC4\u5206\u8D28\u91CF</p>
+                  </div>
+                  <span class="outline-tag" id="ai-status-tag">\u68C0\u67E5\u8FDE\u63A5</span>
+                </div>
+                <div id="ai-content"></div>
+                <div class="ai-actions">
+                  <button class="primary" id="ai-grade-btn">\u751F\u6210 AI \u8BC4\u4EF7</button
+                  ><span id="ai-action-status" role="status"></span>
+                </div>
+              </section>
+            </div>
+            <section class="panel review-sector-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u677F\u5757\u5224\u65AD\u53CD\u9988</h2>
+                  <p>\u4F7F\u7528\u6628\u65E5\u56FA\u5B9A\u7684\u6DA8\u505C\u6210\u5458\uFF0C\u6BD4\u8F83\u6B21\u65E5\u5E73\u5747\u8868\u73B0</p>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>\u6628\u65E5\u884C\u4E1A\u677F\u5757</th>
+                      <th>\u539F\u59CB\u677F\u5757\u5206</th>
+                      <th>\u6709\u6548 / \u539F\u59CB\u6837\u672C</th>
+                      <th>\u6B21\u65E5\u5E73\u5747\u6536\u76CA</th>
+                      <th>\u518D\u6B21\u6DA8\u505C\u6BD4\u4F8B</th>
+                    </tr>
+                  </thead>
+                  <tbody id="review-sector-rows"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel history-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u53CD\u9988\u8BB0\u5F55</h2>
+                  <p>\u6301\u7EED\u79EF\u7D2F\u6837\u672C\uFF0C\u518D\u5224\u65AD\u6A21\u578B\u662F\u5426\u7A33\u5B9A\u6709\u6548</p>
+                </div>
+              </div>
+              <div id="review-history"></div>
+            </section>
+          </section>
+          <section id="model-view" hidden>
+            <div class="model-grid">
+              <section class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>\u4E2A\u80A1\u8BC4\u5206\u6743\u91CD</h2>
+                    <p>\u5373\u65F6\u91CD\u7B97\u5E76\u4FDD\u5B58\uFF1B\u5DF2\u5F52\u6863\u7684\u539F\u59CB\u8BC4\u5206\u4E0D\u4F1A\u88AB\u8986\u76D6</p>
+                  </div>
+                  <span id="weight-total" class="outline-tag">\u5408\u8BA1 100%</span>
+                </div>
+                <div class="preset-buttons">
+                  <button data-preset="balanced" class="active">\u7EFC\u5408\u590D\u76D8</button
+                  ><button data-preset="first">\u9996\u677F\u6316\u6398</button
+                  ><button data-preset="relay">\u77ED\u7EBF\u63A5\u529B</button>
+                </div>
+                <div id="weight-controls"></div>
+                <div class="model-actions">
+                  <button class="secondary" id="reset-model">
+                    \u6062\u590D\u7EFC\u5408\u590D\u76D8</button
+                  ><span id="model-status" role="status"
+                    >\u6743\u91CD\u76F8\u52A0\u540E\u5F52\u4E00\u5316\u8BA1\u7B97</span
+                  >
+                </div>
+              </section>
+              <section class="panel model-explain">
+                <div class="panel-heading"><h2>\u5206\u6570\u5982\u4F55\u4EA7\u751F</h2></div>
+                <div class="formula-box">
+                  \u7EFC\u5408\u5206 = \u6709\u6548\u6307\u6807\u52A0\u6743\u5747\u5206<br /><span
+                    >\u2212 \u98CE\u9669\u6263\u5206\uFF08\u6700\u591A 20 \u5206\uFF09</span
+                  >
+                </div>
+                <h3>\u6570\u636E\u4E0D\u5B8C\u6574\u65F6</h3>
+                <p>
+                  \u7F3A\u5931\u6307\u6807\u4E0D\u6309\u96F6\u5206\u8BA1\u5165\uFF0C\u5269\u4F59\u6743\u91CD\u91CD\u65B0\u5F52\u4E00\u5316\u3002\u6570\u636E\u8986\u76D6\u7387\u540C\u65F6\u663E\u793A\uFF0C\u8986\u76D6\u7387\u8F83\u4F4E\u7684\u5F97\u5206\u53EF\u6BD4\u6027\u8F83\u5F31\u3002
+                </p>
+                <h3>\u98CE\u9669\u6263\u5206</h3>
+                <dl>
+                  <div>
+                    <dt>5 \u677F\u53CA\u4EE5\u4E0A</dt>
+                    <dd>\u22128</dd>
+                  </div>
+                  <div>
+                    <dt>\u6362\u624B\u7387 > 40%</dt>
+                    <dd>\u22128</dd>
+                  </div>
+                  <div>
+                    <dt>\u70B8\u677F \u2265 3 \u6B21</dt>
+                    <dd>\u22125</dd>
+                  </div>
+                  <div>
+                    <dt>\u4F4E\u6362\u624B\u7ADE\u4EF7\u5C01\u677F\u7279\u5F81</dt>
+                    <dd>\u221210</dd>
+                  </div>
+                  <div>
+                    <dt>14:50 \u540E\u56DE\u5C01</dt>
+                    <dd>\u22124</dd>
+                  </div>
+                </dl>
+                <p class="model-limit">
+                  \u6B64\u6A21\u578B\u662F\u89C4\u5219\u8BC4\u5206\uFF0C\u5C1A\u672A\u8FDB\u884C\u5386\u53F2\u6536\u76CA\u6821\u51C6\u3002\u5206\u6570\u8861\u91CF\u89C2\u5BDF\u6307\u6807\uFF0C\u4E0D\u4EE3\u8868\u6B21\u65E5\u4E0A\u6DA8\u6982\u7387\u3002
+                </p>
+              </section>
+            </div>
+            <section class="panel model-connection">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u5927\u6A21\u578B\u8FDE\u63A5</h2>
+                  <p>DeepSeek\u3001OpenAI\u3001\u901A\u4E49\u517C\u5BB9\u63A5\u53E3</p>
+                </div>
+                <span class="outline-tag" id="model-ai-status">\u672A\u914D\u7F6E</span>
+              </div>
+              <p id="model-ai-detail">
+                \u670D\u52A1\u7AEF\u914D\u7F6E\u5BC6\u94A5\u3001\u63A5\u53E3\u5730\u5740\u548C\u6A21\u578B\u540E\uFF0CAI
+                \u4F1A\u6839\u636E\u51BB\u7ED3\u8BC4\u5206\u4E0E\u5DF2\u6838\u9A8C\u5E02\u573A\u7ED3\u679C\u751F\u6210\u8BC4\u4EF7\u3002\u5BC6\u94A5\u4E0D\u8FDB\u5165\u6D4F\u89C8\u5668\u3002
+              </p>
+              <p>
+                AI
+                \u7ED9\u51FA\u8BC1\u636E\u3001\u5224\u65AD\u5931\u8BEF\u4E0E\u53C2\u6570\u5019\u9009\uFF1B\u6A21\u62DF\u4EA4\u6613\u7B56\u7565\u4EC5\u5728\u72EC\u7ACB\u9A8C\u8BC1\u901A\u8FC7\u540E\u542F\u7528\uFF0C\u5386\u53F2\u8BB0\u5F55\u4FDD\u6301\u51BB\u7ED3\u3002
+              </p>
+            </section>
+          </section>
+          <section id="paper-view" hidden>
+            <div class="paper-toolbar">
+              <div>
+                <span id="paper-date" class="outline-tag">\u68C0\u67E5\u8D26\u6237</span
+                ><span id="paper-audit" class="outline-tag">\u68C0\u67E5\u8D26\u672C</span>
+              </div>
+              <div>
+                <a
+                  class="secondary"
+                  href="/api/paper/export?format=csv"
+                  download
+                  >\u6210\u4EA4 CSV</a
+                ><a class="secondary" href="/api/paper/export" download
+                  >\u5B8C\u6574\u8BB0\u5F55 JSON</a
+                ><button
+                  id="paper-verify"
+                  class="secondary"
+                  data-paper-operation
+                >
+                  \u6838\u9A8C\u6536\u76CA</button
+                ><button id="paper-run" class="primary" data-paper-operation>
+                  \u66F4\u65B0\u76D8\u540E\u8D26\u6237
+                </button>
+              </div>
+            </div>
+            <p class="paper-message" id="paper-message" role="status">
+              \u6A21\u62DF\u8D26\u6237\u6309\u4E8B\u524D\u8BA1\u5212\u6267\u884C\uFF0C\u771F\u5B9E\u6570\u636E\u5230\u8FBE\u540E\u66F4\u65B0\u6536\u76CA\u3002
+            </p>
+            <div id="paper-metrics" class="metrics"></div>
+            <section class="panel paper-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u81EA\u52A8\u6267\u884C\u72B6\u6001</h2>
+                  <p id="paper-live-summary">\u68C0\u67E5\u6267\u884C\u5668\u5FC3\u8DF3\u4E0E\u817E\u8BAF\u884C\u60C5</p>
+                </div>
+                <span class="outline-tag" id="paper-live-tag">\u672A\u8FDE\u63A5</span>
+              </div>
+              <p class="panel-footnote" id="paper-live-health"></p>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>\u4E2A\u80A1 / \u52A8\u4F5C</th>
+                      <th>\u6267\u884C\u72B6\u6001</th>
+                      <th>\u8FDB\u5EA6</th>
+                      <th>\u6700\u8FD1\u5904\u7406\u7ED3\u679C</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paper-live-orders"></tbody>
+                </table>
+              </div>
+            </section>
+            <div class="paper-grid">
+              <section class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>\u8D26\u6237\u6536\u76CA\u8F68\u8FF9</h2>
+                    <p>\u6BCF\u65E5\u6743\u76CA\u3001\u6210\u4EA4\u6210\u672C\u4E0E\u6307\u6570\u57FA\u51C6\u5747\u53EF\u91CD\u653E\u9A8C\u8BC1</p>
+                  </div>
+                  <span class="outline-tag">\u51C0\u6536\u76CA</span>
+                </div>
+                <div id="paper-chart"></div>
+                <div class="panel-footnote" id="paper-risk"></div>
+              </section>
+              <section class="panel ai-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>AI \u7B56\u7565\u6539\u8FDB</h2>
+                    <p>\u5728\u5C01\u5B58\u6570\u636E\u4E0A\u9A8C\u8BC1\uFF0C\u518D\u542F\u7528\u65B0\u7248\u672C</p>
+                  </div>
+                  <span class="outline-tag" id="paper-ai-tag">\u68C0\u67E5\u8FDE\u63A5</span>
+                </div>
+                <div id="paper-ai-content"></div>
+                <div class="ai-actions">
+                  <button
+                    class="secondary"
+                    id="paper-improve"
+                    data-paper-operation
+                  >
+                    \u68C0\u67E5\u6539\u8FDB\u6761\u4EF6
+                  </button>
+                </div>
+                <div id="paper-version-list"></div>
+              </section>
+            </div>
+            <section class="panel paper-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u5F53\u524D\u6301\u4ED3</h2>
+                  <p>
+                    \u542B\u4E70\u5165\u8D39\u7528\u7684\u6210\u672C\uFF0CFIFO \u6838\u7B97\u5DF2\u5B9E\u73B0\u76C8\u4E8F\uFF1B\u5F53\u65E5\u65B0\u4E70\u5165\u4EFD\u989D\u4E0D\u53EF\u5356
+                  </p>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>\u4E2A\u80A1</th>
+                      <th>\u6301\u80A1\u6570\u91CF</th>
+                      <th>\u6BCF\u80A1\u6210\u672C</th>
+                      <th>\u6700\u65B0\u4F30\u503C\u4EF7</th>
+                      <th>\u6301\u4ED3\u5E02\u503C</th>
+                      <th>\u6D6E\u52A8\u76C8\u4E8F</th>
+                      <th>\u6301\u4ED3\u65F6\u95F4</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paper-position-rows"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel paper-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u5386\u53F2\u4E2A\u80A1\u76C8\u4E8F</h2>
+                  <p>\u6309\u4E2A\u80A1\u6C47\u603B\u5168\u90E8\u5356\u51FA\u7684 FIFO \u5DF2\u5B9E\u73B0\u76C8\u4E8F\uFF0C\u542B\u5356\u51FA\u8D39\u7528</p>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>\u4E2A\u80A1</th>
+                      <th>\u6700\u8FD1\u4EA4\u6613\u65E5</th>
+                      <th>\u5356\u51FA\u7B14\u6570</th>
+                      <th>\u76C8 / \u4E8F\u7B14\u6570</th>
+                      <th>\u7D2F\u8BA1\u5DF2\u5B9E\u73B0\u76C8\u4E8F</th>
+                      <th>\u5F53\u524D\u72B6\u6001</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paper-stock-pnl-rows"></tbody>
+                </table>
+              </div>
+              <div class="panel-footnote">
+                \u76C8\u4E8F\u6309 FIFO \u644A\u5165\u5356\u51FA\u6210\u672C\u6838\u7B97\uFF0C\u4E70\u5165\u8D39\u7528\u5DF2\u8BA1\u5165\u6301\u4ED3\u6210\u672C\uFF1B\u505A T
+                \u7684\u4E24\u817F\u5206\u522B\u6309\u5404\u81EA\u65B9\u5411\u5165\u8D26\u3002\u6C47\u603B\u5408\u8BA1\u4E0E\u8D26\u6237\u5DF2\u5B9E\u73B0\u76C8\u4E8F\u4E00\u81F4\u3002
+              </div>
+            </section>
+            <section class="panel paper-panel">
+              <div class="panel-heading paper-plan-heading">
+                <div>
+                  <h2>\u4E0B\u4E00\u4EA4\u6613\u65E5\u8BA1\u5212</h2>
+                  <p id="paper-plan-meta">
+                    \u76D8\u540E\u51BB\u7ED3\u6570\u91CF\u4E0E\u4EF7\u683C\u6761\u4EF6\uFF0C\u4E0B\u4E00\u4EA4\u6613\u65E5\u6309\u5B9E\u65F6\u884C\u60C5\u81EA\u52A8\u6A21\u62DF\u6210\u4EA4
+                  </p>
+                </div>
+                <span class="outline-tag" id="paper-plan-date">\u7B49\u5F85\u8BC4\u5206</span>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>\u4E2A\u80A1 / \u677F\u5757</th>
+                      <th>\u52A8\u4F5C</th>
+                      <th>\u7B56\u7565\u8BC4\u5206</th>
+                      <th>\u8BA1\u5212\u6570\u91CF</th>
+                      <th>\u4E8B\u524D\u4EF7\u683C\u6761\u4EF6</th>
+                      <th>\u89C4\u5212\u4F9D\u636E</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paper-plan-rows"></tbody>
+                </table>
+              </div>
+              <div id="paper-selection-audit" class="paper-outcomes"></div>
+              <div id="paper-outcomes" class="paper-outcomes"></div>
+              <div class="panel-footnote">
+                \u5B9E\u65F6\u8F6E\u8BE2\u6309\u5DF2\u89C2\u5BDF\u5230\u7684\u62A5\u4EF7\u5148\u540E\u6267\u884C\u505A T\uFF1B14:50
+                \u8D77\u5C1D\u8BD5\u6062\u590D\u7B2C\u4E8C\u817F\uFF0C\u672A\u5B8C\u6210\u90E8\u5206\u4FDD\u7559\u4ED3\u4F4D\u5E76\u5EF6\u7EED\u5230\u4E0B\u4E00\u4EA4\u6613\u65E5\u3002\u4FDD\u62A4\u9000\u51FA\u9075\u5B88
+                T+1\uFF1B\u6DA8\u8DCC\u505C\u6216\u7F3A\u5C11\u884C\u60C5\u65F6\u53EF\u80FD\u65E0\u6CD5\u6210\u4EA4\u3002\u6240\u6709\u6301\u4ED3\u6301\u7EED\u83B7\u53D6\u884C\u60C5\uFF0C\u5373\u4F7F\u4E0D\u518D\u51FA\u73B0\u5728\u6DA8\u505C\u6C60\u4E2D\u3002
+              </div>
+            </section>
+            <section class="panel paper-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u9010\u7B14\u6210\u4EA4\u8D26\u672C</h2>
+                  <p>
+                    \u5C55\u793A\u6700\u8FD1 100
+                    \u7B14\uFF1B\u5B8C\u6574\u5BFC\u51FA\u5305\u542B\u5168\u90E8\u6210\u4EA4\u3001\u8BA1\u5212\u3001\u884C\u60C5\u3001\u8D39\u7528\u4E0E\u6821\u9A8C\u503C
+                  </p>
+                </div>
+                <span class="outline-tag">\u8D39\u7528\u4E0E\u6ED1\u70B9\u5DF2\u8BA1\u5165</span>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>\u65E5\u671F / \u65F6\u95F4</th>
+                      <th>\u4E2A\u80A1</th>
+                      <th>\u52A8\u4F5C / \u65B9\u5411</th>
+                      <th>\u80A1\u6570</th>
+                      <th>\u6210\u4EA4\u4EF7</th>
+                      <th>\u8D39\u7528</th>
+                      <th>\u73B0\u91D1\u53D8\u52A8</th>
+                      <th>\u6210\u4EA4\u6A21\u578B</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paper-ledger-rows"></tbody>
+                </table>
+              </div>
+              <div class="panel-footnote">
+                \u5206\u949F\u91C7\u6837\u4EF7\u683C\u52A0\u5165 10 bps \u6ED1\u70B9\u30011%
+                \u5206\u949F\u6210\u4EA4\u91CF\u53C2\u4E0E\u7387\uFF1B\u7F3A\u5C11\u5206\u949F\u884C\u60C5\u65F6\u4EC5\u4F7F\u7528\u660E\u786E\u6807\u8BB0\u7684\u5F00\u76D8\u6210\u4EA4\u5047\u8BBE\u3002\u65E0\u6CD5\u8FD8\u539F\u9010\u7B14\u6392\u961F\uFF0C\u4E0D\u7B49\u540C\u4E8E\u5B9E\u76D8\u6210\u4EA4\u3002
+              </div>
+            </section>
+            <section class="panel paper-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u8D26\u6237\u8BBE\u7F6E</h2>
+                  <p id="paper-config-note">\u521D\u59CB\u8D44\u91D1\u4E0E\u6BCF\u9879\u8D39\u7528\u5747\u53EF\u81EA\u5B9A\u4E49</p>
+                </div>
+              </div>
+              <form id="paper-config-form" class="paper-config">
+                <label
+                  >\u521D\u59CB\u6A21\u62DF\u8D44\u91D1\uFF08\u5143\uFF09<input
+                    id="paper-initial-capital"
+                    type="number"
+                    min="10000"
+                    max="100000000"
+                    step="1000"
+                    value="1000000"
+                    required /></label
+                ><label
+                  >AI \u9A8C\u8BC1\u901A\u8FC7\u540E<select id="paper-improvement-mode">
+                    <option value="auto">\u81EA\u52A8\u542F\u7528\u65B0\u7B56\u7565</option>
+                    <option value="manual">\u4EBA\u5DE5\u9009\u62E9\u542F\u7528</option>
+                  </select></label
+                ><label
+                  >\u6536\u76CA\u57FA\u51C6\u6307\u6570<select id="paper-benchmark"></select
+                ></label>
+                <fieldset class="paper-fee-settings">
+                  <legend>\u8D39\u7528\u6784\u6210\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>
+                  <div class="fee-settings-heading">
+                    <p>\u8D39\u7387\u6309\u4E07\u5206\u4E4B\u8F93\u5165\uFF0C\u5206\u9879\u76F8\u52A0\uFF1B\u6700\u4F4E\u4F63\u91D1\u4EC5\u9002\u7528\u4E8E\u4F63\u91D1\u9879\u3002</p>
+                    <span class="outline-tag" id="paper-fee-version"
+                      >\u8D39\u7528\u914D\u7F6E v1</span
+                    >
+                  </div>
+                  <div id="paper-fee-controls" class="paper-fee-controls"></div>
+                  <p id="paper-fee-summary" class="fee-settings-note"></p>
+                  <button
+                    type="button"
+                    id="paper-fee-defaults"
+                    class="text-button"
+                  >
+                    \u6062\u590D\u56FE\u4E2D\u9ED8\u8BA4\u8D39\u7528
+                  </button>
+                </fieldset>
+                <fieldset class="paper-fee-settings">
+                  <legend>\u98CE\u63A7\u7EA6\u675F\u4E0E\u81EA\u5B9A\u4E49\u503C</legend>
+                  <div class="fee-settings-heading">
+                    <p>
+                      \u5355\u80A1\u4E0E\u603B\u4ED3\u4F4D\u4E0A\u9650\u7EA6\u675F\u4E70\u5165\u89C4\u6A21\uFF0C\u56DE\u64A4\u7194\u65AD\u7EBF\u89E6\u53D1\u6E05\u4ED3\u5E76\u6682\u505C\u4E70\u5165\uFF1B\u6BD4\u4F8B\u6309
+                      % \u8F93\u5165\u3002\u65B0\u8BBE\u7F6E\u968F\u4E0B\u4E00\u8BA1\u5212\u51BB\u7ED3\uFF0C\u5386\u53F2\u6210\u4EA4\u6309\u5F53\u65F6\u914D\u7F6E\u6838\u9A8C\u3002
+                    </p>
+                    <span class="outline-tag" id="paper-risk-version"
+                      >\u98CE\u63A7\u914D\u7F6E v1</span
+                    >
+                  </div>
+                  <div
+                    id="paper-risk-controls"
+                    class="paper-fee-controls"
+                  ></div>
+                  <p id="paper-risk-summary" class="fee-settings-note"></p>
+                  <button
+                    type="button"
+                    id="paper-risk-defaults"
+                    class="text-button"
+                  >
+                    \u6062\u590D\u9ED8\u8BA4\u98CE\u63A7
+                  </button>
+                </fieldset>
+                <fieldset class="paper-fee-settings">
+                  <legend>\u7B56\u7565\u53C2\u6570\u4E0E\u60C5\u7EEA\u6863\u4F4D</legend>
+                  <div class="fee-settings-heading">
+                    <p>
+                      \u4FDD\u5B58\u540E\u767B\u8BB0\u4E3A\u65B0\u7B56\u7565\u7248\u672C\u5E76\u7528\u4E8E\u4E0B\u4E00\u4EFD\u8BA1\u5212\uFF0C\u5DF2\u51BB\u7ED3\u8BA1\u5212\u4FDD\u6301\u539F\u53C2\u6570\uFF1B\u56E0\u5B50\u6743\u91CD\u4E3A\u4EA4\u6613\u51B3\u7B56\u6743\u91CD\uFF0C\u72EC\u7ACB\u4E8E\u7814\u7A76\u9875\u89C2\u5BDF\u6743\u91CD\u3002\u60C5\u7EEA\u9608\u503C\u540C\u65F6\u51B3\u5B9A\u76EE\u6807\u655E\u53E3\u4E0E\u52A0\u4ED3\u3001\u505A
+                      T\u3001\u5F00\u65B0\u4ED3\u3001\u51CF\u4ED3\u95F8\u95E8\u3002
+                    </p>
+                    <span class="outline-tag" id="paper-strategy-version"
+                      >\u7B56\u7565 baseline-v1</span
+                    >
+                  </div>
+                  <div
+                    id="paper-strategy-controls"
+                    class="paper-fee-controls"
+                  ></div>
+                  <p id="paper-strategy-summary" class="fee-settings-note"></p>
+                  <button
+                    type="button"
+                    id="paper-strategy-defaults"
+                    class="text-button"
+                  >
+                    \u6062\u590D\u9ED8\u8BA4\u7B56\u7565\u53C2\u6570
+                  </button>
+                </fieldset>
+                <button class="secondary" type="submit" data-paper-operation>
+                  \u4FDD\u5B58\u8BBE\u7F6E
+                </button>
+              </form>
+            </section>
+          </section>
+          <section id="strategies-view" hidden>
+            <div class="paper-toolbar">
+              <div>
+                <span id="strategies-status-note" class="outline-tag"
+                  >\u540C\u4E00\u51BB\u7ED3\u6279\u6B21\u5185\u56FA\u5B9A\u5019\u9009\u5E76\u884C\u524D\u77BB\uFF1B\u6279\u6B21\u7ED3\u675F\u81F3\u591A\u542F\u7528\u4E00\u4E2A\u5019\u9009</span
+                >
+              </div>
+              <div>
+                <button id="strategies-reserve" class="primary">
+                  \u53D1\u8D77\u65B0\u6279\u6B21
+                </button>
+              </div>
+            </div>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u6279\u6B21\u4E0E\u653F\u7B56</h2>
+                  <p>\u7EDF\u4E00\u7814\u7A76\u7A97\u53E3\u9501\u3001\u751F\u6210\u9884\u7B97\u4E0E\u7EDF\u8BA1\u9884\u7B97\uFF1B\u5931\u8D25\u6279\u6B21\u540C\u6837\u53EF\u67E5</p>
+                </div>
+                <span class="outline-tag">\u53D7\u63A7\u664B\u7EA7</span>
+              </div>
+              <div id="strategies-status"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u6279\u6B21\u5217\u8868</h2>
+                  <p>\u70B9\u51FB\u6279\u6B21\u67E5\u770B\u56FA\u5B9A\u6210\u5458\u3001\u5339\u914D\u8D26\u6237\u51C0\u503C\u4E0E\u8D44\u683C</p>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>\u6279\u6B21</th>
+                      <th>\u9636\u6BB5</th>
+                      <th>\u7236\u7B56\u7565</th>
+                      <th>\u5019\u9009\u6570</th>
+                      <th>\u521B\u5EFA\u65F6\u95F4</th>
+                    </tr>
+                  </thead>
+                  <tbody id="strategies-cohort-rows"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel" id="strategies-detail"></section>
+          </section>
+          <section id="alerts-view" hidden>
+            <div class="paper-toolbar">
+              <div>
+                <span id="alerts-status-note" class="outline-tag"
+                  >\u68C0\u67E5\u544A\u8B66\u914D\u7F6E</span
+                >
+              </div>
+              <div>
+                <button id="alerts-test" class="secondary">\u53D1\u9001\u6D4B\u8BD5\u901A\u77E5</button>
+                <button id="alerts-maintenance" class="secondary">
+                  \u8BBE\u7F6E\u7EF4\u62A4\u7A97\u53E3
+                </button>
+                <button id="alerts-refresh" class="primary">\u5237\u65B0</button>
+              </div>
+            </div>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u901A\u9053\u4E0E\u5916\u90E8\u76D1\u6D4B</h2>
+                  <p>\u98DE\u4E66\u673A\u5668\u4EBA\u63A5\u6536\u4E1A\u52A1\u544A\u8B66\uFF1B\u5916\u90E8\u76D1\u6D4B\u53D1\u73B0\u6574\u673A\u79BB\u7EBF</p>
+                </div>
+                <span class="outline-tag" id="alerts-enabled-tag">\u672A\u542F\u7528</span>
+              </div>
+              <div
+                id="alerts-channel-list"
+                class="metrics panel-metrics alert-channel-metrics"
+              ></div>
+              <p class="panel-footnote">
+                \u5BC6\u94A5\uFF08FEISHU_WEBHOOK_URL / FEISHU_SECRET /
+                WATCHDOG_*_URL\uFF09\u53EA\u4FDD\u5B58\u5728\u670D\u52A1\u7AEF
+                .env\uFF0C\u9875\u9762\u53EA\u663E\u793A\u914D\u7F6E\u72B6\u6001\u3002\u65AD\u7535\u6216\u65AD\u7F51\u65F6\u672C\u673A\u65E0\u6CD5\u53D1\u6D88\u606F\uFF0C\u7531\u5916\u90E8\u76D1\u6D4B\u6309\u7F3A\u5931\u4FE1\u53F7\u544A\u8B66\u3002
+              </p>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>\u544A\u8B66\u4E8B\u4EF6</h2>
+                  <p>\u6309\u6301\u7EED\u65F6\u95F4\u53BB\u91CD\u4E0E\u5347\u7EA7\uFF1B\u786E\u8BA4\u53EA\u9759\u9ED8\u63D0\u9192\uFF0C\u4E0D\u63A9\u76D6\u672A\u6062\u590D</p>
+                </div>
+                <label class="text-button"
+                  ><input
+                    type="checkbox"
+                    id="alerts-active-only"
+                  />\u53EA\u770B\u672A\u6062\u590D</label
+                >
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>\u89C4\u5219</th>
+                      <th>\u7EA7\u522B</th>
+                      <th>\u72B6\u6001</th>
+                      <th>\u9996\u6B21\u53D1\u751F</th>
+                      <th>\u6700\u8FD1\u53D1\u751F</th>
+                      <th>\u64CD\u4F5C</th>
+                    </tr>
+                  </thead>
+                  <tbody id="alerts-incident-rows"></tbody>
+                </table>
+              </div>
+              <div class="table-footer">
+                <span id="alerts-list-status">\u6B63\u5728\u8BFB\u53D6\u2026</span>
+                <button class="text-button" id="alerts-more" hidden>
+                  \u52A0\u8F7D\u66F4\u591A
+                </button>
+              </div>
+            </section>
+          </section>
+          <footer class="page-footer">
+            <span>LIMIT LENS <i>\xB7</i> \u6BCF\u65E5\u6DA8\u505C\u7814\u7A76</span
+            ><span
+              >\u7814\u7A76\u8BC4\u5206\u7528\u4E8E\u8F85\u52A9\u590D\u76D8\uFF1B\u5B9E\u76D8\u5224\u65AD\u9700\u7ED3\u5408\u516C\u544A\u3001\u9898\u6750\u4E0E\u6B21\u65E5\u627F\u63A5\u3002</span
+            >
+          </footer>
+        </main>
+      </div>
+    </div>
+    <dialog id="stock-dialog" class="detail-dialog">
+      <div class="dialog-top">
+        <span class="eyebrow">STOCK DIAGNOSTICS</span
+        ><button class="icon-button close-dialog" aria-label="\u5173\u95ED\u4E2A\u80A1\u8BCA\u65AD">
+          <span data-icon="close"></span>
+        </button>
+      </div>
+      <div id="stock-detail"></div>
+    </dialog>
+    <dialog id="help-dialog" class="help-dialog">
+      <div class="dialog-top">
+        <h2>\u6570\u636E\u4E0E\u8BA1\u7B97\u53E3\u5F84</h2>
+        <button class="icon-button close-dialog" aria-label="\u5173\u95ED\u6570\u636E\u8BF4\u660E">
+          <span data-icon="close"></span>
+        </button>
+      </div>
+      <div class="help-content">
+        <p>
+          \u6DA8\u505C\u6C60\u4F18\u5148\u8BFB\u53D6\u4E1C\u65B9\u8D22\u5BCC\u516C\u5F00\u884C\u60C5\uFF1B\u6307\u6570\u8BFB\u53D6\u817E\u8BAF\u516C\u5F00\u884C\u60C5\u3002\u9875\u9762\u4F1A\u6807\u660E\u5B9E\u9645\u6765\u6E90\u3001\u8BF7\u6C42\u65F6\u95F4\u548C\u4EA4\u6613\u65E5\u671F\u3002\u516C\u5F00\u63A5\u53E3\u53EF\u80FD\u9650\u6D41\u3001\u5EF6\u8FDF\u6216\u505C\u6B62\u670D\u52A1\u3002
+        </p>
+        <p>
+          \u6DA8\u505C\u6C60\u4EE5\u6765\u6E90\u7684\u6CAA\u6DF1\u6536\u76D8\u5C01\u677F\u5217\u8868\u4E3A\u51C6\u3002ST
+          \u4E0E\u9000\u5E02\u6807\u8BC6\u80A1\u7968\u4ECE\u8BC4\u5206\u4E2D\u5254\u9664\uFF1B\u5F53\u524D\u6765\u6E90\u4E0D\u542B\u79D1\u521B\u677F\u3001\u5317\u4EA4\u6240\u53CA\u672A\u4E2D\u65AD\u8FDE\u7EED\u4E00\u5B57\u6DA8\u505C\u7684\u65B0\u80A1\u3002
+        </p>
+        <p>
+          \u5C01\u5355\u989D\u4F7F\u7528\u5F53\u524D\u5C01\u5355\u91D1\u989D\uFF0C\u5C01\u5355\u6BD4\u4E3A\u5C01\u5355\u989D \xF7
+          \u5F53\u65E5\u6210\u4EA4\u989D\uFF1B\u9996\u5C01\u548C\u6700\u540E\u5C01\u677F\u65F6\u95F4\u6765\u81EA\u884C\u60C5\u5B57\u6BB5\uFF0C\u4E24\u8005\u7684\u95F4\u9694\u4E0D\u80FD\u89E3\u91CA\u4E3A\u5B9E\u9645\u5F00\u677F\u65F6\u957F\u3002
+        </p>
+        <p>
+          \u677F\u5757\u4EC5\u6309\u884C\u60C5\u63D0\u4F9B\u7684\u884C\u4E1A\u5206\u7C7B\u805A\u5408\uFF0C\u4E0D\u63A8\u65AD\u65B0\u95FB\u9898\u6750\u3002\u677F\u5757\u6DA8\u505C\u6570\u91CF\u672A\u9664\u4EE5\u884C\u4E1A\u603B\u6210\u5206\u6570\uFF0C\u56E0\u6B64\u5206\u6570\u4F1A\u53D7\u884C\u4E1A\u89C4\u6A21\u5F71\u54CD\u3002
+        </p>
+        <p>
+          \u5C01\u677F\u7387 = \u6DA8\u505C\u6C60\u5BB6\u6570 \xF7\uFF08\u6DA8\u505C\u6C60\u5BB6\u6570 +
+          \u6536\u76D8\u672A\u5C01\u4F4F\u7684\u70B8\u677F\u6C60\u5BB6\u6570\uFF09\u3002\u60C5\u7EEA\u5F3A\u5EA6\u7531\u6DA8\u505C\u5BB6\u6570\uFF0840%\uFF09\u3001\u5C01\u677F\u7387\uFF0835%\uFF09\u3001\u5E02\u573A\u9AD8\u5EA6\uFF0825%\uFF09\u6784\u6210\uFF1B\u6570\u636E\u7F3A\u5931\u4F1A\u91CD\u65B0\u5F52\u4E00\u5316\u3002
+        </p>
+        <p>
+          \u664B\u7EA7\u7387\u9700\u8981\u4E0A\u4E00\u53EF\u7528\u4EA4\u6613\u65E5\u6DA8\u505C\u5217\u8868\uFF1B\u6628\u65E5\u6C60\u63A5\u53E3\u7528\u4E8E\u5F53\u65E5\u664B\u7EA7\u7EDF\u8BA1\uFF1B\u8DE8\u65E5\u53CD\u9988\u53E6\u7528\u6307\u6570\u65E5\u671F\u5E8F\u5217\u786E\u8BA4\u76F8\u90BB\u4EA4\u6613\u65E5\u3002\u83B7\u53D6\u4E0D\u5230\u5386\u53F2\u6570\u636E\u65F6\u663E\u793A\u201C\u2014\u201D\u3002
+        </p>
+        <p>
+          \u6A21\u62DF\u4EA4\u6613\u6309\u524D\u4E00\u4EA4\u6613\u65E5\u51BB\u7ED3\u7684\u6570\u91CF\u548C\u4EF7\u683C\u6761\u4EF6\uFF0C\u4EE5\u817E\u8BAF HTTP
+          \u5B9E\u65F6\u62A5\u4EF7\u81EA\u52A8\u6267\u884C\u5E76\u8BA1\u5165\u8D39\u7528\uFF1B\u6240\u6709\u6301\u4ED3\u6301\u7EED\u8DDF\u8E2A\uFF0C\u76D8\u540E\u6309\u5B9E\u9645\u6A21\u62DF\u6210\u4EA4\u66F4\u65B0\u6536\u76CA\u3002\u9010\u7B14\u6392\u961F\u3001\u9F99\u864E\u699C\u4E0E\u516C\u544A\u5C1A\u672A\u63A5\u5165\uFF1B\u7CFB\u7EDF\u53EA\u64CD\u4F5C\u6A21\u62DF\u8D26\u6237\u3002
+        </p>
+      </div>
+    </dialog>
+    <script type="module" src="/assets/app.js"><\/script>
+  </body>
+</html>
+`, "type": "text/html; charset=utf-8" }, "/assets/app.js": { "body": 'var yt=[{key:"quality",name:"\\u5C01\\u677F\\u8D28\\u91CF",weight:30,description:"100 \\u2212 \\u70B8\\u677F\\u6B21\\u6570 \\xD7 15\\uFF0C\\u6700\\u4F4E 10 \\u5206"},{key:"capital",name:"\\u5C01\\u5355\\u5F3A\\u5EA6",weight:20,description:"\\u5C01\\u5355\\u91D1\\u989D \\xF7 \\u6210\\u4EA4\\u989D \\xF7 10%\\uFF0C\\u4E0A\\u9650 100 \\u5206"},{key:"liquidity",name:"\\u6362\\u624B\\u7ED3\\u6784",weight:15,description:"4\\u201312%\\uFF1A95\\uFF1B12\\u201325%\\uFF1A80\\uFF1B1\\u20134%\\uFF1A65\\uFF1B25\\u201340%\\uFF1A50\\uFF1B\\u5176\\u4F59\\uFF1A30"},{key:"timing",name:"\\u9996\\u5C01\\u65F6\\u70B9",weight:15,description:"09:45 \\u524D 100\\uFF1B10:30 \\u524D 85\\uFF1B11:30 \\u524D 65\\uFF1B14:00 \\u524D 45\\uFF1B\\u5176\\u4F59 25"},{key:"sector",name:"\\u677F\\u5757\\u534F\\u540C",weight:15,description:"\\u4F7F\\u7528\\u540C\\u65E5\\u3001\\u540C\\u4E00\\u884C\\u4E1A\\u7684\\u677F\\u5757\\u8BC4\\u5206"},{key:"ladder",name:"\\u8FDE\\u677F\\u7ED3\\u6784",weight:5,description:"\\u9996\\u677F 75\\uFF1B2\\u20133 \\u677F 100\\uFF1B4 \\u677F 65\\uFF1B5 \\u677F\\u53CA\\u4EE5\\u4E0A 40"}],R={balanced:[30,20,15,15,15,5],first:[30,20,15,20,12,3],relay:[30,20,10,10,20,10]},N=(t,e=0,a=100)=>Math.max(e,Math.min(a,t)),A=t=>t==null||t===""||!Number.isFinite(Number(t))?null:Number(t);function nt(t){if(t==null)return"\\u2014";let e=String(t).padStart(6,"0");return/^\\d{6}$/.test(e)?`${e.slice(0,2)}:${e.slice(2,4)}`:"\\u2014"}function vt(t){return{code:String(t.c||""),name:String(t.n||""),sector:String(t.hybk||"\\u672A\\u5206\\u7C7B"),price:A(t.p)===null?null:Number(t.p)/1e3,change:A(t.zdp),amount:A(t.amount),floatCap:A(t.ltsz),seal:A(t.fund),turnover:A(t.hs),first:A(t.fbt),last:A(t.lbt),breaks:A(t.zbc),height:A(t.lbc)??A(t.ylbc),history:t.zttj?`${t.zttj.days} \\u5929 ${t.zttj.ct} \\u677F`:null}}function Jt(t,e){let a=t.map(n=>n[e]).filter(Number.isFinite);return a.length?a.reduce((n,r)=>n+r,0)/a.length:null}function te(t){let e=new Map;return t.forEach(a=>{e.has(a.sector)||e.set(a.sector,[]),e.get(a.sector).push(a)}),[...e].map(([a,n])=>{let r=n.filter(p=>p.breaks!==null),u=r.length?Jt(r.map(p=>({...p,q:N(100-p.breaks*15,10)})),"q"):null,o=Math.max(0,...n.map(p=>p.height||0)),g=[{name:"\\u6DA8\\u505C\\u96C6\\u805A",weight:35,value:N(n.length/6*100)},{name:"\\u8FDE\\u677F\\u9AD8\\u5EA6",weight:25,value:N(o/5*100)},{name:"\\u5C01\\u677F\\u7A33\\u5B9A",weight:25,value:u},{name:"\\u65E9\\u76D8\\u8054\\u52A8",weight:15,value:n.filter(p=>p.first!==null).length?n.filter(p=>p.first!==null&&p.first<103e3).length/n.filter(p=>p.first!==null).length*100:null}],f=g.filter(p=>p.value!==null).reduce((p,l)=>p+l.weight,0),y=Math.round(g.reduce((p,l)=>p+(l.value===null?0:l.value*l.weight),0)/f);return{name:a,count:n.length,height:o,quality:u,score:y,coverage:f,components:g,amount:n.reduce((p,l)=>p+(l.amount||0),0),members:n.map(p=>p.code)}}).sort((a,n)=>n.score-a.score||n.count-a.count)}function ee(t,e,a=R.balanced){let n={quality:t.breaks===null?null:N(100-t.breaks*15,10),capital:t.seal===null||!t.amount?null:N(t.seal/t.amount/.1*100),liquidity:t.turnover===null?null:t.turnover>=4&&t.turnover<=12?95:t.turnover>12&&t.turnover<=25?80:t.turnover>=1&&t.turnover<4?65:t.turnover>25&&t.turnover<=40?50:30,timing:t.first===null?null:t.first<94500?100:t.first<103e3?85:t.first<113e3?65:t.first<14e4?45:25,sector:e??null,ladder:t.height===null?null:t.height===1?75:t.height<=3?100:t.height===4?65:40},r=[];t.height>=5&&r.push({text:"\\u9AD8\\u4F4D\\u8FDE\\u677F",penalty:8,detail:"5 \\u677F\\u53CA\\u4EE5\\u4E0A\\uFF0C\\u5206\\u6B67\\u4E0E\\u9000\\u6F6E\\u98CE\\u9669\\u4E0A\\u5347\\u3002"}),t.turnover>40&&r.push({text:"\\u9AD8\\u6362\\u624B",penalty:8,detail:"\\u6362\\u624B\\u7387\\u8D85\\u8FC7 40%\\uFF0C\\u7B79\\u7801\\u4EA4\\u6362\\u5267\\u70C8\\u3002"}),t.breaks>=3&&r.push({text:"\\u53CD\\u590D\\u70B8\\u677F",penalty:5,detail:"\\u76D8\\u4E2D\\u81F3\\u5C11 3 \\u6B21\\u5F00\\u677F\\uFF0C\\u5C01\\u677F\\u7A33\\u5B9A\\u6027\\u504F\\u5F31\\u3002"}),t.first===92500&&t.last===92500&&t.turnover!==null&&t.turnover<1&&r.push({text:"\\u4E00\\u5B57\\u7279\\u5F81",penalty:10,detail:"\\u7ADE\\u4EF7\\u5C01\\u677F\\u4E14\\u4F4E\\u6362\\u624B\\uFF0C\\u5B9E\\u9645\\u6210\\u4EA4\\u673A\\u4F1A\\u53EF\\u80FD\\u6709\\u9650\\u3002"}),t.last!==null&&t.last>=145e3&&r.push({text:"\\u5C3E\\u76D8\\u56DE\\u5C01",penalty:4,detail:"\\u6700\\u540E\\u5C01\\u677F\\u65F6\\u95F4\\u63A5\\u8FD1\\u6536\\u76D8\\uFF0C\\u9700\\u89C2\\u5BDF\\u6B21\\u65E5\\u627F\\u63A5\\u3002"});let u=yt.map((l,h)=>({...l,weight:a[h],value:n[l.key]})),o=u.filter(l=>l.value!==null),g=o.reduce((l,h)=>l+h.weight,0),f=a.reduce((l,h)=>l+h,0),y=g?o.reduce((l,h)=>l+h.value*h.weight,0)/g:null,p=Math.min(20,r.reduce((l,h)=>l+h.penalty,0));return{...t,score:y===null?null:Math.round(N(y-p)),rawScore:y,deduction:p,factors:u,risks:r,coverage:f?Math.round(g/f*100):0,sealRatio:t.seal!==null&&t.amount>0?t.seal/t.amount:null}}function ae(t,e=null){let a=t.filter(u=>u.code&&!/ST|\u9000/.test(u.name)),n=e?new Set(e.map(u=>u.code)):null,r=e?.filter(u=>Number.isInteger(u.height)&&u.height>0);return{promotion:r?.length?r.filter(u=>a.some(o=>o.code===u.code&&Number.isInteger(o.height)&&o.height>u.height)).length/r.length*100:null,previousCount:n?n.size:null}}function Nt(t,e=null,a=null,n=R.balanced){let r=t.filter(v=>v.code&&!/ST|\u9000/.test(v.name)),u=te(r),o=new Map(u.map(v=>[v.name,v.score])),g=r.map(v=>ee(v,o.get(v.sector),n)).sort((v,i)=>(i.score??-1)-(v.score??-1)),f=e===null?null:t.length+e?t.length/(t.length+e)*100:null,y=Math.max(0,...r.map(v=>v.height||0)),p=r.filter(v=>v.height===1).length,l=r.filter(v=>v.height>1).length,h=[{weight:40,value:N(r.length/80*100)},{weight:35,value:f},{weight:25,value:N(y/7*100)}],x=h.filter(v=>v.value!==null).reduce((v,i)=>v+i.weight,0),ft=r.length?Math.round(h.reduce((v,i)=>v+(i.value??0)*i.weight,0)/x):null,{promotion:at,previousCount:Mt}=ae(r,a);return{stocks:g,sectors:u,count:r.length,excluded:t.length-r.length,first:p,relay:l,height:y,sealRate:f,emotion:ft,emotionCoverage:x,promotion:at,previousCount:Mt}}var U=Object.freeze([{key:"commission_rate",label:"\\u4F63\\u91D1\\u7387",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"commission_min",label:"\\u6700\\u4F4E\\u4F63\\u91D1",unit:"\\u5143",direction:"\\u53CC\\u8FB9"},{key:"stamp_tax",label:"\\u5370\\u82B1\\u7A0E",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u4EC5\\u5356\\u51FA"},{key:"handling_fee",label:"\\u7ECF\\u624B\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"regulatory_fee",label:"\\u8BC1\\u7BA1\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"},{key:"transfer_fee",label:"\\u8FC7\\u6237\\u8D39",unit:"\\u4E07\\u5206\\u4E4B",direction:"\\u53CC\\u8FB9"}]),bt=Object.freeze({commission_rate:5e-5,commission_min:5,stamp_tax:5e-4,handling_fee:341e-7,regulatory_fee:2e-5,transfer_fee:1e-5}),Te=Object.freeze({commission_rate:25e-5,commission_min:5,stamp_tax:5e-4,handling_fee:0,regulatory_fee:0,transfer_fee:1e-5});var xt=Object.freeze({maxPositionWeight:.2,maxGrossExposure:.6,maxDrawdown:.1,maxParticipation:.01,slippageBps:10}),P=Object.freeze([{key:"maxPositionWeight",label:"\\u5355\\u80A1\\u4ED3\\u4F4D\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u5355\\u53EA\\u4E2A\\u80A1\\u5E02\\u503C\\u5360\\u8D26\\u6237\\u6743\\u76CA\\u7684\\u4E0A\\u9650"},{key:"maxGrossExposure",label:"\\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u5168\\u90E8\\u6301\\u4ED3\\u5E02\\u503C\\u5360\\u8D26\\u6237\\u6743\\u76CA\\u7684\\u4E0A\\u9650"},{key:"maxDrawdown",label:"\\u56DE\\u64A4\\u7194\\u65AD\\u7EBF",unit:"%",percent:!0,hint:"\\u6743\\u76CA\\u81EA\\u5CF0\\u503C\\u56DE\\u64A4\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u65F6\\u6E05\\u4ED3\\u5E76\\u6682\\u505C\\u4E70\\u5165"},{key:"maxParticipation",label:"\\u5206\\u949F\\u6210\\u4EA4\\u91CF\\u53C2\\u4E0E\\u4E0A\\u9650",unit:"%",percent:!0,hint:"\\u65E7\\u6210\\u672C\\u6A21\\u578B\\u4E0B\\u5355\\u5206\\u949F\\u6700\\u591A\\u6D88\\u8017\\u7684\\u6210\\u4EA4\\u91CF\\u6BD4\\u4F8B"},{key:"slippageBps",label:"\\u65E7\\u6A21\\u578B\\u56FA\\u5B9A\\u6ED1\\u70B9",unit:"bps",percent:!1,hint:"\\u65E7\\u6210\\u672C\\u6A21\\u578B\\u6210\\u4EA4\\u4EF7\\u76F8\\u5BF9\\u53C2\\u8003\\u4EF7\\u7684\\u56FA\\u5B9A\\u504F\\u79FB"}]),Le=Object.freeze({maxPositionWeight:[.01,1],maxGrossExposure:[.01,1],maxDrawdown:[.005,1],maxParticipation:[1e-4,.1],slippageBps:[0,200]});var Et=Object.freeze({highEmotion:65,midEmotion:40,high:.55,mid:.35,low:.15}),Re=Object.freeze({minScore:[70,95],minSectorScore:[40,80],maxPositions:[2,5],maxHoldDays:[2,10],stopLoss:[.02,.08],takeProfit:[.06,.2],maxBuyGap:[0,.04],tFraction:[.1,.25],tBuyDip:[.01,.04],tSellRise:[.01,.04]}),Me=Object.freeze(["minScore","minSectorScore","maxPositions","maxHoldDays"]),st=Object.freeze([{key:"quality",label:"\\u5C01\\u677F\\u8D28\\u91CF"},{key:"capital",label:"\\u5C01\\u5355\\u5F3A\\u5EA6"},{key:"liquidity",label:"\\u6362\\u624B\\u7ED3\\u6784"},{key:"timing",label:"\\u9996\\u5C01\\u65F6\\u70B9"},{key:"sector",label:"\\u677F\\u5757\\u534F\\u540C"},{key:"ladder",label:"\\u8FDE\\u677F\\u7ED3\\u6784"}]),it=Object.freeze([{key:"maxPositions",label:"\\u6700\\u5927\\u6301\\u4ED3\\u6570",unit:"\\u53EA",percent:!1,min:2,max:5,step:1,hint:"\\u540C\\u65F6\\u6301\\u6709\\u7684\\u80A1\\u7968\\u6570\\u91CF\\u4E0A\\u9650"},{key:"minScore",label:"\\u5EFA\\u4ED3\\u6700\\u4F4E\\u8BC4\\u5206",unit:"\\u5206",percent:!1,min:70,max:95,step:1,hint:"\\u65B0\\u5F00\\u4ED3\\u8981\\u6C42\\u7684\\u7B56\\u7565\\u8BC4\\u5206\\u4E0B\\u9650"},{key:"minSectorScore",label:"\\u5EFA\\u4ED3\\u6700\\u4F4E\\u677F\\u5757\\u5206",unit:"\\u5206",percent:!1,min:40,max:80,step:1,hint:"\\u65B0\\u5F00\\u4ED3\\u8981\\u6C42\\u7684\\u677F\\u5757\\u534F\\u540C\\u8BC4\\u5206\\u4E0B\\u9650"},{key:"maxHoldDays",label:"\\u6700\\u957F\\u6301\\u6709\\u5929\\u6570",unit:"\\u5929",percent:!1,min:2,max:10,step:1,hint:"\\u6301\\u6709\\u8FBE\\u5230\\u8BE5\\u5929\\u6570\\u540E\\u6E05\\u4ED3"},{key:"stopLoss",label:"\\u6B62\\u635F\\u5E45\\u5EA6",unit:"%",percent:!0,min:2,max:8,step:.1,hint:"\\u4E8F\\u635F\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u89E6\\u53D1\\u6E05\\u4ED3"},{key:"takeProfit",label:"\\u5206\\u6279\\u6B62\\u76C8\\u5E45\\u5EA6",unit:"%",percent:!0,min:6,max:20,step:.1,hint:"\\u76C8\\u5229\\u8FBE\\u5230\\u8BE5\\u6BD4\\u4F8B\\u89E6\\u53D1\\u51CF\\u4ED3\\u5151\\u73B0"},{key:"maxBuyGap",label:"\\u5F00\\u76D8\\u4E70\\u5165\\u4E0A\\u9650",unit:"%",percent:!0,min:0,max:4,step:.1,hint:"\\u4E70\\u5165\\u4EF7\\u76F8\\u5BF9\\u6628\\u6536\\u7684\\u6700\\u5927\\u4E0A\\u6D6E\\uFF0C\\u8D85\\u51FA\\u5219\\u653E\\u5F03"},{key:"tFraction",label:"\\u505A T \\u4ED3\\u4F4D\\u6BD4\\u4F8B",unit:"%",percent:!0,min:10,max:25,step:.1,hint:"\\u6BCF\\u6B21\\u505A T \\u4F7F\\u7528\\u5E95\\u4ED3\\u7684\\u6BD4\\u4F8B"},{key:"tBuyDip",label:"\\u505A T \\u4F4E\\u5438\\u4EF7\\u5DEE",unit:"%",percent:!0,min:1,max:4,step:.1,hint:"\\u6B63\\u5411 T \\u7684\\u4E70\\u5165\\u89E6\\u53D1\\u56DE\\u843D\\u5E45\\u5EA6"},{key:"tSellRise",label:"\\u505A T \\u5151\\u73B0\\u4EF7\\u5DEE",unit:"%",percent:!0,min:1,max:4,step:.1,hint:"\\u6B63\\u5411 T \\u7684\\u5356\\u51FA\\u89E6\\u53D1\\u4E0A\\u6D6E\\u5E45\\u5EA6"}]),rt=Object.freeze([{key:"highEmotion",label:"\\u9AD8\\u6863\\u60C5\\u7EEA\\u9608\\u503C",unit:"\\u5206",percent:!1,min:0,max:100,step:1,hint:"\\u60C5\\u7EEA\\u8FBE\\u5230\\u8BE5\\u503C\\u8FDB\\u5165\\u9AD8\\u6863\\uFF1A\\u76EE\\u6807\\u655E\\u53E3\\u53D6\\u9AD8\\u6863\\uFF0C\\u5E76\\u5141\\u8BB8\\u52A0\\u4ED3"},{key:"midEmotion",label:"\\u4F4E\\u6863\\u60C5\\u7EEA\\u9608\\u503C",unit:"\\u5206",percent:!1,min:0,max:100,step:1,hint:"\\u60C5\\u7EEA\\u4F4E\\u4E8E\\u8BE5\\u503C\\u8FDB\\u5165\\u9632\\u5B88\\uFF1A\\u76EE\\u6807\\u655E\\u53E3\\u53D6\\u4F4E\\u6863\\uFF0C\\u505C\\u6B62\\u5F00\\u65B0\\u4ED3\\u4E0E\\u505A T \\u5E76\\u51CF\\u4ED3"},{key:"high",label:"\\u9AD8\\u6863\\u76EE\\u6807\\u655E\\u53E3",unit:"%",percent:!0,min:5,max:95,step:.1,hint:"\\u9AD8\\u6863\\u60C5\\u7EEA\\u4E0B\\u7684\\u76EE\\u6807\\u603B\\u4ED3\\u4F4D"},{key:"mid",label:"\\u4E2D\\u6863\\u76EE\\u6807\\u655E\\u53E3",unit:"%",percent:!0,min:5,max:95,step:.1,hint:"\\u4E2D\\u6027\\u60C5\\u7EEA\\u4E0B\\u7684\\u76EE\\u6807\\u603B\\u4ED3\\u4F4D"},{key:"low",label:"\\u4F4E\\u6863\\u76EE\\u6807\\u655E\\u53E3",unit:"%",percent:!0,min:5,max:95,step:.1,hint:"\\u9632\\u5B88\\u60C5\\u7EEA\\u4E0B\\u7684\\u76EE\\u6807\\u603B\\u4ED3\\u4F4D"}]),Ot=Object.freeze({weights:Object.freeze([...R.balanced]),minScore:80,minSectorScore:55,maxPositions:4,maxHoldDays:5,stopLoss:.06,takeProfit:.12,maxBuyGap:.03,tFraction:.2,tBuyDip:.02,tSellRise:.02,exposureTiers:Et}),Ne=Object.freeze({highEmotion:[0,100],midEmotion:[0,100],high:[.05,.95],mid:[.05,.95],low:[.05,.95]});var Ct="sh000001",ot=[{code:"sh000001",name:"\\u4E0A\\u8BC1\\u6307\\u6570"},{code:"sz399001",name:"\\u6DF1\\u8BC1\\u6210\\u6307"},{code:"sh000300",name:"\\u6CAA\\u6DF1300"},{code:"sh000905",name:"\\u4E2D\\u8BC1500"},{code:"sh000852",name:"\\u4E2D\\u8BC11000"},{code:"sz399006",name:"\\u521B\\u4E1A\\u677F\\u6307"},{code:"sh000688",name:"\\u79D1\\u521B50"}],_e=new Set(ot.map(t=>t.code)),_t=t=>ot.find(e=>e.code===t)?.name||"\\u4E0A\\u8BC1\\u6307\\u6570";var d=t=>document.getElementById(t),m=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),E=t=>(Number(t||0)/100).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2}),St=t=>Math.abs(t||0)>=1e10?`${(t/1e10).toFixed(2)} \\u4EBF`:Math.abs(t||0)>=1e6?`${(t/1e6).toFixed(2)} \\u4E07`:E(t),S=t=>t==null?"\\u2014":`${t>0?"+":""}${(t*100).toFixed(2)}%`,V=t=>t>0?"up":t<0?"down":"",lt={OPEN:"\\u5EFA\\u4ED3",ADD:"\\u52A0\\u4ED3",REDUCE:"\\u51CF\\u4ED3",EXIT:"\\u6E05\\u4ED3",T_FORWARD:"\\u6B63\\u5411 T",T_REVERSE:"\\u53CD\\u5411 T",HOLD:"\\u6301\\u6709"},qt={ACTIVE:"\\u4F7F\\u7528\\u4E2D",VALIDATED:"\\u9A8C\\u8BC1\\u901A\\u8FC7",LEGACY_VALIDATED:"\\u5386\\u53F2\\u901A\\u8FC7\\uFF08\\u65E0\\u542F\\u7528\\u8D44\\u683C\\uFF09",SHADOW_PENDING:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",AWAITING_SHADOW:"\\u7B49\\u5F85\\u5F71\\u5B50\\u9A8C\\u8BC1",REJECTED:"\\u672A\\u901A\\u8FC7",ERROR:"\\u8C03\\u7528\\u5931\\u8D25",PROPOSING:"\\u6B63\\u5728\\u9A8C\\u8BC1",RETIRED:"\\u5DF2\\u5F52\\u6863",COLLECTING:"\\u6570\\u636E\\u79EF\\u7D2F\\u4E2D",NOT_CONFIGURED:"\\u672A\\u914D\\u7F6E\\u5927\\u6A21\\u578B",BUSY:"\\u5DF2\\u6709\\u8FDB\\u884C\\u4E2D\\u7684\\u5B9E\\u9A8C",BUDGET_EXHAUSTED:"\\u672C\\u6708\\u63D0\\u6848\\u6B21\\u6570\\u5DF2\\u7528\\u5B8C",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u73AF\\u5883\\u53D8\\u5316\\u5DF2\\u5931\\u6548",APPROVED:"\\u5DF2\\u6279\\u51C6\\u5F85\\u6392\\u671F",SCHEDULED:"\\u5DF2\\u6392\\u671F",PROMOTED:"\\u5DF2\\u542F\\u7528"},jt={PENDING:"\\u7B49\\u5F85\\u89E6\\u53D1",BLOCKED:"\\u53D7\\u7EA6\\u675F\\uFF0C\\u91CD\\u8BD5\\u4E2D",PARTIAL:"\\u90E8\\u5206\\u6210\\u4EA4",FIRST_LEG:"\\u505A T \\u7B2C\\u4E00\\u817F",SECOND_LEG:"\\u6062\\u590D\\u7B2C\\u4E8C\\u817F",FILLED:"\\u5B8C\\u6210",CANCELLED:"\\u5DF2\\u53D6\\u6D88",EXPIRED:"\\u5F53\\u65E5\\u5230\\u671F",EXPIRED_PARTIAL:"\\u90E8\\u5206\\u5B8C\\u6210\\u540E\\u5230\\u671F",INCOMPLETE_T:"\\u7B2C\\u4E8C\\u817F\\u8F6C\\u4E0B\\u65E5",RUNNING:"\\u8F6E\\u8BE2\\u8FD0\\u884C\\u4E2D",STALE_QUOTES:"\\u62A5\\u4EF7\\u9648\\u65E7\\uFF0C\\u6682\\u505C\\u6210\\u4EA4",MARKET_CLOSED:"\\u7B49\\u5F85\\u4EA4\\u6613\\u65F6\\u6BB5",ERROR:"\\u5F02\\u5E38\\uFF0C\\u81EA\\u52A8\\u91CD\\u8BD5",NON_TRADING_DAY:"\\u975E\\u4EA4\\u6613\\u65E5",CONFLICT:"\\u5E76\\u53D1\\u7ED3\\u679C\\u5DF2\\u4E22\\u5F03",SETTLED:"\\u5DF2\\u7ED3\\u7B97"},C=null,ct=!1,L=!1;async function F(t,e){let a=await fetch(t,{...e===void 0?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)},signal:AbortSignal.timeout(13e4)}),n=await a.json();if(!a.ok)throw new Error(n.error||"\\u670D\\u52A1\\u6682\\u4E0D\\u53EF\\u7528");return n}function _(t){d("paper-message").textContent=t}var kt=(t,e)=>t==="commission_min"?e:Number((e*1e4).toFixed(5));function Ht(t){for(let{key:e}of U)d(`fee-${e}`).value=kt(e,t[e])}function ne(t){return U.map(({key:e,label:a,unit:n})=>`${a} ${kt(e,t[e])}${n==="\\u5143"?" \\u5143":" / \\u4E07"}`).join(" \\xB7 ")}var wt=(t,e)=>P.find(a=>a.key===t)?.percent?Number((e*100).toFixed(4)):e;function zt(t){for(let{key:e}of P)d(`risk-${e}`).value=wt(e,t[e])}function se(t){return P.map(({key:e,label:a,unit:n})=>`${a} ${wt(e,t[e])}${n}`).join(" \\xB7 ")}var Pt=(t,e)=>t.percent?Number((e*100).toFixed(2)):e;function Bt(t){let e={...Et,...t.exposureTiers};st.forEach(({key:a},n)=>d(`strat-weight-${a}`).value=t.weights[n]);for(let a of it)d(`strat-${a.key}`).value=Pt(a,t[a.key]);for(let a of rt)d(`strat-tier-${a.key}`).value=Pt(a,e[a.key])}function ie(){return{weights:st.map(({key:t})=>Number(d(`strat-weight-${t}`).value)),...Object.fromEntries(it.map(({key:t,percent:e})=>[t,e?Number(d(`strat-${t}`).value)/100:Number(d(`strat-${t}`).value)])),exposureTiers:Object.fromEntries(rt.map(({key:t,percent:e})=>[t,e?Number(d(`strat-tier-${t}`).value)/100:Number(d(`strat-tier-${t}`).value)]))}}function Ft(t){return Object.entries({commission:"\\u4F63\\u91D1",stamp:"\\u5370\\u82B1\\u7A0E",handling:"\\u7ECF\\u624B\\u8D39",regulatory:"\\u8BC1\\u7BA1\\u8D39",transfer:"\\u8FC7\\u6237\\u8D39"}).map(([a,n])=>`${n} \\xA5 ${E(t.feeBreakdown[a]||0)}`).join("\\uFF1B")}function re(t){let e=`<span class="stock-code">\\u53C2\\u8003\\u4EF7 \\xA5 ${E(t.referenceCents)}</span>`,a=`<span class="stock-code">\\u6B62\\u635F \\u2264 \\xA5 ${E(t.stopCents)}<br>\\u5206\\u6279\\u6B62\\u76C8 \\u2265 \\xA5 ${E(t.takeProfitCents)}</span>`,n=t.side==="PAIR"?`\\u4F4E\\u5438 \\u2264 \\xA5 ${E(t.buyTriggerCents)}<br>\\u5151\\u73B0 \\u2265 \\xA5 ${E(t.sellTriggerCents)}<span class="stock-code">09:35 \\u8D77\\u89E6\\u53D1 \\xB7 14:50 \\u8D77\\u6062\\u590D\\u7B2C\\u4E8C\\u817F</span>`:t.side==="BUY"&&t.recovery?`\\u6062\\u590D\\u4E70\\u56DE \\xB7 \\u53C2\\u8003 \\xA5 ${E(t.referenceCents)}<span class="stock-code">\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u6309\\u5B9E\\u65F6\\u4EF7 + 0.1% \\u6ED1\\u70B9<br>\\u53D7\\u73B0\\u91D1\\u3001\\u4ED3\\u4F4D\\u4E0E\\u6DA8\\u505C\\u8FB9\\u754C\\u9650\\u5236</span>`:t.side==="BUY"?`\\u4E70\\u5165\\u4E0A\\u9650 \\xA5 ${E(t.maxPriceCents)}<span class="stock-code">\\u542B\\u6ED1\\u70B9 \\xB7 09:30\\u201309:35 \\u5185\\u6EE1\\u8DB3\\u65F6\\u6210\\u4EA4</span>`:t.side==="SELL"?`\\u53C2\\u8003\\u5356\\u4EF7 \\xA5 ${E(Math.round(t.referenceCents*.999))}<span class="stock-code">\\u5B9E\\u9645\\u5356\\u4EF7 = \\u5B9E\\u65F6\\u62A5\\u4EF7 \\u2212 0.1% \\u6ED1\\u70B9<br>\\u8FDE\\u7EED\\u7ADE\\u4EF7\\u65F6\\u6BB5\\u91CD\\u8BD5\\uFF0C\\u8DCC\\u505C\\u4E0D\\u5047\\u8BBE\\u6210\\u4EA4</span>`:"\\u6301\\u6709\\u5E76\\u76D1\\u63A7\\u4FDD\\u62A4\\u9608\\u503C";return e+n+a}function oe(t,e="\\u4E0A\\u8BC1\\u6307\\u6570"){if(!t.length)return\'<div class="empty"><strong>\\u6536\\u76CA\\u66F2\\u7EBF\\u4ECE\\u9996\\u4E2A\\u7ED3\\u7B97\\u65E5\\u5F00\\u59CB</strong>\\u4FDD\\u5B58\\u771F\\u5B9E\\u8BA1\\u5212\\u5E76\\u6267\\u884C\\u540E\\uFF0C\\u9010\\u65E5\\u79EF\\u7D2F\\u51C0\\u503C\\u3002</div>\';let a=760,n=200,r=30,u=[0,...t.map(l=>l.totalReturn),...t.map(l=>l.benchmarkReturn).filter(l=>l!=null)],o=Math.min(...u)-.005,g=Math.max(...u)+.005,f=l=>r+l/Math.max(1,t.length-1)*(a-2*r),y=l=>n-r-(l-o)/(g-o)*(n-r*2),p=l=>t.map((h,x)=>h[l]===null||h[l]===void 0?null:`${f(x)},${y(h[l])}`).filter(Boolean).join(" ");return`<svg class="equity-chart" viewBox="0 0 ${a} ${n}" role="img" aria-label="\\u8D26\\u6237\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387\\u4E0E${m(e)}\\u6536\\u76CA\\u7387"><line x1="${r}" x2="${a-r}" y1="${y(0)}" y2="${y(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${r}" y="18" class="chart-axis">${S(g)}</text><text x="${r}" y="${n-7}" class="chart-axis">${S(o)}</text><polyline points="${p("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${p("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${t.map((l,h)=>`<circle cx="${f(h)}" cy="${y(l.totalReturn)}" r="3" fill="#13977e"><title>${m(l.date)}\\uFF1A\\u8D26\\u6237 ${S(l.totalReturn)}\\uFF1B\\u57FA\\u51C6 ${S(l.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>\\u6A21\\u62DF\\u8D26\\u6237</span><span><i class="benchmark"></i>${m(e)}</span><span>${m(t[0].date)} \\u2014 ${m(t.at(-1).date)} \\xB7 ${t.length} \\u4E2A\\u7ED3\\u7B97\\u65E5</span></div>${t.length===1?\'<p class="panel-footnote">\\u9996\\u6B21\\u7ED3\\u7B97\\u53EA\\u5EFA\\u7ACB\\u6536\\u76CA\\u57FA\\u51C6\\uFF1B\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8D77\\u6267\\u884C\\u4E8B\\u524D\\u8BA1\\u5212\\u3002</p>\':""}`}function le(){if(!C)return;let{book:t,equity:e,lastSettled:a,plan:n,run:r,versions:u,riskLimits:o}=C,g=C.realtime,f=g?.health;d("paper-live-tag").textContent=g?.running?"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5DF2\\u8FDE\\u63A5":"\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u672A\\u8FDE\\u63A5",d("paper-live-summary").textContent=g?.session?`${g.session.date} \\xB7 ${g.session.sequence} \\u6B21\\u89C2\\u6D4B \\xB7 ${g.session.fillCount} \\u7B14\\u6210\\u4EA4`:"\\u5C1A\\u65E0\\u4ECA\\u65E5\\u5B9E\\u65F6\\u4EA4\\u6613\\u8BB0\\u5F55",d("paper-live-health").textContent=`${f?`${jt[f.status]||f.status} \\xB7 \\u6700\\u8FD1\\u5FC3\\u8DF3 ${new Date(f.checkedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\xB7 ${f.pollIntervalSeconds} \\u79D2\\u8F6E\\u8BE2\\u3002`:"\\u5C1A\\u672A\\u6536\\u5230\\u5E38\\u9A7B\\u6267\\u884C\\u5668\\u5FC3\\u8DF3\\u3002"} ${g?.running?"\\u5173\\u95ED\\u7F51\\u9875\\u540E\\u670D\\u52A1\\u7EE7\\u7EED\\u6267\\u884C\\uFF1B\\u76D8\\u540E\\u6309\\u5DF2\\u8BB0\\u5F55\\u6210\\u4EA4\\u7ED3\\u7B97\\u3002":g?.requirement||""}`,d("paper-live-orders").innerHTML=g?.session?.orders.length?g.session.orders.map(i=>`<tr><td><strong>${m(i.name)} \\xB7 ${lt[i.action]}</strong><span class="stock-code">${m(i.code)}</span></td><td>${jt[i.status]||m(i.status)}</td><td>${i.side==="PAIR"?`\\u7B2C\\u4E00\\u817F ${i.firstFilled} / \\u7B2C\\u4E8C\\u817F ${i.secondFilled}`:`${i.filledQuantity} / ${i.quantity}`} \\u80A1</td><td>${m(i.reason)}</td></tr>`).join(""):\'<tr><td colspan="4"><div class="empty compact">\\u7B49\\u5F85\\u5E38\\u9A7B\\u670D\\u52A1\\u5728\\u4EA4\\u6613\\u65F6\\u6BB5\\u6267\\u884C\\u51BB\\u7ED3\\u8BA1\\u5212\\u3002</div></td></tr>\';let y=t.positions.reduce((i,k)=>i+k.lots.reduce((I,z)=>I+z.quantity,0)*k.markCents,0),p=a&&e&&e.date!==a.date?a:null,l=[["\\u8D26\\u6237\\u603B\\u6743\\u76CA",`\\xA5 ${St(t.equityCents)}`,`\\u521D\\u59CB\\u8D44\\u91D1 \\xA5 ${E(t.initialCashCents)}`,""],["\\u5F53\\u65E5\\u76C8\\u4E8F",`\\xA5 ${St(e?.dailyPnlCents)}`,p?`\\u5F53\\u65E5\\u6536\\u76CA ${S(e?.dailyReturn??0)} \\xB7 \\u524D\\u7ED3\\u7B97 ${p.date.slice(5)} ${S(p.dailyReturn)}`:`\\u5F53\\u65E5\\u6536\\u76CA ${S(e?.dailyReturn??0)}`,V(e?.dailyPnlCents)],["\\u7D2F\\u8BA1\\u6536\\u76CA\\u7387",S(t.equityCents/t.initialCashCents-1),`\\u5DF2\\u6263\\u8D39\\u7528 \\xA5 ${E(t.feesCents)}`,V(t.equityCents-t.initialCashCents)],["\\u5F53\\u524D\\u6301\\u4ED3\\u6BD4\\u4F8B",S(y/t.equityCents),`\\u53EF\\u7528\\u73B0\\u91D1 \\xA5 ${E(t.cashCents)}`,""]];d("paper-metrics").innerHTML=l.map(([i,k,I,z])=>`<article class="metric"><div class="metric-head">${i}</div><div class="metric-value ${z}">${k}</div><div class="metric-caption">${I}</div></article>`).join(""),d("paper-date").textContent=t.lastDate?`\\u5DF2\\u7ED3\\u7B97\\u81F3 ${t.lastDate}`:"\\u7B49\\u5F85\\u9996\\u6B21\\u76D8\\u540E\\u7ED3\\u7B97",d("paper-audit").textContent=C.audit.passed?"\\u8D44\\u91D1\\u8D26\\u672C\\u4E00\\u81F4":"\\u8D26\\u672C\\u6838\\u5BF9\\u5F02\\u5E38",d("paper-audit").className=`outline-tag ${C.audit.passed?"verified":"down"}`,d("paper-chart").innerHTML=oe(C.equities,_t(C.benchmarkCode||t.benchmarkCode)),d("paper-risk").textContent=`\\u5355\\u80A1\\u4E0A\\u9650 ${S(o.maxPositionWeight)} \\xB7 \\u603B\\u4ED3\\u4F4D\\u4E0A\\u9650 ${S(o.maxGrossExposure)} \\xB7 \\u56DE\\u64A4 ${S(e?.drawdown??0)} / ${S(o.maxDrawdown)} \\xB7 \\u4E0D\\u900F\\u652F`,d("paper-position-rows").innerHTML=t.positions.length?t.positions.map(i=>{let k=i.lots.reduce((O,B)=>O+B.quantity,0),I=i.lots.reduce((O,B)=>O+B.costCents,0),z=i.lots.filter(O=>O.acquiredDate<(g?.session?.date||new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"}))).reduce((O,B)=>O+B.quantity,0);return`<tr><td><strong>${m(i.name)}</strong><span class="stock-code">${m(i.code)}</span></td><td>${k}<span class="stock-code">\\u5F53\\u65E5\\u53EF\\u5356 ${z}</span></td><td>${E(I/k)}</td><td>${E(i.markCents)}</td><td>\\xA5 ${E(k*i.markCents)}</td><td class="${V(k*i.markCents-I)}">\\xA5 ${E(k*i.markCents-I)}</td><td>${i.heldDays} \\u65E5</td></tr>`}).join(""):\'<tr><td colspan="7"><div class="empty compact">\\u5F53\\u524D\\u7A7A\\u4ED3\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6309\\u7167\\u51BB\\u7ED3\\u8BA1\\u5212\\u4E0E\\u5B9E\\u9645\\u6210\\u4EA4\\u6761\\u4EF6\\u6A21\\u62DF\\u6267\\u884C\\u3002</div></td></tr>\';let h=new Map(t.positions.map(i=>[i.code,i.lots.reduce((k,I)=>k+I.quantity,0)]));d("paper-stock-pnl-rows").innerHTML=C.stockPnl.length?C.stockPnl.map(i=>`<tr><td><strong>${m(i.name)}</strong><span class="stock-code">${m(i.code)}</span></td><td>${m(i.lastDate)}</td><td>${i.sellCount}</td><td>${i.winCount} \\u76C8 / ${i.lossCount} \\u4E8F</td><td class="${V(i.realizedPnlCents)}">\\xA5 ${E(i.realizedPnlCents)}</td><td>${h.get(i.code)?`\\u4ECD\\u6301\\u6709 ${h.get(i.code)} \\u80A1`:"\\u5DF2\\u6E05\\u4ED3"}</td></tr>`).join(""):\'<tr><td colspan="6"><div class="empty compact">\\u5C1A\\u65E0\\u5DF2\\u5B9E\\u73B0\\u76C8\\u4E8F\\u3002\\u5356\\u51FA\\u6210\\u4EA4\\u540E\\u6309 FIFO \\u6838\\u7B97\\u9010\\u7B14\\u76C8\\u4E8F\\u3002</div></td></tr>\',d("paper-plan-date").textContent=n?`${n.signalDate} \\u76D8\\u540E\\u5236\\u5B9A \\u2192 \\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5`:"\\u5C1A\\u672A\\u751F\\u6210\\u8BA1\\u5212",d("paper-plan-meta").textContent=n?`\\u7B56\\u7565 ${n.strategyVersion} \\xB7 \\u9009\\u80A1 ${n.selectionPolicy?.version==="signal-ranking-v2"?"\\u7CBE\\u786E\\u5206 \\u2192 \\u6210\\u4EA4\\u989D \\u2192 \\u4EE3\\u7801":"\\u6574\\u6570\\u5206 \\u2192 \\u4EE3\\u7801"} \\xB7 \\u8D39\\u7528 v${n.feeConfigVersion||0} \\xB7 \\u6210\\u672C ${n.executionCostPolicy?`${n.executionCostPolicy.modelVersion} v${n.executionCostPolicy.version||0}`:"\\u65E7\\u7248\\u56FA\\u5B9A 10bps"}${n.sourceSnapshotMissing?" \\xB7 \\u8BC4\\u5206\\u7F3A\\u5931\\uFF0C\\u4EC5\\u6267\\u884C\\u98CE\\u9669\\u4FDD\\u62A4":""} \\xB7 \\u76EE\\u6807\\u4ED3\\u4F4D ${S(n.targetExposure)} \\xB7 ${new Date(n.createdAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})} \\u51BB\\u7ED3`:"\\u5F53\\u65E5\\u8BC4\\u5206\\u4FDD\\u5B58\\u540E\\uFF0C\\u751F\\u6210\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u8BA1\\u5212\\u3002",d("paper-plan-rows").innerHTML=n?.orders.length?n.orders.map(i=>`<tr><td><strong>${m(i.name)}</strong><span class="stock-code">${m(i.code)} \\xB7 ${m(i.sector)}</span></td><td><span class="action-tag">${lt[i.action]}</span></td><td>${i.score??"\\u2014"}${Number.isFinite(i.scoreValue)?`<span class="stock-code">\\u7CBE\\u786E ${Number(i.scoreValue.toFixed(6))}</span>`:""}<span class="stock-code">\\u539F\\u59CB ${i.originalScore??"\\u2014"}</span></td><td>${i.quantity||"\\u2014"} \\u80A1</td><td class="plan-price-conditions">${re(i)}</td><td class="plan-reason">${m(i.reason)}</td></tr>`).join(""):`<tr><td colspan="6"><div class="empty compact">${n?"\\u5F53\\u524D\\u6CA1\\u6709\\u6EE1\\u8DB3\\u5EFA\\u4ED3\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1\\uFF0C\\u4FDD\\u6301\\u7A7A\\u4ED3\\u3002":"\\u7B49\\u5F85\\u6709\\u6548\\u76D8\\u540E\\u8BC4\\u5206\\u3002"}</div></td></tr>`;let x=n?.selectionAudit?.candidates??[],ft=d("paper-selection-audit").querySelector("details")?.open??!1;d("paper-selection-audit").innerHTML=x.length?`<details><summary>\\u9009\\u80A1\\u4F9D\\u636E \\xB7 ${x.filter(i=>i.status==="SELECTED").length} \\u53EA\\u5165\\u9009 / ${x.length} \\u53EA\\u5019\\u9009</summary><div class="table-scroll"><table><thead><tr><th>\\u987A\\u5E8F</th><th>\\u4E2A\\u80A1</th><th>\\u7CBE\\u786E\\u8BC4\\u5206</th><th>\\u4FE1\\u53F7\\u65E5\\u6210\\u4EA4\\u989D</th><th>\\u9009\\u62E9\\u7ED3\\u679C</th></tr></thead><tbody>${x.map(i=>`<tr><td>${i.rank}</td><td>${m(i.name)}<span class="stock-code">${m(i.code)}</span></td><td>${Number.isFinite(i.scoreValue)?Number(i.scoreValue.toFixed(6)):"\\u2014"}</td><td>${Number.isFinite(i.liquidityAmountCents)?`\\xA5 ${St(i.liquidityAmountCents)}`:"\\u672A\\u77E5"}</td><td>${i.status==="SELECTED"?"\\u5DF2\\u5165\\u9009":"\\u672A\\u5165\\u9009"}<span class="stock-code">${m(i.reason)}</span></td></tr>`).join("")}</tbody></table></div><p class="small-muted">\\u6210\\u4EA4\\u989D\\u53D6\\u81EA\\u4FE1\\u53F7\\u65E5\\u51BB\\u7ED3\\u6570\\u636E\\uFF0C\\u4EC5\\u4F5C\\u540C\\u5206\\u51B3\\u80DC\\uFF1B\\u5B9E\\u9645\\u6210\\u4EA4\\u4ECD\\u53D7\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3001\\u8D44\\u91D1\\u53CA\\u5BB9\\u91CF\\u9650\\u5236\\u3002</p></details>`:"";let at=d("paper-selection-audit").querySelector("details");at&&(at.open=ft),d("paper-outcomes").innerHTML=r?.outcomes?.length?`<details><summary>\\u6700\\u8FD1\\u6267\\u884C\\u53CD\\u9988 \\xB7 ${m(r.date)}</summary><div class="execution-feedback">${r.outcomes.map(i=>`<p><strong>${m(i.name)} \\xB7 ${lt[i.action]}</strong><span>${i.status==="FILLED"?"\\u5DF2\\u6210\\u4EA4":i.status==="PARTIAL"?"\\u90E8\\u5206\\u5B8C\\u6210":"\\u672A\\u6267\\u884C"} ${i.filledQuantity?`${i.filledQuantity} \\u80A1`:""} \\xB7 ${m(i.reason||"")}</span></p>`).join("")}</div></details>`:"",d("paper-ledger-rows").innerHTML=C.ledger.length?[...C.ledger].sort((i,k)=>k.date.localeCompare(i.date)||k.sequence-i.sequence).map(i=>`<tr><td>${m(i.date)}<span class="stock-code">${m(i.time)}</span></td><td><strong>${m(i.name)}</strong><span class="stock-code">${m(i.code)}</span></td><td>${lt[i.action]} \\xB7 ${i.side==="BUY"?"\\u4E70":"\\u5356"}</td><td>${i.quantity}</td><td>${E(i.priceCents)}</td><td title="${m(Ft(i))}"><details class="fee-breakdown"><summary>\\xA5 ${E(i.feeCents)}</summary><span>${m(Ft(i))}</span></details><span class="stock-code">\\u8D39\\u7528 v${i.feeConfigVersion||0}</span></td><td class="${V(i.cashDeltaCents)}">${E(i.cashDeltaCents)}</td><td>${i.dataQuality==="realtime_poll"?"\\u5B9E\\u65F6 HTTP \\u8F6E\\u8BE2":i.dataQuality==="minute"?"\\u5386\\u53F2\\u5206\\u949F\\u91C7\\u6837":"\\u5F00\\u76D8\\u5047\\u8BBE"}${i.executionCost?`<span class="stock-code">\\u6ED1\\u70B9 ${i.executionCost.totalBps}bps \\xB7 ${i.executionCost.spreadSource==="BOOK"?"\\u76D8\\u53E3\\u4EF7\\u5DEE":"\\u56DE\\u9000\\u4EF7\\u5DEE"}</span>`:""}</td></tr>`).join(""):\'<tr><td colspan="8"><div class="empty compact">\\u5C1A\\u65E0\\u6210\\u4EA4\\u8BB0\\u5F55\\u3002\\u672A\\u6EE1\\u8DB3\\u6210\\u4EA4\\u6761\\u4EF6\\u7684\\u8BA1\\u5212\\u4E0D\\u4F1A\\u8BB0\\u4E3A\\u6536\\u76CA\\u3002</div></td></tr>\';let v=r?.improvement?.days??Math.max(0,t.settlementCount-1);d("paper-ai-tag").textContent=C.ai.configured?"\\u5DF2\\u914D\\u7F6E\\u6A21\\u578B":"\\u6A21\\u578B\\u5F85\\u914D\\u7F6E",d("paper-ai-content").innerHTML=`<div class="strategy-active"><span>\\u5F53\\u524D\\u7B56\\u7565</span><strong>${m(t.activeStrategy)}</strong></div><p>${C.ai.configured?`\\u5DF2\\u79EF\\u7D2F ${v} \\u4E2A\\u53EF\\u9A8C\\u8BC1\\u4EA4\\u6613\\u65E5\\u3002\\u81F3\\u5C11 20 \\u65E5\\u8BAD\\u7EC3 + 10 \\u65E5\\u5C01\\u5B58\\u9A8C\\u8BC1\\u540E\\u63D0\\u51FA\\u65B0\\u5019\\u9009\\u3002`:"\\u5C1A\\u672A\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5927\\u6A21\\u578B\\u5BC6\\u94A5\\u3002\\u89C4\\u5219\\u7B56\\u7565\\u6B63\\u5E38\\u8FD0\\u884C\\uFF1B\\u914D\\u7F6E\\u540E\\u63A5\\u5165\\u771F\\u5B9E AI \\u63D0\\u6848\\u4E0E\\u9A8C\\u8BC1\\u3002"}</p><div class="ai-process">\\u771F\\u5B9E\\u6210\\u4EA4\\u4E0E\\u8D39\\u7528<span>\\u2193</span>AI \\u8BAD\\u7EC3\\u7A97\\u53E3\\u5EFA\\u8BAE<span>\\u2193</span>\\u72EC\\u7ACB\\u9A8C\\u8BC1 \\xB7 \\u6536\\u76CA\\u4E0E\\u56DE\\u64A4<span>\\u2193</span>\\u901A\\u8FC7\\u540E\\u542F\\u7528\\u65B0\\u7248\\u672C</div><p class="ai-note">\\u6BCF\\u4E2A\\u5C01\\u5B58\\u7A97\\u53E3\\u53EA\\u9A8C\\u8BC1\\u4E00\\u4E2A\\u5019\\u9009\\uFF1B\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u548C\\u5386\\u53F2\\u4EA4\\u6613\\u4FDD\\u7559\\u539F\\u7248\\u672C\\u3002</p>`,d("paper-version-list").innerHTML=u.filter(i=>i.id!=="baseline-v1").slice(0,6).map(i=>`<div class="version-row"><div><strong>${m(i.id)}</strong><span>${qt[i.status]||m(i.status)}</span></div><p>${m(i.evidence.rationale||i.evidence.error||"\\u7B49\\u5F85\\u9A8C\\u8BC1\\u7ED3\\u679C")}</p>${i.evidence.baseline?`<small>\\u5C01\\u5B58\\u9A8C\\u8BC1 ${m(i.evidence.validationStart)} \\u2014 ${m(i.evidence.validationEnd)}<br>\\u57FA\\u7EBF ${S(i.evidence.baseline.totalReturn)} \\u2192 \\u5019\\u9009 ${S(i.evidence.candidate.totalReturn)} \\xB7 \\u56DE\\u64A4 ${S(i.evidence.candidate.maxDrawdown)}</small>`:""}${i.status==="VALIDATED"?`<button class="secondary" data-activate="${m(i.id)}">\\u542F\\u7528\\u6B64\\u7248\\u672C</button>`:""}</div>`).join("")||\'<div class="small-muted">\\u5C1A\\u65E0 AI \\u5019\\u9009\\u7248\\u672C\\uFF0C\\u6301\\u7EED\\u79EF\\u7D2F\\u771F\\u5B9E\\u6570\\u636E\\u3002</div>\',L||(d("paper-initial-capital").value=t.initialCashCents/100),d("paper-initial-capital").disabled=!C.canEditCapital,L||Ht(C.feeConfig),d("paper-fee-version").textContent=`\\u8D39\\u7528\\u914D\\u7F6E v${t.feeConfigVersion||0}`,d("paper-fee-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${n?.feeConfig?ne(n.feeConfig):"\\u65E7\\u7248\\u56FA\\u5B9A\\u8D39\\u7528"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,L||zt(C.riskLimits),d("paper-risk-version").textContent=`\\u98CE\\u63A7\\u914D\\u7F6E v${t.riskLimitsVersion||0}`,d("paper-risk-summary").textContent=`\\u4E0B\\u4E00\\u8BA1\\u5212\\uFF1A${n?.riskLimits?se(n.riskLimits):"\\u9ED8\\u8BA4\\u98CE\\u63A7"}\\u3002\\u65B0\\u8BBE\\u7F6E\\u968F\\u8BA1\\u5212\\u51BB\\u7ED3\\uFF0C\\u5386\\u53F2\\u6210\\u4EA4\\u6309\\u5F53\\u65F6\\u914D\\u7F6E\\u6838\\u9A8C\\u3002`,L||Bt(C.strategyParams),d("paper-strategy-version").textContent=`\\u7B56\\u7565 ${t.activeStrategy}`,d("paper-strategy-summary").textContent=`\\u5F53\\u524D\\u7248\\u672C ${t.activeStrategy}${n?` \\xB7 \\u4E0B\\u4E00\\u8BA1\\u5212 ${n.strategyVersion}`:""}\\u3002\\u4FDD\\u5B58\\u540E\\u767B\\u8BB0\\u4E3A\\u65B0\\u7248\\u672C\\u5E76\\u7528\\u4E8E\\u4E0B\\u4E00\\u4EFD\\u8BA1\\u5212\\uFF0C\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u4FDD\\u6301\\u539F\\u53C2\\u6570\\u3002`,L||(d("paper-improvement-mode").value=t.improvementMode||"auto"),L||(d("paper-benchmark").value=t.benchmarkCode||Ct),d("paper-config-note").textContent=C.canEditCapital?"\\u4EA4\\u6613\\u8BA1\\u5212\\u5F00\\u59CB\\u6267\\u884C\\u524D\\u53EF\\u81EA\\u5B9A\\u4E49\\u521D\\u59CB\\u8D44\\u91D1\\uFF1B\\u8D39\\u7528\\u4E0E\\u98CE\\u63A7\\u968F\\u65F6\\u53EF\\u8C03\\u6574\\u3002":"\\u521D\\u59CB\\u8D44\\u91D1\\u4F5C\\u4E3A\\u6536\\u76CA\\u57FA\\u51C6\\u5DF2\\u51BB\\u7ED3\\uFF1B\\u8D39\\u7528\\u4E0E\\u98CE\\u63A7\\u4ECD\\u53EF\\u81EA\\u5B9A\\u4E49\\uFF0C\\u9002\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212\\u3002",document.querySelectorAll("[data-activate]").forEach(i=>i.onclick=()=>W(async()=>(await F("/api/paper/activate",{id:i.dataset.activate})).activated?"\\u65B0\\u7248\\u672C\\u5DF2\\u542F\\u7528\\uFF0C\\u5C06\\u7528\\u4E8E\\u540E\\u7EED\\u65B0\\u8BA1\\u5212":"\\u8D26\\u6237\\u540C\\u65F6\\u66F4\\u65B0\\uFF0C\\u8BF7\\u91CD\\u8BD5"))}async function G(){try{C=await F("/api/paper"),le()}catch(t){_(t.message)}}async function W(t){if(!ct){ct=!0,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!0),_("\\u6B63\\u5728\\u5904\\u7406\\uFF0C\\u7ED3\\u679C\\u5C06\\u4FDD\\u5B58\\u5230\\u8D26\\u672C\\u2026");try{let e=await t();await G(),_(e)}catch(e){_(e.message)}finally{ct=!1,document.querySelectorAll("[data-paper-operation]").forEach(e=>e.disabled=!1)}}}function Ut(){return d("paper-config-form").addEventListener("input",()=>{L=!0}),d("paper-fee-controls").innerHTML=U.map(({key:t,label:e,unit:a,direction:n})=>`<label for="fee-${t}">${e}\\uFF08${a}\\uFF09<input id="fee-${t}" type="number" min="0" max="${t==="commission_min"?1e4:100}" step="${t==="commission_min"?"0.01":"0.001"}" value="${kt(t,bt[t])}" required><span>${n}</span></label>`).join(""),d("paper-risk-controls").innerHTML=P.map(({key:t,label:e,unit:a,percent:n,hint:r})=>`<label for="risk-${t}" title="${m(r)}">${e}\\uFF08${a}\\uFF09<input id="risk-${t}" type="number" min="${n?.01:0}" max="${n?100:200}" step="${n?"0.01":"1"}" value="${wt(t,xt[t])}" required></label>`).join(""),d("paper-strategy-controls").innerHTML=[...st.map(({key:t,label:e})=>`<label for="strat-weight-${t}" title="\\u7B56\\u7565\\u8BC4\\u5206\\u4E2D\\u300C${e}\\u300D\\u56E0\\u5B50\\u7684\\u6743\\u91CD\\uFF0C\\u4E0E\\u7814\\u7A76\\u9875\\u89C2\\u5BDF\\u6743\\u91CD\\u76F8\\u4E92\\u72EC\\u7ACB">${e}\\u6743\\u91CD\\uFF08%\\uFF09<input id="strat-weight-${t}" type="number" min="0" max="50" step="1" required></label>`),...it.map(({key:t,label:e,unit:a,min:n,max:r,step:u,hint:o})=>`<label for="strat-${t}" title="${m(o)}">${e}\\uFF08${a}\\uFF09<input id="strat-${t}" type="number" min="${n}" max="${r}" step="${u}" required></label>`),...rt.map(({key:t,label:e,unit:a,min:n,max:r,step:u,hint:o})=>`<label for="strat-tier-${t}" title="${m(o)}">${e}\\uFF08${a}\\uFF09<input id="strat-tier-${t}" type="number" min="${n}" max="${r}" step="${u}" required></label>`)].join(""),d("paper-benchmark").innerHTML=ot.map(({code:t,name:e})=>`<option value="${t}">${e}</option>`).join(""),d("paper-fee-defaults").onclick=()=>{Ht(bt),L=!0,_("\\u5DF2\\u586B\\u5165\\u56FE\\u4E2D\\u9ED8\\u8BA4\\u8D39\\u7528\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},d("paper-risk-defaults").onclick=()=>{zt(xt),L=!0,_("\\u5DF2\\u586B\\u5165\\u9ED8\\u8BA4\\u98CE\\u63A7\\u7EA6\\u675F\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u751F\\u6548\\u3002")},d("paper-strategy-defaults").onclick=()=>{Bt(Ot),L=!0,_("\\u5DF2\\u586B\\u5165\\u9ED8\\u8BA4\\u7B56\\u7565\\u53C2\\u6570\\uFF0C\\u4FDD\\u5B58\\u8BBE\\u7F6E\\u540E\\u767B\\u8BB0\\u4E3A\\u65B0\\u7248\\u672C\\u5E76\\u7528\\u4E8E\\u4E0B\\u4E00\\u4EFD\\u8BA1\\u5212\\u3002")},d("paper-run").onclick=()=>W(async()=>{let t=await F("/api/run-daily",{});return window.dispatchEvent(new Event("paper-updated")),t.paper?.reason||t.snapshot?.reason||"\\u5DF2\\u5B8C\\u6210\\u76D8\\u540E\\u66F4\\u65B0"}),d("paper-verify").onclick=()=>W(async()=>{let t=await F("/api/paper/verify");return t.passed?`\\u5B8C\\u6574\\u91CD\\u653E\\u901A\\u8FC7\\uFF1A${t.days} \\u4E2A\\u7ED3\\u7B97\\u65E5\\u3001${t.fills} \\u7B14\\u6210\\u4EA4\\uFF0C\\u8D44\\u91D1\\u3001\\u8D39\\u7528\\u4E0E\\u6536\\u76CA\\u5747\\u4E00\\u81F4\\u3002`:"\\u9A8C\\u8BC1\\u672A\\u901A\\u8FC7\\uFF0C\\u8BF7\\u68C0\\u67E5\\u5BFC\\u51FA\\u8BB0\\u5F55\\u4E0E\\u884C\\u60C5\\u5B8C\\u6574\\u5EA6\\u3002"}),d("paper-improve").onclick=()=>W(async()=>{let t=await F("/api/paper/improve",{});return t.reason||`AI \\u6539\\u8FDB\\u72B6\\u6001\\uFF1A${qt[t.status]||t.status}`}),d("paper-config-form").onsubmit=t=>{t.preventDefault(),W(async()=>{let e=await F("/api/paper/settings",{...C?.canEditCapital?{initialCapital:Number(d("paper-initial-capital").value)}:{},improvementMode:d("paper-improvement-mode").value,benchmarkCode:d("paper-benchmark").value||Ct,fees:Object.fromEntries(U.map(({key:a})=>[a,a==="commission_min"?Number(d(`fee-${a}`).value):Number(d(`fee-${a}`).value)/1e4])),riskLimits:Object.fromEntries(P.map(({key:a,percent:n})=>[a,n?Number(d(`risk-${a}`).value)/100:Number(d(`risk-${a}`).value)])),strategyParams:ie()});return L=!1,`\\u8BBE\\u7F6E\\u5DF2\\u4FDD\\u5B58\\uFF1B\\u7B56\\u7565\\u53C2\\u6570\\u767B\\u8BB0\\u4E3A ${e.book.activeStrategy}\\uFF0C\\u5C06\\u7528\\u4E8E\\u4E0B\\u4E00\\u4EFD\\u8BA1\\u5212\\uFF0C\\u5DF2\\u51BB\\u7ED3\\u8BA1\\u5212\\u4FDD\\u6301\\u539F\\u53C2\\u6570\\u3002`})},window.addEventListener("paper-updated",G),setInterval(()=>{!document.hidden&&!ct&&G()},15e3),G(),{refresh:G}}var j={status:null,detailId:null,initialized:!1};async function At(t,e={}){let a=await fetch(t,{headers:{"Content-Type":"application/json"},...e}),n=await a.json().catch(()=>({}));if(!a.ok)throw new Error(n.error||"\\u8BF7\\u6C42\\u5931\\u8D25");return n}var Y=t=>t==null?"\\u2014":`${(t*100).toFixed(2)}%`,ce=t=>t==null?"\\u2014":(t/100).toLocaleString("zh-CN",{maximumFractionDigits:2}),dt={RESERVED:"\\u5DF2\\u9884\\u7559",PROPOSING:"\\u5019\\u9009\\u751F\\u6210\\u4E2D",FROZEN:"\\u5019\\u9009\\u5DF2\\u51BB\\u7ED3",HISTORICAL_CHECK:"\\u5386\\u53F2\\u7B5B\\u67E5\\u4E2D",SCHEDULED:"\\u5DF2\\u6392\\u671F",RUNNING:"\\u524D\\u77BB\\u8FD0\\u884C\\u4E2D",EVALUATING:"\\u8BC4\\u4F30\\u4E2D",CLOSED:"\\u5DF2\\u7ED3\\u675F",ELIGIBLE:"\\u7B26\\u5408\\u664B\\u7EA7\\u6761\\u4EF6",PROMOTED:"\\u5DF2\\u542F\\u7528",REJECTED:"\\u5386\\u53F2\\u7B5B\\u67E5\\u672A\\u901A\\u8FC7",ERROR:"\\u51FA\\u9519",INCONCLUSIVE:"\\u8BC1\\u636E\\u4E0D\\u8DB3",INVALIDATED:"\\u5DF2\\u5931\\u6548"};function D(t){return document.getElementById(t)}function de(){let{status:t}=j,e=D("strategies-status");if(!t){e.innerHTML="<p>\\u5C1A\\u672A\\u83B7\\u53D6\\u6279\\u6B21\\u72B6\\u6001\\u3002</p>";return}let a=t.activeCohort;e.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u6D3B\\u52A8\\u6279\\u6B21</span><strong>${a?`${a.id.slice(0,18)}\\u2026`:"\\u65E0"}</strong><small>${a?dt[a.stage]??a.stage:"\\u53EF\\u53D1\\u8D77\\u65B0\\u6279\\u6B21"}</small></div>\n      <div><span class="mini-label">\\u5019\\u9009\\u4E0A\\u9650</span><strong>${t.policy.maxCandidates}</strong><small>\\u6BCF\\u6708\\u751F\\u6210\\u6279\\u6B21 ${t.policy.monthlyGenerationLimit} \\u6B21</small></div>\n      <div><span class="mini-label">\\u524D\\u77BB\\u7A97\\u53E3</span><strong>${t.policy.forwardDays} \\u4EA4\\u6613\\u65E5</strong><small>\\u5B8C\\u6574\\u8F6E\\u6B21\\u95E8\\u69DB ${t.policy.minimumCompletedRounds}</small></div>\n      <div><span class="mini-label">\\u5F53\\u524D\\u7B56\\u7565</span><strong>${a?.parentVersion??"baseline-v1"}</strong><small>${a?"\\u8D5B\\u9A6C\\u671F\\u95F4\\u4FDD\\u6301\\u7236\\u7B56\\u7565":"\\u7B49\\u5F85\\u6279\\u6B21\\u7ED3\\u8BBA"}</small></div>\n    </div>\n    <p class="panel-footnote">${t.note??""}</p>`}function ue(){let{status:t,detailId:e}=j,a=(t?.cohorts??[]).map(n=>`\n      <tr data-cohort="${n.id}" class="${n.id===e?"active":""}">\n        <td>${n.id.slice(0,22)}\\u2026</td>\n        <td>${dt[n.stage]??n.stage}</td>\n        <td>${n.parentVersion}</td>\n        <td>${n.maxCandidates}</td>\n        <td>${(n.createdAt??"").replace("T"," ").slice(0,16)}</td>\n      </tr>`).join("");D("strategies-cohort-rows").innerHTML=a||\'<tr><td colspan="5">\\u5C1A\\u65E0\\u6279\\u6B21\\u8BB0\\u5F55</td></tr>\',D("strategies-cohort-rows").querySelectorAll("tr[data-cohort]").forEach(n=>{n.onclick=()=>{j.detailId=n.dataset.cohort,Tt()}})}async function pe(){let t=D("strategies-detail"),{detailId:e}=j;if(!e){t.innerHTML="<p class=\'panel-footnote\'>\\u70B9\\u51FB\\u4E0A\\u65B9\\u6279\\u6B21\\u67E5\\u770B\\u56FA\\u5B9A\\u6210\\u5458\\u3001\\u51C0\\u503C\\u4E0E\\u8D44\\u683C\\u3002</p>";return}let a;try{a=await At(`/api/strategies/cohorts/${e}`)}catch(l){t.innerHTML=`<p>${l.message}</p>`;return}let n=(a.members??[]).map(l=>`\n      <tr>\n        <td>${l.memberId}</td>\n        <td>${dt[l.stage]??l.stage}</td>\n        <td>${l.k}</td>\n        <td>${l.strategyVersion?`${l.strategyVersion.slice(0,18)}\\u2026`:"\\u2014"}</td>\n        <td>${l.paramsDistance??"\\u2014"}</td>\n        <td>${l.failureReason??"\\u2014"}</td>\n      </tr>`).join(""),r=(a.accounts??[]).map(l=>`\n      <tr>\n        <td>${l.kind}</td>\n        <td>${l.memberId??"\\u2014"}</td>\n        <td>${ce(l.book?.equityCents)}</td>\n        <td>${l.cursor?.date??"\\u2014"} #${l.cursor?.sequence??0}</td>\n        <td>${l.book?.lastDate??"\\u2014"}</td>\n      </tr>`).join(""),u=a.evaluation,o=l=>l?[{stat:l.againstParent,label:"\\u5BF9\\u7167=\\u5339\\u914D\\u7236\\u7B56\\u7565"},{stat:l.againstBaseline,label:"\\u5BF9\\u7167=\\u5339\\u914D\\u56FA\\u5B9A\\u57FA\\u7EBF"}].filter(x=>x.stat).map(x=>`<p class="small-muted">${x.label}\\uFF1A\\u5355\\u4FA7\\u4E0B\\u754C ${(x.stat.lowerBound*100).toFixed(3)}pp \\xB7 \\u89C2\\u5BDF\\u5747\\u503C ${(x.stat.observedMean*100).toFixed(3)}pp \\xB7 \\u03B1/\\u5BF9\\u7167 ${x.stat.alphaPerComparison?.toExponential(2)} \\xB7 ${x.stat.days} \\u65E5 \\u2014 ${escape(x.stat.reason)}</p>`).join("")||\'<p class="small-muted">\\u8BC1\\u636E\\u4E0D\\u8DB3</p>\':\'<p class="small-muted">\\u672A\\u8BC4\\u4F30\\uFF08\\u6307\\u7EB9\\u6216\\u8986\\u76D6\\u672A\\u901A\\u8FC7\\uFF09</p>\',g=(u?.verdicts??[]).map(l=>`\n      <tr>\n        <td>${l.memberId}</td>\n        <td>${dt[l.stage]??l.stage}</td>\n        <td>${Y(l.metrics?.netReturn)}</td>\n        <td>${Y(l.metrics?.windowDrawdown)}</td>\n        <td>${l.rounds?.rounds??"\\u2014"}</td>\n        <td class="evidence-cell">${l.statistics?`<details><summary>${l.checks?.statistics?"\\u7EDF\\u8BA1\\u901A\\u8FC7":"\\u7EDF\\u8BA1\\u672A\\u901A\\u8FC7"}</summary>${o(l.statistics)}</details>`:\'<span class="small-muted">\\u672A\\u8BC4\\u4F30</span>\'}</td>\n      </tr>`).join(""),f=u?.statisticsBudget,y=u?.fingerprint?.executionCost,p=u?.executionStress;t.innerHTML=`\n    <div class="metrics panel-metrics strategy-metrics">\n      <div><span class="mini-label">\\u51A0\\u519B</span><strong>${u?.champion?.memberId??"\\u65E0"}</strong><small>${u?.promotion?.promoted?`\\u5DF2\\u542F\\u7528\\uFF0C\\u751F\\u6548\\u65E5 ${u.promotion.effectiveTradeDate??"\\u5F85\\u5B9A"}`:"\\u4EC5\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528"}</small></div>\n      <div><span class="mini-label">\\u7A97\\u53E3</span><strong>${a.cohort.forwardManifest?.tradingDates?.length??0}/${a.cohort.forwardDays}</strong><small>\\u6355\\u83B7\\u65E5 ${a.cohort.forwardManifest?.captureDate??"\\u2014"}</small></div>\n      <div><span class="mini-label">\\u62A5\\u544A\\u6458\\u8981</span><strong>${a.evaluationDigest?"\\u5DF2\\u51BB\\u7ED3":"\\u7B49\\u5F85\\u8BC4\\u4F30"}</strong><small>\\u95F8\\u95E8\\u4E0E\\u7EDF\\u8BA1\\u53EF\\u91CD\\u653E</small></div>\n    </div>\n    ${f?`<p class="panel-footnote">\\u7EDF\\u8BA1\\u9884\\u7B97\\uFF1A\\u03B1/\\u5BF9\\u7167 = ${f.alphaPerComparison?.toExponential(2)}\\uFF08\\u5168\\u5386\\u53F2\\u5C1D\\u8BD5\\u5E8F\\u53F7 k \\u7684\\u8BEF\\u5DEE\\u9884\\u7B97\\uFF09\\xB7 \\u91CD\\u91C7\\u6837 ${f.resamples} \\xB7 \\u533A\\u5757 ${f.blockLength} \\u65E5 \\xB7 \\u65B9\\u6CD5 percentile \\u5355\\u4FA7\\u4E0B\\u754C\\uFF08\\u6B63\\u5F0F\\u53E3\\u5F84\\uFF0C\\u4E0E\\u6EDA\\u52A8\\u8BCA\\u65AD\\u7684 basic \\u533A\\u95F4\\u4E3A\\u4E0D\\u540C\\u65B9\\u6CD5\\u7248\\u672C\\uFF09</p>`:""}\n    ${y?`<p class="panel-footnote">\\u6267\\u884C\\u6210\\u672C\\u6307\\u7EB9\\uFF1A${y.modelVersion} v${y.version} \\xB7 \\u6821\\u51C6 ${y.calibrationStatus}${y.matchesManifest===!1?" \\xB7 \\u4E0E\\u6355\\u83B7\\u6E05\\u5355\\u4E0D\\u4E00\\u81F4\\uFF08\\u672C\\u6279\\u8D44\\u683C\\u5931\\u6548\\uFF09":y.matchesManifest===!0?" \\xB7 \\u4E0E\\u6355\\u83B7\\u6E05\\u5355\\u4E00\\u81F4":""}</p>`:""}\n    <div class="table-scroll">\n      ${p?`<p class="panel-footnote">\\u6210\\u672C\\u538B\\u529B\\u4E3A\\u72EC\\u7ACB\\u7ECF\\u6D4E\\u95F8\\u95E8\\uFF0C\\u4E0D\\u662F\\u6536\\u76CA\\u7F6E\\u4FE1\\u533A\\u95F4\\u3002<a href="/api/research/execution-stress/export?id=${encodeURIComponent(p.id)}" download="execution-stress.json">\\u4E0B\\u8F7D\\u5B8C\\u6574\\u8DEF\\u5F84\\u53CA\\u51BB\\u7ED3\\u8F93\\u5165</a></p>\n      <table><thead><tr><th>\\u60C5\\u666F</th><th>\\u5019\\u9009</th><th>\\u5BF9\\u7236\\u7B56\\u7565</th><th>\\u5BF9\\u56FA\\u5B9A\\u57FA\\u7EBF</th><th>\\u56DE\\u64A4</th><th>\\u95F8\\u95E8</th></tr></thead><tbody>${p.scenarios.flatMap(l=>Object.entries(l.checks).map(([h,x])=>`<tr><td>${l.multiplier}\\xD7</td><td>${escape(h)}</td><td>${Y(l.paths[h].netReturn-l.paths.parent.netReturn)}</td><td>${Y(l.paths[h].netReturn-l.paths.baseline.netReturn)}</td><td>${Y(l.paths[h].drawdownPpm/1e6)}</td><td>${x.passed?"\\u901A\\u8FC7":x.coverage?"\\u7ECF\\u6D4E\\u95E8\\u69DB\\u672A\\u901A\\u8FC7":"\\u6570\\u636E\\u4E0D\\u8DB3"}</td></tr>`)).join("")}</tbody></table>`:u?`<p class="panel-footnote">\\u6210\\u672C\\u538B\\u529B\\u8BC1\\u636E\\u4E0D\\u8DB3\\uFF1A${escape(u.executionStressError??"\\u672A\\u51BB\\u7ED3\\u60C5\\u666F\\uFF0C\\u9700\\u91CD\\u65B0\\u5EFA\\u7ACB\\u6279\\u6B21")}</p>`:""}\n      <table>\n        <thead><tr><th>\\u6210\\u5458</th><th>\\u72B6\\u6001</th><th>\\u5C1D\\u8BD5\\u5E8F\\u53F7 k</th><th>\\u7B56\\u7565\\u7248\\u672C</th><th>\\u53C2\\u6570\\u8DDD\\u79BB</th><th>\\u5931\\u8D25\\u539F\\u56E0</th></tr></thead>\n        <tbody>${n||"<tr><td colspan=\'6\'>\\u65E0\\u6210\\u5458</td></tr>"}</tbody>\n      </table>\n    </div>\n    <div class="table-scroll">\n      <table>\n        <thead><tr><th>\\u8D26\\u6237</th><th>\\u89D2\\u8272</th><th>\\u671F\\u672B\\u6743\\u76CA\\uFF08\\u5206\\uFF09</th><th>\\u6D88\\u8D39\\u6E38\\u6807</th><th>\\u5DF2\\u7ED3\\u7B97\\u65E5</th></tr></thead>\n        <tbody>${r||"<tr><td colspan=\'5\'>\\u5C1A\\u65E0\\u5339\\u914D\\u8D26\\u6237</td></tr>"}</tbody>\n      </table>\n    </div>\n    ${g?`<div class="table-scroll">\n        <table>\n          <thead><tr><th>\\u6210\\u5458</th><th>\\u7ED3\\u8BBA</th><th>\\u671F\\u95F4\\u51C0\\u6536\\u76CA</th><th>\\u7A97\\u53E3\\u56DE\\u64A4</th><th>\\u5B8C\\u6574\\u8F6E\\u6B21</th><th>\\u7EDF\\u8BA1\\u68C0\\u9A8C</th></tr></thead>\n          <tbody>${g}</tbody>\n        </table>\n      </div>`:""}\n    <p class="panel-footnote">\\u6536\\u76CA\\u4E0D\\u5728\\u72EC\\u7ACB\\u5019\\u9009\\u4E4B\\u95F4\\u6C42\\u548C\\uFF1B\\u7EB8\\u9762\\u9886\\u5148\\u4E0D\\u7B49\\u4E8E\\u53EF\\u542F\\u7528\\u8D44\\u683C\\u3002</p>\n    <a class="secondary" href="/api/strategies/cohorts/${e}/export" download>\\u5BFC\\u51FA\\u6279\\u6B21\\u68C0\\u67E5\\u70B9</a>`}async function Tt(){try{j.status=await At("/api/strategies/cohorts"),de(),ue(),await pe()}catch(t){D("strategies-status").innerHTML=`<p>${t.message}</p>`}}function Vt(){j.initialized||(j.initialized=!0,D("strategies-reserve").onclick=async()=>{let t=D("strategies-reserve");t.disabled=!0,D("strategies-status-note").textContent="\\u6B63\\u5728\\u9884\\u7559\\u6279\\u6B21\\u5E76\\u8C03\\u7528\\u6A21\\u578B\\u751F\\u6210\\u5019\\u9009\\u2026";try{let e=await At("/api/strategies/cohorts",{method:"POST",body:"{}"});D("strategies-status-note").textContent=e.reason??e.status??"\\u6279\\u6B21\\u5DF2\\u9884\\u7559"}catch(e){D("strategies-status-note").textContent=e.message}finally{t.disabled=!1,await Tt()}},Tt())}var w={initialized:!1,cursor:0,status:null},b=t=>document.getElementById(t),K=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]);async function Q(t,e={}){let a=await fetch(t,{headers:{"content-type":"application/json"},...e,body:e.body?JSON.stringify(e.body):void 0}),n=await a.json().catch(()=>({}));if(!a.ok)throw new Error(n.error||`\\u8BF7\\u6C42\\u5931\\u8D25\\uFF08${a.status}\\uFF09`);return n}function q(t){return t?t.replace("T"," ").slice(0,19):"\\u2014"}var me={RUNNER_STALLED:"\\u6267\\u884C\\u5FAA\\u73AF\\u505C\\u6EDE",LOOP_FAILED:"\\u5FAA\\u73AF\\u8FDE\\u7EED\\u5931\\u8D25",SESSION_BLOCKED:"\\u4F1A\\u8BDD\\u88AB\\u963B\\u585E",REQUIRED_QUOTE_STALE:"\\u5173\\u952E\\u62A5\\u4EF7\\u9648\\u65E7",DRAWDOWN_TRIPPED:"\\u56DE\\u64A4\\u89E6\\u53CA\\u786C\\u7EA6\\u675F",PROTECTIVE_EXIT_BLOCKED:"\\u4FDD\\u62A4\\u9000\\u51FA\\u65E0\\u6CD5\\u6210\\u4EA4",T_RECOVERY_INCOMPLETE:"\\u505A T \\u7B2C\\u4E8C\\u817F\\u672A\\u6062\\u590D",SETTLEMENT_LATE:"\\u76D8\\u540E\\u7ED3\\u7B97\\u8FDF\\u5EF6",LEDGER_INVARIANT_FAILED:"\\u8D26\\u672C\\u4E0D\\u53D8\\u5F0F\\u5F02\\u5E38",ALERT_PIPELINE_STALLED:"\\u544A\\u8B66\\u5206\\u53D1\\u505C\\u6EDE",AI_OR_RESEARCH_FAILED:"AI/\\u7814\\u7A76\\u4EFB\\u52A1\\u5931\\u8D25"};function he(){let{status:t}=w;if(!t)return;b("alerts-enabled-tag").textContent=t.enabled?"\\u5DF2\\u542F\\u7528":"\\u672A\\u542F\\u7528",b("alerts-status-note").textContent=t.note??"";let e=t.channels.map(n=>`<div><span class="outline-tag">${K(n.name)}</span><div class="panel-metric-value">${n.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E\\uFF08\\u670D\\u52A1\\u7AEF .env\\uFF09"}</div></div>`).join(""),a=t.watchdog??{};b("alerts-channel-list").innerHTML=e+`<div><span class="outline-tag">\\u5916\\u90E8\\u76D1\\u6D4B</span><div class="panel-metric-value"><span>${a.progressConfigured?`\\u8FDB\\u5EA6\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E${a.lastProgressAt?`\\uFF0C\\u6700\\u8FD1 ${q(a.lastProgressAt)}`:""}`:"\\u672A\\u914D\\u7F6E\\uFF08WATCHDOG_PROGRESS_URL\\uFF09"}</span><span>${a.pipelineConfigured?"\\u7BA1\\u9053\\u4FE1\\u53F7\\u5DF2\\u914D\\u7F6E":"\\u7BA1\\u9053\\u4FE1\\u53F7\\u672A\\u914D\\u7F6E"}</span></div></div>\n    <div><span class="outline-tag">\\u53D1\\u9001\\u961F\\u5217</span><div class="panel-metric-value">\\u5F85\\u53D1\\u9001 ${t.outbox?.pending??0}\\uFF0C\\u903E\\u671F\\u672A\\u9886 ${t.outbox?.overdue??0}\\uFF0C\\u5DF2\\u53D1\\u9001 ${t.outbox?.sent??0}\\uFF0C\\u8FC7\\u671F ${t.outbox?.expired??0}</div></div>`}function ge(t){let e=w.incidents??[];b("alerts-incident-rows").innerHTML=e.map(a=>`<tr>\n      <td>${K(me[a.ruleType]??a.ruleType)}<small class="small-muted"> ${K(a.fingerprint)}</small></td>\n      <td>${a.severity==="CRITICAL"?"\\u4E25\\u91CD":"\\u8B66\\u544A"}</td>\n      <td>${a.status==="RESOLVED"?`\\u5DF2\\u6062\\u590D ${q(a.resolvedAt)}`:a.status==="OPEN"?"\\u672A\\u6062\\u590D":K(a.status)}${a.ackUntil&&a.ackUntil>new Date().toISOString()?`\\uFF08\\u786E\\u8BA4\\u81F3 ${q(a.ackUntil)}\\uFF09`:""}</td>\n      <td>${q(a.firstSeen)}</td>\n      <td>${q(a.lastSeen)}</td>\n      <td>${a.status!=="RESOLVED"?`<button class="text-button" data-ack="${K(a.id)}">\\u786E\\u8BA4 2 \\u5C0F\\u65F6</button>`:""}</td>\n    </tr>`).join("");for(let a of b("alerts-incident-rows").querySelectorAll("[data-ack]"))a.onclick=async()=>{a.disabled=!0;try{await Q(`/api/alerts/incidents/${a.dataset.ack}/ack`,{method:"POST",body:{hours:2}})}catch(n){b("alerts-list-status").textContent=n.message}await X(!0)};b("alerts-more").hidden=!w.nextCursor,b("alerts-list-status").textContent=t?`\\u5171 ${e.length} \\u6761${w.nextCursor?"\\uFF08\\u53EF\\u52A0\\u8F7D\\u66F4\\u591A\\uFF09":""}`:b("alerts-list-status").textContent}async function X(t=!1){try{w.status=await Q("/api/alerts/status"),he(),t&&(w.cursor=0);let e=await Q(`/api/alerts/incidents?cursor=${w.cursor}&active=${b("alerts-active-only").checked}`);w.incidents=t?e.incidents:[...w.incidents??[],...e.incidents],w.nextCursor=e.nextCursor,ge(t)}catch(e){b("alerts-list-status").textContent=e.message}}function Gt(){w.initialized||(w.initialized=!0,b("alerts-refresh").onclick=()=>X(!0),b("alerts-active-only").onchange=()=>X(!0),b("alerts-more").onclick=()=>{w.cursor=w.nextCursor,X(!1)},b("alerts-test").onclick=async()=>{let t=b("alerts-test");t.disabled=!0,b("alerts-status-note").textContent="\\u6B63\\u5728\\u53D1\\u9001\\u6D4B\\u8BD5\\u901A\\u77E5\\u2026";try{await Q("/api/alerts/test",{method:"POST",body:{}}),b("alerts-status-note").textContent="\\u6D4B\\u8BD5\\u901A\\u77E5\\u5DF2\\u53D1\\u9001\\uFF0C\\u8BF7\\u5728\\u98DE\\u4E66\\u67E5\\u6536"}catch(e){b("alerts-status-note").textContent=e.message}finally{t.disabled=!1}},b("alerts-maintenance").onclick=async()=>{let t=Number(prompt("\\u7EF4\\u62A4\\u7A97\\u53E3\\u5206\\u949F\\u6570\\uFF0815\\u20131440\\uFF09\\uFF1A","60"));if(!Number.isInteger(t))return;let e=prompt("\\u7EF4\\u62A4\\u539F\\u56E0\\uFF08\\u53EF\\u9009\\uFF09\\uFF1A","")??"";try{let a=await Q("/api/alerts/maintenance",{method:"POST",body:{minutes:t,reason:e}});b("alerts-status-note").textContent=`\\u7EF4\\u62A4\\u7A97\\u53E3\\u81F3 ${q(a.until)}`}catch(a){b("alerts-status-note").textContent=a.message}},X(!0))}var c=t=>document.getElementById(t),$=t=>String(t??"").replace(/[&<>"\']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\'":"&#39;"})[e]),Wt={dashboard:\'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>\',chart:\'<path d="M4 3v17h17M8 15l4-6 4 3 5-7"/>\',grid:\'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 11h18M11 4v16"/>\',sliders:\'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/>\',database:\'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/>\',calendar:\'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>\',refresh:\'<path d="M20 7a8 8 0 0 0-14-2L3 8m0-5v5h5M4 17a8 8 0 0 0 14 2l3-3m0 5v-5h-5"/>\',search:\'<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>\',info:\'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>\',close:\'<path d="m6 6 12 12M6 18 18 6"/>\',flame:\'<path d="M12 3c1 6 7 6 7 12a7 7 0 0 1-14 0c0-3 2-5 4-7 0 3 1 3 2 4 2-3 2-6 1-9Z"/>\',shield:\'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>\'};function Z(t){return`<svg viewBox="0 0 24 24" aria-hidden="true">${Wt[t]||Wt.chart}</svg>`}document.querySelectorAll("[data-icon]").forEach(t=>t.innerHTML=Z(t.dataset.icon));var s={view:"overview",height:"all",weights:[...R.balanced],payload:null,analysis:null,loading:!0,error:null,demo:!1,request:0,review:null,ai:null,aiConfig:{configured:!1},history:null,reviewBusy:!1,reviewMessage:"",storageAvailable:!1};try{let t=JSON.parse(localStorage.getItem("limitLensWeights"));Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)&&(s.weights=t)}catch{}var J=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date);c("trade-date").value=J;c("trade-date").max=J;var $e=Ut(),ut={paper:["\\u6A21\\u62DF\\u4EA4\\u6613","\\u8BA9\\u8BC4\\u5206\\u63A5\\u53D7\\u8D26\\u6237\\u68C0\\u9A8C","\\u5236\\u5B9A\\u8BA1\\u5212\\u3001\\u6A21\\u62DF\\u6267\\u884C\\u3001\\u6838\\u5BF9\\u6536\\u76CA\\uFF0C\\u7528\\u771F\\u5B9E\\u7ED3\\u679C\\u6539\\u8FDB\\u7B56\\u7565\\u3002"],overview:["\\u603B\\u89C8\\u590D\\u76D8","\\u6BCF\\u65E5\\u6DA8\\u505C\\u590D\\u76D8","\\u628A\\u6DA8\\u505C\\u62C6\\u6210\\u4FE1\\u53F7\\uFF0C\\u628A\\u5224\\u65AD\\u5EFA\\u7ACB\\u5728\\u6570\\u636E\\u4E0A\\u3002"],stocks:["\\u4E2A\\u80A1\\u5206\\u6790","\\u6DA8\\u505C\\u4E2A\\u80A1\\u5206\\u6790","\\u62C6\\u89E3\\u5C01\\u677F\\u8868\\u73B0\\uFF0C\\u6BD4\\u8F83\\u5F3A\\u5EA6\\u4E0E\\u98CE\\u9669\\u3002"],sectors:["\\u677F\\u5757\\u7814\\u7A76","\\u884C\\u4E1A\\u677F\\u5757\\u7814\\u7A76","\\u4ECE\\u6DA8\\u505C\\u96C6\\u805A\\u4E0E\\u8FDE\\u677F\\u68AF\\u961F\\uFF0C\\u89C2\\u5BDF\\u8D44\\u91D1\\u7684\\u5171\\u540C\\u65B9\\u5411\\u3002"],review:["\\u6628\\u65E5\\u53CD\\u9988","\\u8BA9\\u6628\\u65E5\\u5224\\u65AD\\u63A5\\u53D7\\u68C0\\u9A8C","\\u4FDD\\u5B58\\u5F53\\u65F6\\u7684\\u5224\\u65AD\\uFF0C\\u7528\\u5B9E\\u9645\\u8868\\u73B0\\u68C0\\u9A8C\\uFF0C\\u518D\\u7531 AI \\u5BA1\\u89C6\\u3002"],model:["\\u8BC4\\u5206\\u6A21\\u578B","\\u53EF\\u89E3\\u91CA\\u7684\\u8BC4\\u5206\\u6A21\\u578B","\\u6BCF\\u4E00\\u5206\\u90FD\\u6709\\u4F9D\\u636E\\uFF0C\\u6BCF\\u4E00\\u9879\\u6743\\u91CD\\u90FD\\u53EF\\u4EE5\\u8C03\\u6574\\u3002"],strategies:["\\u7B56\\u7565\\u8D5B\\u9A6C","\\u591A\\u7B56\\u7565\\u5E76\\u884C\\u8D5B\\u9A6C\\u4E0E\\u53D7\\u63A7\\u664B\\u7EA7","\\u540C\\u4E00\\u4EFD\\u884C\\u60C5\\u3001\\u540C\\u4E00\\u51BB\\u7ED3\\u8D77\\u70B9\\uFF0C\\u56FA\\u5B9A\\u7A97\\u53E3\\u5185\\u6BD4\\u8F83\\uFF0C\\u53EA\\u6709\\u5408\\u683C\\u62A5\\u544A\\u652F\\u6301\\u542F\\u7528\\u3002"],alerts:["\\u8FD0\\u7EF4\\u544A\\u8B66","\\u5E38\\u9A7B\\u6267\\u884C\\u4E0D\\u9759\\u9ED8\\u5931\\u8054","\\u6267\\u884C\\u9519\\u8BEF\\u3001\\u98CE\\u9669\\u5904\\u7F6E\\u4E0E\\u76D8\\u540E\\u5931\\u8D25\\u4E3B\\u52A8\\u901A\\u77E5\\uFF1B\\u6574\\u673A\\u79BB\\u7EBF\\u7531\\u5916\\u90E8\\u76D1\\u6D4B\\u53D1\\u73B0\\u3002"]};function gt(t){ut[t]&&(s.view=t,document.querySelectorAll("[data-view]").forEach(e=>{e.classList.toggle("active",e.dataset.view===t),e.setAttribute("aria-current",e.dataset.view===t?"page":"false")}),c("crumb").textContent=ut[t][0],c("page-title").textContent=ut[t][1],c("page-subtitle").textContent=ut[t][2],c("overview-content").hidden=!["overview","stocks"].includes(t),c("sectors-view").hidden=t!=="sectors",c("model-view").hidden=t!=="model",c("review-view").hidden=t!=="review",c("summary").hidden=["model","review","paper","strategies","alerts"].includes(t),c("paper-view").hidden=t!=="paper",c("strategies-view").hidden=t!=="strategies",c("alerts-view").hidden=t!=="alerts",document.querySelector(".heading-actions").hidden=t==="paper"||t==="strategies"||t==="alerts",document.querySelector(".data-strip").hidden=t==="paper"||t==="strategies"||t==="alerts",t==="paper"&&$e.refresh(),t==="strategies"&&Vt(),t==="alerts"&&Gt(),document.querySelector(".right-column").hidden=t==="stocks",c("overview-content").style.gridTemplateColumns=t==="stocks"?"minmax(0,1fr)":"",H(),M())}document.querySelectorAll("[data-view]").forEach(t=>t.onclick=()=>gt(t.dataset.view));document.querySelector(".brand").onclick=t=>{t.preventDefault(),gt("overview")};function T(t,e=1){return t==null?"\\u2014":Number(t).toFixed(e)}function Lt(t){return t==null?"\\u2014":t>=1e8?`${(t/1e8).toFixed(2)} \\u4EBF`:`${(t/1e4).toFixed(0)} \\u4E07`}function fe(t){return t>=80?"":t>=60?"mid":"low"}function mt(t){return`<div class="score-cell"><span class="score-number ${fe(t)}">${t??"\\u2014"}</span><span class="score-track"><i style="width:${t??0}%"></i></span></div>`}function Dt(){s.analysis=s.payload?.archived?structuredClone(s.payload.analysis):s.payload?Nt(s.payload.rows.map(vt),s.payload.broken,s.payload.previous?.map(vt)||null,s.weights):null}function H(){let t=s.analysis,e=t!==null,a=s.loading,n=[{name:"\\u6DA8\\u505C\\u5BB6\\u6570",value:e?t.count:"\\u2014",unit:"\\u5BB6",caption:e?`\\u9996\\u677F ${t.first} \\u5BB6 \\xB7 \\u8FDE\\u677F ${t.relay} \\u5BB6`:"\\u9996\\u677F\\u4E0E\\u8FDE\\u677F\\u5206\\u5E03",icon:"flame",pct:e?Math.min(t.count/80*100,100):0},{name:"\\u5C01\\u677F\\u7387",value:e?T(t.sealRate):"\\u2014",unit:"%",caption:e?s.payload.broken===null?"\\u70B8\\u677F\\u6C60\\u6570\\u636E\\u6682\\u7F3A":`\\u70B8\\u677F ${s.payload.broken} \\u5BB6 \\xB7 \\u5F53\\u524D\\u672A\\u5C01\\u4F4F`:"\\u6DA8\\u505C /\\uFF08\\u6DA8\\u505C + \\u70B8\\u677F\\uFF09",icon:"shield",pct:e?t.sealRate??0:0},{name:"\\u6700\\u9AD8\\u8FDE\\u677F",value:e?t.height:"\\u2014",unit:"\\u677F",caption:e?`\\u8FDE\\u677F\\u80A1\\u5360\\u6BD4 ${t.count?T(t.relay/t.count*100):"\\u2014"}%`:"\\u8861\\u91CF\\u5F53\\u65E5\\u5E02\\u573A\\u9AD8\\u5EA6",icon:"chart",pct:e?Math.min(t.height/7*100,100):0,amber:!0},{name:"\\u60C5\\u7EEA\\u5F3A\\u5EA6",value:e?t.emotion??"\\u2014":"\\u2014",unit:"/ 100",caption:e?t.emotion===null?"\\u5F53\\u65E5\\u65E0\\u6709\\u6548\\u8BC4\\u5206\\u6837\\u672C":`${t.emotion>=75?"\\u5F3A\\u5EA6\\u8F83\\u9AD8":t.emotion>=45?"\\u5F3A\\u5EA6\\u4E2D\\u7B49":"\\u5F3A\\u5EA6\\u8F83\\u4F4E"} \\xB7 ${t.emotionCoverage==null?"\\u5DF2\\u5F52\\u6863\\u7684\\u6536\\u76D8\\u5224\\u65AD":`\\u6570\\u636E\\u8986\\u76D6 ${t.emotionCoverage}%`}`:"\\u6DA8\\u505C\\u89C4\\u6A21 \\xB7 \\u5C01\\u677F\\u7387 \\xB7 \\u9AD8\\u5EA6",icon:"dashboard",pct:e?t.emotion??0:0,accent:!0}];c("summary").innerHTML=n.map(r=>`<article class="metric ${a?"loading":""}"><div class="metric-head">${r.name}${Z(r.icon)}</div><div class="metric-value ${r.accent?"accent":""}">${r.value}<small>${r.unit}</small></div><div class="metric-caption">${r.caption}</div><div class="metric-line ${r.amber?"amber":""}"><i style="width:${r.pct}%"></i></div></article>`).join(""),c("pool-count").textContent=e?t.count:"\\u2014",tt(),ve(),be()}function ye(){let t=s.analysis?.stocks||[],e=c("search").value.trim().toLowerCase(),a=c("sector-filter").value;t=t.filter(r=>(!e||r.name.toLowerCase().includes(e)||r.code.includes(e))&&(!a||r.sector===a)&&(s.height==="all"||(s.height==="first"?r.height===1:r.height>1)));let n=c("sort").value;return t.slice().sort(n==="height"?(r,u)=>(u.height??0)-(r.height??0):n==="seal"?(r,u)=>(u.seal??-1)-(r.seal??-1):n==="first"?(r,u)=>(r.first??999999)-(u.first??999999):(r,u)=>(u.score??-1)-(r.score??-1))}function tt(){let t=ye(),e=s.analysis!==null,a=s.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u884C\\u60C5":e?"\\u6CA1\\u6709\\u7B26\\u5408\\u6761\\u4EF6\\u7684\\u4E2A\\u80A1":"\\u6682\\u65E0\\u53EF\\u7528\\u884C\\u60C5",n=s.loading?"\\u6B63\\u5728\\u8BFB\\u53D6\\u516C\\u5F00\\u6DA8\\u505C\\u6C60\\u3001\\u70B8\\u677F\\u6C60\\u4E0E\\u6628\\u65E5\\u6DA8\\u505C\\u6C60\\u2026":e?"\\u5C1D\\u8BD5\\u8C03\\u6574\\u641C\\u7D22\\u3001\\u884C\\u4E1A\\u6216\\u8FDE\\u677F\\u7B5B\\u9009\\u3002":"\\u5207\\u6362\\u8FD1\\u671F\\u4EA4\\u6613\\u65E5\\u671F\\u6216\\u7A0D\\u540E\\u5237\\u65B0\\uFF0C\\u4E5F\\u53EF\\u4EE5\\u67E5\\u770B\\u660E\\u786E\\u6807\\u6CE8\\u7684\\u6F14\\u793A\\u3002";c("stock-rows").innerHTML=t.length?t.map(r=>`<tr><td><button class="stock-name" data-stock="${$(r.code)}">${$(r.name)}</button><span class="stock-code">${$(r.code)}</span></td><td>${mt(r.score)}</td><td><span class="sector-tag">${$(r.sector)}</span></td><td><span class="height-tag ${r.height>=4?"high":""}">${r.height===1?"\\u9996\\u677F":r.height?`${r.height} \\u677F`:"\\u2014"}</span></td><td class="money">${nt(r.first)}</td><td class="money">${Lt(r.seal)}</td><td class="money">${T(r.turnover)}%</td><td class="money">${r.breaks??"\\u2014"}</td></tr>`).join(""):`<tr><td colspan="8"><div class="empty"><strong>${a}</strong>${n}</div></td></tr>`,document.querySelectorAll("[data-stock]").forEach(r=>r.onclick=()=>xe(r.dataset.stock)),c("table-status").textContent=e?`\\u663E\\u793A ${t.length} / ${s.analysis.count} \\u5BB6${s.analysis.excluded?` \\xB7 \\u5DF2\\u5254\\u9664 ${s.analysis.excluded} \\u5BB6 ST / \\u9000\\u5E02\\u6807\\u8BC6\\u4E2A\\u80A1`:""}`:s.loading?"\\u516C\\u5F00\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":"\\u7B49\\u5F85\\u6709\\u6548\\u6570\\u636E"}function ve(){let t=s.analysis?.sectors||[];c("sector-rank").innerHTML=t.length?t.slice(0,5).map((e,a)=>`<button class="sector-row" data-sector="${$(e.name)}"><div class="sector-row-label"><div><span class="rank-index">0${a+1}</span>${$(e.name)}</div><span class="sector-score">${e.score}</span></div><div class="sector-bar"><i style="width:${e.score}%"></i></div><div class="sector-row-meta">${e.count} \\u5BB6\\u6DA8\\u505C \\xB7 \\u6700\\u9AD8 ${e.height} \\u677F</div></button>`).join(""):\'<div class="empty compact">\\u6709\\u6548\\u884C\\u60C5\\u5230\\u8FBE\\u540E\\uFF0C\\u663E\\u793A\\u884C\\u4E1A\\u5F3A\\u5EA6\\u6392\\u540D\\u3002</div>\',c("sector-rows").innerHTML=t.length?t.map(e=>`<tr><td><button class="stock-name" data-sector="${$(e.name)}">${$(e.name)}</button></td><td>${mt(e.score)}</td><td>${e.count}</td><td>${e.height} \\u677F</td><td>${T(e.quality)} / 100</td><td>${T(e.components[3].value)}%</td><td>${Lt(e.amount)}</td></tr>`).join(""):\'<tr><td colspan="7"><div class="empty"><strong>\\u6682\\u65E0\\u677F\\u5757\\u8BC4\\u5206</strong>\\u8BF7\\u5148\\u83B7\\u53D6\\u6709\\u6548\\u4EA4\\u6613\\u65E5\\u884C\\u60C5\\u3002</div></td></tr>\',document.querySelectorAll("[data-sector]").forEach(e=>e.onclick=()=>{c("sector-filter").value=e.dataset.sector,gt("stocks")})}function be(){let t=s.analysis,e=[{name:"5\\u677F+",count:t?t.stocks.filter(n=>n.height>=5).length:0},{name:"4\\u677F",count:t?t.stocks.filter(n=>n.height===4).length:0},{name:"3\\u677F",count:t?t.stocks.filter(n=>n.height===3).length:0},{name:"2\\u677F",count:t?t.stocks.filter(n=>n.height===2).length:0},{name:"\\u9996\\u677F",count:t?t.first:0}],a=Math.max(1,...e.map(n=>n.count));c("ladder-chart").innerHTML=e.map(n=>`<div class="ladder-row"><span class="label">${n.name}</span><div class="ladder-track"><i style="width:${n.count/a*100}%"></i></div><span class="ladder-count">${t?n.count:"\\u2014"}</span></div>`).join(""),c("ladder-insight").textContent=t?`\\u4E0A\\u4E00\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u80A1\\u664B\\u7EA7\\u7387\\uFF1A${t.promotion==null?"\\u6682\\u7F3A":`${T(t.promotion)}%`}${t.previousCount!==null?`\\uFF08\\u6837\\u672C ${t.previousCount} \\u5BB6\\uFF09`:"\\uFF0C\\u6628\\u65E5\\u6570\\u636E\\u6682\\u7F3A"}${s.payload?.promotionBackfilled?"\\uFF0C\\u6309\\u5F52\\u6863\\u6837\\u672C\\u8865\\u7B97":""}\\u3002\\u8FDE\\u677F\\u68AF\\u961F\\u4EC5\\u53CD\\u6620\\u5F53\\u65E5\\u7ED3\\u6784\\u3002`:"\\u7528\\u9996\\u677F\\u4F9B\\u7ED9\\u4E0E\\u8FDE\\u677F\\u9AD8\\u5EA6\\u5171\\u540C\\u89C2\\u5BDF\\u63A5\\u529B\\u7ED3\\u6784\\u3002"}function ht(){let t=s.payload;c("source-tag").className=`source-tag ${s.demo?"demo":s.error?"unavailable":""}`,c("source-tag").textContent=s.loading?"\\u884C\\u60C5\\u52A0\\u8F7D\\u4E2D":s.demo?"\\u6F14\\u793A\\u6570\\u636E":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863":"\\u516C\\u5F00\\u884C\\u60C5":"\\u6570\\u636E\\u6682\\u4E0D\\u53EF\\u7528",c("data-time").textContent=s.loading?"\\u6B63\\u5728\\u83B7\\u53D6\\u6240\\u9009\\u4EA4\\u6613\\u65E5\\u6DA8\\u505C\\u6C60":t?s.demo?"\\u865A\\u6784\\u6837\\u672C\\uFF0C\\u4EC5\\u7528\\u4E8E\\u4F53\\u9A8C\\u8BC4\\u5206\\u548C\\u4EA4\\u4E92":t.archived?`${t.date} \\xB7 ${t.source} \\xB7 \\u5F52\\u6863\\u4E8E ${new Date(t.archivedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09`:`${t.date} \\xB7 ${t.source} \\xB7 \\u83B7\\u53D6\\u4E8E ${new Date(t.fetchedAt).toLocaleTimeString("zh-CN",{timeZone:"Asia/Shanghai",hour12:!1})}\\uFF08\\u5317\\u4EAC\\u65F6\\u95F4\\uFF09${t.cached?" \\xB7 2 \\u5206\\u949F\\u7F13\\u5B58":""}`:"\\u672A\\u4F7F\\u7528\\u6F14\\u793A\\u6570\\u636E\\u66FF\\u4EE3\\u771F\\u5B9E\\u884C\\u60C5",c("sidebar-source").textContent=s.demo?"\\u6F14\\u793A\\u6A21\\u5F0F":t?t.archived?"\\u5386\\u53F2\\u5F52\\u6863 \\xB7 \\u5DF2\\u8BFB\\u53D6":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u5DF2\\u63A5\\u5165":"\\u4E1C\\u65B9\\u8D22\\u5BCC \\xB7 \\u7B49\\u5F85\\u6570\\u636E",c("demo-btn").textContent=s.demo?"\\u8FD4\\u56DE\\u516C\\u5F00\\u884C\\u60C5":"\\u67E5\\u770B\\u6F14\\u793A",c("notice").hidden=!s.error&&!s.demo&&!t?.warnings?.length,c("notice").textContent=s.error||(s.demo?"\\u5F53\\u524D\\u4E3A\\u865A\\u6784\\u6F14\\u793A\\u6837\\u672C\\uFF0C\\u6240\\u6709\\u4E2A\\u80A1\\u3001\\u65E5\\u671F\\u5173\\u8054\\u4E0E\\u5F97\\u5206\\u5747\\u4E0D\\u4EE3\\u8868\\u5B9E\\u9645\\u884C\\u60C5\\u3002":t?.warnings?.join(" "))||"",c("refresh-btn").disabled=s.loading,c("refresh-btn").innerHTML=`${Z("refresh")}${s.loading?"\\u83B7\\u53D6\\u4E2D\\u2026":"\\u5237\\u65B0\\u884C\\u60C5"}`}async function et(){let t=++s.request,e=c("trade-date").value;s.demo=!1,s.loading=!0,s.error=null,s.payload=null,s.analysis=null,s.review=null,s.ai=null,s.reviewMessage="\\u6B63\\u5728\\u68C0\\u67E5\\u5386\\u53F2\\u53CD\\u9988",ht(),H(),M();try{let a=await fetch(`/api/market?date=${encodeURIComponent(e)}`,{signal:AbortSignal.timeout(2e4)}),n=await a.json();if(t!==s.request)return;let r=n.archived===!0&&Array.isArray(n.analysis?.stocks)&&Array.isArray(n.analysis?.sectors);if(!a.ok||!Array.isArray(n.rows)&&!r)throw new Error(n.error||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25");if(n.date!==e)throw new Error("\\u8FD4\\u56DE\\u7684\\u6570\\u636E\\u65E5\\u671F\\u4E0E\\u6240\\u9009\\u65E5\\u671F\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u91CD\\u65B0\\u5237\\u65B0");s.payload=n,Dt()}catch(a){if(t!==s.request)return;s.error=a.name==="TimeoutError"?"\\u884C\\u60C5\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u8BF7\\u7A0D\\u540E\\u5237\\u65B0\\u3002":a.message||"\\u516C\\u5F00\\u884C\\u60C5\\u8BF7\\u6C42\\u5931\\u8D25"}finally{t===s.request&&(s.loading=!1,Kt(),ht(),It(),H(),s.payload?.date===J&&!s.payload.archived&&s.storageAvailable?Zt(t):Qt(t))}}function Kt(){let t=c("sector-filter").value;c("sector-filter").innerHTML=\'<option value="">\\u5168\\u90E8\\u884C\\u4E1A</option>\'+(s.analysis?.sectors||[]).map(e=>`<option value="${$(e.name)}">${$(e.name)}</option>`).join(""),s.analysis?.sectors.some(e=>e.name===t)&&(c("sector-filter").value=t)}function xe(t){let e=s.analysis?.stocks.find(o=>o.code===t);if(!e)return;let a=s.analysis.sectors.find(o=>o.name===e.sector),n=e.factors.filter(o=>o.value!==null).sort((o,g)=>g.value-o.value)[0],r=e.factors.filter(o=>o.value!==null).sort((o,g)=>o.value-g.value)[0],u=`${e.name}\\u4E3A${e.height===1?"\\u9996\\u677F":e.height?`${e.height}\\u8FDE\\u677F`:"\\u8FDE\\u677F\\u9AD8\\u5EA6\\u6682\\u7F3A"}\\uFF0C${nt(e.first)}\\u9996\\u6B21\\u5C01\\u677F${e.breaks!==null?`\\uFF0C\\u76D8\\u4E2D\\u70B8\\u677F ${e.breaks} \\u6B21`:""}\\u3002${n?`${n.name}\\u662F\\u5F53\\u524D\\u8F83\\u5F3A\\u6307\\u6807\\uFF08${Math.round(n.value)} \\u5206\\uFF09\\u3002`:""}${r&&r!==n?`${r.name}\\u76F8\\u5BF9\\u504F\\u5F31\\uFF08${Math.round(r.value)} \\u5206\\uFF09\\u3002`:""}\\u6240\\u5C5E\\u884C\\u4E1A ${a?.count||0} \\u5BB6\\u6DA8\\u505C\\uFF0C\\u677F\\u5757\\u5F97\\u5206 ${a?.score??"\\u2014"}\\u3002`;c("stock-detail").innerHTML=`<div class="detail-head"><div><h2>${$(e.name)}</h2><span class="stock-code">${$(e.code)}${s.demo?" \\xB7 \\u6F14\\u793A\\u6837\\u672C":""}</span><div class="detail-tags"><span class="sector-tag">${$(e.sector)}</span><span class="height-tag">${e.height===1?"\\u9996\\u677F":`${e.height??"\\u2014"} \\u677F`}</span></div></div><div class="detail-score">${e.score??"\\u2014"}<small>\\u7EFC\\u5408\\u8BC4\\u5206 / 100</small></div></div><div class="detail-facts"><div><label>\\u5C01\\u5355\\u91D1\\u989D</label><strong>${Lt(e.seal)}</strong></div><div><label>\\u5C01\\u5355 / \\u6210\\u4EA4\\u989D</label><strong>${e.sealRatio===null?"\\u2014":T(e.sealRatio*100)}%</strong></div><div><label>\\u6362\\u624B\\u7387</label><strong>${T(e.turnover)}%</strong></div><div><label>\\u6700\\u540E\\u5C01\\u677F</label><strong>${nt(e.last)}</strong></div></div><div class="detail-section"><h3>\\u516D\\u7EF4\\u8BC4\\u5206\\u62C6\\u89E3</h3>${e.factors.map(o=>`<div class="factor-row"><span>${o.name}</span><span class="factor-track"><i style="width:${o.value??0}%"></i></span><strong>${o.value===null?"\\u2014":Math.round(o.value)}</strong><span class="weight">\\u6743\\u91CD ${o.weight}</span></div>`).join("")}<p class="detail-footnote">\\u6709\\u6548\\u6307\\u6807\\u5747\\u5206 ${T(e.rawScore)} \\u2212 \\u98CE\\u9669\\u6263\\u5206 ${e.deduction} = ${e.score??"\\u2014"} \\u5206 \\xB7 \\u8986\\u76D6\\u7387 ${e.coverage}%</p></div><div class="detail-section"><h3>\\u98CE\\u9669\\u89C2\\u5BDF</h3>${e.risks.length?e.risks.map(o=>`<div class="risk-row"><strong>${o.text} \\u2212${o.penalty}</strong><span>${o.detail}</span></div>`).join(""):\'<p class="detail-footnote">\\u5F53\\u524D\\u5B57\\u6BB5\\u672A\\u89E6\\u53D1\\u6A21\\u578B\\u98CE\\u9669\\u6263\\u5206\\u9879\\uFF1B\\u516C\\u544A\\u3001\\u57FA\\u672C\\u9762\\u4E0E\\u9898\\u6750\\u98CE\\u9669\\u4ECD\\u9700\\u5355\\u72EC\\u6838\\u5B9E\\u3002</p>\'}</div><div class="detail-section"><h3>\\u76D8\\u540E\\u8BCA\\u65AD</h3><p class="detail-text">${$(u)}</p></div><p class="detail-footnote">\\u6B21\\u65E5\\u89C2\\u5BDF\\uFF1A\\u7ADE\\u4EF7\\u662F\\u5426\\u6709\\u627F\\u63A5\\u3001\\u540C\\u677F\\u5757\\u662F\\u5426\\u5F62\\u6210\\u5408\\u529B\\u3001\\u5F00\\u677F\\u540E\\u80FD\\u5426\\u56DE\\u5C01\\u3002\\u5F53\\u524D\\u89C4\\u5219\\u5206\\u6570\\u5C1A\\u672A\\u7ECF\\u8FC7\\u5386\\u53F2\\u6536\\u76CA\\u6821\\u51C6\\uFF0C\\u4E0D\\u4EE3\\u8868\\u4E0A\\u6DA8\\u6982\\u7387\\u3002</p>`,c("stock-dialog").showModal()}document.querySelectorAll(".close-dialog").forEach(t=>t.onclick=()=>t.closest("dialog").close());document.querySelectorAll("dialog").forEach(t=>t.onclick=e=>{if(e.target===t){let a=t.getBoundingClientRect();(e.clientX<a.left||e.clientX>a.right||e.clientY<a.top||e.clientY>a.bottom)&&t.close()}});c("help-btn").onclick=()=>c("help-dialog").showModal();c("all-sectors").onclick=()=>gt("sectors");c("refresh-btn").onclick=et;c("trade-date").onchange=et;c("search").oninput=tt;c("sector-filter").onchange=tt;c("sort").onchange=tt;document.querySelectorAll("[data-height]").forEach(t=>t.onclick=()=>{s.height=t.dataset.height,document.querySelectorAll("[data-height]").forEach(e=>e.classList.toggle("active",e===t)),tt()});function $t(){c("weight-controls").innerHTML=yt.map((t,e)=>`<div class="weight-item"><div class="weight-heading"><label for="weight-${e}">${t.name}</label><output id="weight-output-${e}" for="weight-${e}">${s.weights[e]}%</output></div><input id="weight-${e}" data-weight="${e}" type="range" min="0" max="50" step="1" value="${s.weights[e]}" aria-describedby="weight-desc-${e}"><p id="weight-desc-${e}">${t.description}</p></div>`).join(""),document.querySelectorAll("[data-weight]").forEach(t=>t.oninput=()=>{let e=[...s.weights];if(e[Number(t.dataset.weight)]=Number(t.value),!e.some(a=>a>0)){t.value=s.weights[Number(t.dataset.weight)],c("model-status").textContent="\\u81F3\\u5C11\\u4FDD\\u7559\\u4E00\\u9879\\u6709\\u6548\\u6743\\u91CD";return}s.weights=e,c(`weight-output-${t.dataset.weight}`).textContent=`${t.value}%`,Rt()}),It()}function It(){let t=s.weights.reduce((e,a)=>e+a,0);c("weight-total").textContent=`\\u5408\\u8BA1 ${t}%`,c("model-status").textContent=s.payload?.archived?"\\u5F53\\u524D\\u5C55\\u793A\\u5F53\\u5929\\u51BB\\u7ED3\\u8BC4\\u5206\\uFF1B\\u4FEE\\u6539\\u6743\\u91CD\\u4E0D\\u4F1A\\u91CD\\u7B97\\u5386\\u53F2\\u5F52\\u6863":t===100?"\\u5DF2\\u5373\\u65F6\\u91CD\\u7B97 \\xB7 \\u5373\\u65F6\\u91CD\\u7B97":`\\u5408\\u8BA1 ${t}%\\uFF0C\\u8BA1\\u7B97\\u65F6\\u81EA\\u52A8\\u5F52\\u4E00\\u5316`,document.querySelectorAll("[data-preset]").forEach(e=>e.classList.toggle("active",R[e.dataset.preset].every((a,n)=>a===s.weights[n])))}var Yt;function Rt(){try{localStorage.setItem("limitLensWeights",JSON.stringify(s.weights))}catch{}It(),Dt(),H(),clearTimeout(Yt),Yt=setTimeout(async()=>{try{let t=await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({weights:s.weights})}),e=await t.json();if(!t.ok)throw new Error(e.error);c("model-status").textContent="\\u6743\\u91CD\\u5DF2\\u4FDD\\u5B58 \\xB7 \\u5DF2\\u5F52\\u6863\\u8BC4\\u5206\\u4FDD\\u6301\\u539F\\u6837"}catch{c("model-status").textContent="\\u670D\\u52A1\\u5668\\u4FDD\\u5B58\\u5931\\u8D25\\uFF0C\\u5F53\\u524D\\u8C03\\u6574\\u4ECD\\u53EF\\u4F7F\\u7528\\uFF0C\\u8BF7\\u7A0D\\u540E\\u91CD\\u8BD5\\u3002"}},500)}document.querySelectorAll("[data-preset]").forEach(t=>t.onclick=()=>{s.weights=[...R[t.dataset.preset]],Rt(),$t()});c("reset-model").onclick=()=>{s.weights=[...R.balanced],Rt(),$t()};function Ee(){let t=["\\u793A\\u4F8B\\xB7\\u8F6F\\u4EF6\\u670D\\u52A1","\\u793A\\u4F8B\\xB7\\u7535\\u5B50\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u673A\\u68B0\\u5236\\u9020","\\u793A\\u4F8B\\xB7\\u7535\\u529B\\u8BBE\\u5907","\\u793A\\u4F8B\\xB7\\u533B\\u836F\\u5236\\u9020"];return Array.from({length:22},(e,a)=>({c:`DEMO${String(a+1).padStart(3,"0")}`,n:`\\u793A\\u4F8B\\u4E2A\\u80A1 ${String(a+1).padStart(2,"0")}`,hybk:t[Math.min(4,Math.floor(a/5))],p:(12+a)*1e3,zdp:a%4===0?20:10,amount:(2+a%6)*1e8,ltsz:(18+a)*1e8,fund:(.3+(21-a)/10)*1e8,hs:4+a%16,lbc:a===0?6:a===1?4:a<5?3:a<9?2:1,fbt:a%6===0?92500:93e3+a*700,lbt:a===0?145500:1e5+a*800,zbc:a%5===0?3:a%3===0?1:0,zttj:{days:3,ct:1}}))}c("demo-btn").onclick=()=>{if(s.demo){et();return}++s.request,s.loading=!1,s.demo=!0,s.error=null,s.review=null,s.ai=null,s.reviewMessage="\\u6F14\\u793A\\u6837\\u672C\\u4E0D\\u4F1A\\u4FDD\\u5B58\\u8BC4\\u5206\\u6216\\u751F\\u6210\\u5E02\\u573A\\u53CD\\u9988\\u3002",s.payload={date:"\\u6F14\\u793A",source:"\\u865A\\u6784\\u6837\\u672C",fetchedAt:new Date().toISOString(),rows:Ee(),broken:6,previous:null,warnings:[]},Dt(),Kt(),ht(),H(),M()};function Xt(t){return t==null?"\\u2014":`${t>0?"+":""}${Number(t).toFixed(2)}%`}function pt(t){return`<span class="${t>0?"up":t<0?"down":""}">${Xt(t)}</span>`}function M(){let t=s.review,e=s.ai;c("review-date-label").textContent=t?`${t.snapshotDate} \\u8BC4\\u5206 \\u2192 ${t.date} \\u8868\\u73B0`:"\\u7B49\\u5F85\\u9996\\u4E2A\\u53CD\\u9988\\u65E5",c("review-status").textContent=s.reviewBusy?"\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C\\u6536\\u76D8\\u7ED3\\u679C\\u2026":s.reviewMessage||"\\u5F53\\u5929\\u6536\\u76D8\\u540E\\u4FDD\\u5B58\\u539F\\u59CB\\u8BC4\\u5206\\uFF0C\\u4E0B\\u4E00\\u4E2A\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5E02\\u573A\\u8868\\u73B0\\u3002",c("run-review").disabled=s.reviewBusy||s.demo,c("review-coverage").textContent=t?`${t.validCount} / ${t.total} \\u5BB6\\u6709\\u6548`:"\\u7B49\\u5F85\\u6837\\u672C";let a=[{name:"\\u7CFB\\u7EDF\\u5BA2\\u89C2\\u53CD\\u9988\\u5206",value:t?.systemScore??"\\u2014",unit:"/ 100",caption:"\\u5355\\u65E5\\u6392\\u5E8F\\u4E0E\\u76F8\\u5BF9\\u8868\\u73B0\\uFF0C\\u89C4\\u5219\\u8BA1\\u7B97"},{name:"\\u9AD8\\u5206\\u7EC4\\u6B21\\u65E5\\u6536\\u76CA",value:t?.topMean===null||!t?"\\u2014":T(t.topMean,2),unit:"%",caption:t?`\\u6709\\u6548 ${t.topValid} \\u5BB6 \\xB7 \\u8BC4\\u5206\\u524D 20%`:"\\u6309\\u6628\\u65E5\\u8BC4\\u5206\\u56FA\\u5B9A\\u89C2\\u5BDF\\u7EC4"},{name:"\\u76F8\\u5BF9\\u6837\\u672C\\u8D85\\u989D",value:t?.excess===null||!t?"\\u2014":T(t.excess,2),unit:"\\u767E\\u5206\\u70B9",caption:t?`\\u5168\\u6837\\u672C\\u5747\\u503C ${Xt(t.allMean)}`:"\\u9AD8\\u5206\\u7EC4\\u5747\\u503C \\u2212 \\u5168\\u6837\\u672C\\u5747\\u503C"},{name:"\\u8BC4\\u5206\\u4E0E\\u8868\\u73B0\\u76F8\\u5173",value:t?.rho===null||!t?"\\u2014":T(t.rho,2),unit:"\\u03C1",caption:"Spearman \\u79E9\\u76F8\\u5173\\uFF0C\\u8303\\u56F4 \\u22121 \\u81F3 1"}];c("review-metrics").innerHTML=a.map(o=>`<article class="metric"><div class="metric-head">${o.name}${Z("shield")}</div><div class="metric-value">${o.value}<small>${o.unit}</small></div><div class="metric-caption">${o.caption}</div></article>`).join(""),c("review-conclusion").hidden=!t;let n=s.evidence?.review?.report,r="";if(n){let o=n.payload.family?.find(h=>h.metric==="MEAN_DAILY_IC"),g=n.payload.tags?.includes("METHOD_SIMULATION_LIMITED"),f=n.horizon,y=n.payload.window.validDates.length;o?.ci?r=`${f} \\u65E5\\u6EDA\\u52A8\\u8BC1\\u636E\\uFF08\\u63A2\\u7D22\\u8BCA\\u65AD\\uFF09\\uFF1A\\u5E73\\u5747\\u65E5 IC ${o.estimate.toFixed(2)}\\uFF0C95% \\u533A\\u95F4 [${o.ci.lower.toFixed(2)}, ${o.ci.upper.toFixed(2)}]\\uFF0C${y}/${n.payload.window.expectedDates.length} \\u4E2A\\u6709\\u6548\\u4EA4\\u6613\\u65E5${g?"\\uFF1B\\u65B9\\u6CD5\\u6A21\\u62DF\\u53D7\\u9650\\uFF0C\\u4EC5\\u4F5C\\u63A2\\u7D22\\u5C55\\u793A":""}\\u3002\\u533A\\u95F4\\u8DE8\\u96F6\\u8868\\u793A\\u8BC1\\u636E\\u4E0D\\u8DB3\\uFF0C\\u4E0D\\u7B49\\u4E8E\\u7B56\\u7565\\u65E0\\u6548\\u3002`:r=`${f} \\u65E5\\u6EDA\\u52A8\\u8BC1\\u636E\\uFF1A${n.payload.status}${n.payload.reasons?.length?`\\uFF08${n.payload.reasons[0]}\\uFF09`:"\\uFF0C\\u6837\\u672C\\u79EF\\u7D2F\\u4E2D"}\\u3002`;let p=n.payload.secondaryFamilies?.find(h=>h.name==="SECTOR_SECONDARY_EXCESS"),l=(p?.entries??[]).filter(h=>h.direction==="POSITIVE");p?.familySize&&(r+=` \\u677F\\u5757\\u6B21\\u8981\\u65CF ${p.familySize} \\u4E2A\\uFF08Holm \\u8DE8\\u677F\\u5757\\u6821\\u6B63\\uFF09\\uFF1A${l.length?`${l.map(h=>h.sector).join("\\u3001")} \\u533A\\u95F4\\u4E3A\\u6B63\\uFF08\\u63A2\\u7D22\\uFF09`:"\\u65E0\\u533A\\u95F4\\u4E3A\\u6B63\\u7684\\u677F\\u5757"}`)}c("review-conclusion").textContent=`${t?.conclusion||""}${r?` ${r}`:""}`,c("review-rows").innerHTML=t?t.rows.map((o,g)=>`<tr><td><strong class="review-stock">${$(o.name)}${g<t.topSize?\'<span class="top-group">\\u9AD8\\u5206\\u7EC4</span>\':""}</strong><span class="stock-code">${$(o.code)}</span></td><td>${mt(o.score)}</td><td>${o.available?pt(o.openReturn):"\\u2014"}</td><td>${o.available?pt(o.closeReturn):"\\u2014"}</td><td>${o.available?pt(o.lowReturn):"\\u2014"}</td><td>${o.available?o.continued?\'<span class="height-tag high">\\u662F</span>\':"\\u5426":`<span class="small-muted" title="${$(o.reason)}">\\u4E0D\\u53EF\\u6BD4</span>`}</td></tr>`).join(""):\'<tr><td colspan="6"><div class="empty"><strong>\\u5148\\u4FDD\\u5B58\\u5224\\u65AD\\uFF0C\\u518D\\u68C0\\u9A8C\\u7ED3\\u679C</strong>\\u6536\\u76D8\\u540E\\u8BBF\\u95EE\\u5DE5\\u4F5C\\u53F0\\u4F1A\\u81EA\\u52A8\\u4FDD\\u5B58\\u5F53\\u65E5\\u8BC4\\u5206\\u3002\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u7684\\u771F\\u5B9E\\u53CD\\u9988\\u5230\\u8FBE\\u524D\\uFF0C\\u6B64\\u5904\\u4FDD\\u6301\\u7A7A\\u767D\\u3002</div></td></tr>\',c("review-sector-rows").innerHTML=t?t.sectors.map(o=>`<tr><td>${$(o.name)}</td><td>${mt(o.score)}</td><td>${o.available} / ${o.count}</td><td>${pt(o.averageReturn)}</td><td>${o.continuationRate===null?"\\u2014":T(o.continuationRate*100)}%</td></tr>`).join(""):\'<tr><td colspan="5"><div class="empty compact">\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u6838\\u9A8C\\u5DF2\\u4FDD\\u5B58\\u7684\\u677F\\u5757\\u8BC4\\u5206\\u3002</div></td></tr>\',c("ai-status-tag").textContent=s.aiConfig.configured?"\\u5DF2\\u8FDE\\u63A5":"\\u5F85\\u914D\\u7F6E",c("model-ai-status").textContent=s.aiConfig.configured?"\\u5DF2\\u914D\\u7F6E":"\\u672A\\u914D\\u7F6E",c("model-ai-detail").textContent=s.aiConfig.configured?`\\u5DF2\\u914D\\u7F6E ${s.aiConfig.model}\\u3002\\u53EA\\u5411\\u6A21\\u578B\\u53D1\\u9001\\u51BB\\u7ED3\\u8BC4\\u5206\\u3001\\u6838\\u9A8C\\u7ED3\\u679C\\u4E0E\\u8FD1\\u671F\\u5BA2\\u89C2\\u6307\\u6807\\uFF08\\u4E0D\\u542B\\u8FC7\\u5F80AI\\u610F\\u89C1\\uFF09\\uFF0C\\u8BC4\\u4EF7\\u4F1A\\u4E0E\\u539F\\u59CB\\u6570\\u636E\\u4E00\\u5E76\\u4FDD\\u5B58\\u3002`:"\\u670D\\u52A1\\u7AEF\\u914D\\u7F6E\\u5BC6\\u94A5\\u3001\\u63A5\\u53E3\\u5730\\u5740\\u548C\\u6A21\\u578B\\u540E\\uFF0CAI \\u4F1A\\u6839\\u636E\\u51BB\\u7ED3\\u8BC4\\u5206\\u3001\\u5DF2\\u6838\\u9A8C\\u5E02\\u573A\\u7ED3\\u679C\\u4E0E\\u8FD1\\u671F\\u5BA2\\u89C2\\u6307\\u6807\\u8D8B\\u52BF\\u751F\\u6210\\u8BC4\\u4EF7\\u3002\\u5BC6\\u94A5\\u4E0D\\u8FDB\\u5165\\u6D4F\\u89C8\\u5668\\u3002",c("ai-content").innerHTML=e?`<div class="ai-score"><strong>${e.score}</strong><span>AI \\u4E3B\\u89C2\\u8BC4\\u4EF7 / 100<small>${$(e.model)} \\xB7 AI \\u4E3B\\u89C2\\u628A\\u63E1${e.confidence==="high"?"\\u8F83\\u9AD8":e.confidence==="medium"?"\\u4E2D\\u7B49":"\\u8F83\\u4F4E"}\\uFF08\\u4E3B\\u89C2\\u8BC4\\u4EF7\\uFF0C\\u4E0D\\u662F\\u7EDF\\u8BA1\\u7F6E\\u4FE1\\u533A\\u95F4\\uFF09</small></span></div><p class="ai-summary">${$(e.summary)}</p><h3>\\u8BC4\\u4EF7\\u4F9D\\u636E</h3><ul>${e.evidence.map(o=>`<li>${$(o)}</li>`).join("")}</ul>${e.failures.length?`<h3>\\u5224\\u65AD\\u4E0D\\u8DB3</h3><ul>${e.failures.map(o=>`<li>${$(o)}</li>`).join("")}</ul>`:""}${e.suggestions.length?`<h3>\\u6539\\u8FDB\\u5EFA\\u8BAE</h3><ul>${e.suggestions.map(o=>`<li>${$(o)}</li>`).join("")}</ul>`:""}<p class="ai-note">AI \\u8BC4\\u4EF7\\u4E0E\\u89C4\\u5219\\u53CD\\u9988\\u5206\\u5206\\u522B\\u4FDD\\u7559\\u3002\\u7EDF\\u8BA1\\u533A\\u95F4\\u89C1\\u4E0A\\u65B9\\u6EDA\\u52A8\\u8BC1\\u636E\\u6458\\u8981\\uFF1B\\u5EFA\\u8BAE\\u4E0D\\u4F1A\\u81EA\\u52A8\\u6539\\u5199\\u6A21\\u578B\\u3002</p>`:`<div class="ai-empty"><span class="ai-symbol">${Z("sliders")}</span><h3>${s.aiConfig.configured?"\\u7B49\\u5F85\\u5DF2\\u6838\\u9A8C\\u7ED3\\u679C":"\\u5927\\u6A21\\u578B\\u5C1A\\u672A\\u914D\\u7F6E"}</h3><p>${s.aiConfig.configured?"\\u79EF\\u7D2F\\u4E8B\\u524D\\u5FEB\\u7167\\u5E76\\u53D6\\u5F97\\u6B21\\u65E5\\u6536\\u76D8\\u7ED3\\u679C\\u540E\\uFF0CAI \\u624D\\u5BF9\\u7CFB\\u7EDF\\u8BC4\\u4EF7\\u3002":"\\u5DF2\\u9884\\u7559 DeepSeek\\u3001OpenAI\\u3001\\u901A\\u4E49\\u517C\\u5BB9\\u63A5\\u53E3\\u3002\\u914D\\u7F6E\\u670D\\u52A1\\u7AEF\\u5BC6\\u94A5\\u540E\\u542F\\u7528\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6A21\\u62DF AI \\u7ED3\\u8BBA\\u66FF\\u4EE3\\u771F\\u5B9E\\u8C03\\u7528\\u3002"}</p><div class="ai-process">\\u51BB\\u7ED3\\u6628\\u65E5\\u8BC4\\u5206<span>\\u2193</span>\\u6838\\u9A8C\\u4ECA\\u65E5\\u5E02\\u573A\\u7ED3\\u679C<span>\\u2193</span>AI \\u8BC4\\u5206\\u3001\\u8BC1\\u636E\\u4E0E\\u6539\\u8FDB\\u5EFA\\u8BAE</div></div>`,c("ai-grade-btn").disabled=s.demo||s.reviewBusy||!s.aiConfig.configured||!t||!!e,c("ai-grade-btn").textContent=e?"\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58":"\\u751F\\u6210 AI \\u8BC4\\u4EF7";let u=s.history?.reviews||[];c("review-history").innerHTML=u.length?`<div class="history-list">${u.map(o=>`<button data-history="${$(o.date)}"><span>${$(o.snapshotDate)} \\u2192 ${$(o.date)}</span><span>\\u5BA2\\u89C2 ${o.systemScore??"\\u2014"} \\u5206 \\xB7 AI ${o.aiScore??"\\u2014"} \\u5206</span></button>`).join("")}</div>`:\'<div class="empty compact">\\u5C1A\\u65E0\\u53CD\\u9988\\u8BB0\\u5F55\\u3002\\u5FEB\\u7167\\u4E0E\\u53CD\\u9988\\u4F1A\\u4FDD\\u5B58\\u5230\\u670D\\u52A1\\u7AEF\\uFF0C\\u8DE8\\u8BBE\\u5907\\u53EF\\u67E5\\u770B\\u3002</div>\',document.querySelectorAll("[data-history]").forEach(o=>o.onclick=()=>{c("trade-date").value=o.dataset.history,et()})}async function Qt(t=s.request){try{let[e,a,n]=await Promise.all([fetch(`/api/review?date=${encodeURIComponent(c("trade-date").value)}`),fetch("/api/history"),fetch(`/api/evidence?asOf=${encodeURIComponent(c("trade-date").value)}`)]),r=await e.json(),u=await a.json();if(t!==s.request||s.demo)return;if(!e.ok)throw new Error(r.error);s.review=r.review,s.ai=r.ai,s.aiConfig=r.aiStatus||s.aiConfig,s.history=a.ok?u:s.history,s.evidence=n.ok?await n.json():null,s.reviewMessage=r.reason||"\\u5DF2\\u52A0\\u8F7D\\u51BB\\u7ED3\\u8BC4\\u5206\\u4E0E\\u5B9E\\u9645\\u7ED3\\u679C\\u3002"}catch(e){t===s.request&&(s.reviewMessage=e.message||"\\u5386\\u53F2\\u53CD\\u9988\\u6682\\u65F6\\u4E0D\\u53EF\\u7528")}t===s.request&&M()}async function Zt(t=s.request){if(!(s.demo||s.reviewBusy)){s.reviewBusy=!0,s.reviewMessage="\\u6B63\\u5728\\u5F52\\u6863\\u4E0E\\u6838\\u9A8C",M();try{let e=await fetch("/api/run-daily",{method:"POST",signal:AbortSignal.timeout(13e4)}),a=await e.json();if(t!==s.request||s.demo)return;if(!e.ok)throw new Error(a.error);s.review=a.review,s.ai=a.ai||null,s.aiConfig=a.aiStatus||s.aiConfig,s.history=a.history||s.history,s.reviewMessage=a.aiError||a.reason||(a.review?"\\u5DF2\\u5B8C\\u6210\\u6628\\u65E5\\u5224\\u65AD\\u6838\\u9A8C\\uFF1B\\u539F\\u59CB\\u8BC4\\u5206\\u4E0E\\u7ED3\\u679C\\u5747\\u5DF2\\u4FDD\\u5B58\\u3002":"\\u4ECA\\u65E5\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863\\uFF0C\\u4E0B\\u4E00\\u4EA4\\u6613\\u65E5\\u751F\\u6210\\u53CD\\u9988\\u3002"),c("snapshot-status").textContent=a.snapshot?.saved?`${a.snapshot.date} \\u539F\\u59CB\\u8BC4\\u5206\\u5DF2\\u5F52\\u6863`:a.snapshot?.reason||"\\u7B49\\u5F85\\u6536\\u76D8\\u540E\\u4FDD\\u5B58"}catch(e){t===s.request&&(s.reviewMessage=e.name==="TimeoutError"?"\\u53CD\\u9988\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF0C\\u53EF\\u5237\\u65B0\\u8BFB\\u53D6\\u5DF2\\u4FDD\\u5B58\\u7684\\u8FDB\\u5EA6\\u3002":e.message,c("snapshot-status").textContent="\\u5F52\\u6863\\u6682\\u4E0D\\u53EF\\u7528\\uFF0C\\u53EF\\u7A0D\\u540E\\u91CD\\u8BD5")}finally{s.reviewBusy=!1,M(),window.dispatchEvent(new Event("paper-updated"))}}}c("run-review").onclick=()=>{c("trade-date").value===J?Zt():Qt()};c("ai-grade-btn").onclick=async()=>{if(!s.review)return;let t=s.review.date;s.reviewBusy=!0,M(),c("ai-action-status").textContent="\\u6A21\\u578B\\u6B63\\u5728\\u8BC4\\u4EF7\\u2026";try{let e=await fetch("/api/ai-grade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:t}),signal:AbortSignal.timeout(55e3)}),a=await e.json();if(!e.ok)throw new Error(a.error);s.review?.date===t&&(s.ai=a.ai),c("ai-action-status").textContent="\\u8BC4\\u4EF7\\u5DF2\\u4FDD\\u5B58"}catch(e){c("ai-action-status").textContent=e.message||"AI \\u8C03\\u7528\\u5931\\u8D25"}finally{s.reviewBusy=!1,M()}};async function Ce(){try{let t=await fetch("/api/market/latest-date",{signal:AbortSignal.timeout(6e3)}),e=await t.json();t.ok&&/^\\d{4}-\\d{2}-\\d{2}$/.test(e.date)&&e.date<=J&&(c("trade-date").value=e.date)}catch{}}async function Se(){let t=fetch("/api/settings",{signal:AbortSignal.timeout(5e3)}).then(async a=>a.ok?a.json():null).catch(()=>null),[e]=await Promise.all([t,Ce()]);e&&(s.storageAvailable=!0,ke(e.weights)&&(s.weights=e.weights),s.aiConfig=e.ai,$t()),await et()}function ke(t){return Array.isArray(t)&&t.length===6&&t.every(e=>Number.isInteger(e)&&e>=0&&e<=50)&&t.some(e=>e>0)}$t();ht();H();M();Se();if(document.modelContext?.registerTool){let t=new AbortController;try{Promise.resolve(document.modelContext.registerTool({name:"read_limit_up_analysis",title:"\\u8BFB\\u53D6\\u6DA8\\u505C\\u5206\\u6790",description:"\\u8BFB\\u53D6\\u5F53\\u524D\\u4EA4\\u6613\\u65E5\\u7684\\u4E2A\\u80A1\\u4E0E\\u884C\\u4E1A\\u8BC4\\u5206\\uFF0C\\u5E76\\u660E\\u786E\\u8FD4\\u56DE\\u771F\\u5B9E\\u6216\\u6F14\\u793A\\u6570\\u636E\\u72B6\\u6001\\u3002",inputSchema:{type:"object",properties:{},additionalProperties:!1},annotations:{readOnlyHint:!0,untrustedContentHint:!0},execute(e){if(e===null||typeof e!="object"||Array.isArray(e)||Object.keys(e).length)throw new Error("\\u8F93\\u5165\\u5FC5\\u987B\\u662F\\u7A7A\\u5BF9\\u8C61");return{date:s.payload?.date??null,mode:s.demo?"demo":"public",loading:s.loading,error:s.error,stocks:s.analysis?.stocks.map(a=>({code:a.code,name:a.name,sector:a.sector,score:a.score,coverage:a.coverage,risks:a.risks.map(n=>n.text)}))||[],sectors:s.analysis?.sectors.map(a=>({name:a.name,score:a.score,count:a.count}))||[]}}},{signal:t.signal})).catch(()=>{}),window.addEventListener("pagehide",()=>t.abort(),{once:!0})}catch{}}\n', "type": "text/javascript; charset=utf-8" }, "/assets/styles.css": { "body": '* {\n  box-sizing: border-box;\n}\n:root {\n  --navy: #101e2e;\n  --ink: #1b2c3f;\n  --muted: #7c8795;\n  --line: #e7ebf0;\n  --bg: #f4f6f9;\n  --teal: #148775;\n  --red: #db5a55;\n  --green: #309477;\n  --amber: #c18a31;\n}\nbody {\n  margin: 0;\n  background: var(--bg);\n  color: var(--ink);\n  font:\n    14px/1.55 -apple-system,\n    BlinkMacSystemFont,\n    "Segoe UI",\n    "PingFang SC",\n    "Microsoft YaHei",\n    sans-serif;\n}\nbutton,\ninput,\nselect {\n  font: inherit;\n}\nbutton,\na,\ninput,\nselect {\n  touch-action: manipulation;\n}\nbutton {\n  cursor: pointer;\n}\nbutton {\n  border: 0;\n}\nbutton:focus-visible,\na:focus-visible,\ninput:focus-visible,\nselect:focus-visible {\n  outline: 3px solid #66c5ba;\n  outline-offset: 3px;\n}\nbutton:disabled {\n  opacity: 0.65;\n  cursor: wait;\n}\na {\n  text-decoration: none;\n  color: inherit;\n}\n[hidden] {\n  display: none !important;\n}\nh1,\nh2,\nh3,\np {\n  margin: 0;\n}\nh2 {\n  font-size: 16px;\n  font-weight: 650;\n}\nh3 {\n  font-size: 14px;\n}\nsvg {\n  width: 19px;\n  height: 19px;\n  display: block;\n  fill: none;\n  stroke: currentColor;\n  stroke-width: 1.6;\n  stroke-linecap: round;\n  stroke-linejoin: round;\n}\n.shell {\n  display: flex;\n  min-height: 100vh;\n}\n.sidebar {\n  width: 222px;\n  position: fixed;\n  inset: 0 auto 0 0;\n  background: var(--navy);\n  color: #b4c0cd;\n  padding: 32px 18px;\n  display: flex;\n  flex-direction: column;\n}\n.brand {\n  display: flex;\n  gap: 12px;\n  align-items: center;\n  color: #fff;\n  font-size: 19px;\n  font-weight: 650;\n  padding: 0 10px;\n}\n.brand small {\n  display: block;\n  font-size: 10px;\n  letter-spacing: 2.8px;\n  font-weight: 450;\n  color: #7e93aa;\n  margin-top: 3px;\n}\n.brand-mark {\n  display: flex;\n  gap: 4px;\n  align-items: flex-end;\n  width: 29px;\n  height: 29px;\n}\n.brand-mark i {\n  display: block;\n  background: #55c9b0;\n  width: 6px;\n  border-radius: 2px;\n}\n.brand-mark i:nth-child(1) {\n  height: 12px;\n}\n.brand-mark i:nth-child(2) {\n  height: 20px;\n}\n.brand-mark i:nth-child(3) {\n  height: 29px;\n}\n.nav-label {\n  font-size: 12px;\n  color: #718398;\n  letter-spacing: 1px;\n  margin: 46px 16px 13px;\n}\n.nav-item {\n  background: transparent;\n  color: #91a4b8;\n  display: flex;\n  gap: 13px;\n  align-items: center;\n  padding: 13px 16px;\n  width: 100%;\n  text-align: left;\n  margin-bottom: 7px;\n  border-radius: 7px;\n  font-size: 14px;\n}\n.nav-item.active {\n  background: #223847;\n  color: #70d6c2;\n}\n.nav-item:hover {\n  background: #1d3042;\n}\n.sidebar-note {\n  margin-top: auto;\n  background: #152738;\n  border: 1px solid #293b4e;\n  padding: 19px 15px;\n  border-radius: 8px;\n}\n.mini-label {\n  display: block;\n  color: #6d8b9d;\n  font-size: 12px;\n  margin-bottom: 9px;\n}\n.sidebar-note strong {\n  font-size: 14px;\n  color: #d5dee7;\n  font-weight: 500;\n}\n.sidebar-note p {\n  font-size: 12px;\n  color: #8a9bae;\n  margin: 9px 0 15px;\n  line-height: 1.8;\n}\n.note-line {\n  height: 1px;\n  background: #2b3b4d;\n  margin-bottom: 12px;\n}\n.sidebar-note > span:last-child {\n  font-size: 12px;\n  color: #90a3b7;\n}\n.sidebar-footer {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  margin: 22px 12px 0;\n  font-size: 12px;\n}\n.sidebar-footer small {\n  display: block;\n  color: #60768c;\n  font-size: 12px;\n}\n.workspace {\n  margin-left: 222px;\n  width: calc(100% - 222px);\n}\n.topbar {\n  height: 68px;\n  background: #fff;\n  border-bottom: 1px solid var(--line);\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 0 35px;\n}\n.breadcrumb {\n  font-size: 13px;\n  color: #8a95a2;\n  display: flex;\n  gap: 14px;\n}\n.breadcrumb strong {\n  color: #526073;\n  font-weight: 500;\n}\n.topbar-right {\n  display: flex;\n  align-items: center;\n  gap: 24px;\n}\n.session-label {\n  font-size: 13px;\n  color: #7d8897;\n}\n.icon-button {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  background: transparent;\n  width: 32px;\n  height: 32px;\n  color: #8b98a6;\n  border-radius: 5px;\n}\n.icon-button:hover {\n  background: #eef4f4;\n  color: var(--teal);\n}\nmain {\n  max-width: 1680px;\n  margin: auto;\n  padding: 31px 35px 20px;\n}\n.page-heading {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 20px;\n  margin-bottom: 25px;\n}\n.eyebrow {\n  font-size: 11px;\n  letter-spacing: 1.9px;\n  color: #8290a0;\n  font-weight: 650;\n}\n.page-heading h1 {\n  font-size: 28px;\n  letter-spacing: -0.7px;\n  font-weight: 650;\n  margin-top: 5px;\n}\n.page-heading p {\n  font-size: 14px;\n  color: #86909d;\n  margin-top: 6px;\n}\n.heading-actions {\n  display: flex;\n  gap: 12px;\n  align-items: center;\n}\n.date-control {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  background: #fff;\n  border: 1px solid #e0e5ec;\n  padding: 9px 12px;\n  border-radius: 6px;\n  color: #8391a0;\n}\n.date-control input {\n  border: 0;\n  outline: 0;\n  color: #536276;\n  width: 130px;\n  background: transparent;\n}\n.primary,\n.secondary {\n  padding: 10px 16px;\n  border-radius: 6px;\n  font-weight: 550;\n  display: flex;\n  align-items: center;\n  gap: 9px;\n  white-space: nowrap;\n}\n.primary {\n  background: var(--teal);\n  color: #fff;\n}\n.primary:hover {\n  background: #106f62;\n}\n.secondary {\n  background: #f3f5f8;\n  color: #4f6275;\n  border: 1px solid var(--line);\n}\n.data-strip {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 21px;\n  gap: 12px;\n  color: #8a96a3;\n  font-size: 12px;\n}\n.data-strip > div {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  flex-wrap: wrap;\n}\n.source-tag {\n  display: inline-flex;\n  background: #e5f1ed;\n  color: #3b8b7b;\n  font-size: 12px;\n  border-radius: 4px;\n  padding: 3px 8px;\n}\n.source-tag.unavailable {\n  background: #fff1df;\n  color: #a27428;\n}\n.source-tag.demo {\n  background: #edf0f7;\n  color: #6e7ba1;\n}\n.text-button {\n  background: transparent;\n  color: #74839b;\n  font-size: 12px;\n  white-space: nowrap;\n  padding: 4px;\n}\n.text-button:hover {\n  color: var(--teal);\n}\n.notice {\n  padding: 13px 17px;\n  background: #fff8ed;\n  border: 1px solid #eedfc6;\n  color: #91703b;\n  border-radius: 6px;\n  margin-bottom: 19px;\n  font-size: 14px;\n}\n.metrics {\n  display: grid;\n  grid-template-columns: repeat(4, minmax(0, 1fr));\n  gap: 17px;\n  margin-bottom: 24px;\n}\n.metric {\n  background: white;\n  border: 1px solid var(--line);\n  border-radius: 8px;\n  padding: 20px 21px;\n  position: relative;\n  overflow: hidden;\n}\n.metric-head {\n  color: #7c8999;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  font-size: 13px;\n}\n.metric-head svg {\n  width: 17px;\n  height: 17px;\n  color: #aab4c1;\n}\n.metric-value {\n  font-size: 36px;\n  font-family: ui-sans-serif, system-ui, sans-serif;\n  font-weight: 600;\n  letter-spacing: -1.7px;\n  margin-top: 8px;\n  line-height: 1.25;\n}\n.metric-value small {\n  font-size: 14px;\n  color: #94a0ae;\n  font-weight: 400;\n  letter-spacing: 0;\n  margin-left: 5px;\n}\n.metric-caption {\n  font-size: 12px;\n  color: #8a96a4;\n  margin-top: 10px;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n}\n.metric-line {\n  height: 3px;\n  background: #edf2f3;\n  border-radius: 3px;\n  margin-top: 15px;\n}\n.metric-line i {\n  display: block;\n  height: 100%;\n  border-radius: 3px;\n  background: #80bfad;\n}\n.metric-line.amber i {\n  background: #e0b065;\n}\n.metric-value.accent {\n  color: var(--teal);\n}\n.overview-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) 300px;\n  gap: 22px;\n  align-items: start;\n}\n.panel {\n  --panel-inline-padding: 22px;\n  background: #fff;\n  border: 1px solid var(--line);\n  border-radius: 8px;\n  overflow: hidden;\n}\n.panel-heading {\n  padding: 21px var(--panel-inline-padding) 17px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n}\n.panel-heading h2 {\n  display: flex;\n  align-items: center;\n  gap: 9px;\n}\n.panel-heading p {\n  font-size: 12px;\n  color: #929ca9;\n  margin-top: 5px;\n}\n.count-chip {\n  font-size: 11px;\n  font-weight: 500;\n  background: #eef3f6;\n  padding: 0 7px;\n  line-height: 20px;\n  border-radius: 4px;\n  color: #7990a2;\n}\n.small-muted {\n  font-size: 12px;\n  color: #9ca6b0;\n  white-space: nowrap;\n}\n.filters {\n  display: flex;\n  gap: 12px;\n  padding: 0 22px 17px;\n}\n.search-control {\n  display: flex;\n  gap: 9px;\n  align-items: center;\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  padding: 8px 10px;\n  flex: 1;\n  min-width: 100px;\n  color: #9ca8b5;\n  background: #fcfdfe;\n}\n.search-control svg {\n  width: 15px;\n  height: 15px;\n}\n.search-control input {\n  border: 0;\n  background: transparent;\n  outline: 0;\n  width: 100%;\n  min-width: 0;\n  font-size: 13px;\n  color: var(--ink);\n}\ninput::placeholder {\n  color: #a1aab6;\n}\nselect {\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  color: #6b798b;\n  padding: 7px 9px;\n  background: #fff;\n  max-width: 180px;\n  font-size: 13px;\n}\n.table-subnav {\n  padding: 0 22px 13px;\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n  align-items: center;\n}\n.segments {\n  display: flex;\n  gap: 6px;\n}\n.segments button {\n  background: transparent;\n  color: #8c97a4;\n  padding: 5px 12px;\n  font-size: 13px;\n  border-radius: 4px;\n}\n.segments button.active {\n  background: #e8f3ef;\n  color: var(--teal);\n  font-weight: 550;\n}\n.sort-control {\n  display: flex;\n  gap: 8px;\n  align-items: center;\n  font-size: 12px;\n  color: #9aa4af;\n}\n.sort-control select {\n  border: 0;\n  padding: 4px;\n  font-size: 12px;\n}\n.table-scroll {\n  overflow-x: auto;\n}\ntable {\n  border-collapse: collapse;\n  width: 100%;\n  white-space: nowrap;\n  font-size: 13px;\n  text-align: left;\n}\nth {\n  padding: 11px 16px;\n  background: #f8fafc;\n  font-size: 12px;\n  font-weight: 500;\n  color: #8b97a5;\n  border-block: 1px solid #edf0f3;\n}\ntd {\n  padding: 17px 16px;\n  border-bottom: 1px solid #eef1f5;\n  vertical-align: middle;\n}\ntd:first-child,\nth:first-child {\n  padding-left: 22px;\n}\ntd:last-child,\nth:last-child {\n  padding-right: 22px;\n}\ntbody tr:hover {\n  background: #f8fbfa;\n}\n.stock-name {\n  background: transparent;\n  text-align: left;\n  display: block;\n  padding: 0;\n  color: #253a4d;\n  font-size: 14px;\n  font-weight: 550;\n  max-width: 145px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n.stock-name:hover {\n  color: var(--teal);\n}\n.stock-code {\n  font-size: 11px;\n  color: #9ba5b0;\n  display: block;\n  margin-top: 3px;\n  font-variant-numeric: tabular-nums;\n  letter-spacing: 0.3px;\n}\n.score-cell {\n  display: flex;\n  align-items: center;\n  gap: 7px;\n}\n.score-number {\n  font-size: 18px;\n  font-weight: 650;\n  color: var(--teal);\n  font-variant-numeric: tabular-nums;\n}\n.score-number.mid {\n  color: #b18745;\n}\n.score-number.low {\n  color: #8695a5;\n}\n.score-track {\n  height: 3px;\n  background: #eaf1ee;\n  width: 36px;\n  border-radius: 2px;\n}\n.score-track i {\n  height: 100%;\n  display: block;\n  background: #78bda9;\n  border-radius: 2px;\n}\n.sector-tag {\n  background: #f4f6f9;\n  color: #7b8da0;\n  padding: 4px 7px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n.height-tag {\n  color: #61758a;\n  background: #edf2f8;\n  padding: 3px 7px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n.height-tag.high {\n  color: #b38742;\n  background: #fbf1df;\n}\n.money {\n  font-variant-numeric: tabular-nums;\n  color: #556a7d;\n}\n.table-footer {\n  font-size: 12px;\n  color: #9aa4b0;\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n  padding: 15px 22px;\n}\n.right-column {\n  display: flex;\n  flex-direction: column;\n  gap: 20px;\n}\n.sector-row {\n  display: block;\n  background: transparent;\n  width: 100%;\n  padding: 10px 22px;\n  text-align: left;\n}\n.sector-row:hover {\n  background: #f6faf8;\n}\n.sector-row-label {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  font-size: 14px;\n  color: #4e6478;\n}\n.sector-row-label > div {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.rank-index {\n  color: #a8b3bf;\n  font:\n    12px/1 ui-monospace,\n    monospace;\n}\n.sector-score {\n  color: #3d8474;\n  font-weight: 650;\n  font-size: 17px;\n}\n.sector-bar {\n  height: 5px;\n  border-radius: 2px;\n  background: #f1f4f7;\n  margin: 9px 0 4px 25px;\n}\n.sector-bar i {\n  height: 100%;\n  display: block;\n  border-radius: 2px;\n  background: #71b7a3;\n}\n.sector-row:nth-child(2) .sector-bar i {\n  background: #8fc4b5;\n}\n.sector-row:nth-child(n + 3) .sector-bar i {\n  background: #b3d6cc;\n}\n.sector-row-meta {\n  font-size: 11px;\n  color: #a0aab5;\n  margin-left: 25px;\n}\n.panel-footnote {\n  font-size: 11px;\n  color: #9da7b1;\n  border-top: 1px solid #f0f2f5;\n  margin-top: 15px;\n  padding: 12px var(--panel-inline-padding);\n  overflow-wrap: anywhere;\n}\n.outline-tag {\n  font-size: 11px;\n  color: #8e9dac;\n  border: 1px solid #e5eaf0;\n  border-radius: 4px;\n  padding: 2px 7px;\n  white-space: nowrap;\n}\n#ladder-chart {\n  padding: 0 22px 10px;\n}\n.ladder-row {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  padding: 8px 0;\n  font-size: 12px;\n  color: #8b99a8;\n}\n.ladder-row .label {\n  width: 38px;\n}\n.ladder-track {\n  background: #f3f5f8;\n  height: 18px;\n  flex: 1;\n  border-radius: 3px;\n  overflow: hidden;\n}\n.ladder-track i {\n  display: block;\n  height: 100%;\n  background: #b8c9d7;\n  border-radius: 3px;\n  min-width: 0;\n}\n.ladder-row:first-child .ladder-track i {\n  background: #dbb879;\n}\n.ladder-row:last-child .ladder-track i {\n  background: #81bba9;\n}\n.ladder-count {\n  width: 21px;\n  text-align: right;\n  color: #61778c;\n}\n.insight {\n  margin: 8px 22px 19px;\n  padding: 12px;\n  background: #f5f8fa;\n  border-radius: 5px;\n  color: #7a8a9a;\n  font-size: 12px;\n  line-height: 1.8;\n}\n.empty {\n  padding: 60px 24px;\n  text-align: center;\n  color: #8b9baa;\n  font-size: 14px;\n  white-space: normal;\n}\n.empty strong {\n  display: block;\n  font-size: 16px;\n  font-weight: 500;\n  color: #596d80;\n  margin-bottom: 8px;\n}\n.empty.compact {\n  padding: 27px 20px;\n  font-size: 12px;\n}\n.page-footer {\n  display: flex;\n  justify-content: space-between;\n  gap: 20px;\n  font-size: 11px;\n  color: #a0aab5;\n  margin-top: 25px;\n}\n.page-footer > span:first-child {\n  white-space: nowrap;\n  letter-spacing: 0.5px;\n}\n.page-footer i {\n  margin: 0 5px;\n  font-style: normal;\n}\n.sector-formula {\n  padding: 13px 22px;\n  background: #f5faf8;\n  color: #6b8d80;\n  font-size: 13px;\n}\n.sector-formula span {\n  margin: 0 9px;\n  color: #b2c6bd;\n}\n.model-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);\n  gap: 22px;\n}\n.preset-buttons {\n  display: flex;\n  gap: 9px;\n  padding: 0 22px 22px;\n}\n.preset-buttons button {\n  font-size: 13px;\n  padding: 8px 13px;\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  background: #fff;\n  color: #8897a5;\n}\n.preset-buttons button.active {\n  background: #edf6f2;\n  color: var(--teal);\n  border-color: #c9e3d9;\n}\n.weight-item {\n  padding: 17px 22px;\n  border-top: 1px solid #eff2f5;\n}\n.weight-heading {\n  display: flex;\n  justify-content: space-between;\n  font-size: 14px;\n  margin-bottom: 10px;\n}\n.weight-heading output {\n  font-weight: 600;\n  color: var(--teal);\n}\n.weight-item input {\n  width: 100%;\n  accent-color: var(--teal);\n  height: 5px;\n}\n.weight-item p {\n  color: #96a2ae;\n  font-size: 12px;\n  margin-top: 10px;\n}\n.model-actions {\n  padding: 18px 22px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  border-top: 1px solid var(--line);\n}\n.model-actions span {\n  color: #8b9aa7;\n  font-size: 12px;\n}\n.model-explain {\n  padding-bottom: 22px;\n}\n.formula-box {\n  padding: 20px 22px;\n  background: #f1f7f4;\n  margin: 0 22px 22px;\n  color: #4d8e79;\n  font-size: 16px;\n  font-weight: 550;\n  line-height: 1.9;\n  border-radius: 6px;\n}\n.formula-box span {\n  font-size: 13px;\n  font-weight: 400;\n}\n.model-explain h3 {\n  margin: 18px 22px 9px;\n}\n.model-explain p {\n  margin: 0 22px;\n  color: #8898a6;\n  line-height: 1.8;\n}\n.model-explain dl {\n  margin: 0 22px;\n}\n.model-explain dl div {\n  display: flex;\n  justify-content: space-between;\n  padding: 8px 0;\n  color: #6d7d8d;\n  font-size: 13px;\n  border-bottom: 1px solid #f1f3f6;\n}\n.model-explain dd {\n  color: var(--amber);\n}\n.model-explain .model-limit {\n  margin-top: 22px;\n  font-size: 12px;\n}\n.detail-dialog,\n.help-dialog {\n  border: 1px solid var(--line);\n  border-radius: 12px;\n  box-shadow: 0 20px 80px #10213540;\n  width: min(720px, calc(100vw - 32px));\n  padding: 25px 29px;\n  max-height: 90vh;\n  color: var(--ink);\n}\ndialog::backdrop {\n  background: #10213580;\n  backdrop-filter: blur(3px);\n}\n.dialog-top {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  margin-bottom: 20px;\n}\n.detail-head {\n  display: flex;\n  justify-content: space-between;\n  gap: 20px;\n  align-items: center;\n}\n.detail-head h2 {\n  font-size: 26px;\n}\n.detail-head .stock-code {\n  font-size: 13px;\n  margin-top: 6px;\n}\n.detail-score {\n  font-size: 54px;\n  line-height: 1;\n  color: var(--teal);\n  font-weight: 600;\n  letter-spacing: -2px;\n}\n.detail-score small {\n  display: block;\n  font-size: 12px;\n  letter-spacing: 0;\n  font-weight: 400;\n  color: #94a4b0;\n  text-align: right;\n  margin-top: 8px;\n}\n.detail-tags {\n  display: flex;\n  gap: 8px;\n  margin-top: 15px;\n}\n.detail-facts {\n  display: grid;\n  grid-template-columns: repeat(4, 1fr);\n  gap: 15px;\n  background: #f6f8fa;\n  padding: 18px;\n  margin: 22px 0;\n  border-radius: 6px;\n}\n.detail-facts label {\n  display: block;\n  color: #91a0ae;\n  font-size: 12px;\n  margin-bottom: 5px;\n}\n.detail-facts strong {\n  font-size: 16px;\n  font-weight: 550;\n}\n.factor-row {\n  display: grid;\n  grid-template-columns: 90px 1fr 40px 56px;\n  gap: 12px;\n  align-items: center;\n  margin: 14px 0;\n  font-size: 13px;\n}\n.factor-row .factor-track {\n  height: 7px;\n  background: #edf2f4;\n  border-radius: 4px;\n}\n.factor-track i {\n  display: block;\n  height: 100%;\n  border-radius: 4px;\n  background: #7dbda9;\n}\n.factor-row .weight {\n  font-size: 12px;\n  color: #97a6b3;\n  text-align: right;\n}\n.detail-section h3 {\n  font-size: 15px;\n  margin: 23px 0 13px;\n}\n.risk-row {\n  display: flex;\n  gap: 10px;\n  align-items: flex-start;\n  font-size: 13px;\n  line-height: 1.8;\n  margin: 10px 0;\n  color: #8593a0;\n}\n.risk-row strong {\n  color: #b18442;\n  font-size: 12px;\n  white-space: nowrap;\n  background: #fbf2e4;\n  padding: 2px 6px;\n  border-radius: 4px;\n}\n.detail-text {\n  padding: 15px 18px;\n  background: #f4f8f7;\n  color: #6e8a81;\n  font-size: 14px;\n  line-height: 1.9;\n  border-radius: 6px;\n}\n.detail-footnote {\n  font-size: 12px;\n  color: #97a5b2;\n  margin-top: 18px;\n  line-height: 1.8;\n}\n.help-content p {\n  margin: 15px 0;\n  font-size: 14px;\n  line-height: 1.9;\n  color: #6c7f90;\n}\n.loading {\n  animation: pulse 1.5s ease-in-out infinite;\n}\n@keyframes pulse {\n  50% {\n    opacity: 0.4;\n  }\n}\n@media (min-width: 1500px) {\n  .overview-grid {\n    grid-template-columns: minmax(0, 1fr) 330px;\n  }\n  td {\n    padding: 19px 18px;\n  }\n  main {\n    padding: 38px 42px;\n  }\n  .metric {\n    padding: 23px 26px;\n  }\n}\n@media (max-width: 1200px) {\n  .sidebar {\n    width: 190px;\n    padding-inline: 12px;\n  }\n  .workspace {\n    margin-left: 190px;\n    width: calc(100% - 190px);\n  }\n  main {\n    padding: 25px 24px;\n  }\n  .topbar {\n    padding-inline: 24px;\n  }\n  .overview-grid {\n    grid-template-columns: minmax(0, 1fr) 270px;\n    gap: 17px;\n  }\n  .metric {\n    padding: 17px;\n  }\n  .metric-value {\n    font-size: 31px;\n  }\n  .brand {\n    font-size: 17px;\n    padding: 0 5px;\n  }\n  .brand small {\n    font-size: 9px;\n  }\n  .metric-caption {\n    font-size: 11px;\n  }\n  .heading-actions {\n    gap: 8px;\n  }\n  .primary {\n    padding-inline: 13px;\n  }\n  .page-footer {\n    font-size: 10px;\n  }\n}\n@media (max-width: 1000px) {\n  .overview-grid {\n    grid-template-columns: 1fr;\n  }\n  .right-column {\n    display: grid;\n    grid-template-columns: 1fr 1fr;\n  }\n  .model-grid {\n    grid-template-columns: 1fr;\n  }\n  .sidebar {\n    width: 175px;\n  }\n  .workspace {\n    margin-left: 175px;\n    width: calc(100% - 175px);\n  }\n  .page-heading {\n    align-items: flex-start;\n    flex-wrap: wrap;\n  }\n  .metric-caption {\n    flex-direction: column;\n    align-items: flex-start;\n    gap: 2px;\n  }\n  .metric-head {\n    font-size: 12px;\n  }\n  .metric-value {\n    font-size: 28px;\n  }\n  .page-footer {\n    flex-direction: column;\n    gap: 6px;\n  }\n}\n@media (max-width: 720px) {\n  .shell {\n    display: block;\n  }\n  .sidebar {\n    position: static;\n    width: 100%;\n    padding: 18px 20px 0;\n  }\n  .brand {\n    font-size: 18px;\n  }\n  .brand small {\n    font-size: 9px;\n  }\n  .brand-mark {\n    height: 25px;\n  }\n  .brand-mark i:nth-child(3) {\n    height: 25px;\n  }\n  .nav-label,\n  .sidebar-note,\n  .sidebar-footer {\n    display: none;\n  }\n  .sidebar nav {\n    display: flex;\n    margin-top: 17px;\n    gap: 6px;\n  }\n  .nav-item {\n    padding: 11px 8px;\n    font-size: 13px;\n    justify-content: center;\n    gap: 7px;\n    margin: 0;\n    border-radius: 6px 6px 0 0;\n  }\n  .nav-item svg {\n    width: 15px;\n    height: 15px;\n  }\n  .workspace {\n    width: 100%;\n    margin: 0;\n  }\n  .topbar {\n    height: 48px;\n    padding-inline: 20px;\n  }\n  .session-label {\n    font-size: 11px;\n  }\n  .topbar-right {\n    gap: 10px;\n  }\n  .breadcrumb {\n    font-size: 12px;\n    gap: 10px;\n  }\n  main {\n    padding: 23px 18px 18px;\n  }\n  .page-heading {\n    gap: 17px;\n    margin-bottom: 20px;\n  }\n  .page-heading h1 {\n    font-size: 25px;\n  }\n  .page-heading p {\n    font-size: 13px;\n  }\n  .eyebrow {\n    font-size: 10px;\n  }\n  .heading-actions {\n    width: 100%;\n    justify-content: space-between;\n  }\n  .date-control {\n    flex: 1;\n    max-width: 225px;\n  }\n  .date-control input {\n    width: 100%;\n  }\n  .data-strip {\n    font-size: 11px;\n    align-items: flex-start;\n  }\n  .data-strip > div {\n    gap: 6px;\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  .metrics {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 12px;\n    margin-bottom: 17px;\n  }\n  .metric {\n    padding: 16px;\n  }\n  .metric-head {\n    font-size: 13px;\n  }\n  .metric-value {\n    font-size: 32px;\n  }\n  .metric-caption {\n    font-size: 12px;\n  }\n  .right-column {\n    grid-template-columns: 1fr;\n  }\n  .panel {\n    --panel-inline-padding: 17px;\n  }\n  .panel-heading {\n    padding: 19px var(--panel-inline-padding) 15px;\n  }\n  .filters {\n    padding-inline: 17px;\n    gap: 8px;\n  }\n  .filters select {\n    max-width: 130px;\n  }\n  .table-subnav {\n    padding-inline: 17px;\n  }\n  .table-footer {\n    padding-inline: 17px;\n  }\n  .table-footer span:last-child {\n    display: none;\n  }\n  .small-muted {\n    font-size: 11px;\n  }\n  .detail-dialog,\n  .help-dialog {\n    padding: 20px;\n  }\n  .detail-facts {\n    grid-template-columns: 1fr 1fr;\n  }\n  .detail-head h2 {\n    font-size: 22px;\n  }\n  .detail-score {\n    font-size: 45px;\n  }\n  .factor-row {\n    grid-template-columns: 76px 1fr 26px 42px;\n    gap: 8px;\n    font-size: 12px;\n  }\n  .sector-formula {\n    line-height: 2;\n  }\n  .model-actions {\n    flex-wrap: wrap;\n  }\n  .preset-buttons {\n    padding-inline: 17px;\n    gap: 6px;\n  }\n  .preset-buttons button {\n    padding-inline: 11px;\n  }\n  .detail-facts strong {\n    font-size: 16px;\n  }\n  .page-footer {\n    font-size: 11px;\n  }\n  .sidebar .brand small {\n    font-size: 10px;\n  }\n}\n@media (prefers-reduced-motion: reduce) {\n  * {\n    animation: none !important;\n    scroll-behavior: auto !important;\n  }\n}\n.review-intro {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 22px;\n  gap: 20px;\n}\n.review-intro p {\n  font-size: 14px;\n  color: #8395a3;\n  margin-top: 9px;\n}\n.review-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);\n  gap: 22px;\n  align-items: start;\n}\n.review-conclusion {\n  background: #eff7f3;\n  color: #628b79;\n  padding: 12px 22px;\n  font-size: 13px;\n}\n.review-stock {\n  font-weight: 500;\n  font-size: 14px;\n}\n.top-group {\n  color: #b58d48;\n  background: #fbf3e5;\n  font-size: 10px;\n  padding: 2px 5px;\n  margin-left: 7px;\n  border-radius: 3px;\n}\n.up {\n  color: var(--red);\n  font-variant-numeric: tabular-nums;\n}\n.down {\n  color: var(--green);\n  font-variant-numeric: tabular-nums;\n}\n.ai-content {\n  padding: 0 22px;\n}\n.ai-empty {\n  text-align: center;\n  padding: 17px 25px 20px;\n  color: #8b9aa8;\n}\n.ai-symbol {\n  display: flex;\n  justify-content: center;\n  width: 45px;\n  height: 45px;\n  align-items: center;\n  background: #eef5f2;\n  color: #69a991;\n  border-radius: 12px;\n  margin: 0 auto 15px;\n}\n.ai-symbol svg {\n  width: 25px;\n  height: 25px;\n}\n.ai-empty h3 {\n  font-size: 16px;\n  color: #617587;\n  font-weight: 500;\n  margin-bottom: 9px;\n}\n.ai-empty p {\n  font-size: 13px;\n  line-height: 1.9;\n}\n.ai-process {\n  font-size: 12px;\n  background: #f7f9fb;\n  padding: 16px;\n  margin-top: 23px;\n  color: #9aabba;\n}\n.ai-process span {\n  display: block;\n  color: #c0ccd5;\n  line-height: 1.8;\n}\n.ai-actions {\n  padding: 17px 22px;\n  border-top: 1px solid var(--line);\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 13px;\n}\n.ai-actions button {\n  font-size: 13px;\n}\n.ai-actions > span {\n  font-size: 12px;\n  color: #9b8a6b;\n}\n.ai-score {\n  display: flex;\n  align-items: center;\n  gap: 14px;\n  padding: 8px 22px 16px;\n}\n.ai-score strong {\n  font-size: 48px;\n  color: #588b79;\n  line-height: 1.1;\n}\n.ai-score > span {\n  font-size: 13px;\n  color: #789285;\n}\n.ai-score small {\n  display: block;\n  font-size: 11px;\n  color: #9aa9a1;\n  margin-top: 4px;\n}\n.ai-summary {\n  padding: 0 22px;\n  font-size: 14px;\n  line-height: 1.9;\n  color: #637889;\n}\n.ai-panel h3 {\n  margin: 20px 22px 10px;\n  font-size: 14px;\n}\n.ai-panel ul {\n  padding: 0 22px 0 38px;\n  color: #8192a1;\n  font-size: 13px;\n  line-height: 1.9;\n}\n.ai-panel li {\n  margin-bottom: 8px;\n}\n.ai-note {\n  padding: 10px 22px 20px;\n  font-size: 12px;\n  color: #9ba8b2;\n}\n.review-sector-panel,\n.history-panel,\n.model-connection {\n  margin-top: 22px;\n}\n.history-list {\n  padding: 0 22px 18px;\n}\n.history-list button {\n  display: flex;\n  justify-content: space-between;\n  gap: 14px;\n  padding: 12px;\n  width: 100%;\n  background: #f8fafb;\n  color: #718699;\n  border-bottom: 1px solid #e8eef1;\n  text-align: left;\n  font-size: 13px;\n}\n.history-list button:hover {\n  background: #eef6f1;\n}\n.model-connection > p {\n  font-size: 14px;\n  line-height: 1.9;\n  color: #81929f;\n  margin: 0 22px 14px;\n}\n.model-connection > p:last-child {\n  font-size: 12px;\n  margin-bottom: 22px;\n}\n@media (max-width: 1200px) {\n  .review-grid {\n    grid-template-columns: 1fr;\n  }\n  .ai-panel {\n    max-width: none;\n  }\n}\n@media (max-width: 720px) {\n  .sidebar nav {\n    overflow-x: auto;\n  }\n  .nav-item {\n    min-width: 83px;\n    flex-shrink: 0;\n  }\n  .review-intro {\n    flex-wrap: wrap;\n    gap: 12px;\n  }\n  .history-list button {\n    flex-direction: column;\n    gap: 4px;\n  }\n  .top-group {\n    display: none;\n  }\n  .review-intro p {\n    font-size: 13px;\n  }\n  .review-grid {\n    gap: 17px;\n  }\n}\n.pool-panel .table-scroll {\n  max-height: 650px;\n}\n.pool-panel th {\n  position: sticky;\n  top: 0;\n  z-index: 1;\n}\n.stock-code,\n.sector-row-meta,\n.panel-footnote,\n.outline-tag,\n.page-footer,\n.sidebar-note p,\n.sidebar-footer small {\n  font-size: 12px;\n}\ntable {\n  font-size: 14px;\n}\n.sector-tag,\n.height-tag {\n  font-size: 12px;\n}\n.page-footer {\n  line-height: 1.7;\n}\n@media (max-width: 720px) {\n  .pool-panel .table-scroll {\n    max-height: 560px;\n  }\n}\n\n/* Paper account uses the same research workspace visual language. */\n.paper-toolbar {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 14px;\n  flex-wrap: wrap;\n}\n.paper-toolbar > div {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  flex-wrap: wrap;\n}\n.paper-toolbar a {\n  text-decoration: none;\n  font-size: 12px;\n  display: inline-flex;\n  align-items: center;\n}\n.paper-message {\n  font-size: 12px;\n  color: var(--muted);\n  min-height: 18px;\n  margin: 12px 0 20px;\n}\n.paper-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);\n  gap: 20px;\n  align-items: start;\n}\n.paper-panel {\n  margin-top: 20px;\n}\n.equity-chart {\n  display: block;\n  width: 100%;\n  height: auto;\n  padding: 4px 18px 0;\n}\n.chart-axis {\n  font-size: 11px;\n  fill: #758396;\n}\n.chart-legend {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 14px;\n  padding: 0 24px 18px;\n  font-size: 11px;\n  color: #758396;\n}\n.chart-legend i {\n  display: inline-block;\n  width: 12px;\n  height: 3px;\n  vertical-align: middle;\n  background: #13977e;\n  margin-right: 6px;\n}\n.chart-legend i.benchmark {\n  background: #acb6c4;\n}\n.verified {\n  color: #14846f;\n  border-color: #bfe5d9;\n  background: #f0faf6;\n}\n.action-tag {\n  background: #edf4f8;\n  color: #405c73;\n  border-radius: 5px;\n  padding: 5px 8px;\n  font-size: 11px;\n  white-space: nowrap;\n}\n.plan-reason {\n  min-width: 220px;\n  max-width: 330px;\n  white-space: normal !important;\n  line-height: 1.7;\n}\n.paper-config {\n  display: flex;\n  align-items: end;\n  gap: 20px;\n  flex-wrap: wrap;\n  padding: 0 24px 24px;\n}\n.paper-config label {\n  display: grid;\n  gap: 9px;\n  font-size: 12px;\n  color: #758396;\n}\n.paper-config input,\n.paper-config select {\n  border: 1px solid #dce3eb;\n  border-radius: 6px;\n  background: #fff;\n  padding: 10px 12px;\n  color: #21384b;\n  min-width: 220px;\n}\n.paper-config input:disabled {\n  background: #f2f5f8;\n  color: #8896a6;\n}\n.paper-outcomes {\n  padding: 0 24px;\n}\n.paper-outcomes summary {\n  cursor: pointer;\n  padding: 16px 0;\n  font-size: 12px;\n  color: #526b80;\n}\n.execution-feedback p {\n  display: flex;\n  gap: 14px;\n  justify-content: space-between;\n  border-top: 1px solid #edf1f5;\n  padding: 12px 0;\n  margin: 0;\n  font-size: 12px;\n}\n.execution-feedback span {\n  color: #758396;\n}\n.strategy-active {\n  display: grid;\n  gap: 8px;\n  padding: 0 24px 16px;\n}\n.strategy-active span {\n  font-size: 11px;\n  color: #758396;\n}\n.strategy-active strong {\n  font-size: 18px;\n  letter-spacing: 0.2px;\n}\n/* In-panel metrics share heading/footer gutters and stack labels above values. */\n.panel-metrics {\n  padding-inline: var(--panel-inline-padding);\n}\n.panel-metrics > div {\n  display: grid;\n  align-content: start;\n  gap: 6px;\n  min-width: 0;\n  overflow-wrap: anywhere;\n}\n.panel-metrics .mini-label {\n  margin-bottom: 0;\n}\n.panel-metrics .outline-tag {\n  justify-self: start;\n  max-width: 100%;\n  white-space: normal;\n}\n.panel-metric-value {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);\n  gap: 4px;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  font-size: 14px;\n  line-height: 1.7;\n  line-break: anywhere;\n}\n.alert-channel-metrics {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n}\n.strategy-metrics strong {\n  font-size: 16px;\n  overflow-wrap: anywhere;\n}\n.strategy-metrics small {\n  font-size: 12px;\n  color: var(--muted);\n  overflow-wrap: anywhere;\n}\n#strategies-status .strategy-metrics {\n  margin-bottom: 0;\n}\n@media (max-width: 720px) {\n  .alert-channel-metrics {\n    grid-template-columns: minmax(0, 1fr);\n  }\n}\n.version-row {\n  margin: 16px 24px;\n  padding: 14px 0;\n  border-top: 1px solid #edf1f5;\n  font-size: 12px;\n}\n.version-row > div {\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n}\n.version-row p {\n  line-height: 1.7;\n  color: #758396;\n}\n.version-row small {\n  line-height: 1.8;\n  color: #758396;\n}\n.version-row button {\n  margin-top: 12px;\n}\n.paper-grid .ai-panel > div > p {\n  padding: 0 24px;\n  color: #758396;\n  font-size: 12px;\n  line-height: 1.8;\n}\n.paper-grid .ai-panel .small-muted {\n  padding: 0 24px 24px;\n}\n.paper-grid .ai-process {\n  margin: 0 24px;\n}\n.paper-grid .ai-note {\n  margin: 14px 0;\n}\n.paper-grid .panel-footnote {\n  line-height: 1.8;\n}\n.paper-panel .panel-footnote {\n  line-height: 1.8;\n}\n.paper-panel td {\n  vertical-align: top;\n}\n.paper-message:empty {\n  display: none;\n}\n@media (max-width: 1100px) {\n  .paper-grid {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .paper-toolbar {\n    align-items: start;\n  }\n  .paper-config {\n    gap: 14px;\n  }\n}\n@media (max-width: 650px) {\n  .paper-toolbar .secondary,\n  .paper-toolbar .primary {\n    font-size: 11px;\n    padding: 9px 10px;\n  }\n  .paper-toolbar > div {\n    gap: 6px;\n  }\n  .paper-config {\n    padding: 0 16px 20px;\n  }\n  .paper-config label,\n  .paper-config input,\n  .paper-config select {\n    width: 100%;\n    min-width: 0;\n  }\n  .execution-feedback p {\n    display: block;\n  }\n  .execution-feedback span {\n    display: block;\n    margin-top: 6px;\n  }\n  .chart-legend {\n    padding: 0 16px 16px;\n    gap: 9px;\n  }\n  .paper-grid {\n    gap: 16px;\n  }\n}\n\n.paper-fee-settings {\n  border: 1px solid #dce3eb;\n  border-radius: 8px;\n  width: 100%;\n  padding: 18px 20px;\n  margin: 0;\n  min-width: 0;\n}\n.paper-fee-settings legend {\n  font-size: 14px;\n  font-weight: 600;\n  color: #21384b;\n  padding: 0 8px;\n}\n.fee-settings-heading {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  flex-wrap: wrap;\n  margin-bottom: 16px;\n}\n.fee-settings-heading p,\n.fee-settings-note {\n  font-size: 12px;\n  color: #758396;\n  line-height: 1.8;\n  margin: 0;\n}\n.paper-fee-controls {\n  display: grid;\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 18px 24px;\n}\n.paper-config .paper-fee-controls input {\n  min-width: 0;\n  width: 100%;\n  font-size: 14px;\n}\n.paper-fee-controls span {\n  font-size: 12px;\n  color: #8896a6;\n}\n.fee-settings-note {\n  margin-top: 18px;\n}\n.paper-fee-settings .text-button {\n  margin-top: 8px;\n}\n.fee-breakdown {\n  max-width: 200px;\n  white-space: normal;\n  line-height: 1.7;\n}\n.fee-breakdown summary {\n  cursor: pointer;\n  white-space: nowrap;\n}\n.fee-breakdown > span {\n  display: block;\n  color: #758396;\n  font-size: 12px;\n  margin-top: 8px;\n  min-width: 160px;\n}\n@media (max-width: 650px) {\n  .paper-fee-settings {\n    padding: 16px 12px;\n  }\n  .paper-fee-controls {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 16px 12px;\n  }\n  .paper-config .paper-fee-controls label {\n    font-size: 12px;\n  }\n  .fee-settings-heading p {\n    max-width: 100%;\n  }\n}\n\n#paper-metrics .metric-value {\n  font-size: clamp(22px, 2.2vw, 32px);\n}\n.plan-price-conditions {\n  min-width: 220px;\n  line-height: 1.65;\n}\n\n@media (max-width: 700px) {\n  .paper-plan-heading {\n    flex-direction: column;\n    align-items: flex-start;\n  }\n  .paper-plan-heading #paper-plan-date {\n    max-width: 100%;\n    white-space: normal;\n  }\n}\n', "type": "text/css; charset=utf-8" } };
 
 // backend/http.js
 function json(body, status = 200) {
@@ -5219,12 +5219,13 @@ function validateProposal(output, base = BASE_STRATEGY) {
     rationale: output.rationale
   };
 }
-function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITAL, feeConfig = DEFAULT_FEES, initialBook = null, executionCostPolicy = null, options = {}) {
+function* replayStrategySteps(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITAL, feeConfig = DEFAULT_FEES, initialBook = null, executionCostPolicy = null, options = {}) {
   const observationGrade = options.observationOnly === true;
   let book = initialBook ? structuredClone(initialBook) : newBook(initialCapital, feeConfig);
   const policy = options.selectionPolicy ?? selectionPolicyForBook(book);
   const policyFields = selectionPolicyFields(policy);
   const equities = [], fills = [];
+  const executionDiagnostics = [];
   let covered = true;
   let reason = null;
   const scoreHistory = /* @__PURE__ */ new Map();
@@ -5266,6 +5267,20 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
           covered = false;
         for (let i = 0; i < observations.length; i++) {
           const tick = observations[i];
+          if (options.strictExecutionCoverage) {
+            const required = /* @__PURE__ */ new Set([
+              ...plan.orders.filter((o) => o.side !== "NONE").map((o) => o.code),
+              ...book.positions.map((p) => p.code)
+            ]);
+            for (const code of required) {
+              const quote = tick.quotes[code];
+              const age = quote ? Date.parse(tick.observedAt) - Date.parse(quote.timestamp) : NaN;
+              if (!quote || !Number.isFinite(age) || age < -3e3 || age > 15e3 || quote.date !== pair.dataset.date || !(quote.closeCents > 0) || !Number.isFinite(quote.volumeShares) || quote.volumeShares < 0) {
+                covered = false;
+                reason ??= "\u538B\u529B\u8DEF\u5F84\u7F3A\u5C11\u5B8C\u6574\u3001\u65B0\u9C9C\u4E14\u53EF\u7528\u7684\u5B9E\u65F6\u884C\u60C5";
+              }
+            }
+          }
           if (i && new Date(tick.observedAt) - new Date(observations[i - 1].observedAt) > Math.max(
             2e4,
             Math.min(60, tick.pollIntervalSeconds || 10) * 2e3
@@ -5277,6 +5292,7 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
           book = step.book;
           session = step.session;
           liveFills.push(...step.ledger);
+          if (i % 100 === 99) yield;
         }
         result = closeSession(book, session, pair.dataset);
         result.ledger = liveFills;
@@ -5285,6 +5301,10 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
       book = result.book;
       equities.push(result.equity);
       fills.push(...result.ledger);
+      executionDiagnostics.push({
+        date: pair.dataset.date,
+        outcomes: result.outcomes
+      });
       if (result.outcomes.some(
         (outcome) => String(outcome.reason || "").includes("DAILY_OBSERVATION_ONLY")
       )) {
@@ -5306,6 +5326,7 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
       reason = error.message;
       break;
     }
+    yield;
   }
   return {
     days: equities.length,
@@ -5321,8 +5342,25 @@ function replayStrategy(pairs, strategy, initialCapital = DEFAULT_INITIAL_CAPITA
     // 逐笔成交随重放返回：成本敏感性据此汇总隐含成本（§6.2）。
     fills,
     feesCents: book.feesCents,
-    equities
+    equities,
+    executionDiagnostics
   };
+}
+function replayStrategy(...args) {
+  const iterator = replayStrategySteps(...args);
+  for (; ; ) {
+    const step = iterator.next();
+    if (step.done) return step.value;
+  }
+}
+async function replayStrategyAsync(...args) {
+  const iterator = replayStrategySteps(...args);
+  for (; ; ) {
+    const step = iterator.next();
+    if (step.done) return step.value;
+    await args[6]?.onYield?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
 }
 function validateCandidate(trainingPairs, holdoutPairs, base, candidate, initialCapital, feeConfig = DEFAULT_FEES, initialBook = null, executionCostPolicy = null, options = {}) {
   const baseline = replayStrategy(
@@ -5370,6 +5408,587 @@ function validateCandidate(trainingPairs, holdoutPairs, base, candidate, initial
     validationEnd: holdoutPairs.at(-1)?.dataset.date,
     method: "20 \u65E5\u8BAD\u7EC3\u300110 \u65E5\u5C01\u5B58\u9A8C\u8BC1\uFF1B\u540C\u8D77\u59CB\u8D44\u91D1\u3001\u624B\u7EED\u8D39\u548C\u6210\u4EA4\u7EA6\u675F\uFF1B\u6BCF\u4E2A\u9A8C\u8BC1\u7A97\u53E3\u53EA\u5141\u8BB8\u4E00\u4E2A\u5019\u9009\uFF0C\u540E\u7EED\u7A97\u53E3\u4F7F\u7528\u672A\u53C2\u52A0\u5019\u9009\u9A8C\u8BC1\u7684\u65B0\u65E5\u671F\u3002"
   };
+}
+
+// backend/domain/execution-stress.js
+init_research_lineage();
+
+// backend/domain/execution-build.js
+init_research_lineage();
+var files = [
+  "backend/domain/trading.js",
+  "backend/domain/realtime.js",
+  "backend/domain/execution-cost.js",
+  "backend/domain/validation.js",
+  "backend/domain/execution-stress.js",
+  "backend/domain/execution-build.js",
+  "backend/domain/historical-execution.js",
+  "backend/domain/historical-input.js",
+  "backend/domain/signal-selection.js",
+  "backend/domain/research-lineage.js",
+  "shared/execution-cost.js",
+  "shared/fees.js",
+  "shared/risk-limits.js",
+  "shared/strategy-params.js"
+];
+var cached;
+function executionEngineBuildDigest() {
+  if (true)
+    return Promise.resolve("a95ff03c5d4f7d43b938ce582f06430e4c57d246e1309f26ee33a7f848c429ed");
+  cached ??= (async () => {
+    const { readFileSync } = await import("node:fs");
+    return digestOf(
+      files.map((path) => [
+        path,
+        readFileSync(new URL(`../../${path}`, import.meta.url), "utf8").replace(
+          /\r\n/g,
+          "\n"
+        )
+      ])
+    );
+  })();
+  return cached;
+}
+
+// backend/domain/execution-calibration.js
+init_research_lineage();
+var CALIBRATION_VERSION = "execution-calibration-v1";
+var CALIBRATION_RULES = Object.freeze({
+  minTrainingOrders: 60,
+  minValidationOrders: 30,
+  minTrainingDays: 5,
+  minValidationDays: 3,
+  minStratumFills: 10,
+  minQuoteCoverage: 0.9,
+  maxQuoteAgeMs: 3e3,
+  maxValidationMaeBps: 15,
+  maxValidationP90ErrorBps: 30,
+  impactGridBps: [5, 10, 15, 20, 30],
+  exponentGrid: [0.3, 0.5, 0.7],
+  premiumGridBps: [0, 5, 10, 15, 20, 30],
+  minImpactBucketFills: 20
+});
+var periods = [
+  "openFirstMinute",
+  "openNextFourMinutes",
+  "earlySession",
+  "regular"
+];
+async function calibrationInputDigest(input, basePolicy) {
+  return digestOf({
+    input: normalizeCalibrationInput(input),
+    basePolicy,
+    version: CALIBRATION_VERSION,
+    rules: CALIBRATION_RULES
+  });
+}
+var quantile = (values, q) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * q))];
+};
+var timestamp = (value) => typeof value === "string" && validDate(value.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|\+08:00)$/.test(
+  value
+) && Number.isFinite(Date.parse(value));
+var marketDate = (value) => new Date(Date.parse(value) + 8 * 36e5).toISOString().slice(0, 10);
+var marketTime = (value) => new Date(Date.parse(value) + 8 * 36e5).toISOString().slice(11, 19);
+function normalizeCalibrationInput(input) {
+  if (!input || input.schemaVersion !== 1 || input.kind !== "REAL_EXECUTION")
+    throw new Error(
+      "\u771F\u5B9E\u6267\u884C\u6821\u51C6\u9700\u8981 schemaVersion 1\u3001REAL_EXECUTION \u8F93\u5165\uFF1BK \u7EBF\u548C\u62A5\u4EF7\u4EE3\u7406\u4E0D\u80FD\u4F2A\u88C5\u771F\u5B9E\u6210\u4EA4"
+    );
+  const p = input.provenance;
+  if (!p || ![p.owner, p.source, p.datasetRef].every(
+    (v) => typeof v === "string" && v.trim().length >= 2
+  ) || p.role !== "INDEPENDENT_CALIBRATION" || p.paperGenerated !== false || p.ordersComplete !== true || /paper|synthetic|simulation|fixture|模拟|合成/i.test(p.source))
+    throw new Error(
+      "\u6821\u51C6\u9700\u8981\u72EC\u7ACB\u771F\u5B9E\u6765\u6E90\u3001\u6240\u6709\u8005\u3001\u5B8C\u6574\u59D4\u6258\u58F0\u660E\uFF1B\u7EB8\u9762\u6210\u4EA4\u4E0D\u80FD\u7528\u4E8E\u6821\u51C6"
+    );
+  if (!validDate(input.trainingEnd) || !validDate(input.cutoff) || input.trainingEnd >= input.cutoff)
+    throw new Error("\u6821\u51C6\u8BAD\u7EC3\u622A\u6B62\u65E5\u5FC5\u987B\u65E9\u4E8E\u540E\u7EED\u9A8C\u8BC1\u622A\u6B62\u65E5");
+  if (!Array.isArray(input.orders) || !input.orders.length || input.orders.length > 2e4)
+    throw new Error("\u6821\u51C6\u59D4\u6258\u6570\u5FC5\u987B\u5728 1\u201320000 \u4E4B\u95F4");
+  const ids = /* @__PURE__ */ new Set(), fillIds = /* @__PURE__ */ new Set();
+  const orders = input.orders.map((order) => {
+    if (!order || typeof order.id !== "string" || !order.id || ids.has(order.id) || !/^\d{6}$/.test(order.code) || !["BUY", "SELL"].includes(order.side) || !timestamp(order.submittedAt) || !timestamp(order.completedAt) || Date.parse(order.completedAt) < Date.parse(order.submittedAt) || marketDate(order.completedAt) !== marketDate(order.submittedAt) || !Number.isSafeInteger(order.quantity) || order.quantity <= 0 || !["FILLED", "PARTIAL", "CANCELLED", "REJECTED"].includes(
+      order.status
+    ) || typeof order.previousLimitUp !== "boolean" || !Number.isSafeInteger(order.marketVolumeShares) || order.marketVolumeShares < 0 || !timestamp(order.marketVolumeObservedAt) || Date.parse(order.marketVolumeObservedAt) > Date.parse(order.submittedAt) || marketDate(order.marketVolumeObservedAt) !== marketDate(order.submittedAt))
+      throw new Error("\u6821\u51C6\u59D4\u6258\u8EAB\u4EFD\u3001\u65F6\u5E8F\u3001\u6570\u91CF\u3001\u53C2\u4E0E\u7387\u6216\u72B6\u6001\u65E0\u6548");
+    ids.add(order.id);
+    const date = marketDate(order.submittedAt), time = marketTime(order.submittedAt);
+    if (date > input.cutoff || !executionPeriod(time) || time > "15:00:00" || time >= "11:30:00" && time < "13:00:00")
+      throw new Error("\u6821\u51C6\u59D4\u6258\u8D85\u51FA\u622A\u6B62\u65E5\u6216\u8FDE\u7EED\u7ADE\u4EF7\u65F6\u6BB5");
+    let quote = null;
+    if (order.quote != null) {
+      const q = order.quote;
+      if (!timestamp(q.observedAt) || !Number.isSafeInteger(q.bid1Cents) || q.bid1Cents <= 0 || !Number.isSafeInteger(q.ask1Cents) || q.ask1Cents <= 0 || q.bid1Cents > q.ask1Cents || Date.parse(q.observedAt) > Date.parse(order.submittedAt) || marketDate(q.observedAt) !== date)
+        throw new Error("\u76D8\u53E3\u4EF7\u683C\u65E0\u6548\u6216\u4F7F\u7528\u4E86\u59D4\u6258\u4E4B\u540E\u7684\u672A\u6765\u76D8\u53E3");
+      quote = {
+        observedAt: q.observedAt,
+        bid1Cents: q.bid1Cents,
+        ask1Cents: q.ask1Cents
+      };
+    }
+    if (!Array.isArray(order.fills))
+      throw new Error("\u6821\u51C6\u59D4\u6258\u5FC5\u987B\u5E26 fills \u6570\u7EC4\uFF0C\u672A\u6210\u4EA4\u4F7F\u7528\u7A7A\u6570\u7EC4");
+    const fills = order.fills.map((f) => {
+      if (!f || typeof f.id !== "string" || !f.id || fillIds.has(f.id) || !timestamp(f.executedAt) || Date.parse(f.executedAt) < Date.parse(order.submittedAt) || Date.parse(f.executedAt) > Date.parse(order.completedAt) || !Number.isSafeInteger(f.quantity) || f.quantity <= 0 || !Number.isSafeInteger(f.priceCents) || f.priceCents <= 0)
+        throw new Error(
+          "\u771F\u5B9E\u6210\u4EA4\u8EAB\u4EFD\u3001\u65F6\u5E8F\u3001\u6570\u91CF\u6216\u4EF7\u683C\u65E0\u6548\uFF0C\u4EE3\u7406\u6570\u636E\u4E0D\u5F97\u4F2A\u88C5\u6210\u4EA4"
+        );
+      fillIds.add(f.id);
+      return {
+        id: f.id,
+        executedAt: f.executedAt,
+        quantity: f.quantity,
+        priceCents: f.priceCents
+      };
+    }).sort(
+      (a, b) => a.executedAt.localeCompare(b.executedAt) || a.id.localeCompare(b.id)
+    );
+    const filled = fills.reduce((n, f) => n + f.quantity, 0);
+    if (filled && !order.marketVolumeShares || filled > order.quantity || order.status === "FILLED" && filled !== order.quantity || order.status === "PARTIAL" && !(filled > 0 && filled < order.quantity) || order.status === "REJECTED" && filled !== 0)
+      throw new Error("\u59D4\u6258\u72B6\u6001\u4E0E\u771F\u5B9E\u6210\u4EA4\u6570\u91CF\u4E0D\u4E00\u81F4");
+    return {
+      id: order.id,
+      code: order.code,
+      side: order.side,
+      submittedAt: order.submittedAt,
+      completedAt: order.completedAt,
+      quantity: order.quantity,
+      status: order.status,
+      previousLimitUp: order.previousLimitUp,
+      marketVolumeShares: order.marketVolumeShares,
+      marketVolumeObservedAt: order.marketVolumeObservedAt,
+      quote,
+      fills
+    };
+  }).sort(
+    (a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id)
+  );
+  return {
+    schemaVersion: 1,
+    kind: input.kind,
+    provenance: {
+      owner: p.owner,
+      source: p.source,
+      datasetRef: p.datasetRef,
+      role: p.role,
+      paperGenerated: false,
+      ordersComplete: true
+    },
+    trainingEnd: input.trainingEnd,
+    cutoff: input.cutoff,
+    orders
+  };
+}
+function samplesOf(input, payload) {
+  return input.orders.map((o) => {
+    const date = marketDate(o.submittedAt), period = executionPeriod(marketTime(o.submittedAt));
+    const quoteFresh = o.quote && Date.parse(o.submittedAt) - Date.parse(o.quote.observedAt) <= CALIBRATION_RULES.maxQuoteAgeMs;
+    const liquidityFresh = Date.parse(o.submittedAt) - Date.parse(o.marketVolumeObservedAt) <= CALIBRATION_RULES.maxQuoteAgeMs;
+    const fresh = quoteFresh && liquidityFresh;
+    const quantity = o.fills.reduce((n, f) => n + f.quantity, 0);
+    const midpoint = fresh ? (o.quote.bid1Cents + o.quote.ask1Cents) / 2 : null;
+    const vwap = quantity ? o.fills.reduce((n, f) => n + f.priceCents * f.quantity, 0) / quantity : null;
+    const observedBps = midpoint && vwap ? (o.side === "BUY" ? vwap - midpoint : midpoint - vwap) / midpoint * 1e4 : null;
+    const spreadBps = midpoint ? (o.quote.ask1Cents - o.quote.bid1Cents) / (2 * midpoint) * 1e4 : null;
+    const participation = quantity ? quantity / o.marketVolumeShares : 0;
+    const impactBps = quantity ? payload.impactBpsAtReferenceParticipation * Math.pow(
+      participation / payload.referenceParticipation,
+      payload.impactExponent
+    ) : null;
+    const premium = o.previousLimitUp ? payload.previousLimitUpPremiumBps : 0;
+    const predictedBps = spreadBps == null || !quantity ? null : spreadBps + payload.periodBaseBps[period] + premium + impactBps;
+    return {
+      id: o.id,
+      date,
+      period,
+      previousLimitUp: o.previousLimitUp,
+      participation,
+      liquidity: o.marketVolumeShares < 1e5 ? "LOW" : "HIGH",
+      fresh: Boolean(fresh),
+      quoteFresh: Boolean(quoteFresh),
+      liquidityFresh,
+      quantity,
+      observedBps,
+      predictedBps,
+      spreadBps,
+      residualBps: observedBps == null ? null : observedBps - spreadBps - premium - impactBps,
+      failed: quantity < o.quantity
+    };
+  });
+}
+function metrics(samples) {
+  const observed = samples.filter((s) => s.observedBps != null);
+  const errors = observed.map((s) => Math.abs(s.observedBps - s.predictedBps));
+  return {
+    orders: samples.length,
+    days: new Set(samples.map((s) => s.date)).size,
+    quoteCoverage: samples.length ? samples.filter((s) => s.quoteFresh).length / samples.length : 0,
+    liquidityCoverage: samples.length ? samples.filter((s) => s.liquidityFresh).length / samples.length : 0,
+    filledOrders: observed.length,
+    failedOrders: samples.filter((s) => s.failed).length,
+    p50Bps: quantile(
+      observed.map((s) => s.observedBps),
+      0.5
+    ),
+    p90Bps: quantile(
+      observed.map((s) => s.observedBps),
+      0.9
+    ),
+    p95Bps: quantile(
+      observed.map((s) => s.observedBps),
+      0.95
+    ),
+    maeBps: errors.length ? errors.reduce((a, b) => a + b, 0) / errors.length : null,
+    p90ErrorBps: quantile(errors, 0.9)
+  };
+}
+async function calibrateExecutionCost(rawInput, basePolicy) {
+  const input = normalizeCalibrationInput(rawInput);
+  if (await digestOf(basePolicy.payload) !== basePolicy.payloadDigest || basePolicy.payload.executionStressMultiplier !== 1)
+    throw new Error("\u6821\u51C6\u57FA\u7840\u653F\u7B56\u6458\u8981\u6216\u6267\u884C\u500D\u6570\u65E0\u6548");
+  const payload = structuredClone(basePolicy.payload);
+  const initial = samplesOf(input, payload);
+  const training = initial.filter((s) => s.date <= input.trainingEnd);
+  const fittedPeriods = [], priorPeriods = [];
+  for (const period of periods) {
+    const samples = training.filter(
+      (s) => s.period === period && s.residualBps != null
+    );
+    if (samples.length < CALIBRATION_RULES.minStratumFills)
+      priorPeriods.push(period);
+    else fittedPeriods.push(period);
+  }
+  const usable = training.filter((s) => s.observedBps != null);
+  const impactIdentifiable = [true, false].every(
+    (low) => usable.filter((s) => s.participation <= 5e-3 === low).length >= CALIBRATION_RULES.minImpactBucketFills
+  ) && new Set(usable.map((s) => s.participation)).size >= 3;
+  const premiumIdentifiable = [true, false].every(
+    (flag) => usable.filter((s) => s.previousLimitUp === flag).length >= CALIBRATION_RULES.minStratumFills
+  );
+  const kappas = impactIdentifiable ? [
+    .../* @__PURE__ */ new Set([
+      payload.impactBpsAtReferenceParticipation,
+      ...CALIBRATION_RULES.impactGridBps
+    ])
+  ] : [payload.impactBpsAtReferenceParticipation];
+  const exponents = impactIdentifiable ? [.../* @__PURE__ */ new Set([payload.impactExponent, ...CALIBRATION_RULES.exponentGrid])] : [payload.impactExponent];
+  const premiums = premiumIdentifiable ? [
+    .../* @__PURE__ */ new Set([
+      payload.previousLimitUpPremiumBps,
+      ...CALIBRATION_RULES.premiumGridBps
+    ])
+  ] : [payload.previousLimitUpPremiumBps];
+  let fitted = payload, bestError = Infinity;
+  for (const kappa of kappas)
+    for (const exponent of exponents)
+      for (const premium of premiums) {
+        const candidate = {
+          ...payload,
+          periodBaseBps: { ...payload.periodBaseBps },
+          impactBpsAtReferenceParticipation: kappa,
+          impactExponent: exponent,
+          previousLimitUpPremiumBps: premium
+        };
+        const samples = samplesOf(input, candidate).filter(
+          (s) => s.date <= input.trainingEnd
+        );
+        for (const period of fittedPeriods) {
+          const values = samples.filter((s) => s.period === period && s.residualBps != null).map((s) => s.residualBps);
+          const field = EXECUTION_COST_FIELDS.find(
+            (f) => f.key === `periodBaseBps.${period}`
+          );
+          candidate.periodBaseBps[period] = Math.max(
+            field.min,
+            Math.min(field.max, Math.round(quantile(values, 0.5)))
+          );
+        }
+        const error = metrics(
+          samplesOf(input, candidate).filter(
+            (s) => s.date <= input.trainingEnd
+          )
+        ).maeBps;
+        if (error != null && error < bestError - 1e-9) {
+          bestError = error;
+          fitted = candidate;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+  fitted = normalizeExecutionCostPayload(fitted);
+  const all = samplesOf(input, fitted);
+  const train = metrics(all.filter((s) => s.date <= input.trainingEnd));
+  const validationSamples = all.filter((s) => s.date > input.trainingEnd);
+  const validation = metrics(validationSamples);
+  const priorValidation = metrics(
+    initial.filter((s) => s.date > input.trainingEnd)
+  );
+  const real = input.kind === "REAL_EXECUTION";
+  const checks = {
+    samples: train.orders >= CALIBRATION_RULES.minTrainingOrders && validation.orders >= CALIBRATION_RULES.minValidationOrders && train.days >= CALIBRATION_RULES.minTrainingDays && validation.days >= CALIBRATION_RULES.minValidationDays,
+    coverage: train.quoteCoverage >= CALIBRATION_RULES.minQuoteCoverage && validation.quoteCoverage >= CALIBRATION_RULES.minQuoteCoverage,
+    liquidity: train.liquidityCoverage >= CALIBRATION_RULES.minQuoteCoverage && validation.liquidityCoverage >= CALIBRATION_RULES.minQuoteCoverage,
+    fills: !real || train.filledOrders >= CALIBRATION_RULES.minTrainingOrders && validation.filledOrders >= CALIBRATION_RULES.minValidationOrders,
+    accuracy: !real || validation.maeBps != null && validation.maeBps <= CALIBRATION_RULES.maxValidationMaeBps && validation.p90ErrorBps <= CALIBRATION_RULES.maxValidationP90ErrorBps && validation.maeBps <= priorValidation.maeBps,
+    fitted: !real || fittedPeriods.length > 0,
+    validationStrata: fittedPeriods.every(
+      (period) => validationSamples.filter(
+        (s) => s.period === period && s.observedBps != null
+      ).length >= CALIBRATION_RULES.minStratumFills
+    ) && (!impactIdentifiable || [true, false].every(
+      (low) => validationSamples.filter(
+        (s) => s.observedBps != null && s.participation <= 5e-3 === low
+      ).length >= CALIBRATION_RULES.minStratumFills
+    )) && (!premiumIdentifiable || [true, false].every(
+      (flag) => validationSamples.filter(
+        (s) => s.observedBps != null && s.previousLimitUp === flag
+      ).length >= CALIBRATION_RULES.minStratumFills
+    ))
+  };
+  const passed = Object.values(checks).every(Boolean);
+  const strata = Object.fromEntries(
+    [
+      ...new Set(
+        all.map(
+          (s) => `${s.period}/${s.previousLimitUp ? "LIMIT_UP" : "NORMAL"}/${s.liquidity}/${s.participation <= 5e-3 ? "LOW_PARTICIPATION" : "HIGH_PARTICIPATION"}`
+        )
+      )
+    ].map((key) => [
+      key,
+      metrics(
+        all.filter(
+          (s) => `${s.period}/${s.previousLimitUp ? "LIMIT_UP" : "NORMAL"}/${s.liquidity}/${s.participation <= 5e-3 ? "LOW_PARTICIPATION" : "HIGH_PARTICIPATION"}` === key
+        )
+      )
+    ])
+  );
+  return {
+    version: CALIBRATION_VERSION,
+    inputDigest: await calibrationInputDigest(input, basePolicy),
+    cutoff: input.cutoff,
+    trainingEnd: input.trainingEnd,
+    basePolicy,
+    rules: CALIBRATION_RULES,
+    payload: fitted,
+    payloadDigest: await digestOf(fitted),
+    fittedPeriods,
+    priorPeriods,
+    train,
+    validation,
+    priorValidation,
+    strata,
+    checks,
+    passed,
+    calibratedParameters: {
+      periods: fittedPeriods,
+      impact: impactIdentifiable,
+      limitUpPremium: premiumIdentifiable
+    },
+    calibrationStatus: passed ? "EXECUTION_CALIBRATED" : "PRIOR_UNCALIBRATED",
+    limitations: "\u771F\u5B9E\u6765\u6E90\u7531\u5BFC\u5165\u8005\u58F0\u660E\uFF0C\u7CFB\u7EDF\u4E0D\u80FD\u8BA4\u8BC1\u5238\u5546\u539F\u59CB\u51ED\u8BC1\u3002\u6210\u672C\u4EE5\u59D4\u6258\u524D\u76D8\u53E3\u4E2D\u4EF7\u4E3A\u53C2\u7167\uFF0C\u542B\u6267\u884C\u5EF6\u8FDF\u7684\u603B\u5B9E\u73B0\u504F\u5DEE\uFF1B\u4E0D\u662F\u7EAF\u81EA\u8EAB\u51B2\u51FB\u7684\u56E0\u679C\u4F30\u8BA1\u3002\u53C2\u4E0E\u7387\u7F3A\u4E4F\u53D8\u5316\u6216\u6837\u672C\u4E0D\u8DB3\u7684\u5206\u5C42\u4FDD\u7559\u5148\u9A8C\uFF0C\u9A8C\u8BC1\u6570\u636E\u4E0D\u53C2\u4E0E\u62DF\u5408\u3002"
+  };
+}
+async function verifyExecutionCalibration(bundle) {
+  const input = normalizeCalibrationInput(bundle.input);
+  if (bundle.inputId !== `cal-input-${await calibrationInputDigest(input, bundle.report.basePolicy)}`)
+    throw new Error("\u6821\u51C6\u8F93\u5165 id \u4E0D\u4E00\u81F4");
+  const report = await calibrateExecutionCost(input, bundle.report.basePolicy);
+  const digest2 = await digestOf(report);
+  if (bundle.id !== `cal-${digest2}` || bundle.digest !== digest2 || await digestOf(bundle.report) !== digest2)
+    throw new Error("\u6821\u51C6\u62A5\u544A\u3001id\u3001\u5206\u5757\u6216\u72EC\u7ACB\u91CD\u7B97\u4E0D\u4E00\u81F4");
+  return {
+    passed: true,
+    eligible: report.passed,
+    calibrationStatus: report.calibrationStatus
+  };
+}
+async function verifyCalibratedPolicy(policy, evidence) {
+  if (!policy || policy.calibrationStatus === "PRIOR_UNCALIBRATED") return true;
+  if (!evidence) throw new Error("\u5DF2\u6821\u51C6\u653F\u7B56\u7F3A\u5C11\u72EC\u7ACB\u6267\u884C/\u76D8\u53E3\u8BC1\u636E");
+  const audit = await verifyExecutionCalibration(evidence);
+  if (!audit.eligible || evidence.report.payloadDigest !== (policy.payloadDigest ?? policy.digest) || evidence.report.calibrationStatus !== policy.calibrationStatus || evidence.report.cutoff !== policy.calibrationCutoff || !policy.effectiveFrom || policy.effectiveFrom <= evidence.report.cutoff)
+    throw new Error("\u6210\u672C\u6821\u51C6\u58F0\u660E\u4E0E\u72EC\u7ACB\u8BC1\u636E\u4E0D\u4E00\u81F4");
+  return true;
+}
+
+// backend/domain/execution-stress.js
+var STRESS_GATE_VERSION = "execution-stress-gate-v1";
+var STRESS_THRESHOLDS = Object.freeze({
+  parentImprovement: 1e-3,
+  baselineImprovement: 0,
+  maxDrawdown: 0.1,
+  parentDrawdownAllowance: 5e-3
+});
+async function freezeExecutionStress(policy, parentParams) {
+  policy = normalizeExecutionCostPolicy(policy);
+  if (await digestOf(policy.payload) !== policy.payloadDigest)
+    throw new Error("\u538B\u529B\u6D4B\u8BD5\u6210\u672C\u653F\u7B56\u6458\u8981\u4E0D\u4E00\u81F4");
+  if (policy.payload.executionStressMultiplier !== 1)
+    throw new Error("\u5E38\u89C4\u6210\u672C\u653F\u7B56\u5FC5\u987B\u4F7F\u7528\u57FA\u51C6\u500D\u6570 1");
+  const multipliers = [1, ...policy.payload.stressResidualMultiplier];
+  if (!multipliers.includes(1.5) || !multipliers.includes(2))
+    throw new Error("\u664B\u7EA7\u538B\u529B\u60C5\u666F\u5FC5\u987B\u4E8B\u524D\u5305\u542B\u57FA\u51C6\u30011.5 \u548C 2 \u500D");
+  const source = {
+    version: STRESS_GATE_VERSION,
+    engineBuildDigest: await executionEngineBuildDigest(),
+    policy,
+    multipliers: [...new Set(multipliers)],
+    thresholds: STRESS_THRESHOLDS,
+    parentParams,
+    parentParamsDigest: await digestOf(parentParams)
+  };
+  return { ...source, digest: await digestOf(source) };
+}
+async function verifyStressFreeze(frozen) {
+  if (!frozen || frozen.version !== STRESS_GATE_VERSION)
+    throw new Error("\u6279\u6B21\u672A\u4E8B\u524D\u51BB\u7ED3\u6210\u672C\u538B\u529B\u95F8\u95E8\uFF0C\u8BF7\u91CD\u65B0\u5EFA\u7ACB\u6279\u6B21");
+  const expected = await freezeExecutionStress(
+    frozen.policy,
+    frozen.parentParams
+  );
+  if (await digestOf(expected) !== await digestOf(frozen))
+    throw new Error("\u6210\u672C\u538B\u529B\u60C5\u666F\u3001\u7236\u7B56\u7565\u6216\u7ECF\u6D4E\u95E8\u69DB\u4E0E\u51BB\u7ED3\u58F0\u660E\u4E0D\u4E00\u81F4");
+}
+async function replayExecutionStress(input, cache = {}) {
+  const { frozen, pairs, initialBook, strategies, feeConfig, selectionPolicy: selectionPolicy2 } = input;
+  await verifyStressFreeze(frozen);
+  await verifyCalibratedPolicy(frozen.policy, input.calibration);
+  if (await digestOf(strategies.parent) !== frozen.parentParamsDigest || await digestOf(strategies.baseline) !== await digestOf(BASE_STRATEGY))
+    throw new Error("\u538B\u529B\u5BF9\u7167\u5FC5\u987B\u4F7F\u7528\u51BB\u7ED3\u7236\u7B56\u7565\u548C\u56FA\u5B9A\u57FA\u7EBF");
+  if (!pairs.length || pairs.some(
+    (p, i) => i && (p.dataset.date <= pairs[i - 1].dataset.date || p.dataset.previousTradingDate !== pairs[i - 1].dataset.date)
+  ))
+    throw new Error("\u538B\u529B\u91CD\u653E\u7A97\u53E3\u4E3A\u7A7A\u3001\u4E0D\u8FDE\u7EED\u6216\u65E5\u671F\u987A\u5E8F\u9519\u8BEF");
+  const scenarios = [];
+  for (const multiplier of frozen.multipliers) {
+    const payload = normalizeExecutionCostPayload({
+      ...frozen.policy.payload,
+      executionStressMultiplier: multiplier
+    });
+    const policy = {
+      ...frozen.policy,
+      payload,
+      payloadDigest: await digestOf(payload)
+    };
+    const paths = {};
+    for (const [id, params] of Object.entries(strategies)) {
+      const cached2 = await cache.load?.(multiplier, id);
+      if (cached2) {
+        paths[id] = cached2;
+        continue;
+      }
+      const replay = await replayStrategyAsync(
+        pairs,
+        params,
+        initialBook.initialCashCents / 100,
+        feeConfig,
+        initialBook,
+        policy,
+        {
+          selectionPolicy: selectionPolicy2,
+          onYield: cache.heartbeat,
+          strictExecutionCoverage: true
+        }
+      );
+      let peak = initialBook.equityCents;
+      let drawdown = 0;
+      for (const row of replay.equities) {
+        peak = Math.max(peak, row.equityCents);
+        drawdown = Math.max(drawdown, 1 - row.equityCents / peak);
+      }
+      let requestedQuantity = 0, filledQuantity = 0, unrestoredTQuantity = 0;
+      for (const day of replay.executionDiagnostics)
+        for (const order of day.outcomes) {
+          if (order.side === "NONE") continue;
+          const expected = (order.quantity ?? 0) * (order.side === "PAIR" ? 2 : 1);
+          const fills = replay.fills.filter(
+            (f) => f.date === day.date && (f.orderId === order.id || f.id.startsWith(`${day.date}:${order.id}:`))
+          );
+          requestedQuantity += expected;
+          filledQuantity += Math.min(
+            expected,
+            fills.reduce((n, f) => n + f.quantity, 0)
+          );
+          if (order.side === "PAIR")
+            unrestoredTQuantity += Math.abs(
+              fills.reduce(
+                (n, f) => n + (f.side === "BUY" ? f.quantity : -f.quantity),
+                0
+              )
+            );
+        }
+      paths[id] = {
+        covered: replay.covered && replay.days === pairs.length,
+        reason: replay.reason,
+        finalEquityCents: replay.equities.at(-1)?.equityCents ?? initialBook.equityCents,
+        netReturn: replay.totalReturn,
+        drawdownPpm: Math.round(drawdown * 1e6),
+        feesCents: replay.feesCents - initialBook.feesCents,
+        impliedCostCents: replay.fills.reduce(
+          (n, f) => n + (f.executionCost?.impliedCostCents ?? 0),
+          0
+        ),
+        fillCount: replay.fillCount,
+        fillRate: requestedQuantity ? filledQuantity / requestedQuantity : null,
+        unfilledQuantity: requestedQuantity - filledQuantity,
+        unrestoredTQuantity,
+        dataQuality: Object.fromEntries(
+          [...new Set(replay.fills.map((f) => f.dataQuality))].map((q) => [
+            q,
+            replay.fills.filter((f) => f.dataQuality === q).length
+          ])
+        ),
+        diagnostics: replay.executionDiagnostics,
+        equity: replay.equities,
+        fills: replay.fills
+      };
+      await cache.save?.(multiplier, id, paths[id]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const checks = {};
+    const parent = paths.parent, baseline = paths.baseline;
+    if (!parent || !baseline)
+      throw new Error("\u6210\u672C\u538B\u529B\u91CD\u653E\u7F3A\u5C11\u7236\u7B56\u7565\u6216\u56FA\u5B9A\u57FA\u7EBF");
+    for (const [id, path] of Object.entries(paths)) {
+      if (["parent", "baseline"].includes(id)) continue;
+      checks[id] = {
+        coverage: path.covered && parent.covered && baseline.covered,
+        againstParent: path.finalEquityCents > parent.finalEquityCents + Math.round(
+          initialBook.equityCents * frozen.thresholds.parentImprovement
+        ),
+        againstBaseline: path.finalEquityCents > baseline.finalEquityCents + Math.round(
+          initialBook.equityCents * frozen.thresholds.baselineImprovement
+        ),
+        drawdown: path.drawdownPpm <= Math.round(frozen.thresholds.maxDrawdown * 1e6) && path.drawdownPpm <= parent.drawdownPpm + Math.round(frozen.thresholds.parentDrawdownAllowance * 1e6)
+      };
+      checks[id].passed = Object.values(checks[id]).every(Boolean);
+    }
+    scenarios.push({
+      multiplier,
+      policyDigest: policy.payloadDigest,
+      paths,
+      checks
+    });
+  }
+  return {
+    scenarios,
+    passed: Object.fromEntries(
+      Object.keys(strategies).filter((id) => !["parent", "baseline"].includes(id)).map((id) => [id, scenarios.every((s) => s.checks[id].passed)])
+    )
+  };
+}
+async function verifyExecutionStress(bundle) {
+  if (bundle.schemaVersion !== 1 || bundle.namespace !== "execution-cost")
+    throw new Error("\u538B\u529B\u62A5\u544A\u683C\u5F0F\u6216\u7814\u7A76\u7528\u9014\u65E0\u6548");
+  const { id, digest: digest2, ...source } = bundle;
+  const expectedDigest = await digestOf(source);
+  if (digest2 !== expectedDigest || id !== `stress-${expectedDigest}`)
+    throw new Error("\u538B\u529B\u62A5\u544A id \u6216\u6458\u8981\u4E0D\u4E00\u81F4");
+  const expected = await replayExecutionStress(bundle.input);
+  if (await digestOf(expected) !== await digestOf(bundle.result))
+    throw new Error("\u538B\u529B\u8DEF\u5F84\u6216\u95F8\u95E8\u4E0E\u72EC\u7ACB\u91CD\u653E\u4E0D\u4E00\u81F4");
+  return { passed: true, candidates: expected.passed };
 }
 
 // backend/domain/research-policy.js
@@ -5769,6 +6388,12 @@ var CohortRepository = class {
         "SELECT COALESCE(MAX(slot), 0) AS max_slot FROM research_generation_slots WHERE namespace = ? AND month = ?"
       ).bind(this.namespace, month).first();
       const startSlot = Number(slotRow?.max_slot ?? 0);
+      const parentRow = await this.db.prepare("SELECT params FROM strategy_versions WHERE id=?").bind(parentVersion).first();
+      if (!parentRow) throw new Error("\u6210\u672C\u538B\u529B\u51BB\u7ED3\u7F3A\u5C11\u7236\u7B56\u7565\u7248\u672C");
+      const executionStress = await freezeExecutionStress(
+        await latestPolicyBundle(this.db),
+        JSON.parse(parentRow.params)
+      );
       const reservation = {
         cohortId,
         namespace: this.namespace,
@@ -5785,6 +6410,7 @@ var CohortRepository = class {
         statisticsBudget,
         feeConfig,
         feeConfigDigest,
+        executionStress,
         ...selectionPolicy2 ? selectionPolicyFields(selectionPolicy2) : {},
         reservedAt: now
       };
@@ -6440,6 +7066,37 @@ function rowToBundle(row) {
   });
   return bundle;
 }
+async function verifiedCalibration(db, id) {
+  const row = await db.prepare(
+    "SELECT report,digest,input_digest,cutoff FROM execution_cost_calibrations WHERE id=?"
+  ).bind(id).first();
+  if (!row) throw new Error("\u5DF2\u6821\u51C6\u653F\u7B56\u7F3A\u5C11\u53EF\u6838\u9A8C\u6821\u51C6\u62A5\u544A");
+  const { inputId, report } = JSON.parse(row.report);
+  const inputRow = await db.prepare(
+    "SELECT payload,digest FROM execution_calibration_inputs WHERE id=?"
+  ).bind(inputId).first();
+  if (!inputRow) throw new Error("\u5DF2\u6821\u51C6\u653F\u7B56\u7F3A\u5C11\u72EC\u7ACB\u539F\u59CB\u8F93\u5165");
+  const { input, basePolicy } = JSON.parse(inputRow.payload);
+  if (await policyDigest(basePolicy) !== await policyDigest(report.basePolicy))
+    throw new Error("\u6821\u51C6\u57FA\u7840\u653F\u7B56\u4E0E\u51BB\u7ED3\u8F93\u5165\u4E0D\u4E00\u81F4");
+  if (inputRow.digest !== row.input_digest || row.cutoff !== report.cutoff)
+    throw new Error("\u6821\u51C6\u8F93\u5165\u5143\u6570\u636E\u4E0D\u4E00\u81F4");
+  const audit = await verifyExecutionCalibration({
+    id,
+    inputId,
+    digest: row.digest,
+    input,
+    report
+  });
+  if (!audit.eligible) throw new Error("\u6821\u51C6\u62A5\u544A\u672A\u901A\u8FC7\u540E\u7EED\u9A8C\u8BC1\u95F8\u95E8");
+  return report;
+}
+async function verifyCalibrationLink(db, row, bundle) {
+  if (bundle.calibrationStatus === "PRIOR_UNCALIBRATED") return;
+  const report = await verifiedCalibration(db, row.calibration_id);
+  if (report.payloadDigest !== bundle.payloadDigest || report.calibrationStatus !== bundle.calibrationStatus || report.cutoff !== bundle.calibrationCutoff || !bundle.effectiveFrom || bundle.effectiveFrom <= report.cutoff)
+    throw new Error("\u6821\u51C6\u653F\u7B56\u53C2\u6570\u3001\u8BC1\u636E\u7B49\u7EA7\u3001\u622A\u6B62\u65E5\u6216\u751F\u6548\u65E5\u671F\u4E0E\u62A5\u544A\u4E0D\u4E00\u81F4");
+}
 async function verifyPolicyBundle(bundle) {
   if (!bundle?.payload || !/^[0-9a-f]{64}$/.test(bundle.payloadDigest ?? ""))
     return false;
@@ -6473,6 +7130,7 @@ async function latestPolicyBundle(db) {
     throw new Error(
       `\u6210\u672C\u653F\u7B56 v${row.version} \u5B58\u50A8\u5185\u5BB9\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4\uFF0C\u62D2\u7EDD\u9759\u9ED8\u56DE\u9000\uFF1B\u8BF7\u4FEE\u590D\u6216\u5220\u9664\u8BE5\u7248\u672C`
     );
+  await verifyCalibrationLink(db, row, bundle);
   return bundle;
 }
 async function policyBundleByReference(db, reference) {
@@ -6486,6 +7144,7 @@ async function policyBundleByReference(db, reference) {
   const bundle = rowToBundle(row);
   if (!await verifyPolicyBundle(bundle) || bundle.payloadDigest !== reference.digest)
     throw new Error(`\u6210\u672C\u653F\u7B56 v${row.version} \u5B58\u50A8\u5185\u5BB9\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4`);
+  await verifyCalibrationLink(db, row, bundle);
   return bundle;
 }
 var ExecutionCostRepository = class {
@@ -6505,10 +7164,23 @@ var ExecutionCostRepository = class {
     payload,
     calibrationStatus = "PRIOR_UNCALIBRATED",
     calibrationCutoff = null,
-    effectiveFrom = null
+    effectiveFrom = null,
+    calibrationId = null
   }) {
     const normalized = normalizeExecutionCostPayload(payload);
     const digest2 = await policyDigest(normalized);
+    if (calibrationStatus !== "PRIOR_UNCALIBRATED" && effectiveFrom !== new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10))
+      throw new Error(
+        "\u6821\u51C6\u653F\u7B56\u53EA\u5141\u8BB8\u4ECE\u5F53\u524D\u65E5\u671F\u540E\u7684\u65B0\u8BA1\u5212\u751F\u6548\uFF0C\u4E0D\u80FD\u56DE\u586B\u6216\u9884\u7EA6\u751F\u6548\u65E5\u671F"
+      );
+    if (calibrationStatus !== "PRIOR_UNCALIBRATED") {
+      const report = await verifiedCalibration(this.db, calibrationId);
+      if (report.payloadDigest !== digest2 || report.calibrationStatus !== calibrationStatus || report.cutoff !== calibrationCutoff || !effectiveFrom || effectiveFrom <= calibrationCutoff)
+        throw new Error(
+          "\u53EA\u6709\u6821\u51C6\u62A5\u544A\u7684\u51BB\u7ED3\u53C2\u6570\u4E0E\u8BC1\u636E\u7B49\u7EA7\u53EF\u4EE5\u53D1\u5E03\uFF0C\u751F\u6548\u65E5\u5FC5\u987B\u665A\u4E8E\u6821\u51C6\u622A\u6B62\u65E5"
+        );
+    } else if (calibrationId || calibrationCutoff)
+      throw new Error("\u672A\u6821\u51C6\u653F\u7B56\u4E0D\u80FD\u643A\u5E26\u771F\u5B9E\u6821\u51C6\u58F0\u660E");
     const row = await this.db.prepare(
       "SELECT COALESCE(MAX(version), 0) AS version FROM execution_cost_policies WHERE model_version=?"
     ).bind(EXECUTION_COST_MODEL).first();
@@ -6525,7 +7197,7 @@ var ExecutionCostRepository = class {
       payload: normalized
     });
     const result = await this.db.prepare(
-      "INSERT INTO execution_cost_policies (id,version,model_version,payload,digest,calibration_status,calibration_cutoff,effective_from,created_at) SELECT ?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM research_window_owners WHERE namespace = ?)"
+      "INSERT INTO execution_cost_policies (id,version,model_version,payload,digest,calibration_status,calibration_cutoff,effective_from,created_at,calibration_id) SELECT ?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM research_window_owners WHERE namespace = ?)"
     ).bind(
       id,
       version,
@@ -6536,6 +7208,7 @@ var ExecutionCostRepository = class {
       calibrationCutoff,
       effectiveFrom,
       (/* @__PURE__ */ new Date()).toISOString(),
+      calibrationId,
       RESEARCH_NAMESPACE
     ).run();
     const changes = result.meta?.changes ?? result.changes;
@@ -10198,7 +10871,9 @@ async function promoteCandidate(repository, env, id) {
     throw new Error(
       `\u53EA\u6709\u5B8C\u6210\u524D\u77BB\u5F71\u5B50\u9A8C\u8BC1\u7684\u5B9E\u9A8C\u624D\u80FD\u542F\u7528\uFF08\u5F53\u524D\u9636\u6BB5\uFF1A${experiment.stage}\uFF09\uFF1B\u5386\u53F2\u7B5B\u67E5\u901A\u8FC7\u4E0D\u6784\u6210\u542F\u7528\u8D44\u683C`
     );
-  return repository.activate(id);
+  throw new Error(
+    "\u65E7\u5355\u5019\u9009\u62A5\u544A\u672A\u51BB\u7ED3\u6210\u672C\u538B\u529B\u95F8\u95E8\uFF0C\u8BF7\u901A\u8FC7\u8D5B\u9A6C\u6279\u6B21\u91CD\u65B0\u9A8C\u8BC1\u540E\u542F\u7528"
+  );
 }
 async function researchStatus(env) {
   const research = new ResearchRepository(env);
@@ -10245,6 +10920,121 @@ async function researchStatus(env) {
   };
 }
 
+// backend/services/execution-calibration.js
+init_research_lineage();
+async function assertIndependentCalibration(db, input) {
+  for (const date of new Set(
+    input.orders.map(
+      (o) => new Date(Date.parse(o.submittedAt) + 8 * 36e5).toISOString().slice(0, 10)
+    )
+  )) {
+    const claim = await db.prepare(
+      "SELECT role FROM research_test_claims WHERE namespace='main' AND outcome_date=?"
+    ).bind(date).first();
+    if (claim)
+      throw new Error(
+        `\u6821\u51C6\u65E5\u671F ${date} \u4E0E\u6B63\u5F0F\u7814\u7A76\u6D4B\u8BD5/\u524D\u77BB\u65E5\u671F\u91CD\u53E0\uFF0C\u62D2\u7EDD\u53CD\u8C03\u6210\u672C`
+      );
+  }
+}
+async function importExecutionCalibration(env, rawInput) {
+  const input = normalizeCalibrationInput(rawInput);
+  const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+  if (input.cutoff >= today)
+    throw new Error("\u771F\u5B9E\u6821\u51C6\u53EA\u80FD\u4F7F\u7528\u4ECA\u65E5\u4E4B\u524D\u5DF2\u5B8C\u6574\u7ED3\u675F\u7684\u6570\u636E");
+  await assertIndependentCalibration(env.DB, input);
+  const rawDigest = await digestOf(input);
+  const previous = await env.DB.prepare(
+    "SELECT id,digest FROM execution_calibration_inputs WHERE raw_digest=?"
+  ).bind(rawDigest).first();
+  if (previous)
+    return { ...previous, orders: input.orders.length, cutoff: input.cutoff };
+  const basePolicy = await new ExecutionCostRepository(env).latest();
+  const digest2 = await calibrationInputDigest(input, basePolicy);
+  const id = `cal-input-${digest2}`;
+  await env.DB.prepare(
+    "INSERT INTO execution_calibration_inputs (id,payload,digest,raw_digest,created_at) VALUES (?,?,?,?,?) ON CONFLICT(raw_digest) DO NOTHING"
+  ).bind(
+    id,
+    JSON.stringify({ input, basePolicy }),
+    digest2,
+    rawDigest,
+    (/* @__PURE__ */ new Date()).toISOString()
+  ).run();
+  const stored = await env.DB.prepare(
+    "SELECT id,digest FROM execution_calibration_inputs WHERE raw_digest=?"
+  ).bind(rawDigest).first();
+  return { ...stored, orders: input.orders.length, cutoff: input.cutoff };
+}
+async function loadInput(env, id) {
+  const row = await env.DB.prepare(
+    "SELECT * FROM execution_calibration_inputs WHERE id=?"
+  ).bind(id).first();
+  if (!row) throw new Error("\u72EC\u7ACB\u6821\u51C6\u8F93\u5165\u4E0D\u5B58\u5728");
+  const { input: rawInput, basePolicy } = JSON.parse(row.payload);
+  const input = normalizeCalibrationInput(rawInput);
+  const digest2 = await calibrationInputDigest(input, basePolicy);
+  if (digest2 !== row.digest || id !== `cal-input-${digest2}` || row.raw_digest !== await digestOf(input))
+    throw new Error("\u6821\u51C6\u8F93\u5165 id \u6216\u6458\u8981\u635F\u574F");
+  await assertIndependentCalibration(env.DB, input);
+  return { input, basePolicy };
+}
+async function runExecutionCalibration(env, inputId) {
+  const { input, basePolicy } = await loadInput(env, inputId);
+  const report = await calibrateExecutionCost(input, basePolicy);
+  const digest2 = await digestOf(report), id = `cal-${digest2}`;
+  await env.DB.prepare(
+    "INSERT INTO execution_cost_calibrations (id,input_digest,cutoff,report,digest,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING"
+  ).bind(
+    id,
+    report.inputDigest,
+    report.cutoff,
+    JSON.stringify({ inputId, report }),
+    digest2,
+    (/* @__PURE__ */ new Date()).toISOString()
+  ).run();
+  return { id, inputId, digest: digest2, report };
+}
+async function exportExecutionCalibration(env, id, { verify = true } = {}) {
+  const row = await env.DB.prepare(
+    "SELECT * FROM execution_cost_calibrations WHERE id=?"
+  ).bind(id).first();
+  if (!row) throw new Error("\u6210\u672C\u6821\u51C6\u62A5\u544A\u4E0D\u5B58\u5728");
+  const { inputId, report } = JSON.parse(row.report);
+  const { input, basePolicy } = await loadInput(env, inputId);
+  const bundle = {
+    schemaVersion: 1,
+    id,
+    inputId,
+    digest: row.digest,
+    input,
+    report
+  };
+  if (await digestOf(report) !== row.digest || id !== `cal-${row.digest}` || inputId !== `cal-input-${await calibrationInputDigest(input, basePolicy)}` || await digestOf(basePolicy) !== await digestOf(report.basePolicy))
+    throw new Error("\u6821\u51C6\u62A5\u544A id \u6216\u6458\u8981\u4E0D\u4E00\u81F4");
+  if (verify) await verifyExecutionCalibration(bundle);
+  if (row.input_digest !== report.inputDigest || row.cutoff !== report.cutoff)
+    throw new Error("\u6821\u51C6\u8BB0\u5F55\u5143\u6570\u636E\u4E0D\u4E00\u81F4");
+  return bundle;
+}
+async function listExecutionCalibrations(env) {
+  const rows = (await env.DB.prepare(
+    "SELECT id,cutoff,created_at FROM execution_cost_calibrations ORDER BY created_at DESC LIMIT 20"
+  ).all()).results;
+  return {
+    reports: rows,
+    inputs: (await env.DB.prepare(
+      "SELECT id,created_at FROM execution_calibration_inputs ORDER BY created_at DESC LIMIT 20"
+    ).all()).results
+  };
+}
+async function calibrationForPolicy(env, policyId) {
+  const row = await env.DB.prepare(
+    "SELECT calibration_id FROM execution_cost_policies WHERE id=?"
+  ).bind(policyId).first();
+  return row?.calibration_id ? await exportExecutionCalibration(env, row.calibration_id) : null;
+}
+
 // backend/services/execution-cost.js
 async function effectiveExecutionCostPolicy(env) {
   return latestPolicyBundle(env.DB);
@@ -10257,8 +11047,9 @@ async function getExecutionCostConfig(env) {
     default: defaultExecutionCostPolicy(),
     defaultPayload: DEFAULT_EXECUTION_COST_PAYLOAD,
     fields: EXECUTION_COST_FIELDS,
+    calibration: policy.calibrationStatus === "PRIOR_UNCALIBRATED" ? null : (await calibrationForPolicy(env, policy.id))?.report,
     modelVersion: EXECUTION_COST_MODEL,
-    note: "\u6240\u6709\u53C2\u6570\u662F\u5DE5\u7A0B\u5148\u9A8C\u4E0E\u538B\u529B\u5047\u8BBE\uFF0C\u4E0D\u662F\u5DF2\u6D4B\u5F97\u7684\u5E02\u573A\u6210\u672C\uFF1B\u4FEE\u6539\u4EA7\u751F\u65B0\u7248\u672C\u5E76\u4ECE\u4E0B\u4E00\u4E2A\u5C1A\u672A\u51BB\u7ED3\u7684\u8BA1\u5212\u751F\u6548\uFF0C\u6D3B\u52A8\u7814\u7A76\u7A97\u53E3\u5185\u4E0D\u5141\u8BB8\u66F4\u6362\u653F\u7B56\u3002"
+    note: policy.calibrationStatus === "PRIOR_UNCALIBRATED" ? "\u5F53\u524D\u53C2\u6570\u662F\u5DE5\u7A0B\u5148\u9A8C\u4E0E\u538B\u529B\u5047\u8BBE\uFF1B\u4FEE\u6539\u4EA7\u751F\u65B0\u7248\u672C\u5E76\u4ECE\u4E0B\u4E00\u4E2A\u5C1A\u672A\u51BB\u7ED3\u7684\u8BA1\u5212\u751F\u6548\uFF0C\u6D3B\u52A8\u7814\u7A76\u7A97\u53E3\u5185\u4E0D\u5141\u8BB8\u66F4\u6362\u653F\u7B56\u3002" : "\u6821\u51C6\u8303\u56F4\u4E0E\u4FDD\u7559\u5148\u9A8C\u7684\u5206\u5C42\u4EE5\u6821\u51C6\u62A5\u544A\u4E3A\u51C6\uFF1B\u4FEE\u6539\u4EA7\u751F\u65B0\u7248\u672C\u5E76\u4ECE\u4E0B\u4E00\u4E2A\u5C1A\u672A\u51BB\u7ED3\u7684\u8BA1\u5212\u751F\u6548\uFF0C\u6D3B\u52A8\u7814\u7A76\u7A97\u53E3\u5185\u4E0D\u5141\u8BB8\u66F4\u6362\u653F\u7B56\u3002"
   };
 }
 async function saveExecutionCostPolicy(env, input) {
@@ -10270,7 +11061,12 @@ async function saveExecutionCostPolicy(env, input) {
     );
   const repository = new ExecutionCostRepository(env);
   const current = await repository.latest();
-  const payload = normalizeExecutionCostPayload({
+  const calibration = input?.calibrationId ? await exportExecutionCalibration(env, input.calibrationId) : null;
+  if (input?.calibrationStatus && input.calibrationStatus !== "PRIOR_UNCALIBRATED" && !calibration)
+    throw new Error("\u4E0D\u80FD\u624B\u5DE5\u58F0\u660E\u6210\u672C\u5DF2\u6821\u51C6\uFF0C\u8BF7\u5148\u5BFC\u5165\u771F\u5B9E\u6570\u636E\u5E76\u901A\u8FC7\u6821\u51C6\u9A8C\u8BC1");
+  if (calibration && input?.payload)
+    throw new Error("\u91C7\u7528\u6821\u51C6\u653F\u7B56\u65F6\u4E0D\u80FD\u53E6\u4F20\u53C2\u6570\uFF0C\u987B\u4F7F\u7528\u6821\u51C6\u62A5\u544A\u51BB\u7ED3\u7684\u53C2\u6570");
+  const payload = calibration ? calibration.report.payload : normalizeExecutionCostPayload({
     ...DEFAULT_EXECUTION_COST_PAYLOAD,
     ...input?.payload,
     periodBaseBps: {
@@ -10280,8 +11076,10 @@ async function saveExecutionCostPolicy(env, input) {
   });
   const next = await repository.save({
     payload,
-    calibrationStatus: input?.calibrationStatus,
-    effectiveFrom: input?.effectiveFrom
+    calibrationStatus: calibration?.report.calibrationStatus ?? "PRIOR_UNCALIBRATED",
+    calibrationCutoff: calibration?.report.cutoff ?? null,
+    calibrationId: calibration?.id ?? null,
+    effectiveFrom: calibration ? input?.effectiveFrom ?? new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10) : input?.effectiveFrom
   });
   return {
     saved: true,
@@ -11247,10 +12045,10 @@ async function fetchJson(url, init) {
 async function sendFeishu({ config, text, eventId: eventId2 }) {
   let url = config.webhookUrl;
   if (config.secret) {
-    const timestamp = Math.floor(Date.now() / 1e3);
+    const timestamp2 = Math.floor(Date.now() / 1e3);
     const key = await crypto.subtle.importKey(
       "raw",
-      new TextEncoder().encode(`${timestamp}
+      new TextEncoder().encode(`${timestamp2}
 ${config.secret}`),
       { name: "HMAC", hash: "SHA-256" },
       false,
@@ -11263,7 +12061,7 @@ ${config.secret}`),
     );
     const sign = btoa(String.fromCharCode(...new Uint8Array(signature)));
     const signed = new URL(url);
-    signed.searchParams.set("timestamp", String(timestamp));
+    signed.searchParams.set("timestamp", String(timestamp2));
     signed.searchParams.set("sign", sign);
     url = signed.toString();
   }
@@ -11455,8 +12253,8 @@ async function setMaintenanceWindow(env, { minutes = 60, reason = "" } = {}) {
 // backend/services/realtime.js
 var calendars = /* @__PURE__ */ new Map();
 async function calendarFor(start, date, now) {
-  const cached = calendars.get(date);
-  if (cached && now.getTime() - cached.time < 3e5) return cached.value;
+  const cached2 = calendars.get(date);
+  if (cached2 && now.getTime() - cached2.time < 3e5) return cached2.value;
   const value = await tradingCalendar(start, date);
   calendars.clear();
   calendars.set(date, { time: now.getTime(), value });
@@ -11836,6 +12634,12 @@ async function exportPaper(env, attempt = 0) {
     }))
   );
   const versions = await repository.versions();
+  const calibrationIds = new Set(
+    rows[2].map((row) => JSON.parse(row.payload).executionCostPolicy).filter((p) => p && p.calibrationStatus !== "PRIOR_UNCALIBRATED").map((p) => p.id)
+  );
+  const executionCostCalibrations = await Promise.all(
+    [...calibrationIds].map((id) => calibrationForPolicy(env, id))
+  );
   if ((await repository.account()).revision !== revision) {
     if (attempt < 3) return exportPaper(env, attempt + 1);
     throw new Error("\u8D26\u6237\u6B63\u5728\u63D0\u4EA4\u6210\u4EA4\uFF0C\u8BF7\u7A0D\u540E\u91CD\u65B0\u5BFC\u51FA");
@@ -11849,6 +12653,7 @@ async function exportPaper(env, attempt = 0) {
     riskLimits: riskLimitsForBook(book),
     feeConfig: feesForBook(book),
     executionCostPolicy: await effectiveExecutionCostPolicy(env),
+    executionCostCalibrations,
     equities: rows[0].map((row) => JSON.parse(row.payload)).reverse(),
     ledger: rows[1].map((row) => JSON.parse(row.payload)).sort((a, b) => a.date.localeCompare(b.date) || a.sequence - b.sequence),
     plans: rows[2].map((row) => ({ payload: JSON.parse(row.payload), digest: row.digest })).reverse(),
@@ -11910,6 +12715,12 @@ async function verifyExport(bundle) {
       const frozen = row.payload.executionCostPolicy;
       if (frozen && await digest(frozen.payload) !== frozen.payloadDigest)
         hashes = false;
+      await verifyCalibratedPolicy(
+        frozen,
+        (bundle.executionCostCalibrations ?? []).find(
+          (c) => c?.report?.payloadDigest === frozen?.payloadDigest && c?.report?.cutoff === frozen?.calibrationCutoff
+        )
+      );
     }
     for (let index = 0; index < bundle.datasets.length; index++) {
       const dataset = bundle.datasets[index].payload;
@@ -13893,7 +14704,7 @@ async function evidenceSeed({
     methodVersion
   });
 }
-function quantile(sorted, probability) {
+function quantile2(sorted, probability) {
   if (!sorted.length) return null;
   const position = probability * (sorted.length - 1);
   const lower = Math.floor(position), upper = Math.ceil(position);
@@ -14044,8 +14855,8 @@ function bootstrapMeanEvidence({
   const thetaStar = resampleMeans(values, indexMatrix);
   const thetaNull = resampleMeans(centered, indexMatrix);
   const errors = thetaStar.map((mean2) => mean2 - estimate).sort((a, b) => a - b);
-  const lowerQuantile = quantile(errors, (1 - confidenceLevel) / 2);
-  const upperQuantile = quantile(errors, (1 + confidenceLevel) / 2);
+  const lowerQuantile = quantile2(errors, (1 - confidenceLevel) / 2);
+  const upperQuantile = quantile2(errors, (1 + confidenceLevel) / 2);
   const ci = {
     level: confidenceLevel,
     lower: estimate - upperQuantile,
@@ -14471,6 +15282,195 @@ async function portfolioSelectionEvidence(env, accountId, manifest) {
 
 // backend/services/promotion.js
 init_research_lineage();
+
+// backend/services/execution-stress.js
+init_research_lineage();
+async function cohortStressInput(env, cohort, windowDates) {
+  const frozen = cohort.reservationManifest?.executionStress;
+  await verifyStressFreeze(frozen);
+  const { reservationDigest, ...reservation } = cohort.reservationManifest;
+  if (await digestOf(reservation) !== reservationDigest)
+    throw new Error("\u6210\u672C\u538B\u529B\u7684\u4E8B\u524D\u9884\u7559\u6E05\u5355\u6458\u8981\u4E0D\u4E00\u81F4");
+  const manifest = cohort.forwardManifest;
+  if (await digestOf(manifest.executionStress) !== await digestOf(frozen) || !manifest.initialBook || await digestOf(manifest.initialBook) !== manifest.initialBookDigest || manifest.initialBook.equityCents !== manifest.initialEquityCents)
+    throw new Error("\u538B\u529B\u6D4B\u8BD5\u6355\u83B7\u8D77\u70B9\u6216\u51BB\u7ED3\u653F\u7B56\u4E0D\u4E00\u81F4");
+  if (windowDates.length !== manifest.requiredDays || await digestOf(windowDates) !== await digestOf(manifest.windowDates))
+    throw new Error("\u538B\u529B\u6D4B\u8BD5\u5FC5\u987B\u4F7F\u7528\u5B8C\u6574\u51BB\u7ED3\u524D\u77BB\u7A97\u53E3");
+  const papers = new PaperRepository(env);
+  const pairs = [];
+  for (const date of windowDates) {
+    const row = await env.DB.prepare(
+      "SELECT payload, digest FROM paper_market_days WHERE trade_date=?"
+    ).bind(date).first();
+    if (!row) throw new Error(`\u538B\u529B\u6D4B\u8BD5\u7F3A\u5C11\u5E02\u573A\u65E5 ${date}`);
+    const dataset = JSON.parse(row.payload);
+    if (await digestOf(dataset) !== row.digest)
+      throw new Error("\u538B\u529B\u884C\u60C5\u6458\u8981\u4E0D\u4E00\u81F4");
+    const snapshot = await papers.snapshot(dataset.previousTradingDate);
+    if (!snapshot) throw new Error("\u538B\u529B\u6D4B\u8BD5\u7F3A\u5C11\u4E8B\u524D\u8BC4\u5206\u5FEB\u7167");
+    const pair = { dataset, snapshot };
+    if (dataset.executionMode === "realtime") {
+      const frames = (await env.DB.prepare(
+        "SELECT payload, digest FROM quote_frames WHERE trade_date=? ORDER BY sequence"
+      ).bind(date).all()).results;
+      pair.observations = [];
+      for (const frame of frames) {
+        const payload = JSON.parse(frame.payload);
+        if (await digestOf(payload) !== frame.digest)
+          throw new Error("\u538B\u529B\u884C\u60C5\u5E27\u6458\u8981\u4E0D\u4E00\u81F4");
+        pair.observations.push(payload);
+      }
+    }
+    pairs.push(pair);
+  }
+  const strategies = { parent: frozen.parentParams, baseline: BASE_STRATEGY };
+  for (const member of await new CohortRepository(env).members(cohort.id)) {
+    if (!member.params || !member.strategyVersion) continue;
+    if (await digestOf(member.params) !== member.paramsDigest)
+      throw new Error("\u538B\u529B\u5019\u9009\u53C2\u6570\u6458\u8981\u4E0D\u4E00\u81F4");
+    const version = await env.DB.prepare(
+      "SELECT params FROM strategy_versions WHERE id=?"
+    ).bind(member.strategyVersion).first();
+    if (!version || await digestOf(JSON.parse(version.params)) !== member.paramsDigest)
+      throw new Error("\u538B\u529B\u5019\u9009\u7248\u672C\u4E0E\u51BB\u7ED3\u53C2\u6570\u4E0D\u4E00\u81F4");
+    strategies[member.memberId] = member.params;
+  }
+  return {
+    cohortId: cohort.id,
+    frozen,
+    calibration: frozen.policy.calibrationStatus === "PRIOR_UNCALIBRATED" ? null : await calibrationForPolicy(env, frozen.policy.id),
+    pairs,
+    initialBook: manifest.initialBook,
+    strategies,
+    feeConfig: manifest.feeConfig,
+    selectionPolicy: frozenSelectionPolicy(manifest)
+  };
+}
+async function runCohortExecutionStress(env, cohort, windowDates) {
+  const input = await cohortStressInput(env, cohort, windowDates);
+  const inputDigest = await digestOf(input);
+  const cached2 = await env.DB.prepare(
+    "SELECT payload FROM execution_stress_reports WHERE cohort_id=? AND input_digest=?"
+  ).bind(cohort.id, inputDigest).first();
+  if (cached2) {
+    const bundle = JSON.parse(cached2.payload);
+    await verifyExecutionStress(bundle);
+    return bundle;
+  }
+  const taskId = `cost-task-${inputDigest}`, leaseOwner = crypto.randomUUID();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  await env.DB.prepare(
+    "INSERT INTO research_tasks(id,owner_id,task_type,input_digest,stage,payload,created_at,updated_at) VALUES(?,?, 'EXECUTION_STRESS',?,'PENDING','{}',?,?) ON CONFLICT(id) DO NOTHING"
+  ).bind(taskId, cohort.id, inputDigest, now, now).run();
+  const leased = await env.DB.prepare(
+    "UPDATE research_tasks SET stage='RUNNING',lease_owner=?,lease_until=?,updated_at=? WHERE id=? AND (stage IN ('PENDING','ERROR','DONE') OR (stage='RUNNING' AND lease_until<=?))"
+  ).bind(
+    leaseOwner,
+    new Date(Date.now() + 12e4).toISOString(),
+    now,
+    taskId,
+    now
+  ).run();
+  const busy = () => Object.assign(
+    new Error("\u6210\u672C\u538B\u529B\u4EFB\u52A1\u6B63\u5728\u8BA1\u7B97\u6216\u79DF\u7EA6\u5DF2\u6539\u53D8\uFF0C\u7B49\u5F85\u4E0B\u6B21\u76D8\u540E\u6062\u590D"),
+    { code: "EXECUTION_STRESS_BUSY" }
+  );
+  if (!(leased.meta?.changes ?? leased.changes)) throw busy();
+  let refreshedAt = Date.now();
+  const cache = {
+    async heartbeat(force = false) {
+      if (!force && Date.now() - refreshedAt < 1e4) return;
+      const updated = await env.DB.prepare(
+        "UPDATE research_tasks SET lease_until=?,updated_at=? WHERE id=? AND stage='RUNNING' AND lease_owner=?"
+      ).bind(
+        new Date(Date.now() + 12e4).toISOString(),
+        (/* @__PURE__ */ new Date()).toISOString(),
+        taskId,
+        leaseOwner
+      ).run();
+      if (!(updated.meta?.changes ?? updated.changes)) throw busy();
+      refreshedAt = Date.now();
+    },
+    async load(multiplier, id) {
+      const row = await env.DB.prepare(
+        "SELECT payload,digest FROM execution_stress_paths WHERE input_digest=? AND multiplier=? AND strategy_id=?"
+      ).bind(inputDigest, multiplier, id).first();
+      if (!row) return null;
+      const path = JSON.parse(row.payload);
+      if (await digestOf(path) !== row.digest)
+        throw new Error("\u6210\u672C\u538B\u529B\u8DEF\u5F84\u68C0\u67E5\u70B9\u6458\u8981\u4E0D\u4E00\u81F4");
+      return path;
+    },
+    async save(multiplier, id, path) {
+      await this.heartbeat(true);
+      await env.DB.prepare(
+        "INSERT INTO execution_stress_paths(input_digest,multiplier,strategy_id,payload,digest) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING"
+      ).bind(
+        inputDigest,
+        multiplier,
+        id,
+        JSON.stringify(path),
+        await digestOf(path)
+      ).run();
+    }
+  };
+  try {
+    const source = {
+      schemaVersion: 1,
+      namespace: "execution-cost",
+      input,
+      result: await replayExecutionStress(input, cache)
+    };
+    const digest2 = await digestOf(source);
+    const bundle = { ...source, id: `stress-${digest2}`, digest: digest2 };
+    await cache.heartbeat(true);
+    const saved = await env.DB.prepare(
+      "INSERT INTO execution_stress_reports (id,cohort_id,input_digest,payload,digest,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM research_tasks WHERE id=? AND stage='RUNNING' AND lease_owner=? AND lease_until>?) ON CONFLICT(id) DO NOTHING"
+    ).bind(
+      bundle.id,
+      cohort.id,
+      inputDigest,
+      JSON.stringify(bundle),
+      digest2,
+      (/* @__PURE__ */ new Date()).toISOString(),
+      taskId,
+      leaseOwner,
+      (/* @__PURE__ */ new Date()).toISOString()
+    ).run();
+    if (!(saved.meta?.changes ?? saved.changes)) throw busy();
+    await env.DB.prepare(
+      "UPDATE research_tasks SET stage='DONE',output_digest=?,lease_until=NULL,updated_at=? WHERE id=? AND lease_owner=?"
+    ).bind(digest2, (/* @__PURE__ */ new Date()).toISOString(), taskId, leaseOwner).run();
+    return bundle;
+  } catch (error) {
+    await env.DB.prepare(
+      "UPDATE research_tasks SET stage='ERROR',lease_until=NULL,updated_at=? WHERE id=? AND lease_owner=?"
+    ).bind((/* @__PURE__ */ new Date()).toISOString(), taskId, leaseOwner).run().catch(() => {
+    });
+    throw error;
+  }
+}
+async function exportExecutionStress(env, id, { verify = true } = {}) {
+  const row = await env.DB.prepare(
+    "SELECT payload FROM execution_stress_reports WHERE id=?"
+  ).bind(id).first();
+  if (!row) throw new Error("\u6210\u672C\u538B\u529B\u62A5\u544A\u4E0D\u5B58\u5728");
+  const bundle = JSON.parse(row.payload);
+  const { id: bundleId, digest: digest2, ...source } = bundle;
+  if (bundleId !== id || id !== `stress-${digest2}` || await digestOf(source) !== digest2)
+    throw new Error("\u6210\u672C\u538B\u529B\u62A5\u544A id \u6216\u6458\u8981\u4E0D\u4E00\u81F4");
+  if (verify) await verifyExecutionStress(bundle);
+  return bundle;
+}
+async function assertCohortStressPromotion(env, cohort, report) {
+  const input = await cohortStressInput(env, cohort, report.windowDates);
+  if (!report.executionStress?.id) throw new Error("\u664B\u7EA7\u62A5\u544A\u7F3A\u5C11\u6210\u672C\u538B\u529B\u8BC1\u636E");
+  const bundle = await exportExecutionStress(env, report.executionStress.id);
+  if (await digestOf(input) !== await digestOf(bundle.input) || report.executionStress.digest !== bundle.digest || !bundle.result.passed[report.champion.memberId])
+    throw new Error("\u5019\u9009\u672A\u901A\u8FC7\u5168\u90E8\u51BB\u7ED3\u6210\u672C\u60C5\u666F\uFF0C\u6216\u538B\u529B\u8F93\u5165\u4E0E\u6279\u6B21\u4E0D\u4E00\u81F4");
+}
+
+// backend/services/promotion.js
 var REPORT_UNTRUSTED = "\u6CA1\u6709\u901A\u8FC7\u5168\u90E8\u95F8\u95E8\u7684\u62A5\u544A\u4E0D\u80FD\u542F\u7528";
 async function promoteCohortChampion(env, cohortId, { evaluation = null, effectiveTradeDate = null, effectiveNote = null } = {}) {
   const cohorts = new CohortRepository(env);
@@ -14585,6 +15585,12 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
     throw new Error("\u4E3B\u8D26\u6237\u7236\u7B56\u7565\u5DF2\u53D8\u5316\uFF0C\u672C\u6279\u8D44\u683C\u5931\u6548");
   if (report.executionVersion !== EXECUTION_VERSION || report.scoringVersion !== SCORING_VERSION)
     throw new Error("\u6267\u884C\u6216\u8BC4\u5206\u6E90\u7801\u7248\u672C\u4E0E\u51BB\u7ED3\u6E05\u5355\u4E0D\u4E00\u81F4\uFF0C\u672C\u6279\u8D44\u683C\u5931\u6548");
+  await assertCohortStressPromotion(env, cohort, report);
+  if (await digestOf(costPolicy) !== await digestOf(cohort.reservationManifest.executionStress.policy))
+    throw new Error("\u6210\u672C\u653F\u7B56\u7248\u672C\u6216\u6821\u51C6\u58F0\u660E\u4E0E\u4E8B\u524D\u51BB\u7ED3\u4E0D\u4E00\u81F4");
+  const championParamsRow = await papers.db.prepare("SELECT params FROM strategy_versions WHERE id=?").bind(championVersionId).first();
+  if (!championParamsRow || await digestOf(JSON.parse(championParamsRow.params)) !== member.paramsDigest)
+    throw new Error("\u5F85\u542F\u7528\u7B56\u7565\u7248\u672C\u4E0E\u6210\u672C\u538B\u529B\u9A8C\u8BC1\u7684\u51BB\u7ED3\u53C2\u6570\u4E0D\u4E00\u81F4");
   const revision = account.revision;
   const runId = crypto.randomUUID();
   const nextRevision = revision + 1;
@@ -14597,13 +15603,17 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
   ).bind(...args, ...guardArgs);
   const statements = [
     papers.db.prepare(
-      "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ?"
+      "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?)"
     ).bind(
       JSON.stringify(book),
       runId,
       (/* @__PURE__ */ new Date()).toISOString(),
       "primary",
-      revision
+      revision,
+      costPolicy.modelVersion,
+      costPolicy.id,
+      championVersionId,
+      championParamsRow.params
     ),
     guarded(
       "UPDATE strategy_versions SET status = 'RETIRED' WHERE status = 'ACTIVE'",
@@ -15105,6 +16115,18 @@ async function scheduleCohortForward(env, cohortId, { now = (/* @__PURE__ */ new
   const feeConfig = feesForBook(account.book);
   const feeConfigDigest = await digestOf(feeConfig);
   const executionCostPolicy = await latestPolicyBundle(env.DB);
+  if (await digestOf(executionCostPolicy) !== await digestOf(cohort.reservationManifest.executionStress?.policy ?? null)) {
+    await closeCohort(
+      cohorts,
+      cohortId,
+      "SCHEDULED",
+      "\u6210\u672C\u653F\u7B56\u5728\u4E8B\u524D\u51BB\u7ED3\u540E\u53D8\u5316\u6216\u672A\u58F0\u660E\u538B\u529B\u95F8\u95E8\uFF0C\u6279\u6B21\u5931\u6548"
+    );
+    return {
+      scheduled: false,
+      reason: "\u6210\u672C\u653F\u7B56\u4E0E\u4E8B\u524D\u538B\u529B\u58F0\u660E\u4E0D\u4E00\u81F4\uFF0C\u6279\u6B21\u5931\u6548"
+    };
+  }
   if (!selectionPolicyMatches(cohort.reservationManifest, account.book)) {
     await closeCohort(
       cohorts,
@@ -15299,6 +16321,9 @@ async function scheduleCohortForward(env, cohortId, { now = (/* @__PURE__ */ new
     tradingDates: [],
     initialAccounts,
     initialAccountsDigest: await digestOf(initialAccounts),
+    initialBook: captureBook,
+    initialBookDigest: await digestOf(captureBook),
+    executionStress: cohort.reservationManifest.executionStress,
     initialPositions,
     accounts: {
       candidates: captured.candidateAccountIds,
@@ -15859,7 +16884,7 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
       realizedPnlCents: finalRow.realizedPnlCents,
       unrealizedPnlCents: finalRow.unrealizedPnlCents
     } : manifest.initialAccounts[accountId];
-    const metrics = windowMetrics({
+    const metrics2 = windowMetrics({
       initial: manifest.initialAccounts[accountId],
       final,
       equities,
@@ -15870,7 +16895,7 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     for (const position of manifest.initialPositions?.[accountId] ?? [])
       initialPositions[position.code] = position.quantity;
     const rounds = completeRounds(ledger, windowDates, initialPositions);
-    return { account, equities, metrics, rounds };
+    return { account, equities, metrics: metrics2, rounds };
   };
   const parentMetrics = await metricsOf(manifest.accounts.parentMatch);
   const baselineMetrics = await metricsOf(manifest.accounts.baselineMatch);
@@ -15907,6 +16932,15 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     }
   }
   const verdicts = [];
+  let executionStress = null;
+  let executionStressError = null;
+  try {
+    executionStress = await runCohortExecutionStress(env, cohort, windowDates);
+  } catch (error) {
+    if (error.code === "EXECUTION_STRESS_BUSY" || /SQLITE|D1_|database|constraint/i.test(String(error.message)))
+      throw error;
+    executionStressError = safeError(error);
+  }
   const decidedStages = [
     "ELIGIBLE",
     "PROMOTED",
@@ -15918,7 +16952,7 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
   for (const member of members) {
     const decided = decidedStages.includes(member.stage);
     const accountId = `shadow-${member.experimentId}`;
-    const metrics = await metricsOf(accountId);
+    const metrics2 = await metricsOf(accountId);
     const selectionEvidence = await portfolioSelectionEvidence(env, accountId, {
       ...manifest,
       windowDates
@@ -15927,19 +16961,23 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
       fingerprint: fingerprint.environmentValid && selectionEvidence.matches,
       // 数据覆盖：窗口日缺失或净值行按盘中观测价盯市（complete:false）
       // 都算覆盖失败——盘中价不冒充收盘价参与晋级资格。
-      coverage: selectionEvidence.complete && Boolean(metrics) && metrics.metrics.missingDates.length === 0 && metrics.metrics.incompleteDates.length === 0,
-      rounds: Boolean(metrics) && metrics.rounds.rounds >= minimumRounds && parentMetrics && parentMetrics.rounds.rounds >= minimumRounds,
+      coverage: selectionEvidence.complete && Boolean(metrics2) && metrics2.metrics.missingDates.length === 0 && metrics2.metrics.incompleteDates.length === 0,
+      rounds: Boolean(metrics2) && metrics2.rounds.rounds >= minimumRounds && parentMetrics && parentMetrics.rounds.rounds >= minimumRounds,
       returns: false,
       drawdown: false,
-      statistics: false
+      statistics: false,
+      executionStress: executionStress?.result.passed[member.memberId] === true,
+      executionStressCoverage: executionStress?.result.scenarios.every(
+        (s) => s.paths.parent.covered && s.paths.baseline.covered && s.paths[member.memberId]?.covered
+      ) === true
     };
     let statisticsDetail = null;
     let memberReturns = null;
-    if (checks.fingerprint && checks.coverage && matrix && metrics) {
+    if (checks.fingerprint && checks.coverage && matrix && metrics2) {
       try {
         memberReturns = dailyReturns({
           initialEquityCents: manifest.initialAccounts[accountId].equityCents,
-          equities: metrics.equities,
+          equities: metrics2.equities,
           dates: windowDates
         });
       } catch {
@@ -15964,8 +17002,8 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
       const improvementThreshold = Math.round(
         manifest.initialAccounts[accountId].equityCents * 1e-3
       );
-      checks.returns = metrics.metrics.finalEquityCents > parentMetrics.metrics.finalEquityCents + improvementThreshold && metrics.metrics.finalEquityCents >= baselineMetrics.metrics.finalEquityCents;
-      checks.drawdown = metrics.metrics.windowDrawdownPpm <= 1e5 && metrics.metrics.windowDrawdownPpm <= parentMetrics.metrics.windowDrawdownPpm + 5e3;
+      checks.returns = metrics2.metrics.finalEquityCents > parentMetrics.metrics.finalEquityCents + improvementThreshold && metrics2.metrics.finalEquityCents >= baselineMetrics.metrics.finalEquityCents;
+      checks.drawdown = metrics2.metrics.windowDrawdownPpm <= 1e5 && metrics2.metrics.windowDrawdownPpm <= parentMetrics.metrics.windowDrawdownPpm + 5e3;
     }
     let verdict;
     if (!checks.fingerprint) verdict = "INVALIDATED";
@@ -15974,7 +17012,10 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     else if (!checks.coverage) verdict = "INCONCLUSIVE";
     else if (!checks.rounds) verdict = "INCONCLUSIVE";
     else if (!checks.statistics) verdict = "INCONCLUSIVE";
-    else if (!checks.returns || !checks.drawdown) verdict = "REJECTED";
+    else if (!executionStress) verdict = "INCONCLUSIVE";
+    else if (!checks.executionStressCoverage) verdict = "INCONCLUSIVE";
+    else if (!checks.returns || !checks.drawdown || !checks.executionStress)
+      verdict = "REJECTED";
     else verdict = "ELIGIBLE";
     const finalVerdict = decided ? member.stage : verdict;
     if (member.stage === "RUNNING")
@@ -15988,13 +17029,13 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
       accountId,
       checks,
       statistics: statisticsDetail,
-      metrics: metrics?.metrics ?? null,
-      rounds: metrics?.rounds ?? null,
+      metrics: metrics2?.metrics ?? null,
+      rounds: metrics2?.rounds ?? null,
       note: decided ? "\u8BC4\u4F30\u91CD\u5165\uFF1A\u6210\u5458\u5DF2\u88C1\u5B9A\uFF0C\u8865\u9F50\u62A5\u544A\u6307\u6807" : void 0
     });
   }
   const eligible = verdicts.filter(
-    (row) => ["ELIGIBLE", "PROMOTED"].includes(row.stage)
+    (row) => ["ELIGIBLE", "PROMOTED"].includes(row.stage) && row.checks.executionStress
   );
   const ranked = rankEligibleMembers(
     eligible.map((row) => ({
@@ -16020,6 +17061,25 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     ranked,
     champion,
     promotion: null,
+    executionStress: executionStress ? {
+      id: executionStress.id,
+      digest: executionStress.digest,
+      scenarios: executionStress.result.scenarios.map(
+        ({ multiplier, checks, paths }) => ({
+          multiplier,
+          checks,
+          paths: Object.fromEntries(
+            Object.entries(paths).map(
+              ([id, { equity, fills, diagnostics, ...metrics2 }]) => [
+                id,
+                metrics2
+              ]
+            )
+          )
+        })
+      )
+    } : null,
+    executionStressError,
     executionVersion: EXECUTION_VERSION,
     scoringVersion: SCORING_VERSION,
     ...selectionPolicyFields(frozenSelectionPolicy(manifest)),
@@ -16796,7 +17856,7 @@ async function publishWindowReport({
   asOf,
   horizon,
   expectedDates,
-  metrics,
+  metrics: metrics2,
   metricKeys,
   observationGrade,
   noComparableBaseline,
@@ -16807,7 +17867,7 @@ async function publishWindowReport({
   const excludedDates = [];
   const exclusionReasons = {};
   for (const date of expectedDates) {
-    const row = metrics.get(date);
+    const row = metrics2.get(date);
     if (!row) continue;
     if (row.payload?.status === "READY") {
       readyMetrics.set(date, row);
@@ -17058,7 +18118,7 @@ async function buildReviewEvidence(env, { asOf, horizon, calendarDates } = {}) {
     toDate: asOfEffective
   }).catch(() => []);
   const latestContext = allMetrics.at(-1)?.payload.contextDigest ?? "no-metrics";
-  const metrics = new Map(
+  const metrics2 = new Map(
     allMetrics.filter((row) => row.payload.contextDigest === latestContext).map((row) => [row.outcomeDate, row])
   );
   return publishWindowReport({
@@ -17069,7 +18129,7 @@ async function buildReviewEvidence(env, { asOf, horizon, calendarDates } = {}) {
     asOf: asOfEffective,
     horizon,
     expectedDates,
-    metrics,
+    metrics: metrics2,
     metricKeys: REVIEW_METRIC_FAMILY,
     observationGrade: true,
     noComparableBaseline: false,
@@ -17123,7 +18183,7 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
     returnMeasure: "EQUITY_CHAIN_DECIMAL",
     equityIntegrity: "GAP_INVALIDATES_FOLLOWING_DAY"
   });
-  const metrics = /* @__PURE__ */ new Map();
+  const metrics2 = /* @__PURE__ */ new Map();
   const buildPayload = (date, values, status, reasons = []) => ({
     outcomeDate: date,
     contextDigest,
@@ -17140,7 +18200,7 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
   for (const date of expectedDates) {
     const row = byDate.get(date);
     if (!row || row.equityCents === void 0 || row.equityCents === null) {
-      metrics.set(date, null);
+      metrics2.set(date, null);
       if (previousSettled)
         pendingReason = "\u524D\u4E00\u65E5\u51C0\u503C\u7F3A\u5931\uFF0C\u8DE8\u7F3A\u53E3\u6536\u76CA\u65E0\u6CD5\u62C6\u5206\u4E3A\u5355\u65E5";
       previousSettled = false;
@@ -17148,7 +18208,7 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
     }
     const equity = row.equityCents;
     if (!row.complete) {
-      metrics.set(date, {
+      metrics2.set(date, {
         outcomeDate: date,
         sourceDigest: await digestOf({ date, equityCents: equity }),
         payload: buildPayload(
@@ -17164,7 +18224,7 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
       continue;
     }
     if (!previousSettled) {
-      metrics.set(date, {
+      metrics2.set(date, {
         outcomeDate: date,
         sourceDigest: await digestOf({ date, equityCents: equity }),
         payload: buildPayload(
@@ -17181,7 +18241,7 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
     }
     const value = equity / previousEquity - 1;
     const broken = !Number.isFinite(value) || previousEquity <= 0 || equity < 0;
-    metrics.set(date, {
+    metrics2.set(date, {
       outcomeDate: date,
       sourceDigest: await digestOf({ date, equityCents: equity }),
       payload: broken ? buildPayload(date, { meanDailyReturn: null }, "INSUFFICIENT_SAMPLE", [
@@ -17213,7 +18273,7 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
     asOf: asOfEffective,
     horizon,
     expectedDates,
-    metrics,
+    metrics: metrics2,
     metricKeys: ACCOUNT_METRIC_FAMILY,
     observationGrade: false,
     noComparableBaseline: true,
@@ -17273,6 +18333,7 @@ async function exportEvidence(env, { id }) {
       });
   }
   let executionCostPolicies = [];
+  let executionCostCalibrations = [];
   if (report.payload.cost?.digest) {
     const costBundle = await policyBundleByReference(
       database(env),
@@ -17291,6 +18352,10 @@ async function exportEvidence(env, { id }) {
           effectiveFrom: costBundle.effectiveFrom
         }
       ];
+    if (costBundle?.calibrationStatus !== "PRIOR_UNCALIBRATED" && costBundle) {
+      const calibration = await calibrationForPolicy(env, costBundle.id);
+      if (calibration) executionCostCalibrations = [calibration];
+    }
   }
   return {
     format: "limit-lens-evidence-v1",
@@ -17299,6 +18364,7 @@ async function exportEvidence(env, { id }) {
     dailyMetrics,
     policies: policies2,
     executionCostPolicies,
+    executionCostCalibrations,
     note: "\u5BFC\u51FA\u53EF\u72EC\u7ACB\u91CD\u7B97\uFF1Averify:evidence \u6309\u51BB\u7ED3\u8F93\u5165\u3001\u653F\u7B56\u4E0E\u65B9\u6CD5\u6838\u9A8C\u6458\u8981\u3001\u533A\u95F4\u4E0E\u7528\u9014\u9650\u5236\u3002"
   };
 }
@@ -17446,6 +18512,10 @@ async function api(request, env) {
     "/api/paper/execution-cost": ["GET", "PUT"],
     "/api/paper/execution-cost/diagnostics": ["GET"],
     "/api/research/execution-sensitivity": ["GET", "POST"],
+    "/api/research/execution-stress/export": ["GET"],
+    "/api/research/execution-calibration": ["GET", "POST"],
+    "/api/research/execution-calibration/inputs": ["POST"],
+    "/api/research/execution-calibration/export": ["GET"],
     "/api/evidence": ["GET"],
     "/api/evidence/history": ["GET"],
     "/api/evidence/export": ["GET"],
@@ -17483,9 +18553,10 @@ async function api(request, env) {
   const allowedMethods = methods[path] ?? ["GET", "POST"];
   if (!allowedMethods.includes(request.method))
     return json({ error: "\u4E0D\u652F\u6301\u6B64\u8BF7\u6C42\u65B9\u6CD5" }, 405);
-  if (request.method === "POST" && (request.headers.get("Origin") && request.headers.get("Origin") !== url.origin || request.headers.get("Sec-Fetch-Site") === "cross-site"))
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && (request.headers.get("Origin") && request.headers.get("Origin") !== url.origin || request.headers.get("Sec-Fetch-Site") === "cross-site"))
     return json({ error: "\u4E0D\u63A5\u53D7\u8DE8\u7AD9\u5199\u5165\u8BF7\u6C42" }, 403);
-  if (Number(request.headers.get("Content-Length") || 0) > 12e3)
+  const bodyLimit = path === "/api/research/execution-calibration/inputs" ? 8 * 1024 * 1024 : 12e3;
+  if (Number(request.headers.get("Content-Length") || 0) > bodyLimit)
     return json({ error: "\u8BF7\u6C42\u5185\u5BB9\u8FC7\u957F" }, 413);
   try {
     if (path === "/api/settings") {
@@ -17772,6 +18843,32 @@ async function api(request, env) {
         })
       );
     }
+    if (path === "/api/research/execution-stress/export")
+      return json(
+        await exportExecutionStress(env, url.searchParams.get("id"), {
+          verify: false
+        })
+      );
+    if (path === "/api/research/execution-calibration/inputs")
+      return json(
+        await importExecutionCalibration(
+          env,
+          await readJson(request, 8 * 1024 * 1024)
+        )
+      );
+    if (path === "/api/research/execution-calibration") {
+      if (request.method === "GET")
+        return json(await listExecutionCalibrations(env));
+      return json(
+        await runExecutionCalibration(env, (await readJson(request)).inputId)
+      );
+    }
+    if (path === "/api/research/execution-calibration/export")
+      return json(
+        await exportExecutionCalibration(env, url.searchParams.get("id"), {
+          verify: false
+        })
+      );
     if (path === "/api/evidence" || path === "/api/evidence/history") {
       const asOf = url.searchParams.get("asOf") || void 0;
       if (asOf && !validDate(asOf)) return json({ error: "\u65E5\u671F\u683C\u5F0F\u65E0\u6548" }, 400);

@@ -167,6 +167,7 @@ async function renderDetail() {
     .join("");
   const budget = evaluation?.statisticsBudget;
   const cost = evaluation?.fingerprint?.executionCost;
+  const stress = evaluation?.executionStress;
   container.innerHTML = `
     <div class="metrics panel-metrics strategy-metrics">
       <div><span class="mini-label">冠军</span><strong>${
@@ -196,6 +197,14 @@ async function renderDetail() {
         : ""
     }
     <div class="table-scroll">
+      ${
+        stress
+          ? `<p class="panel-footnote">成本压力为独立经济闸门，不是收益置信区间。<a href="/api/research/execution-stress/export?id=${encodeURIComponent(stress.id)}" download="execution-stress.json">下载完整路径及冻结输入</a></p>
+      <table><thead><tr><th>情景</th><th>候选</th><th>对父策略</th><th>对固定基线</th><th>回撤</th><th>闸门</th></tr></thead><tbody>${stress.scenarios.flatMap((s) => Object.entries(s.checks).map(([id, check]) => `<tr><td>${s.multiplier}×</td><td>${escape(id)}</td><td>${percent(s.paths[id].netReturn - s.paths.parent.netReturn)}</td><td>${percent(s.paths[id].netReturn - s.paths.baseline.netReturn)}</td><td>${percent(s.paths[id].drawdownPpm / 1000000)}</td><td>${check.passed ? "通过" : check.coverage ? "经济门槛未通过" : "数据不足"}</td></tr>`)).join("")}</tbody></table>`
+          : evaluation
+            ? `<p class="panel-footnote">成本压力证据不足：${escape(evaluation.executionStressError ?? "未冻结情景，需重新建立批次")}</p>`
+            : ""
+      }
       <table>
         <thead><tr><th>成员</th><th>状态</th><th>尝试序号 k</th><th>策略版本</th><th>参数距离</th><th>失败原因</th></tr></thead>
         <tbody>${members || "<tr><td colspan='6'>无成员</td></tr>"}</tbody>

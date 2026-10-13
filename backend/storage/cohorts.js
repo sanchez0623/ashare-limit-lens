@@ -1,6 +1,8 @@
 import { database } from "./database.js";
 import { digestOf, eventDigest } from "../domain/research-lineage.js";
 import { selectionPolicyFields } from "../domain/signal-selection.js";
+import { latestPolicyBundle } from "./execution-cost.js";
+import { freezeExecutionStress } from "../domain/execution-stress.js";
 import {
   validateCohortPolicy,
   DEFAULT_COHORT_POLICY,
@@ -189,6 +191,15 @@ export class CohortRepository {
         .bind(this.namespace, month)
         .first();
       const startSlot = Number(slotRow?.max_slot ?? 0);
+      const parentRow = await this.db
+        .prepare("SELECT params FROM strategy_versions WHERE id=?")
+        .bind(parentVersion)
+        .first();
+      if (!parentRow) throw new Error("成本压力冻结缺少父策略版本");
+      const executionStress = await freezeExecutionStress(
+        await latestPolicyBundle(this.db),
+        JSON.parse(parentRow.params),
+      );
       const reservation = {
         cohortId,
         namespace: this.namespace,
@@ -207,6 +218,7 @@ export class CohortRepository {
         statisticsBudget,
         feeConfig,
         feeConfigDigest,
+        executionStress,
         ...(selectionPolicy ? selectionPolicyFields(selectionPolicy) : {}),
         reservedAt: now,
       };

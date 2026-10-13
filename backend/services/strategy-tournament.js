@@ -50,6 +50,7 @@ import {
   portfolioSelectionEvidence,
 } from "./portfolio-runner.js";
 import { promoteCohortChampion } from "./promotion.js";
+import { runCohortExecutionStress } from "./execution-stress.js";
 import {
   selectionPolicyForBook,
   selectionPolicyFields,
@@ -566,6 +567,21 @@ export async function scheduleCohortForward(
   // 存储损坏时 latestPolicyBundle 抛错，捕获失败——成本口径不可核验的
   // 批次不得开跑（P1 复核：不静默吞掉完整性错误）。
   const executionCostPolicy = await latestPolicyBundle(env.DB);
+  if (
+    (await digestOf(executionCostPolicy)) !==
+    (await digestOf(cohort.reservationManifest.executionStress?.policy ?? null))
+  ) {
+    await closeCohort(
+      cohorts,
+      cohortId,
+      "SCHEDULED",
+      "成本政策在事前冻结后变化或未声明压力闸门，批次失效",
+    );
+    return {
+      scheduled: false,
+      reason: "成本政策与事前压力声明不一致，批次失效",
+    };
+  }
   if (!selectionPolicyMatches(cohort.reservationManifest, account.book)) {
     await closeCohort(
       cohorts,
@@ -773,6 +789,9 @@ export async function scheduleCohortForward(
     tradingDates: [],
     initialAccounts,
     initialAccountsDigest: await digestOf(initialAccounts),
+    initialBook: captureBook,
+    initialBookDigest: await digestOf(captureBook),
+    executionStress: cohort.reservationManifest.executionStress,
     initialPositions,
     accounts: {
       candidates: captured.candidateAccountIds,
@@ -1554,6 +1573,18 @@ export async function evaluateCohort(
     }
   }
   const verdicts = [];
+  let executionStress = null;
+  let executionStressError = null;
+  try {
+    executionStress = await runCohortExecutionStress(env, cohort, windowDates);
+  } catch (error) {
+    if (
+      error.code === "EXECUTION_STRESS_BUSY" ||
+      /SQLITE|D1_|database|constraint/i.test(String(error.message))
+    )
+      throw error;
+    executionStressError = safeError(error);
+  }
   // 已裁定终态（评估中断后重入）：保留既有结论、补齐报告指标，
   // 使唯一自动晋级在恢复时仍然成立，而不是把冠军当作"未进入窗口"。
   const decidedStages = [
@@ -1589,6 +1620,14 @@ export async function evaluateCohort(
       returns: false,
       drawdown: false,
       statistics: false,
+      executionStress: executionStress?.result.passed[member.memberId] === true,
+      executionStressCoverage:
+        executionStress?.result.scenarios.every(
+          (s) =>
+            s.paths.parent.covered &&
+            s.paths.baseline.covered &&
+            s.paths[member.memberId]?.covered,
+        ) === true,
     };
     let statisticsDetail = null;
     let memberReturns = null;
@@ -1642,7 +1681,10 @@ export async function evaluateCohort(
     else if (!checks.coverage) verdict = "INCONCLUSIVE";
     else if (!checks.rounds) verdict = "INCONCLUSIVE";
     else if (!checks.statistics) verdict = "INCONCLUSIVE";
-    else if (!checks.returns || !checks.drawdown) verdict = "REJECTED";
+    else if (!executionStress) verdict = "INCONCLUSIVE";
+    else if (!checks.executionStressCoverage) verdict = "INCONCLUSIVE";
+    else if (!checks.returns || !checks.drawdown || !checks.executionStress)
+      verdict = "REJECTED";
     else verdict = "ELIGIBLE";
     // 重入幂等：已裁定成员保留既有结论（重算结果应与之一致），
     // 不再重复迁移；RUNNING 成员正常迁移。
@@ -1665,8 +1707,10 @@ export async function evaluateCohort(
   }
   // 冠军排行含 PROMOTED：评估中断恢复时已晋级成员仍可回到排序首位，
   // 重入的晋级服务识别 duplicate，不产生第二次切换。
-  const eligible = verdicts.filter((row) =>
-    ["ELIGIBLE", "PROMOTED"].includes(row.stage),
+  const eligible = verdicts.filter(
+    (row) =>
+      ["ELIGIBLE", "PROMOTED"].includes(row.stage) &&
+      row.checks.executionStress,
   );
   const ranked = rankEligibleMembers(
     eligible.map((row) => ({
@@ -1693,6 +1737,27 @@ export async function evaluateCohort(
     ranked,
     champion,
     promotion: null,
+    executionStress: executionStress
+      ? {
+          id: executionStress.id,
+          digest: executionStress.digest,
+          scenarios: executionStress.result.scenarios.map(
+            ({ multiplier, checks, paths }) => ({
+              multiplier,
+              checks,
+              paths: Object.fromEntries(
+                Object.entries(paths).map(
+                  ([id, { equity, fills, diagnostics, ...metrics }]) => [
+                    id,
+                    metrics,
+                  ],
+                ),
+              ),
+            }),
+          ),
+        }
+      : null,
+    executionStressError,
     executionVersion: EXECUTION_VERSION,
     scoringVersion: SCORING_VERSION,
     ...selectionPolicyFields(frozenSelectionPolicy(manifest)),

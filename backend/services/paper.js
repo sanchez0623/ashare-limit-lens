@@ -19,6 +19,8 @@ import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
+import { calibrationForPolicy } from "./execution-calibration.js";
+import { verifyCalibratedPolicy } from "../domain/execution-calibration.js";
 import { safeError } from "../http.js";
 import { feesForBook } from "../../shared/fees.js";
 import { riskLimitsForBook } from "../../shared/risk-limits.js";
@@ -268,6 +270,15 @@ export async function exportPaper(env, attempt = 0) {
     })),
   );
   const versions = await repository.versions();
+  const calibrationIds = new Set(
+    rows[2]
+      .map((row) => JSON.parse(row.payload).executionCostPolicy)
+      .filter((p) => p && p.calibrationStatus !== "PRIOR_UNCALIBRATED")
+      .map((p) => p.id),
+  );
+  const executionCostCalibrations = await Promise.all(
+    [...calibrationIds].map((id) => calibrationForPolicy(env, id)),
+  );
   if ((await repository.account()).revision !== revision) {
     if (attempt < 3) return exportPaper(env, attempt + 1);
     throw new Error("账户正在提交成交，请稍后重新导出");
@@ -281,6 +292,7 @@ export async function exportPaper(env, attempt = 0) {
     riskLimits: riskLimitsForBook(book),
     feeConfig: feesForBook(book),
     executionCostPolicy: await effectiveExecutionCostPolicy(env),
+    executionCostCalibrations,
     equities: rows[0].map((row) => JSON.parse(row.payload)).reverse(),
     ledger: rows[1]
       .map((row) => JSON.parse(row.payload))
@@ -359,6 +371,14 @@ export async function verifyExport(bundle) {
       const frozen = row.payload.executionCostPolicy;
       if (frozen && (await digest(frozen.payload)) !== frozen.payloadDigest)
         hashes = false;
+      await verifyCalibratedPolicy(
+        frozen,
+        (bundle.executionCostCalibrations ?? []).find(
+          (c) =>
+            c?.report?.payloadDigest === frozen?.payloadDigest &&
+            c?.report?.cutoff === frozen?.calibrationCutoff,
+        ),
+      );
     }
     for (let index = 0; index < bundle.datasets.length; index++) {
       const dataset = bundle.datasets[index].payload;
