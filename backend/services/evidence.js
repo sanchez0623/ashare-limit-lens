@@ -16,6 +16,7 @@ import {
   SECTOR_AGGREGATE_METRIC,
   SECTOR_MIN_VALID_STOCKS,
   MIN_SECTOR_COUNT,
+  EVIDENCE_INPUT_SCHEMA_VERSION,
 } from "../domain/evidence-policy.js";
 import {
   buildEvidenceWindow,
@@ -29,7 +30,7 @@ import { computeDailyReviewMetrics } from "../domain/review-metrics.js";
 import { tradingCalendar } from "./market.js";
 import {
   latestPolicyBundle,
-  policyBundleByDigest,
+  policyBundleByReference,
 } from "../storage/execution-cost.js";
 
 const NAMESPACE = "main";
@@ -471,6 +472,8 @@ async function publishWindowReport({
     }),
   );
   const inputDigest = await digestOf({
+    schemaVersion: EVIDENCE_INPUT_SCHEMA_VERSION,
+    cost,
     seriesId,
     window: {
       expectedDates: window.expectedDates,
@@ -542,6 +545,8 @@ async function publishWindowReport({
         sourceDigests,
         contextDigest,
         metrics: manifestMetrics,
+        schemaVersion: EVIDENCE_INPUT_SCHEMA_VERSION,
+        cost,
       },
     });
   if (!window.validDates.length) {
@@ -887,6 +892,8 @@ export async function buildAccountEvidence(
         version: executionCostBundle.version,
         digest: executionCostBundle.payloadDigest,
         calibrationStatus: executionCostBundle.calibrationStatus,
+        calibrationCutoff: executionCostBundle.calibrationCutoff,
+        effectiveFrom: executionCostBundle.effectiveFrom,
       }
     : { calibrationStatus: "PRIOR_UNCALIBRATED", digest: null };
   return publishWindowReport({
@@ -943,7 +950,7 @@ export async function exportEvidence(env, { id }) {
   // 输入冻结（P1-5）：优先使用报告发布时固化的 manifest 指标，来源修订
   // 后旧报告仍可独立重算；旧报告（无冻结清单）回退当前日指标。
   const frozenMetrics = report.inputs?.metrics;
-  const dailyMetrics = frozenMetrics?.length
+  const dailyMetrics = Array.isArray(frozenMetrics)
     ? frozenMetrics
     : await repository
         .listDailyMetricsAcrossContexts({
@@ -975,9 +982,9 @@ export async function exportEvidence(env, { id }) {
   // 时不附带。
   let executionCostPolicies = [];
   if (report.payload.cost?.digest) {
-    const costBundle = await policyBundleByDigest(
+    const costBundle = await policyBundleByReference(
       database(env),
-      report.payload.cost.digest,
+      report.inputs?.cost ?? report.payload.cost,
     );
     if (costBundle)
       executionCostPolicies = [
@@ -988,6 +995,8 @@ export async function exportEvidence(env, { id }) {
           payload: costBundle.payload,
           digest: costBundle.payloadDigest,
           calibrationStatus: costBundle.calibrationStatus,
+          calibrationCutoff: costBundle.calibrationCutoff,
+          effectiveFrom: costBundle.effectiveFrom,
         },
       ];
   }

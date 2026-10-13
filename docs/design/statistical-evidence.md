@@ -255,10 +255,15 @@ evidence_reports
   input_digest, policy_digest, method_version,
   payload, digest, created_at
 evidence_report_inputs
-  report_id, ordered_dates, source_refs, source_digests, manifest_digest
+  report_id, ordered_dates, source_refs, source_digests, metrics_json,
+  schema_version, cost_json, manifest_digest
 ```
 
 同输入/政策/方法唯一发布；输入修订生成新报告 id，原证据不覆写。正式报告可引用现有 cohort 报告而不重复存全部输入，但导出必须带引用内容及摘要，不能只带不可访问的数据库主键。
+
+冻结输入格式 v2（迁移 `0015_evidence_input_context.sql`）将格式版本和完整成本指纹同时纳入 manifest 与 inputDigest。成本指纹包含政策 ID、版本、模型、参数摘要、校准等级、校准截止日及生效日；更改任何一项都生成新的输入摘要和报告 ID。历史成本记录按 ID/版本/模型定位，参数摘要相同的后续版本不能替换旧报告引用。
+
+核验时 v2 必须携带数组形式的次要族；历史报告仅在冻结输入没有板块字段时允许缺省该族，null 或对象不属于旧格式。迁移保留历史行的空格式版本，按原摘要规则核验；没有冻结成本上下文的旧报告只允许先验未校准声明，不能证明更高的校准等级。
 
 复用既有研究任务调度增加 `EVIDENCE_DIAGNOSTIC/EVIDENCE_VERIFY` 任务类型。统计读取/计算在事务外；发布报告、任务 DONE 及输出摘要在短的、带 owner/round 的提交中完成。过期 worker 不得发布迟到结果或覆盖新输入版本。
 

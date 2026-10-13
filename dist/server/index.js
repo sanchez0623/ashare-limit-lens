@@ -67,6 +67,7 @@ __export(evidence_policy_exports, {
   ACCOUNT_METRIC_FAMILY: () => ACCOUNT_METRIC_FAMILY,
   DEFAULT_EVIDENCE_POLICY: () => DEFAULT_EVIDENCE_POLICY,
   EVIDENCE_DIRECTIONS: () => EVIDENCE_DIRECTIONS,
+  EVIDENCE_INPUT_SCHEMA_VERSION: () => EVIDENCE_INPUT_SCHEMA_VERSION,
   EVIDENCE_MULTIPLICITY_METHODS: () => EVIDENCE_MULTIPLICITY_METHODS,
   EVIDENCE_POLICY_FIELDS: () => EVIDENCE_POLICY_FIELDS,
   EVIDENCE_PURPOSES: () => EVIDENCE_PURPOSES,
@@ -183,10 +184,11 @@ function normalizeEvidencePolicy(input) {
 async function evidencePolicyDigest(policy) {
   return digestOf(policy);
 }
-var EVIDENCE_PURPOSES, EVIDENCE_MULTIPLICITY_METHODS, EVIDENCE_SAMPLE_STATUSES, EVIDENCE_DIRECTIONS, EVIDENCE_TAGS, METHOD_QUALIFIED_HORIZONS, REVIEW_METRIC_FAMILY, ACCOUNT_METRIC_FAMILY, REVIEW_EVIDENCE_SERIES, ACCOUNT_EVIDENCE_SERIES, SERIES_METRIC_FAMILIES, SECTOR_SECONDARY_METRIC, SECTOR_AGGREGATE_METRIC, SECTOR_MIN_VALID_STOCKS, MIN_SECTOR_COUNT, SECTOR_FAMILY_RULE, EVIDENCE_POLICY_FIELDS, DEFAULT_EVIDENCE_POLICY, round, isPlainKey, integerField, decimalField;
+var EVIDENCE_INPUT_SCHEMA_VERSION, EVIDENCE_PURPOSES, EVIDENCE_MULTIPLICITY_METHODS, EVIDENCE_SAMPLE_STATUSES, EVIDENCE_DIRECTIONS, EVIDENCE_TAGS, METHOD_QUALIFIED_HORIZONS, REVIEW_METRIC_FAMILY, ACCOUNT_METRIC_FAMILY, REVIEW_EVIDENCE_SERIES, ACCOUNT_EVIDENCE_SERIES, SERIES_METRIC_FAMILIES, SECTOR_SECONDARY_METRIC, SECTOR_AGGREGATE_METRIC, SECTOR_MIN_VALID_STOCKS, MIN_SECTOR_COUNT, SECTOR_FAMILY_RULE, EVIDENCE_POLICY_FIELDS, DEFAULT_EVIDENCE_POLICY, round, isPlainKey, integerField, decimalField;
 var init_evidence_policy = __esm({
   "backend/domain/evidence-policy.js"() {
     init_research_lineage();
+    EVIDENCE_INPUT_SCHEMA_VERSION = 2;
     EVIDENCE_PURPOSES = Object.freeze(["DIAGNOSTIC"]);
     EVIDENCE_MULTIPLICITY_METHODS = Object.freeze([
       "HOLM_WITHIN_ASOF_FAMILY"
@@ -435,7 +437,8 @@ var init_evidence = __esm({
           sourceRefs: inputs.sourceRefs,
           sourceDigests: inputs.sourceDigests,
           contextDigest: inputs.contextDigest,
-          metrics: inputs.metrics ?? []
+          metrics: inputs.metrics ?? [],
+          ...inputs.schemaVersion != null ? { schemaVersion: inputs.schemaVersion, cost: inputs.cost ?? null } : {}
         };
         const reportStatement = this.db.prepare(
           "INSERT OR IGNORE INTO evidence_reports (id,namespace,series_id,as_of,horizon,purpose,input_digest,policy_digest,method_version,payload,digest,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
@@ -454,14 +457,16 @@ var init_evidence = __esm({
           (/* @__PURE__ */ new Date()).toISOString()
         );
         const inputsStatement = this.db.prepare(
-          "INSERT INTO evidence_report_inputs (report_id,ordered_dates,source_refs,source_digests,metrics_json,manifest_digest) VALUES (?,?,?,?,?,?) ON CONFLICT(report_id) DO NOTHING"
+          "INSERT INTO evidence_report_inputs (report_id,ordered_dates,source_refs,source_digests,metrics_json,manifest_digest,schema_version,cost_json) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(report_id) DO NOTHING"
         ).bind(
           id,
           JSON.stringify(manifest.orderedDates),
           JSON.stringify(manifest.sourceRefs),
           JSON.stringify(manifest.sourceDigests),
           JSON.stringify(manifest.metrics),
-          await digestOf(manifest)
+          await digestOf(manifest),
+          inputs.schemaVersion ?? null,
+          inputs.schemaVersion != null ? JSON.stringify(inputs.cost ?? null) : null
         );
         const results = await this.db.batch([reportStatement, inputsStatement]);
         const changes = results?.[0]?.meta?.changes ?? 0;
@@ -491,7 +496,11 @@ var init_evidence = __esm({
             sourceDigests: JSON.parse(inputs.source_digests),
             // 旧版清单无冻结指标列：保持 null，导出与核验按旧口径回退
             metrics: inputs.metrics_json ? JSON.parse(inputs.metrics_json) : null,
-            manifestDigest: inputs.manifest_digest
+            manifestDigest: inputs.manifest_digest,
+            ...inputs.schema_version != null ? {
+              schemaVersion: inputs.schema_version,
+              cost: JSON.parse(inputs.cost_json)
+            } : {}
           } : null
         };
       }
@@ -6439,22 +6448,18 @@ async function latestPolicyBundle(db) {
     );
   return bundle;
 }
-async function policyBundleByDigest(db, digest2) {
-  const rows = (await db.prepare(
-    "SELECT * FROM execution_cost_policies ORDER BY version DESC LIMIT 50"
-  ).all()).results;
-  for (const row of rows) {
-    let bundle;
-    try {
-      bundle = rowToBundle(row);
-    } catch {
-      continue;
-    }
-    if (await policyDigest(bundle.payload) === digest2) return bundle;
-  }
+async function policyBundleByReference(db, reference) {
   const fallback = defaultExecutionCostPolicy();
-  if (await policyDigest(fallback.payload) === digest2) return fallback;
-  return null;
+  if (reference.policyId === fallback.id && reference.version === fallback.version && reference.modelVersion === fallback.modelVersion && reference.digest === fallback.payloadDigest)
+    return fallback;
+  const row = await db.prepare(
+    "SELECT * FROM execution_cost_policies WHERE id=? AND version=? AND model_version=?"
+  ).bind(reference.policyId, reference.version, reference.modelVersion).first();
+  if (!row) return null;
+  const bundle = rowToBundle(row);
+  if (!await verifyPolicyBundle(bundle) || bundle.payloadDigest !== reference.digest)
+    throw new Error(`\u6210\u672C\u653F\u7B56 v${row.version} \u5B58\u50A8\u5185\u5BB9\u4E0E\u6458\u8981\u4E0D\u4E00\u81F4`);
+  return bundle;
 }
 var ExecutionCostRepository = class {
   constructor(env) {
@@ -16760,6 +16765,8 @@ async function publishWindowReport({
     })
   );
   const inputDigest = await digestOf({
+    schemaVersion: EVIDENCE_INPUT_SCHEMA_VERSION,
+    cost,
     seriesId,
     window: {
       expectedDates: window.expectedDates,
@@ -16829,7 +16836,9 @@ async function publishWindowReport({
       sourceRefs: window.validDates.map((date) => `${seriesId}:${date}`),
       sourceDigests,
       contextDigest,
-      metrics: manifestMetrics
+      metrics: manifestMetrics,
+      schemaVersion: EVIDENCE_INPUT_SCHEMA_VERSION,
+      cost
     }
   });
   if (!window.validDates.length) {
@@ -17105,7 +17114,9 @@ async function buildAccountEvidence(env, { asOf, horizon, calendarDates } = {}) 
     policyId: executionCostBundle.id,
     version: executionCostBundle.version,
     digest: executionCostBundle.payloadDigest,
-    calibrationStatus: executionCostBundle.calibrationStatus
+    calibrationStatus: executionCostBundle.calibrationStatus,
+    calibrationCutoff: executionCostBundle.calibrationCutoff,
+    effectiveFrom: executionCostBundle.effectiveFrom
   } : { calibrationStatus: "PRIOR_UNCALIBRATED", digest: null };
   return publishWindowReport({
     repository,
@@ -17152,7 +17163,7 @@ async function exportEvidence(env, { id }) {
   const report = await repository.getReport(id);
   if (!report) throw new Error("\u8BC1\u636E\u62A5\u544A\u4E0D\u5B58\u5728");
   const frozenMetrics = report.inputs?.metrics;
-  const dailyMetrics = frozenMetrics?.length ? frozenMetrics : await repository.listDailyMetricsAcrossContexts({
+  const dailyMetrics = Array.isArray(frozenMetrics) ? frozenMetrics : await repository.listDailyMetricsAcrossContexts({
     seriesId: report.seriesId,
     fromDate: report.inputs?.orderedDates?.[0] ?? "0000-01-01",
     toDate: report.asOf
@@ -17176,9 +17187,9 @@ async function exportEvidence(env, { id }) {
   }
   let executionCostPolicies = [];
   if (report.payload.cost?.digest) {
-    const costBundle = await policyBundleByDigest(
+    const costBundle = await policyBundleByReference(
       database(env),
-      report.payload.cost.digest
+      report.inputs?.cost ?? report.payload.cost
     );
     if (costBundle)
       executionCostPolicies = [
@@ -17188,7 +17199,9 @@ async function exportEvidence(env, { id }) {
           modelVersion: costBundle.modelVersion,
           payload: costBundle.payload,
           digest: costBundle.payloadDigest,
-          calibrationStatus: costBundle.calibrationStatus
+          calibrationStatus: costBundle.calibrationStatus,
+          calibrationCutoff: costBundle.calibrationCutoff,
+          effectiveFrom: costBundle.effectiveFrom
         }
       ];
   }

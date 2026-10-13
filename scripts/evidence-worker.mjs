@@ -4,13 +4,17 @@
 // 下一轮重试。--once 执行一轮后退出（供自测/手动补偿）。
 // 与盘后流程互不干扰：都写 evidence_* 表，但发布按键唯一去重。
 import { localDatabase } from "./local-db.mjs";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { runEvidenceWorkerTick } from "../backend/services/evidence.js";
 
 try {
   process.loadEnvFile();
 } catch {}
 
-const DB = localDatabase();
+const dbPath = process.env.LOCAL_DATABASE_PATH || ".sites-runtime/local.sqlite";
+mkdirSync(dirname(dbPath), { recursive: true });
+const DB = localDatabase(dbPath);
 const env = { DB };
 const intervalMs = Math.max(
   60_000,
@@ -19,13 +23,11 @@ const intervalMs = Math.max(
 const once = process.argv.includes("--once");
 
 let stopping = false;
+let wake = null;
 for (const signal of ["SIGTERM", "SIGINT"])
   process.on(signal, () => {
     stopping = true;
-    if (once) {
-      DB.close();
-      process.exit(0);
-    }
+    wake?.();
   });
 
 async function tick() {
@@ -54,9 +56,15 @@ if (once) {
   console.log(`[evidence-worker] 启动，间隔 ${intervalMs}ms`);
   while (!stopping) {
     await tick();
+    if (stopping) break;
     await new Promise((resolve) => {
-      const timer = setTimeout(resolve, intervalMs);
-      timer.unref?.();
+      const finish = () => {
+        clearTimeout(timer);
+        wake = null;
+        resolve();
+      };
+      const timer = setTimeout(finish, intervalMs);
+      wake = finish;
     });
   }
   DB.close();

@@ -15,6 +15,7 @@ import {
   SECTOR_AGGREGATE_METRIC,
   SECTOR_MIN_VALID_STOCKS,
   MIN_SECTOR_COUNT,
+  EVIDENCE_INPUT_SCHEMA_VERSION,
 } from "../backend/domain/evidence-policy.js";
 import {
   resampleSegmentIndexMatrix,
@@ -242,6 +243,33 @@ export async function verifyEvidenceBundle(bundle) {
     )
       return fail(checks, "报告结构不完整");
     checks.structure = true;
+    const schemaVersion = report.inputs.schemaVersion;
+    if (
+      schemaVersion != null &&
+      schemaVersion !== EVIDENCE_INPUT_SCHEMA_VERSION
+    )
+      return fail(checks, "不支持的冻结输入格式版本");
+    const currentSchema = schemaVersion === EVIDENCE_INPUT_SCHEMA_VERSION;
+    if (
+      currentSchema &&
+      (!Array.isArray(report.inputs.metrics) ||
+        !Object.hasOwn(report.inputs, "cost"))
+    )
+      return fail(checks, "冻结输入缺少指标或成本上下文");
+    // 旧报告的格式由已绑定 inputDigest 的日指标判定，不能靠删输出字段降级。
+    const sectorInputs = (bundle.dailyMetrics ?? []).some(
+      (row) =>
+        Object.hasOwn(row.payload ?? {}, "sectors") ||
+        Object.hasOwn(row.payload?.values ?? {}, "sectorReturnIc"),
+    );
+    const recordedSecondary = report.payload.secondaryFamilies;
+    if (
+      !Array.isArray(recordedSecondary) &&
+      (currentSchema ||
+        sectorInputs ||
+        Object.hasOwn(report.payload, "secondaryFamilies"))
+    )
+      return fail(checks, "板块次要检验族必须是数组，不能降级为旧格式");
     // 导出内数据未被篡改：日指标、政策与报告 payload 摘要逐条重算。
     // 报告 payload 摘要覆盖 status/direction/tags 等全部字段（P1-6）。
     if ((await digestOf(report.payload)) !== report.digest)
@@ -278,6 +306,7 @@ export async function verifyEvidenceBundle(bundle) {
       ...(Array.isArray(report.inputs.metrics)
         ? { metrics: report.inputs.metrics }
         : {}),
+      ...(currentSchema ? { schemaVersion, cost: report.inputs.cost } : {}),
     };
     if ((await digestOf(manifest)) !== report.inputs.manifestDigest)
       return fail(checks, "输入清单摘要不一致");
@@ -347,6 +376,7 @@ export async function verifyEvidenceBundle(bundle) {
     )
       return fail(checks, "窗口覆盖率与有效日期不一致");
     const inputDigest = await digestOf({
+      ...(currentSchema ? { schemaVersion, cost: report.inputs.cost } : {}),
       seriesId: report.seriesId,
       window: {
         expectedDates: report.payload.window.expectedDates,
@@ -600,10 +630,8 @@ export async function verifyEvidenceBundle(bundle) {
         // 板块次要检验族核验（§3.2/§6.4 批次 C）：独立重算并与报告逐项
         // 核对族大小、板块集合、状态、区间、p 值与 Holm 校正；账户系列
         // 不输出板块族（口径不同，混入即拒绝）。
-        // 旧报告格式兼容（P2 复核）：无 secondaryFamilies 字段的迁移前
-        // 报告按旧口径只核主族；新格式必须携带完整次要族。
-        const recordedSecondary = report.payload.secondaryFamilies;
-        const legacySecondary = !Array.isArray(recordedSecondary);
+        // 只有无版本、无板块输入且确实缺少该字段的历史报告可走旧口径。
+        const legacySecondary = recordedSecondary === undefined;
         if (report.seriesId !== REVIEW_EVIDENCE_SERIES) {
           if (
             !legacySecondary &&
@@ -724,7 +752,11 @@ export async function verifyEvidenceBundle(bundle) {
     const costClaim = report.payload.cost;
     if (costClaim?.digest) {
       const costRow = (bundle.executionCostPolicies ?? []).find(
-        (row) => row.digest === costClaim.digest,
+        (row) =>
+          row.policyId === costClaim.policyId &&
+          row.version === costClaim.version &&
+          row.modelVersion === costClaim.modelVersion &&
+          row.digest === costClaim.digest,
       );
       if (!costRow) return fail(checks, "导出缺少与报告成本指纹一致的成本政策");
       if ((await digestOf(costRow.payload)) !== costRow.digest)
@@ -734,6 +766,7 @@ export async function verifyEvidenceBundle(bundle) {
         "policyId",
         "version",
         "calibrationStatus",
+        ...(currentSchema ? ["calibrationCutoff", "effectiveFrom"] : []),
       ])
         if (costClaim[key] !== costRow[key])
           return fail(checks, `成本指纹 ${key} 与成本政策不一致`);
@@ -743,6 +776,17 @@ export async function verifyEvidenceBundle(bundle) {
       costClaim.calibrationStatus !== "PRIOR_UNCALIBRATED"
     )
       return fail(checks, "无成本政策摘要不得宣称已校准");
+    if (
+      !currentSchema &&
+      costClaim?.calibrationStatus &&
+      costClaim.calibrationStatus !== "PRIOR_UNCALIBRATED"
+    )
+      return fail(checks, "旧格式未冻结成本上下文，不得宣称已校准");
+    if (
+      currentSchema &&
+      (await digestOf(costClaim)) !== (await digestOf(report.inputs.cost))
+    )
+      return fail(checks, "成本指纹与冻结成本输入不一致");
     // 标签由窗口/政策/系列结构完全派生（§4/§7.1/§10）：篡改受限标注
     // （如 METHOD_SIMULATION_LIMITED）以美化展示在此被拒。
     const expectedTags = ["EXPLORATORY_REPEATED_LOOKS"];

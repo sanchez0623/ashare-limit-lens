@@ -3,6 +3,9 @@
 // 独立于评分权重与 AI 参数；拒绝未知字段、非有限数与越界设置。
 import { digestOf } from "./research-lineage.js";
 
+// 输入格式进入 inputDigest：不能靠删字段把新报告降级为旧格式。
+export const EVIDENCE_INPUT_SCHEMA_VERSION = 2;
+
 export const EVIDENCE_PURPOSES = Object.freeze(["DIAGNOSTIC"]);
 export const EVIDENCE_MULTIPLICITY_METHODS = Object.freeze([
   "HOLM_WITHIN_ASOF_FAMILY",

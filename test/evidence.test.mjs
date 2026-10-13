@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   normalizeEvidencePolicy,
   DEFAULT_EVIDENCE_POLICY,
@@ -1302,8 +1307,74 @@ test("迁移前旧报告：无冻结指标列仍可通过核验（P2-2）", asyn
         .passed,
       true,
     );
-    // 改造为迁移前形态：metrics_json 置空，manifest 摘要按旧口径重算
-    const inputs = (await repository.getReport(report.id)).inputs;
+    // 真实旧格式：输入没有版本/成本/板块字段，按原摘要与种子重算主族。
+    const legacy = await exportEvidence(env, { id: report.id });
+    for (const metric of legacy.dailyMetrics) {
+      delete metric.payload.sectors;
+      delete metric.payload.values.sectorReturnIc;
+      delete metric.payload.quality.sectorCount;
+      metric.digest = await digestOf(metric.payload);
+      await DB.prepare(
+        "UPDATE evidence_daily_metrics SET payload=?,digest=? WHERE series_id=? AND outcome_date=?",
+      )
+        .bind(
+          JSON.stringify(metric.payload),
+          metric.digest,
+          report.seriesId,
+          metric.outcomeDate,
+        )
+        .run();
+    }
+    delete legacy.report.payload.secondaryFamilies;
+    legacy.report.inputDigest = await digestOf({
+      seriesId: report.seriesId,
+      window: {
+        expectedDates: report.payload.window.expectedDates,
+        validDates: report.payload.window.validDates,
+        missingDates: report.payload.window.missingDates,
+      },
+      contextDigest: report.payload.context.digest,
+      metrics: Object.fromEntries(
+        legacy.dailyMetrics.map((metric) => [
+          metric.outcomeDate,
+          metric.payload,
+        ]),
+      ),
+    });
+    legacy.report.payload.method.seed = await evidenceSeed({
+      namespace: report.namespace,
+      purpose: report.purpose,
+      asOf: report.asOf,
+      orderedWindowDates: report.payload.window.validDates,
+      inputDigest: legacy.report.inputDigest,
+      policyDigest: report.policyDigest,
+    });
+    legacy.report.payload.family = await forgeFamily(
+      legacy,
+      normalizeEvidencePolicy(undefined),
+    );
+    legacy.report.id = `evidence-${await digestOf({
+      seriesId: report.seriesId,
+      asOf: report.asOf,
+      horizon: report.horizon,
+      purpose: report.purpose,
+      inputDigest: legacy.report.inputDigest,
+      policyDigest: report.policyDigest,
+      methodVersion: report.methodVersion,
+    })}`;
+    legacy.report.digest = await digestOf(legacy.report.payload);
+    await DB.prepare(
+      "UPDATE evidence_reports SET id=?,input_digest=?,payload=?,digest=? WHERE id=?",
+    )
+      .bind(
+        legacy.report.id,
+        legacy.report.inputDigest,
+        JSON.stringify(legacy.report.payload),
+        legacy.report.digest,
+        report.id,
+      )
+      .run();
+    const inputs = report.inputs;
     const legacyDigest = await digestOf({
       orderedDates: inputs.orderedDates,
       sourceRefs: inputs.sourceRefs,
@@ -1311,11 +1382,11 @@ test("迁移前旧报告：无冻结指标列仍可通过核验（P2-2）", asyn
       contextDigest: report.payload.context.digest,
     });
     await DB.prepare(
-      "UPDATE evidence_report_inputs SET metrics_json=NULL, manifest_digest=? WHERE report_id=?",
+      "UPDATE evidence_report_inputs SET report_id=?,metrics_json=NULL,schema_version=NULL,cost_json=NULL,manifest_digest=? WHERE report_id=?",
     )
-      .bind(legacyDigest, report.id)
+      .bind(legacy.report.id, legacyDigest, report.id)
       .run();
-    const legacyBundle = await exportEvidence(env, { id: report.id });
+    const legacyBundle = await exportEvidence(env, { id: legacy.report.id });
     assert.equal(legacyBundle.report.inputs.metrics, null);
     assert.equal(legacyBundle.dailyMetrics.length, 20, "导出回退当前日指标");
     const audit = await verifyEvidenceBundle(legacyBundle);
@@ -2178,5 +2249,291 @@ test("独立统计 worker：发现缺失窗口、幂等补齐发布", async () =
     assert.equal(audit.passed, true, JSON.stringify(audit));
   } finally {
     DB.close();
+  }
+});
+
+test("验收 P1：删除/null/对象板块族不能伪装成旧格式", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const dates = tradingDates(62);
+    await seedSectorReviews(env, dates);
+    const report = await buildReviewEvidence(env, {
+      asOf: dates.at(-1),
+      horizon: 60,
+      calendarDates: dates,
+    });
+    const bundle = await exportEvidence(env, { id: report.id });
+    assert.equal((await verifyEvidenceBundle(bundle)).passed, true);
+    for (const value of [undefined, null, {}]) {
+      const forged = structuredClone(bundle);
+      if (value === undefined) delete forged.report.payload.secondaryFamilies;
+      else forged.report.payload.secondaryFamilies = value;
+      forged.report.digest = await digestOf(forged.report.payload);
+      assert.equal(forged.report.id, report.id);
+      assert.equal(forged.report.inputDigest, report.inputDigest);
+      assert.deepEqual(forged.report.inputs, report.inputs);
+      const audit = await verifyEvidenceBundle(forged);
+      assert.equal(audit.passed, false, JSON.stringify(audit));
+      assert.match(audit.reason, /次要检验族必须是数组/);
+    }
+    // 同步删除输入格式版本并重算 manifest，也不能绕过原 inputDigest。
+    const downgraded = structuredClone(bundle);
+    delete downgraded.report.inputs.schemaVersion;
+    delete downgraded.report.inputs.cost;
+    delete downgraded.report.payload.secondaryFamilies;
+    downgraded.report.inputs.manifestDigest = await digestOf({
+      orderedDates: report.inputs.orderedDates,
+      sourceRefs: report.inputs.sourceRefs,
+      sourceDigests: report.inputs.sourceDigests,
+      contextDigest: report.payload.context.digest,
+      metrics: report.inputs.metrics,
+    });
+    downgraded.report.digest = await digestOf(downgraded.report.payload);
+    assert.equal((await verifyEvidenceBundle(downgraded)).passed, false);
+  } finally {
+    DB.close();
+  }
+});
+
+async function accountAcceptanceFixture(env) {
+  const dates = tradingDates(65);
+  await new PaperRepository(env).initialize();
+  for (const [index, date] of dates.entries())
+    await env.DB.prepare(
+      "INSERT INTO paper_equity (trade_date,payload) VALUES (?,?)",
+    )
+      .bind(
+        date,
+        JSON.stringify({
+          date,
+          complete: true,
+          equityCents: 100000000 + 70000 * index + (index % 4) * 3000,
+        }),
+      )
+      .run();
+  return { asOf: dates.at(-1), horizon: 60, calendarDates: dates };
+}
+
+test("验收 P1：同步篡改报告/成本行/标签，冻结身份不变时仍拒绝", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const options = await accountAcceptanceFixture(env);
+    const report = await buildAccountEvidence(env, options);
+    const bundle = await exportEvidence(env, { id: report.id });
+    assert.equal((await verifyEvidenceBundle(bundle)).passed, true);
+    const forged = structuredClone(bundle);
+    forged.report.payload.cost.calibrationStatus = "EXECUTION_CALIBRATED";
+    forged.executionCostPolicies[0].calibrationStatus = "EXECUTION_CALIBRATED";
+    forged.report.payload.tags = forged.report.payload.tags.filter(
+      (tag) => !tag.startsWith("COST_"),
+    );
+    forged.report.digest = await digestOf(forged.report.payload);
+    assert.equal(forged.report.id, report.id);
+    assert.equal(forged.report.inputDigest, report.inputDigest);
+    assert.deepEqual(forged.report.inputs, report.inputs);
+    const audit = await verifyEvidenceBundle(forged);
+    assert.equal(audit.passed, false);
+    assert.match(audit.reason, /成本指纹与冻结成本输入不一致/);
+    // 连冻结清单都同步改写，原报告 inputDigest 仍会揭示篡改。
+    forged.report.inputs.cost.calibrationStatus = "EXECUTION_CALIBRATED";
+    forged.report.inputs.manifestDigest = await digestOf({
+      orderedDates: report.inputs.orderedDates,
+      sourceRefs: report.inputs.sourceRefs,
+      sourceDigests: report.inputs.sourceDigests,
+      contextDigest: report.payload.context.digest,
+      metrics: report.inputs.metrics,
+      schemaVersion: report.inputs.schemaVersion,
+      cost: forged.report.inputs.cost,
+    });
+    const deepAudit = await verifyEvidenceBundle(forged);
+    assert.equal(deepAudit.passed, false);
+    assert.match(deepAudit.reason, /输入摘要与报告不一致/);
+  } finally {
+    DB.close();
+  }
+});
+
+test("验收 P2：同参数/同校准等级 v2 不替换 v1，超过 50 版仍可导出", async () => {
+  const DB = localDatabase(),
+    env = { DB };
+  try {
+    const { ExecutionCostRepository } = await import(
+      "../backend/storage/execution-cost.js"
+    );
+    const { defaultExecutionCostPolicy } = await import(
+      "../shared/execution-cost.js"
+    );
+    const costs = new ExecutionCostRepository(env);
+    const options = await accountAcceptanceFixture(env);
+    const payload = defaultExecutionCostPolicy().payload;
+    const v1 = await costs.save({ payload });
+    const report = await buildAccountEvidence(env, options);
+    const original = await exportEvidence(env, { id: report.id });
+    const v2 = await costs.save({ payload });
+    assert.equal(v1.payloadDigest, v2.payloadDigest);
+    assert.equal(v1.calibrationStatus, v2.calibrationStatus);
+    for (const count of [2, 52]) {
+      if (count === 52)
+        for (let version = 3; version <= count; version++)
+          await costs.save({ payload });
+      const bundle = await exportEvidence(env, { id: report.id });
+      assert.equal(bundle.executionCostPolicies[0].policyId, v1.id);
+      assert.equal(bundle.executionCostPolicies[0].version, 1);
+      assert.deepEqual(bundle.report, original.report);
+      const audit = await verifyEvidenceBundle(bundle);
+      assert.equal(audit.passed, true, JSON.stringify(audit));
+      // verifier 也按完整引用定位，数组中的相同摘要 v2 不应抢占 v1。
+      bundle.executionCostPolicies.unshift({
+        ...bundle.executionCostPolicies[0],
+        policyId: v2.id,
+        version: v2.version,
+      });
+      assert.equal((await verifyEvidenceBundle(bundle)).passed, true);
+    }
+    const next = await buildAccountEvidence(env, options);
+    assert.notEqual(next.id, report.id);
+    assert.notEqual(next.inputDigest, report.inputDigest);
+    assert.equal(next.inputs.cost.version, 52);
+    assert.equal(
+      (await verifyEvidenceBundle(await exportEvidence(env, { id: next.id })))
+        .passed,
+      true,
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+function workerProcess(args, cwd, env) {
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, {
+      cwd,
+      env,
+      windowsHide: true,
+    });
+    let stdout = "",
+      stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error("worker 子进程超时"));
+    }, 10000);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      resolve({ code, stdout, stderr, elapsedMs: Date.now() - started });
+    });
+  });
+}
+
+test("验收 P1：官方 worker --once 读取配置/默认文件库，61 条复盘发布两个窗口", async () => {
+  const taskDir = mkdtempSync(join(tmpdir(), "evidence-worker-"));
+  try {
+    cpSync(join(repoRoot, "drizzle"), join(taskDir, "drizzle"), {
+      recursive: true,
+    });
+    const dates = tradingDates(62);
+    const preload = join(taskDir, "calendar.mjs");
+    writeFileSync(
+      preload,
+      `globalThis.fetch = async () => Response.json(${JSON.stringify({ data: { sh000001: { day: dates.map((date) => [date, "10", "10", "10", "10", "100"]) } } })});`,
+    );
+    for (const configured of [true, false]) {
+      const dbPath = join(
+        taskDir,
+        configured ? "configured/data.sqlite" : ".sites-runtime/local.sqlite",
+      );
+      mkdirSync(dirname(dbPath), { recursive: true });
+      let DB = localDatabase(dbPath);
+      await seedReviewHistory({ DB }, dates);
+      assert.equal(
+        (await DB.prepare("SELECT COUNT(*) AS n FROM reviews").first()).n,
+        61,
+      );
+      const { discoverMissingEvidenceWindows } = await import(
+        "../backend/services/evidence.js"
+      );
+      assert.equal((await discoverMissingEvidenceWindows({ DB })).length, 2);
+      DB.close();
+      const childEnv = { ...process.env };
+      if (configured) childEnv.LOCAL_DATABASE_PATH = dbPath;
+      else delete childEnv.LOCAL_DATABASE_PATH;
+      const args = [
+        "--import",
+        pathToFileURL(preload).href,
+        join(repoRoot, "scripts/evidence-worker.mjs"),
+        "--once",
+      ];
+      const first = await workerProcess(args, taskDir, childEnv);
+      assert.equal(first.code, 0, first.stderr);
+      assert.match(first.stdout, /发现 2 个缺失窗口，发布 2，失败 0/);
+      const second = await workerProcess(args, taskDir, childEnv);
+      assert.equal(second.code, 0, second.stderr);
+      DB = localDatabase(dbPath);
+      try {
+        const rows = (await DB.prepare("SELECT id FROM evidence_reports").all())
+          .results;
+        assert.equal(rows.length, 2, "重复单轮保持幂等");
+        for (const row of rows) {
+          const audit = await verifyEvidenceBundle(
+            await exportEvidence({ DB }, { id: row.id }),
+          );
+          assert.equal(audit.passed, true, JSON.stringify(audit));
+        }
+      } finally {
+        DB.close();
+      }
+    }
+  } finally {
+    assert.equal(dirname(taskDir), tmpdir());
+    rmSync(taskDir, { recursive: true, force: true });
+  }
+});
+
+test("验收 P1：官方常驻 worker 保持存活，等待中 SIGTERM 立即退出且无顶层 await 警告", async () => {
+  const taskDir = mkdtempSync(join(tmpdir(), "evidence-resident-"));
+  try {
+    cpSync(join(repoRoot, "drizzle"), join(taskDir, "drizzle"), {
+      recursive: true,
+    });
+    const preload = join(taskDir, "shutdown.mjs");
+    // 此定时器也 unref：它不帮 worker 保活，旧 worker 会提前以 13 退出。
+    writeFileSync(
+      preload,
+      'setTimeout(() => process.emit("SIGTERM"), 1200).unref();',
+    );
+    const result = await workerProcess(
+      [
+        "--import",
+        pathToFileURL(preload).href,
+        join(repoRoot, "scripts/evidence-worker.mjs"),
+      ],
+      taskDir,
+      {
+        ...process.env,
+        LOCAL_DATABASE_PATH: join(taskDir, "resident.sqlite"),
+        EVIDENCE_WORKER_INTERVAL_MS: "60000",
+      },
+    );
+    assert.match(result.stdout, /启动，间隔 60000ms/);
+    assert.equal(result.code, 0, result.stderr);
+    assert.ok(result.elapsedMs >= 1100, `提前退出：${result.elapsedMs}ms`);
+    assert.ok(result.elapsedMs < 5000, `停止未唤醒等待：${result.elapsedMs}ms`);
+    assert.doesNotMatch(result.stderr, /unsettled top-level await/i);
+  } finally {
+    assert.equal(dirname(taskDir), tmpdir());
+    rmSync(taskDir, { recursive: true, force: true });
   }
 });
