@@ -15,6 +15,7 @@ import { computeStatisticsBudget } from "../domain/cohort-policy.js";
 import { latestPolicyBundle } from "./execution-cost.js";
 import { feesForBook } from "../../shared/fees.js";
 import { researchForwardBuildDigest } from "../domain/research-build.js";
+import { verifyHistoricalTrainingSource } from "../domain/research-samples.js";
 
 export const RESEARCH_NAMESPACE = "main";
 const mapRow = (row) =>
@@ -576,6 +577,7 @@ export class ResearchRepository {
     samples,
     datasetId,
     datasetManifestDigest,
+    historicalSource,
     selectionPolicy,
   }) {
     const attempt = async () => {
@@ -623,6 +625,11 @@ export class ResearchRepository {
         reservedAt: now,
       };
       const reservationDigest = await digestOf(reservation);
+      if (historicalSource)
+        await verifyHistoricalTrainingSource(historicalSource, {
+          kind: "BOOTSTRAP",
+          reservationPayload: reservation,
+        });
       const guardArgs = [this.namespace, registryRow.revision + 1, nonce];
       const guarded = (sql, args) =>
         this.db
@@ -704,6 +711,19 @@ export class ResearchRepository {
             await eventDigest(event),
           ],
         ),
+        ...(historicalSource
+          ? [
+              guarded(
+                "INSERT INTO research_training_sources (experiment_id, payload, digest, created_at) SELECT ?, ?, ?, ?",
+                [
+                  experimentId,
+                  JSON.stringify(historicalSource.payload),
+                  historicalSource.digest,
+                  now,
+                ],
+              ),
+            ]
+          : []),
       ];
       await this.executeReservation(statements);
       const trainCount = (

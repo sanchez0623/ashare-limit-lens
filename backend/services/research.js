@@ -19,7 +19,10 @@ import {
 } from "../domain/research-lineage.js";
 import { ResearchRepository } from "../storage/research.js";
 import { CohortRepository } from "../storage/cohorts.js";
-import { historicalTrainingSample } from "../domain/research-samples.js";
+import {
+  historicalTrainingSample,
+  historicalTrainingSource,
+} from "../domain/research-samples.js";
 import { safeError } from "../http.js";
 import {
   selectionPolicyForBook,
@@ -621,82 +624,88 @@ export async function proposeBootstrapImprovement(
       reason: "AI 冷启动初始化全局仅一次；失败与错误同样视为已消耗",
     };
   const store = openHistoryStore(env);
-  const dataset = store && datasetId ? await store.getDataset(datasetId) : null;
-  if (!dataset)
-    return {
-      status: "NEED_DATA",
-      reason: store
-        ? "请指定六因子历史评分数据集（SIX_FACTOR_V1）"
-        : "AI 冷启动训练依赖本机历史研究存储：请配置 LOCAL_RESEARCH_DB_PATH 后在本机运行",
-    };
-  if (dataset.executionModel !== "SIX_FACTOR_V1")
-    return {
-      status: "NEED_DATA",
-      reason: "冷启动训练需要六因子历史评分数据集",
-    };
-  const integrity = await store.datasetIntegrity(datasetId);
-  if (integrity && !integrity.verified)
-    return {
-      status: "NEED_DATA",
-      reason:
-        "数据集 manifest 校验失败：输入与发布时不一致（可能被修改），拒绝用于冷启动训练",
-    };
-  const scores = await store.listScores(datasetId);
+  let dataset, integrity;
   const trainingPairs = [];
   const trainingDates = [];
   const samples = [];
-  const adjacency = tradingAdjacency(dataset.coverage);
-  for (let index = 0; index + 1 < scores.length; index++) {
-    const signal = scores[index];
-    const nextDate = scores[index + 1].tradeDate;
-    if (!isAdjacentTradingDay(adjacency, signal.tradeDate, nextDate)) continue;
-    const nextBars = await store.getObservationDaily(datasetId, nextDate);
-    const signalBars = await store.getObservationDaily(
-      datasetId,
-      signal.tradeDate,
-    );
-    if (!nextBars || !Object.keys(nextBars).length) continue;
-    const quotes = {};
-    for (const [code, bar] of Object.entries(nextBars)) {
-      const previousBar = signalBars ? signalBars[code] : null;
-      if (!previousBar || !(previousBar.closeCents > 0)) continue;
-      const previousCloseCents = previousBar.closeCents;
-      if (bar.closeCents === null || bar.closeCents === undefined) continue;
-      quotes[code] = {
-        date: nextDate,
-        previousCloseCents,
-        openCents: bar.openCents ?? previousCloseCents,
-        closeCents: bar.closeCents,
-        highCents: bar.highCents ?? bar.closeCents,
-        lowCents: bar.lowCents ?? bar.closeCents,
-        volumeShares: bar.volumeShares ?? null,
-        limitUpCents: Math.round(previousCloseCents * 1.1),
-        limitDownCents: Math.round(previousCloseCents * 0.9),
-        timestamp: `${nextDate}T15:00:00+08:00`,
+  try {
+    dataset = store && datasetId ? await store.getDataset(datasetId) : null;
+    if (!dataset)
+      return {
+        status: "NEED_DATA",
+        reason: store
+          ? "请指定六因子历史评分数据集（SIX_FACTOR_V1）"
+          : "AI 冷启动训练依赖本机历史研究存储：请配置 LOCAL_RESEARCH_DB_PATH 后在本机运行",
       };
-    }
-    if (!Object.keys(quotes).length) continue;
-    trainingPairs.push({
-      snapshot: signal.payload,
-      dataset: {
-        date: nextDate,
-        previousTradingDate: signal.tradeDate,
-        quotes,
-        minutes: {},
-        source: `历史冷启动（${dataset.provider}，真实前复权日线）`,
-        fetchedAt: new Date().toISOString(),
-      },
-    });
-    trainingDates.push(nextDate);
-    samples.push(
-      await historicalTrainingSample({
-        signalDate: signal.tradeDate,
-        nextDate,
+    if (dataset.executionModel !== "SIX_FACTOR_V1")
+      return {
+        status: "NEED_DATA",
+        reason: "冷启动训练需要六因子历史评分数据集",
+      };
+    integrity = await store.datasetIntegrity(datasetId);
+    if (!integrity?.verified)
+      return {
+        status: "NEED_DATA",
+        reason:
+          "数据集 manifest 校验失败：输入与发布时不一致（可能被修改），拒绝用于冷启动训练",
+      };
+    const scores = await store.listScores(datasetId);
+    const adjacency = tradingAdjacency(dataset.coverage);
+    for (let index = 0; index + 1 < scores.length; index++) {
+      const signal = scores[index];
+      const nextDate = scores[index + 1].tradeDate;
+      if (!isAdjacentTradingDay(adjacency, signal.tradeDate, nextDate))
+        continue;
+      const nextBars = await store.getObservationDaily(datasetId, nextDate);
+      const signalBars = await store.getObservationDaily(
         datasetId,
-        datasetManifestDigest: dataset.manifestDigest,
-        scoreDigest: signal.digest,
-      }),
-    );
+        signal.tradeDate,
+      );
+      if (!nextBars || !Object.keys(nextBars).length) continue;
+      const quotes = {};
+      for (const [code, bar] of Object.entries(nextBars)) {
+        const previousBar = signalBars ? signalBars[code] : null;
+        if (!previousBar || !(previousBar.closeCents > 0)) continue;
+        const previousCloseCents = previousBar.closeCents;
+        if (bar.closeCents === null || bar.closeCents === undefined) continue;
+        quotes[code] = {
+          date: nextDate,
+          previousCloseCents,
+          openCents: bar.openCents ?? previousCloseCents,
+          closeCents: bar.closeCents,
+          highCents: bar.highCents ?? bar.closeCents,
+          lowCents: bar.lowCents ?? bar.closeCents,
+          volumeShares: bar.volumeShares ?? null,
+          limitUpCents: Math.round(previousCloseCents * 1.1),
+          limitDownCents: Math.round(previousCloseCents * 0.9),
+          timestamp: `${nextDate}T15:00:00+08:00`,
+        };
+      }
+      if (!Object.keys(quotes).length) continue;
+      trainingPairs.push({
+        snapshot: signal.payload,
+        dataset: {
+          date: nextDate,
+          previousTradingDate: signal.tradeDate,
+          quotes,
+          minutes: {},
+          source: `历史冷启动（${dataset.provider}，真实前复权日线）`,
+          fetchedAt: new Date().toISOString(),
+        },
+      });
+      trainingDates.push(nextDate);
+      samples.push(
+        await historicalTrainingSample({
+          signalDate: signal.tradeDate,
+          nextDate,
+          datasetId,
+          datasetManifestDigest: dataset.manifestDigest,
+          scoreDigest: signal.digest,
+        }),
+      );
+    }
+  } finally {
+    store?.close();
   }
   if (trainingPairs.length < minTrainingDays)
     return {
@@ -760,6 +769,10 @@ export async function proposeBootstrapImprovement(
       samples,
       datasetId,
       datasetManifestDigest: dataset.manifestDigest,
+      historicalSource: await historicalTrainingSource(
+        datasetId,
+        integrity.manifest,
+      ),
       selectionPolicy,
     });
   } catch {

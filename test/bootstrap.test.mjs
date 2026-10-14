@@ -1,16 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { unlinkSync } from "node:fs";
+import { unlinkSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { localDatabase } from "../scripts/local-db.mjs";
 import { PaperRepository } from "../backend/storage/paper.js";
 import { ResearchRepository } from "../backend/storage/research.js";
 import { adoptSingleExperiment } from "../backend/storage/walk-forward.js";
-import { openHistoryStore } from "../backend/storage/history.js";
+import {
+  openHistoryStore,
+  HistoryDatasetStore,
+} from "../backend/storage/history.js";
 import {
   proposeBootstrapImprovement,
   researchStatus,
 } from "../backend/services/research.js";
 import { FACTORS, PRESETS } from "../shared/scoring.js";
+import { trainingSourceEvidence } from "../backend/storage/training-sources.js";
+import { historicalTrainingSource } from "../backend/domain/research-samples.js";
+import { digestOf } from "../backend/domain/research-lineage.js";
 
 function stubProposal(patch = { minScore: 82 }) {
   let calls = 0;
@@ -121,6 +129,234 @@ async function seedDataset(env, store, dayCount) {
   });
   return datasetId;
 }
+test("冷启动所有退出路径释放服务自开的历史连接，异常不会阻止文件清理", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bootstrap-connection-"));
+  const DB = localDatabase();
+  const env = {
+    DB,
+    LOCAL_RESEARCH_DB_PATH: join(dir, "history.sqlite"),
+    AI_API_KEY: "test-only",
+    AI_BASE_URL: "https://api.deepseek.com/v1",
+  };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const store = openHistoryStore(env);
+  const live = new Set();
+  const { ensure, close, listScores } = HistoryDatasetStore.prototype;
+  HistoryDatasetStore.prototype.ensure = async function () {
+    await ensure.call(this);
+    live.add(this);
+  };
+  HistoryDatasetStore.prototype.close = function () {
+    close.call(this);
+    live.delete(this);
+  };
+  try {
+    const short = await seedDataset(env, store, 10);
+    assert.equal(
+      (await proposeBootstrapImprovement(repository, env, { datasetId: short }))
+        .status,
+      "NEED_DATA",
+    );
+    assert.deepEqual([...live], [store]);
+    const full = await seedDataset(env, store, 25);
+    HistoryDatasetStore.prototype.listScores = async function () {
+      throw new Error("TEST_SOURCE_READ_FAILED");
+    };
+    await assert.rejects(
+      () => proposeBootstrapImprovement(repository, env, { datasetId: full }),
+      /TEST_SOURCE_READ_FAILED/,
+    );
+    assert.deepEqual([...live], [store]);
+    HistoryDatasetStore.prototype.listScores = listScores;
+    const failed = await proposeBootstrapImprovement(
+      repository,
+      env,
+      { datasetId: full },
+      async () => {
+        throw new Error("TEST_PROPOSAL_FAILED");
+      },
+    );
+    assert.equal(failed.status, "ERROR");
+    assert.deepEqual([...live], [store]);
+    store.close();
+    assert.equal(live.size, 0, "清理文件前，服务与测试各自的连接都已关闭");
+    rmSync(dir, { recursive: true });
+  } finally {
+    HistoryDatasetStore.prototype.ensure = ensure;
+    HistoryDatasetStore.prototype.close = close;
+    HistoryDatasetStore.prototype.listScores = listScores;
+    for (const open of live) open.close();
+    DB.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("旧冷启动从真实数据集补存精确 manifest，重复导出与文件删除后幂等", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bootstrap-legacy-source-"));
+  const DB = localDatabase();
+  const env = { DB, LOCAL_RESEARCH_DB_PATH: join(dir, "history.sqlite") };
+  const store = openHistoryStore(env);
+  try {
+    const id = await seedDataset(env, store, 25);
+    const integrity = await store.datasetIntegrity(id);
+    const experiment = {
+      id: "exp-legacy-source",
+      kind: "BOOTSTRAP",
+      reservationPayload: {
+        datasetId: id,
+        datasetManifestDigest: integrity.manifestDigest,
+      },
+    };
+    const expected = await historicalTrainingSource(id, integrity.manifest);
+    assert.deepEqual(await trainingSourceEvidence(env, experiment), expected);
+    assert.deepEqual(await trainingSourceEvidence(env, experiment), expected);
+    const mismatched = {
+      ...experiment,
+      id: "exp-mismatched-source",
+      reservationPayload: {
+        ...experiment.reservationPayload,
+        datasetManifestDigest: "f".repeat(64),
+      },
+    };
+    await assert.rejects(
+      () => trainingSourceEvidence(env, mismatched),
+      /冻结 manifest/,
+    );
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT COUNT(*) n FROM research_training_sources",
+        ).first()
+      ).n,
+      1,
+    );
+    const bad = structuredClone(expected);
+    bad.payload.manifest.scoreRefs[0].tradeDate = "1900-01-01";
+    bad.digest = await digestOf(bad.payload);
+    await DB.prepare("INSERT INTO research_training_sources VALUES(?,?,?,?)")
+      .bind(
+        "exp-corrupted-source",
+        JSON.stringify(bad.payload),
+        bad.digest,
+        "2026-01-01",
+      )
+      .run();
+    await assert.rejects(
+      () =>
+        trainingSourceEvidence(env, {
+          ...experiment,
+          id: "exp-corrupted-source",
+        }),
+      /冻结 manifest/,
+    );
+  } finally {
+    store.close();
+    // 不忽略 EBUSY：服务补存成功/失败路径上的连接都必须已关闭。
+    rmSync(dir, { recursive: true });
+  }
+  try {
+    delete env.LOCAL_RESEARCH_DB_PATH;
+    const row = await DB.prepare(
+      "SELECT payload,digest FROM research_training_sources WHERE experiment_id='exp-legacy-source'",
+    ).first();
+    const expected = { payload: JSON.parse(row.payload), digest: row.digest };
+    const experiment = {
+      id: "exp-legacy-source",
+      kind: "BOOTSTRAP",
+      reservationPayload: {
+        datasetId: expected.payload.datasetId,
+        datasetManifestDigest: await digestOf(expected.payload.manifest),
+      },
+    };
+    assert.deepEqual(await trainingSourceEvidence(env, experiment), expected);
+    await assert.rejects(
+      () =>
+        trainingSourceEvidence(env, {
+          ...experiment,
+          id: "exp-source-unavailable",
+        }),
+      /LOCAL_RESEARCH_DB_PATH/,
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+test("训练来源与冷启动预留一起提交，来源保存失败不消耗预算或资格", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bootstrap-source-atomic-"));
+  const DB = localDatabase();
+  const env = {
+    DB,
+    LOCAL_RESEARCH_DB_PATH: join(dir, "history.sqlite"),
+    AI_API_KEY: "test-only",
+    AI_BASE_URL: "https://api.deepseek.com/v1",
+  };
+  const repository = new PaperRepository(env);
+  await repository.initialize();
+  const store = openHistoryStore(env);
+  try {
+    const datasetId = await seedDataset(env, store, 25);
+    let calls = 0;
+    const proposal = async () => {
+      calls++;
+      return { patch: { minScore: 82 }, rationale: "原子来源回归" };
+    };
+    DB.exec(
+      "CREATE TRIGGER fail_training_source BEFORE INSERT ON research_training_sources BEGIN SELECT RAISE(ABORT,'TEST_SOURCE_SAVE_FAILED'); END",
+    );
+    assert.equal(
+      (
+        await proposeBootstrapImprovement(
+          repository,
+          env,
+          { datasetId },
+          proposal,
+        )
+      ).status,
+      "BUSY",
+    );
+    assert.equal(calls, 0);
+    const research = new ResearchRepository(env);
+    assert.equal((await research.ensureRegistry()).bootstrapDone, false);
+    for (const table of [
+      "research_generation_slots",
+      "research_experiments",
+      "research_sample_uses",
+      "research_training_sources",
+    ])
+      assert.equal(
+        (await DB.prepare(`SELECT COUNT(*) n FROM ${table}`).first()).n,
+        0,
+      );
+    DB.exec("DROP TRIGGER fail_training_source");
+    assert.equal(
+      (
+        await proposeBootstrapImprovement(
+          repository,
+          env,
+          { datasetId },
+          proposal,
+        )
+      ).status,
+      "AWAITING_SHADOW",
+    );
+    assert.equal(calls, 1);
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT COUNT(*) n FROM research_training_sources",
+        ).first()
+      ).n,
+      1,
+    );
+  } finally {
+    store.close();
+    DB.close();
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test("AI 冷启动：一次性初始化进入影子队列并消耗资格", async () => {
   const DB = localDatabase();
   const researchPath = `.sites-runtime/test-boot-${crypto.randomUUID()}.sqlite`;

@@ -14,6 +14,7 @@ import { windowMetrics, completeRounds } from "../domain/cohort-metrics.js";
 import { verifyResearchExport } from "../domain/research-verifier.js";
 import { switchReportRows } from "../storage/switch-reports.js";
 import { verifyStrategySwitches } from "../domain/research-switches.js";
+import { trainingSourceEvidence } from "../storage/training-sources.js";
 
 export async function listResearchExperiments(
   env,
@@ -361,6 +362,7 @@ export async function exportResearchExperiment(
     schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     ...detail,
+    historicalSource: await trainingSourceEvidence(env, detail.experiment),
     evaluation: actualEvaluation,
     switchReports,
     policy: policy

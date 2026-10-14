@@ -8556,11 +8556,11 @@ var init_research_windows = __esm({
 
 // backend/domain/research-build.js
 async function researchForwardBuildMatches(value) {
-  return value === await researchForwardBuildDigest() || isLegacyForwardBuild(value);
+  return value === await researchForwardBuildDigest() || isLegacyForwardBuild(value) || value === PREVIOUS_FORWARD_BUILD;
 }
 function researchForwardBuildDigest() {
   if (true)
-    return Promise.resolve("80cea86fe7c2ce6ccf4d81f5c24175b94e92c39b15bd0f29c6bfae08e21c01be");
+    return Promise.resolve("33ee3bad3a9c10f45a3d2e1e1fcff0aabf0e035df3c2f5190042b9fba2617f34");
   cached2 ??= (async () => {
     const { readFileSync } = await import("node:fs");
     return digestOf(
@@ -8572,6 +8572,7 @@ function researchForwardBuildDigest() {
         "backend/domain/research-statistics.js",
         "backend/domain/research-verifier.js",
         "backend/domain/research-samples.js",
+        "backend/domain/historical-input.js",
         "backend/domain/research-switches.js",
         "backend/services/portfolio-runner.js",
         "backend/services/strategy-tournament.js",
@@ -8589,12 +8590,91 @@ function researchForwardBuildDigest() {
   })();
   return cached2;
 }
-var LEGACY_FORWARD_BUILD, isLegacyForwardBuild, cached2;
+var LEGACY_FORWARD_BUILD, isLegacyForwardBuild, PREVIOUS_FORWARD_BUILD, cached2;
 var init_research_build = __esm({
   "backend/domain/research-build.js"() {
     init_research_lineage();
     LEGACY_FORWARD_BUILD = "6bc2075feac2d09f371ab2a405afc93e98803d1184bce6f94bea2ab0fe526b02";
     isLegacyForwardBuild = (value) => value === LEGACY_FORWARD_BUILD;
+    PREVIOUS_FORWARD_BUILD = "80cea86fe7c2ce6ccf4d81f5c24175b94e92c39b15bd0f29c6bfae08e21c01be";
+  }
+});
+
+// backend/domain/research-samples.js
+async function historicalTrainingSample({
+  signalDate,
+  nextDate,
+  datasetId,
+  datasetManifestDigest,
+  scoreDigest
+}) {
+  const payload = {
+    role: "HISTORICAL_TRAIN",
+    digestVersion: FULL_SAMPLE_DIGEST,
+    signalDate,
+    tradeDate: nextDate,
+    datasetId,
+    datasetManifestDigest,
+    scoreDigest
+  };
+  return { date: nextDate, payload, digest: await digestOf(payload) };
+}
+async function historicalTrainingSource(datasetId, manifest) {
+  const payload = { datasetId, manifest };
+  return { payload, digest: await digestOf(payload) };
+}
+async function verifyHistoricalTrainingSource(source, experiment) {
+  const reservation = experiment.reservationPayload;
+  const manifest = source?.payload?.manifest;
+  if (experiment.kind !== "BOOTSTRAP" || source?.payload?.datasetId !== reservation.datasetId || !manifest || manifest.executionModel !== "SIX_FACTOR_V1" || !Array.isArray(manifest.scoreRefs) || await digestOf(source.payload) !== source.digest || await digestOf(manifest) !== reservation.datasetManifestDigest)
+    throw new Error("\u51B7\u542F\u52A8\u539F\u6570\u636E\u96C6\u8BC4\u5206\u6765\u6E90\u7F3A\u5931\u6216\u4E0E\u51BB\u7ED3 manifest \u4E0D\u4E00\u81F4");
+  return {
+    scores: new Set(
+      manifest.scoreRefs.map((ref) => `${ref.tradeDate}:${ref.digest}`)
+    ),
+    adjacency: tradingAdjacency(manifest.coverage)
+  };
+}
+async function verifyResearchSample(sample, experiment, historicalSource) {
+  const p = sample.payload;
+  if (!p || p.role && p.role !== sample.role || p.tradeDate && p.tradeDate !== sample.outcomeDate)
+    throw new Error("\u6837\u672C\u65E5\u671F\u6216\u7528\u9014\u4E0E\u5B58\u50A8\u8EAB\u4EFD\u4E0D\u4E00\u81F4");
+  if (sample.role === "HISTORICAL_TRAIN") {
+    const reservation = experiment.reservationPayload;
+    if (experiment.kind !== "BOOTSTRAP" || p.role !== "HISTORICAL_TRAIN" || p.datasetId !== reservation.datasetId || p.datasetManifestDigest !== reservation.datasetManifestDigest || !reservation.trainingDates.includes(sample.outcomeDate) || !/^\d{4}-\d{2}-\d{2}$/.test(p.signalDate ?? "") || p.signalDate >= sample.outcomeDate)
+      throw new Error("\u51B7\u542F\u52A8\u6837\u672C\u4E0E\u51BB\u7ED3\u6570\u636E\u96C6\u3001\u65E5\u671F\u6216\u7528\u9014\u4E0D\u4E00\u81F4");
+    if (!historicalSource?.scores.has(`${p.signalDate}:${p.scoreDigest}`) || !isAdjacentTradingDay(
+      historicalSource.adjacency,
+      p.signalDate,
+      sample.outcomeDate
+    ))
+      throw new Error("\u51B7\u542F\u52A8\u6837\u672C\u4FE1\u53F7\u65E5\u671F\u4E0E\u539F\u6570\u636E\u96C6\u8BC4\u5206\u6458\u8981\u6216\u6B21\u65E5\u5173\u7CFB\u4E0D\u4E00\u81F4");
+  }
+  if (p.digestVersion !== void 0 && p.digestVersion !== FULL_SAMPLE_DIGEST)
+    throw new Error("\u6837\u672C\u6458\u8981\u7248\u672C\u4E0D\u652F\u6301");
+  if (await digestOf(p) === sample.digest) return;
+  if (sample.role === "HISTORICAL_TRAIN" && p.digestVersion === void 0 && Object.keys(p).length === 5 && Object.keys(p).every(
+    (key) => [
+      "role",
+      "signalDate",
+      "datasetId",
+      "datasetManifestDigest",
+      "scoreDigest"
+    ].includes(key)
+  ) && await digestOf({
+    scoreDigest: p.scoreDigest,
+    nextDate: sample.outcomeDate,
+    datasetManifestDigest: p.datasetManifestDigest
+  }) === sample.digest)
+    return;
+  throw new Error("\u6837\u672C\u6458\u8981\u4E0D\u4E00\u81F4");
+}
+var FULL_SAMPLE_DIGEST;
+var init_research_samples = __esm({
+  "backend/domain/research-samples.js"() {
+    init_research_lineage();
+    init_historical_input();
+    FULL_SAMPLE_DIGEST = "FULL_PAYLOAD_V1";
   }
 });
 
@@ -8612,6 +8692,7 @@ var init_research = __esm({
     init_execution_cost3();
     init_fees();
     init_research_build();
+    init_research_samples();
     RESEARCH_NAMESPACE3 = "main";
     mapRow = (row) => row ? {
       id: row.id,
@@ -9055,6 +9136,7 @@ var init_research = __esm({
         samples,
         datasetId,
         datasetManifestDigest,
+        historicalSource,
         selectionPolicy: selectionPolicy2
       }) {
         const attempt = async () => {
@@ -9094,6 +9176,11 @@ var init_research = __esm({
             reservedAt: now
           };
           const reservationDigest = await digestOf(reservation);
+          if (historicalSource)
+            await verifyHistoricalTrainingSource(historicalSource, {
+              kind: "BOOTSTRAP",
+              reservationPayload: reservation
+            });
           const guardArgs = [this.namespace, registryRow.revision + 1, nonce];
           const guarded = (sql, args) => this.db.prepare(
             `${sql} WHERE EXISTS (SELECT 1 FROM research_registry WHERE namespace = ? AND revision = ? AND last_run_id = ?)`
@@ -9169,7 +9256,18 @@ var init_research = __esm({
                 event.previousDigest,
                 await eventDigest(event)
               ]
-            )
+            ),
+            ...historicalSource ? [
+              guarded(
+                "INSERT INTO research_training_sources (experiment_id, payload, digest, created_at) SELECT ?, ?, ?, ?",
+                [
+                  experimentId,
+                  JSON.stringify(historicalSource.payload),
+                  historicalSource.digest,
+                  now
+                ]
+              )
+            ] : []
           ];
           await this.executeReservation(statements);
           const trainCount = (await this.db.prepare(
@@ -9578,61 +9676,6 @@ var init_research = __esm({
         }));
       }
     };
-  }
-});
-
-// backend/domain/research-samples.js
-async function historicalTrainingSample({
-  signalDate,
-  nextDate,
-  datasetId,
-  datasetManifestDigest,
-  scoreDigest
-}) {
-  const payload = {
-    role: "HISTORICAL_TRAIN",
-    digestVersion: FULL_SAMPLE_DIGEST,
-    signalDate,
-    tradeDate: nextDate,
-    datasetId,
-    datasetManifestDigest,
-    scoreDigest
-  };
-  return { date: nextDate, payload, digest: await digestOf(payload) };
-}
-async function verifyResearchSample(sample, experiment) {
-  const p = sample.payload;
-  if (!p || p.role && p.role !== sample.role || p.tradeDate && p.tradeDate !== sample.outcomeDate)
-    throw new Error("\u6837\u672C\u65E5\u671F\u6216\u7528\u9014\u4E0E\u5B58\u50A8\u8EAB\u4EFD\u4E0D\u4E00\u81F4");
-  if (sample.role === "HISTORICAL_TRAIN") {
-    const reservation = experiment.reservationPayload;
-    if (experiment.kind !== "BOOTSTRAP" || p.role !== "HISTORICAL_TRAIN" || p.datasetId !== reservation.datasetId || p.datasetManifestDigest !== reservation.datasetManifestDigest || !reservation.trainingDates.includes(sample.outcomeDate) || !/^\d{4}-\d{2}-\d{2}$/.test(p.signalDate ?? "") || p.signalDate >= sample.outcomeDate)
-      throw new Error("\u51B7\u542F\u52A8\u6837\u672C\u4E0E\u51BB\u7ED3\u6570\u636E\u96C6\u3001\u65E5\u671F\u6216\u7528\u9014\u4E0D\u4E00\u81F4");
-  }
-  if (p.digestVersion !== void 0 && p.digestVersion !== FULL_SAMPLE_DIGEST)
-    throw new Error("\u6837\u672C\u6458\u8981\u7248\u672C\u4E0D\u652F\u6301");
-  if (await digestOf(p) === sample.digest) return;
-  if (sample.role === "HISTORICAL_TRAIN" && p.digestVersion === void 0 && Object.keys(p).length === 5 && Object.keys(p).every(
-    (key) => [
-      "role",
-      "signalDate",
-      "datasetId",
-      "datasetManifestDigest",
-      "scoreDigest"
-    ].includes(key)
-  ) && await digestOf({
-    scoreDigest: p.scoreDigest,
-    nextDate: sample.outcomeDate,
-    datasetManifestDigest: p.datasetManifestDigest
-  }) === sample.digest)
-    return;
-  throw new Error("\u6837\u672C\u6458\u8981\u4E0D\u4E00\u81F4");
-}
-var FULL_SAMPLE_DIGEST;
-var init_research_samples = __esm({
-  "backend/domain/research-samples.js"() {
-    init_research_lineage();
-    FULL_SAMPLE_DIGEST = "FULL_PAYLOAD_V1";
   }
 });
 
@@ -14940,8 +14983,25 @@ async function verifyResearchExport(bundle) {
   );
   await chain(bundle.events, "\u7814\u7A76");
   await hashRows(bundle.reports, "\u7814\u7A76\u62A5\u544A");
+  let historicalSource = null;
+  if (experiment.kind === "BOOTSTRAP") {
+    const trainingDates = experiment.reservationPayload.trainingDates;
+    const trainingSamples = bundle.samples.filter(
+      (sample) => sample.role === "HISTORICAL_TRAIN"
+    );
+    requireEvidence(
+      Array.isArray(trainingDates) && trainingDates.length > 0 && trainingSamples.length === trainingDates.length && new Set(trainingSamples.map((sample) => sample.outcomeDate)).size === trainingDates.length && trainingDates.every(
+        (date) => trainingSamples.some((sample) => sample.outcomeDate === date)
+      ),
+      "\u51B7\u542F\u52A8\u8BAD\u7EC3\u6837\u672C\u7528\u9014\u6216\u65E5\u671F\u767B\u8BB0\u4E0D\u5B8C\u6574"
+    );
+    historicalSource = await verifyHistoricalTrainingSource(
+      bundle.historicalSource,
+      experiment
+    );
+  }
   for (const sample of bundle.samples)
-    await verifyResearchSample(sample, experiment);
+    await verifyResearchSample(sample, experiment, historicalSource);
   await hashRows(bundle.switches, "\u5207\u6362");
   await verifyStrategySwitches({
     experiment,
@@ -15411,6 +15471,56 @@ var init_switch_reports = __esm({
   }
 });
 
+// backend/storage/training-sources.js
+async function trainingSourceEvidence(env, experiment) {
+  if (experiment.kind !== "BOOTSTRAP") return null;
+  const load = async () => {
+    const row = await env.DB.prepare(
+      "SELECT payload,digest FROM research_training_sources WHERE experiment_id=?"
+    ).bind(experiment.id).first();
+    return row ? { payload: JSON.parse(row.payload), digest: row.digest } : null;
+  };
+  let source = await load();
+  if (!source) {
+    const store = openHistoryStore(env);
+    if (!store)
+      throw new Error(
+        "\u65E7\u51B7\u542F\u52A8\u7F3A\u5C11\u539F\u6570\u636E\u96C6\u8BC4\u5206\u6765\u6E90\uFF0C\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u91CD\u65B0\u5BFC\u51FA"
+      );
+    try {
+      const integrity = await store.datasetIntegrity(
+        experiment.reservationPayload.datasetId
+      );
+      if (!integrity?.verified)
+        throw new Error("\u51B7\u542F\u52A8\u539F\u6570\u636E\u96C6 manifest \u6821\u9A8C\u5931\u8D25\uFF0C\u4E0D\u80FD\u8865\u5B58\u8BC4\u5206\u6765\u6E90");
+      source = await historicalTrainingSource(
+        integrity.datasetId,
+        integrity.manifest
+      );
+      await verifyHistoricalTrainingSource(source, experiment);
+      await env.DB.prepare(
+        "INSERT OR IGNORE INTO research_training_sources(experiment_id,payload,digest,created_at) VALUES(?,?,?,?)"
+      ).bind(
+        experiment.id,
+        JSON.stringify(source.payload),
+        source.digest,
+        (/* @__PURE__ */ new Date()).toISOString()
+      ).run();
+      source = await load();
+    } finally {
+      store.close();
+    }
+  }
+  await verifyHistoricalTrainingSource(source, experiment);
+  return source;
+}
+var init_training_sources = __esm({
+  "backend/storage/training-sources.js"() {
+    init_history();
+    init_research_samples();
+  }
+});
+
 // backend/services/walk-forward.js
 var walk_forward_exports = {};
 __export(walk_forward_exports, {
@@ -15654,6 +15764,7 @@ async function exportResearchExperiment(env, id, { evaluation = null } = {}) {
     schemaVersion: 2,
     exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
     ...detail,
+    historicalSource: await trainingSourceEvidence(env, detail.experiment),
     evaluation: actualEvaluation,
     switchReports,
     policy: policy ? { payload: JSON.parse(policy.payload), digest: policy.digest } : null,
@@ -15848,6 +15959,7 @@ var init_walk_forward2 = __esm({
     init_research_verifier();
     init_switch_reports();
     init_research_switches();
+    init_training_sources();
   }
 });
 
@@ -16396,79 +16508,85 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
       reason: "AI \u51B7\u542F\u52A8\u521D\u59CB\u5316\u5168\u5C40\u4EC5\u4E00\u6B21\uFF1B\u5931\u8D25\u4E0E\u9519\u8BEF\u540C\u6837\u89C6\u4E3A\u5DF2\u6D88\u8017"
     };
   const store = openHistoryStore(env);
-  const dataset = store && datasetId ? await store.getDataset(datasetId) : null;
-  if (!dataset)
-    return {
-      status: "NEED_DATA",
-      reason: store ? "\u8BF7\u6307\u5B9A\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09" : "AI \u51B7\u542F\u52A8\u8BAD\u7EC3\u4F9D\u8D56\u672C\u673A\u5386\u53F2\u7814\u7A76\u5B58\u50A8\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u8FD0\u884C"
-    };
-  if (dataset.executionModel !== "SIX_FACTOR_V1")
-    return {
-      status: "NEED_DATA",
-      reason: "\u51B7\u542F\u52A8\u8BAD\u7EC3\u9700\u8981\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6"
-    };
-  const integrity = await store.datasetIntegrity(datasetId);
-  if (integrity && !integrity.verified)
-    return {
-      status: "NEED_DATA",
-      reason: "\u6570\u636E\u96C6 manifest \u6821\u9A8C\u5931\u8D25\uFF1A\u8F93\u5165\u4E0E\u53D1\u5E03\u65F6\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u4FEE\u6539\uFF09\uFF0C\u62D2\u7EDD\u7528\u4E8E\u51B7\u542F\u52A8\u8BAD\u7EC3"
-    };
-  const scores = await store.listScores(datasetId);
+  let dataset, integrity;
   const trainingPairs = [];
   const trainingDates = [];
   const samples = [];
-  const adjacency = tradingAdjacency(dataset.coverage);
-  for (let index = 0; index + 1 < scores.length; index++) {
-    const signal = scores[index];
-    const nextDate = scores[index + 1].tradeDate;
-    if (!isAdjacentTradingDay(adjacency, signal.tradeDate, nextDate)) continue;
-    const nextBars = await store.getObservationDaily(datasetId, nextDate);
-    const signalBars = await store.getObservationDaily(
-      datasetId,
-      signal.tradeDate
-    );
-    if (!nextBars || !Object.keys(nextBars).length) continue;
-    const quotes = {};
-    for (const [code, bar] of Object.entries(nextBars)) {
-      const previousBar = signalBars ? signalBars[code] : null;
-      if (!previousBar || !(previousBar.closeCents > 0)) continue;
-      const previousCloseCents = previousBar.closeCents;
-      if (bar.closeCents === null || bar.closeCents === void 0) continue;
-      quotes[code] = {
-        date: nextDate,
-        previousCloseCents,
-        openCents: bar.openCents ?? previousCloseCents,
-        closeCents: bar.closeCents,
-        highCents: bar.highCents ?? bar.closeCents,
-        lowCents: bar.lowCents ?? bar.closeCents,
-        volumeShares: bar.volumeShares ?? null,
-        limitUpCents: Math.round(previousCloseCents * 1.1),
-        limitDownCents: Math.round(previousCloseCents * 0.9),
-        timestamp: `${nextDate}T15:00:00+08:00`
+  try {
+    dataset = store && datasetId ? await store.getDataset(datasetId) : null;
+    if (!dataset)
+      return {
+        status: "NEED_DATA",
+        reason: store ? "\u8BF7\u6307\u5B9A\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6\uFF08SIX_FACTOR_V1\uFF09" : "AI \u51B7\u542F\u52A8\u8BAD\u7EC3\u4F9D\u8D56\u672C\u673A\u5386\u53F2\u7814\u7A76\u5B58\u50A8\uFF1A\u8BF7\u914D\u7F6E LOCAL_RESEARCH_DB_PATH \u540E\u5728\u672C\u673A\u8FD0\u884C"
       };
-    }
-    if (!Object.keys(quotes).length) continue;
-    trainingPairs.push({
-      snapshot: signal.payload,
-      dataset: {
-        date: nextDate,
-        previousTradingDate: signal.tradeDate,
-        quotes,
-        minutes: {},
-        source: `\u5386\u53F2\u51B7\u542F\u52A8\uFF08${dataset.provider}\uFF0C\u771F\u5B9E\u524D\u590D\u6743\u65E5\u7EBF\uFF09`,
-        fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
-      }
-    });
-    trainingDates.push(nextDate);
-    samples.push(
-      await historicalTrainingSample({
-        signalDate: signal.tradeDate,
-        nextDate,
+    if (dataset.executionModel !== "SIX_FACTOR_V1")
+      return {
+        status: "NEED_DATA",
+        reason: "\u51B7\u542F\u52A8\u8BAD\u7EC3\u9700\u8981\u516D\u56E0\u5B50\u5386\u53F2\u8BC4\u5206\u6570\u636E\u96C6"
+      };
+    integrity = await store.datasetIntegrity(datasetId);
+    if (!integrity?.verified)
+      return {
+        status: "NEED_DATA",
+        reason: "\u6570\u636E\u96C6 manifest \u6821\u9A8C\u5931\u8D25\uFF1A\u8F93\u5165\u4E0E\u53D1\u5E03\u65F6\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u4FEE\u6539\uFF09\uFF0C\u62D2\u7EDD\u7528\u4E8E\u51B7\u542F\u52A8\u8BAD\u7EC3"
+      };
+    const scores = await store.listScores(datasetId);
+    const adjacency = tradingAdjacency(dataset.coverage);
+    for (let index = 0; index + 1 < scores.length; index++) {
+      const signal = scores[index];
+      const nextDate = scores[index + 1].tradeDate;
+      if (!isAdjacentTradingDay(adjacency, signal.tradeDate, nextDate))
+        continue;
+      const nextBars = await store.getObservationDaily(datasetId, nextDate);
+      const signalBars = await store.getObservationDaily(
         datasetId,
-        datasetManifestDigest: dataset.manifestDigest,
-        scoreDigest: signal.digest
-      })
-    );
+        signal.tradeDate
+      );
+      if (!nextBars || !Object.keys(nextBars).length) continue;
+      const quotes = {};
+      for (const [code, bar] of Object.entries(nextBars)) {
+        const previousBar = signalBars ? signalBars[code] : null;
+        if (!previousBar || !(previousBar.closeCents > 0)) continue;
+        const previousCloseCents = previousBar.closeCents;
+        if (bar.closeCents === null || bar.closeCents === void 0) continue;
+        quotes[code] = {
+          date: nextDate,
+          previousCloseCents,
+          openCents: bar.openCents ?? previousCloseCents,
+          closeCents: bar.closeCents,
+          highCents: bar.highCents ?? bar.closeCents,
+          lowCents: bar.lowCents ?? bar.closeCents,
+          volumeShares: bar.volumeShares ?? null,
+          limitUpCents: Math.round(previousCloseCents * 1.1),
+          limitDownCents: Math.round(previousCloseCents * 0.9),
+          timestamp: `${nextDate}T15:00:00+08:00`
+        };
+      }
+      if (!Object.keys(quotes).length) continue;
+      trainingPairs.push({
+        snapshot: signal.payload,
+        dataset: {
+          date: nextDate,
+          previousTradingDate: signal.tradeDate,
+          quotes,
+          minutes: {},
+          source: `\u5386\u53F2\u51B7\u542F\u52A8\uFF08${dataset.provider}\uFF0C\u771F\u5B9E\u524D\u590D\u6743\u65E5\u7EBF\uFF09`,
+          fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      });
+      trainingDates.push(nextDate);
+      samples.push(
+        await historicalTrainingSample({
+          signalDate: signal.tradeDate,
+          nextDate,
+          datasetId,
+          datasetManifestDigest: dataset.manifestDigest,
+          scoreDigest: signal.digest
+        })
+      );
+    }
+  } finally {
+    store?.close();
   }
   if (trainingPairs.length < minTrainingDays)
     return {
@@ -16530,6 +16648,10 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
       samples,
       datasetId,
       datasetManifestDigest: dataset.manifestDigest,
+      historicalSource: await historicalTrainingSource(
+        datasetId,
+        integrity.manifest
+      ),
       selectionPolicy: selectionPolicy2
     });
   } catch {

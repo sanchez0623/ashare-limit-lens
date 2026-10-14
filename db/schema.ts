@@ -368,3 +368,13 @@ export const strategySwitchReports = sqliteTable("strategy_switch_reports", {
   payload: text("payload").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+export const researchTrainingSources = sqliteTable(
+  "research_training_sources",
+  {
+    experimentId: text("experiment_id").primaryKey(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+);

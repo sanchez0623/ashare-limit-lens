@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { localDatabase } from "../scripts/local-db.mjs";
 import { pairs, dateAt } from "./fixtures/trading.mjs";
 import {
@@ -94,9 +96,11 @@ async function seed({
   }
   const RealDate = globalThis.Date;
   let history = null,
+    historyDir = null,
     datasetId = null;
   if (bootstrap) {
-    env.LOCAL_RESEARCH_DB_PATH = `/tmp/review-bootstrap-${crypto.randomUUID()}.sqlite`;
+    historyDir = mkdtempSync(join(tmpdir(), "review-bootstrap-"));
+    env.LOCAL_RESEARCH_DB_PATH = join(historyDir, "history.sqlite");
     history = openHistoryStore(env);
     datasetId = `hds-${crypto.randomUUID()}`;
     const training = all.slice(0, 25);
@@ -167,7 +171,8 @@ async function seed({
     globalThis.Date = RealDate;
     if (history) {
       history.close();
-      unlinkSync(env.LOCAL_RESEARCH_DB_PATH);
+      rmSync(historyDir, { recursive: true });
+      delete env.LOCAL_RESEARCH_DB_PATH;
     }
   }
   const account = await papers.account();
@@ -418,7 +423,7 @@ test("90 日单候选闭环：匹配账本、完整轮次、独立重放、自�
     /不可修改/,
   );
   writeFileSync(
-    "/tmp/single-candidate-research-verified.json",
+    join(tmpdir(), "single-candidate-research-verified.json"),
     JSON.stringify(bundle),
   );
   const forged = structuredClone(bundle);
@@ -714,6 +719,75 @@ test("真实冷启动生成链：新完整摘要与旧投影样本混存，前�
   );
   const bundle = await exportResearchExperiment(env, result.experimentId);
   assert.equal((await verifyResearchExport(bundle)).eligibleForPromotion, true);
+  assert.ok(
+    bundle.historicalSource,
+    "训练来源已原子冻结，原文件删除后仍可离线核验",
+  );
+  for (const signalDate of [
+    "1900-01-01",
+    bundle.samples[0].payload.signalDate,
+  ]) {
+    const changedDate = structuredClone(bundle);
+    const old = changedDate.samples.find(
+      (sample) =>
+        sample.role === "HISTORICAL_TRAIN" &&
+        !sample.payload.digestVersion &&
+        sample.payload.signalDate !== signalDate,
+    );
+    old.payload.signalDate = signalDate;
+    await assert.rejects(
+      () => verifyResearchExport(changedDate),
+      /信号日期与原数据集评分摘要/,
+    );
+  }
+  const inventedSource = structuredClone(bundle);
+  const attacked = inventedSource.samples.find(
+    (sample) =>
+      sample.role === "HISTORICAL_TRAIN" && !sample.payload.digestVersion,
+  );
+  const ref = inventedSource.historicalSource.payload.manifest.scoreRefs.find(
+    (ref) => ref.digest === attacked.payload.scoreDigest,
+  );
+  ref.tradeDate = "1900-01-01";
+  attacked.payload.signalDate = ref.tradeDate;
+  inventedSource.historicalSource.digest = await digestOf(
+    inventedSource.historicalSource.payload,
+  );
+  await assert.rejects(
+    () => verifyResearchExport(inventedSource),
+    /冻结 manifest/,
+  );
+  const missingSource = structuredClone(bundle);
+  delete missingSource.historicalSource;
+  await assert.rejects(
+    () => verifyResearchExport(missingSource),
+    /原数据集评分来源/,
+  );
+  const missingSamples = structuredClone(bundle);
+  missingSamples.samples = missingSamples.samples.filter(
+    (sample) => sample.role !== "HISTORICAL_TRAIN",
+  );
+  delete missingSamples.historicalSource;
+  await assert.rejects(
+    () => verifyResearchExport(missingSamples),
+    /训练样本用途或日期登记不完整/,
+  );
+  await assert.rejects(
+    () =>
+      DB.prepare(
+        "UPDATE research_training_sources SET payload='{}' WHERE experiment_id=?",
+      )
+        .bind(result.experimentId)
+        .run(),
+    /不可修改/,
+  );
+  await assert.rejects(
+    () =>
+      DB.prepare("DELETE FROM research_training_sources WHERE experiment_id=?")
+        .bind(result.experimentId)
+        .run(),
+    /不可删除/,
+  );
   const fake = structuredClone(bundle);
   const legacy = fake.samples.find(
     (sample) =>
@@ -728,7 +802,10 @@ test("真实冷启动生成链：新完整摘要与旧投影样本混存，前�
   );
   old.payload.digestVersion = "FULL_PAYLOAD_V1";
   await assert.rejects(() => verifyResearchExport(wrongVersion), /样本摘要/);
-  writeFileSync("/tmp/cold-start-research-review.json", JSON.stringify(bundle));
+  writeFileSync(
+    join(tmpdir(), "cold-start-research-review.json"),
+    JSON.stringify(bundle),
+  );
   DB.close();
 });
 

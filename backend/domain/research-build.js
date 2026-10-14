@@ -4,10 +4,14 @@ import { digestOf } from "./research-lineage.js";
 export const LEGACY_FORWARD_BUILD =
   "6bc2075feac2d09f371ab2a405afc93e98803d1184bce6f94bea2ab0fe526b02";
 export const isLegacyForwardBuild = (value) => value === LEGACY_FORWARD_BUILD;
+// 6d2924e 的规则相同；历史样本仍必须通过当前新增的原始评分来源核验。
+const PREVIOUS_FORWARD_BUILD =
+  "80cea86fe7c2ce6ccf4d81f5c24175b94e92c39b15bd0f29c6bfae08e21c01be";
 export async function researchForwardBuildMatches(value) {
   return (
     value === (await researchForwardBuildDigest()) ||
-    isLegacyForwardBuild(value)
+    isLegacyForwardBuild(value) ||
+    value === PREVIOUS_FORWARD_BUILD
   );
 }
 let cached;
@@ -25,6 +29,7 @@ export function researchForwardBuildDigest() {
         "backend/domain/research-statistics.js",
         "backend/domain/research-verifier.js",
         "backend/domain/research-samples.js",
+        "backend/domain/historical-input.js",
         "backend/domain/research-switches.js",
         "backend/services/portfolio-runner.js",
         "backend/services/strategy-tournament.js",

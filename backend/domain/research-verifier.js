@@ -29,7 +29,10 @@ import {
   researchForwardBuildMatches,
   isLegacyForwardBuild,
 } from "./research-build.js";
-import { verifyResearchSample } from "./research-samples.js";
+import {
+  verifyResearchSample,
+  verifyHistoricalTrainingSource,
+} from "./research-samples.js";
 import { verifyStrategySwitches } from "./research-switches.js";
 
 const requireEvidence = (condition, message) => {
@@ -100,8 +103,30 @@ export async function verifyResearchExport(bundle) {
   );
   await chain(bundle.events, "研究");
   await hashRows(bundle.reports, "研究报告");
+  let historicalSource = null;
+  if (experiment.kind === "BOOTSTRAP") {
+    const trainingDates = experiment.reservationPayload.trainingDates;
+    const trainingSamples = bundle.samples.filter(
+      (sample) => sample.role === "HISTORICAL_TRAIN",
+    );
+    requireEvidence(
+      Array.isArray(trainingDates) &&
+        trainingDates.length > 0 &&
+        trainingSamples.length === trainingDates.length &&
+        new Set(trainingSamples.map((sample) => sample.outcomeDate)).size ===
+          trainingDates.length &&
+        trainingDates.every((date) =>
+          trainingSamples.some((sample) => sample.outcomeDate === date),
+        ),
+      "冷启动训练样本用途或日期登记不完整",
+    );
+    historicalSource = await verifyHistoricalTrainingSource(
+      bundle.historicalSource,
+      experiment,
+    );
+  }
   for (const sample of bundle.samples)
-    await verifyResearchSample(sample, experiment);
+    await verifyResearchSample(sample, experiment, historicalSource);
   await hashRows(bundle.switches, "切换");
   await verifyStrategySwitches({
     experiment,
