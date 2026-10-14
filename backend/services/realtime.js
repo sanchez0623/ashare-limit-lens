@@ -13,6 +13,7 @@ import { buildOperationEvents } from "./alerts.js";
 import { instanceAlias } from "../domain/alert-messages.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { safeError } from "../http.js";
+import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
 const calendars = new Map();
 async function calendarFor(start, date, now) {
   const cached = calendars.get(date);
@@ -81,8 +82,10 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
           status: "BLOCKED",
           reason: "计划成本政策与摘要不一致，暂停交易；请重新冻结计划",
         });
+      await assertStoredProgramPlan(env, plan, account.book);
       session = openSession(account.book, plan, clock.date);
     }
+    await assertStoredProgramPlan(env, session.plan, session.initialBook);
     if (session.status !== "OPEN")
       return heartbeat({ status: session.status, reason: "交易日已关闭" });
     // 每次轮询都核验会话冻结的政策摘要（§5.4）：已有会话同样不得在

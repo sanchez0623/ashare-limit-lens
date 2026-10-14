@@ -12,11 +12,13 @@ const files = [
   "backend/domain/historical-execution.js",
   "backend/domain/historical-input.js",
   "backend/domain/signal-selection.js",
+  "backend/domain/strategy-program.js",
   "backend/domain/research-lineage.js",
   "shared/execution-cost.js",
   "shared/fees.js",
   "shared/risk-limits.js",
   "shared/strategy-params.js",
+  "shared/strategy-program.js",
 ];
 let cached;
 export function executionEngineBuildDigest() {

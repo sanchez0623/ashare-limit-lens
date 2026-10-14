@@ -3,6 +3,7 @@ import { digestOf, eventDigest } from "../domain/research-lineage.js";
 import { selectionPolicyFields } from "../domain/signal-selection.js";
 import { latestPolicyBundle } from "./execution-cost.js";
 import { freezeExecutionStress } from "../domain/execution-stress.js";
+import { strategySpaceManifest } from "../domain/strategy-catalog.js";
 import {
   validateCohortPolicy,
   DEFAULT_COHORT_POLICY,
@@ -81,16 +82,23 @@ export class CohortRepository {
     const digest = await digestOf(payload);
     await this.db
       .prepare(
-        "INSERT INTO tournament_policy_versions (id, created_at, effective_at, payload, digest) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO tournament_policy_versions (id, created_at, effective_at, payload, digest) SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS(SELECT 1 FROM research_window_owners WHERE namespace='main')",
       )
       .bind(id, now, now, JSON.stringify(payload), digest)
       .run();
+    if (
+      !(await this.db
+        .prepare("SELECT id FROM tournament_policy_versions WHERE id=?")
+        .bind(id)
+        .first())
+    )
+      throw new Error("活动研究窗口内不能修改赛马政策");
     return { id, payload, digest };
   }
   async getTournamentPolicy() {
     const row = await this.db
       .prepare(
-        "SELECT * FROM tournament_policy_versions ORDER BY created_at DESC, id DESC LIMIT 1",
+        "SELECT * FROM tournament_policy_versions ORDER BY created_at DESC, rowid DESC LIMIT 1",
       )
       .first();
     if (row)
@@ -215,6 +223,9 @@ export class CohortRepository {
         researchPolicyDigest: researchPolicy.digest,
         forwardDays,
         cohortPolicy: cohortPolicyPayload,
+        ...(cohortPolicyPayload?.version === 2
+          ? { strategySpace: await strategySpaceManifest() }
+          : {}),
         statisticsBudget,
         feeConfig,
         feeConfigDigest,

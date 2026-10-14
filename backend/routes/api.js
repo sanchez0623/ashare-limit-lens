@@ -414,9 +414,7 @@ export async function api(request, env) {
       if (request.method !== "GET")
         return json({ error: "不支持此请求方法" }, 405);
       const detail = await incidentDetail(env, incidentMatch[1]);
-      return detail
-        ? json(detail)
-        : json({ error: "告警实例不存在" }, 404);
+      return detail ? json(detail) : json({ error: "告警实例不存在" }, 404);
     }
     if (path === "/api/alerts/rules") {
       const body = await readJson(request);

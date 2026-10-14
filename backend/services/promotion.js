@@ -16,6 +16,10 @@ import {
 } from "../domain/signal-selection.js";
 import { portfolioSelectionMatches } from "./portfolio-runner.js";
 import { assertCohortStressPromotion } from "./execution-stress.js";
+import {
+  assertFrozenStrategyPrograms,
+  assertStoredProgramPlan,
+} from "./strategy-program-evidence.js";
 
 // 统一晋级入口（§8.3）：全部自动、人工和旧 API 启用入口共用。
 // 验证报告摘要、成员资格、当前父策略和配置指纹后，以主账户 revision CAS
@@ -56,6 +60,19 @@ export async function promoteCohortChampion(
     };
   const championVersionId = member.strategyVersion;
   if (!championVersionId) throw new Error("冠军成员缺少冻结的策略版本");
+  await assertFrozenStrategyPrograms(
+    env,
+    cohort,
+    await cohorts.members(cohortId),
+  );
+  if (member.params?.program) {
+    const accountId = `shadow-${member.experimentId}`;
+    for (const date of report.windowDates ?? []) {
+      const session = await shadows.session(accountId, date);
+      if (!session) throw new Error("策略程序前瞻会话缺失，无法核验信号选择");
+      await assertStoredProgramPlan(env, session.plan, session.initialBook);
+    }
+  }
   // 报告完整性（§8.3）：重算报告摘要，防篡改的报告输入才可晋级。
   const { digest: reportDigest, ...digestSource } = report;
   if (!reportDigest || (await digestOf(digestSource)) !== reportDigest)
@@ -224,7 +241,7 @@ export async function promoteCohortChampion(
   const statements = [
     papers.db
       .prepare(
-        "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?)",
+        "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?) AND (SELECT id FROM tournament_policy_versions ORDER BY created_at DESC,rowid DESC LIMIT 1)=? AND (SELECT id FROM research_policy_versions ORDER BY created_at DESC,id DESC LIMIT 1)=?",
       )
       .bind(
         JSON.stringify(book),
@@ -236,6 +253,8 @@ export async function promoteCohortChampion(
         costPolicy.id,
         championVersionId,
         championParamsRow.params,
+        cohort.policyId,
+        cohort.researchPolicyId,
       ),
     guarded(
       "UPDATE strategy_versions SET status = 'RETIRED' WHERE status = 'ACTIVE'",

@@ -17,7 +17,19 @@ import {
   planRiskLimits,
 } from "../../shared/risk-limits.js";
 import { STRATEGY_DEFAULTS } from "../../shared/strategy-params.js";
+import {
+  resolveStrategyProgram,
+  familyEligibility,
+  allocationState,
+  allocateEntry,
+  chargeEntry,
+  assertProgramPlan,
+  fillAllocations,
+  recordAllocationFees,
+  remainingEntryAllocations,
+} from "./strategy-program.js";
 import { buildExecutionContext, solveFillQuantity } from "./execution-cost.js";
+import { canonicalJson } from "./research-lineage.js";
 import {
   DEFAULT_SELECTION_VERSION,
   LEGACY_SELECTION_VERSION,
@@ -179,7 +191,14 @@ export function createPlan(
   const policyFields = selectionPolicyFields(policy);
   const modernSelection = policy.version !== LEGACY_SELECTION_VERSION;
   const previousLimitUpCodes = (snapshot.stocks ?? [])
-    .filter((stock) => Number(stock.height) >= 1)
+    .filter(
+      (stock) =>
+        Number(
+          strategy.program && Object.hasOwn(stock, "consecutiveBoards")
+            ? stock.consecutiveBoards
+            : stock.height,
+        ) >= 1,
+    )
     .map((stock) => stock.code);
   if (modernSelection) previousLimitUpCodes.sort();
   const signals = scoreSignals(snapshot, strategy, policy);
@@ -193,7 +212,7 @@ export function createPlan(
   // 情绪档位（可配置，随计划冻结）：两档阈值同时驱动目标敞口与
   // 加仓 / 做 T / 开新仓 / 减仓闸门，旧版本缺字段时回退默认档位。
   const tiers = strategy.exposureTiers ?? BASE_STRATEGY.exposureTiers;
-  const targetExposure =
+  let targetExposure =
     drawdown >= riskLimits.maxDrawdown
       ? 0
       : emotion >= tiers.highEmotion
@@ -201,6 +220,23 @@ export function createPlan(
         : emotion >= tiers.midEmotion
           ? tiers.mid
           : tiers.low;
+  const strategyProgram = resolveStrategyProgram(
+    { ...strategy, exposureTiers: tiers },
+    snapshot,
+  );
+  if (strategyProgram)
+    targetExposure = Math.min(targetExposure, riskLimits.maxGrossExposure);
+  if (strategyProgram?.regime === "unknown") targetExposure = 0;
+  const componentStates = strategyProgram
+    ? allocationState(strategyProgram, book, targetExposure)
+    : null;
+  if (strategyProgram)
+    strategyProgram.resources = {
+      initialEquityCents: book.equityCents,
+      components: structuredClone(componentStates),
+    };
+  if (strategyProgram)
+    strategyProgram.snapshotDigest = options.snapshotDigest ?? null;
   const orders = [];
   const holdings = new Set(book.positions.map((position) => position.code));
   const selectionAudit = {
@@ -223,8 +259,24 @@ export function createPlan(
       coverage: s.coverage ?? null,
       sectorScore: s.sectorScore,
       height: s.height ?? null,
+      ...(strategyProgram
+        ? {
+            consecutiveBoards: Object.hasOwn(s, "consecutiveBoards")
+              ? s.consecutiveBoards
+              : (s.height ?? null),
+            turnover: s.turnover ?? null,
+          }
+        : {}),
       price: s.price ?? null,
       risks: s.risks.map((r) => r.text),
+      ...(strategyProgram
+        ? {
+            familyChecks: strategyProgram.components.map((component) => ({
+              componentId: component.id,
+              ...familyEligibility(component.family.familyId, s, snapshot),
+            })),
+          }
+        : {}),
       status: "SKIPPED",
       reason: "尚未评估",
     })),
@@ -309,7 +361,18 @@ export function createPlan(
       equity * Math.min(0.175, targetExposure / strategy.maxPositions),
     );
     const addBudget = target - quantity * referenceCents;
-    const addQuantity = roundLot(addBudget / referenceCents);
+    let addQuantity = roundLot(addBudget / referenceCents);
+    const addAllocation =
+      strategyProgram && signal
+        ? allocateEntry(
+            signal,
+            snapshot,
+            componentStates,
+            addQuantity,
+            referenceCents,
+          )
+        : null;
+    if (strategyProgram) addQuantity = addAllocation?.quantity ?? 0;
     if (
       signal &&
       score >= 88 &&
@@ -322,6 +385,9 @@ export function createPlan(
         action: "ADD",
         side: "BUY",
         quantity: addQuantity,
+        ...(addAllocation
+          ? { strategyAllocations: addAllocation.allocations }
+          : {}),
         maxPriceCents: Math.round(referenceCents * (1 + strategy.maxBuyGap)),
         reason: "高分信号延续，补足目标仓位",
       });
@@ -334,10 +400,21 @@ export function createPlan(
           book.feeModel || "legacy-v1",
         ).total;
       plannedExposure += addQuantity * referenceCents;
+      if (addAllocation)
+        chargeEntry(componentStates, addAllocation.allocations, referenceCents);
       continue;
     }
     const tQuantity = roundLot(quantity * strategy.tFraction);
-    if (tQuantity >= 100 && score >= 65 && emotion >= tiers.midEmotion) {
+    if (
+      tQuantity >= 100 &&
+      score >= 65 &&
+      emotion >= tiers.midEmotion &&
+      (!strategyProgram ||
+        (strategyProgram.regime !== "unknown" &&
+          strategyProgram.components.some(
+            (component) => component.family.familyId !== "cash-v1",
+          )))
+    ) {
       addOrder({
         ...base,
         action: score >= 82 ? "T_FORWARD" : "T_REVERSE",
@@ -371,21 +448,34 @@ export function createPlan(
     }
     if (
       !/^\d{6}$/.test(signal.code) ||
-      (modernSelection &&
+      ((modernSelection || strategyProgram) &&
         (!Number.isFinite(signal.score) ||
           !Number.isFinite(signal.coverage) ||
           !Number.isFinite(signal.sectorScore))) ||
       signal.coverage < 80 ||
       signal.score < strategy.minScore ||
       signal.sectorScore < strategy.minSectorScore ||
-      signal.height >= 5 ||
+      (strategyProgram && Object.hasOwn(signal, "consecutiveBoards")
+        ? signal.consecutiveBoards
+        : signal.height) >= 5 ||
       signal.risks.some((risk) => ["一字特征", "高换手"].includes(risk.text)) ||
       !(signal.price > 0)
     ) {
       audit.reason = "未满足评分、板块、覆盖、风险或价格条件";
       continue;
     }
-    if (emotion < tiers.midEmotion || drawdown >= riskLimits.maxDrawdown) {
+    if (
+      strategyProgram &&
+      !audit.familyChecks.some((check) => check.eligible)
+    ) {
+      audit.reason = audit.familyChecks.map((check) => check.reason).join("；");
+      continue;
+    }
+    if (
+      emotion < tiers.midEmotion ||
+      drawdown >= riskLimits.maxDrawdown ||
+      strategyProgram?.regime === "unknown"
+    ) {
       audit.reason = "市场情绪或账户回撤限制新增交易";
       continue;
     }
@@ -400,7 +490,7 @@ export function createPlan(
         (equity * targetExposure) / strategy.maxPositions,
         equity * targetExposure - plannedExposure,
         book.cashCents - plannedBudget - 1000,
-        ...(modernSelection
+        ...(modernSelection || strategyProgram
           ? [
               equity * riskLimits.maxPositionWeight,
               equity * riskLimits.maxGrossExposure - plannedExposure,
@@ -408,7 +498,17 @@ export function createPlan(
           : []),
       ),
     );
-    const quantity = roundLot(budget / referenceCents);
+    let quantity = roundLot(budget / referenceCents);
+    const entryAllocation = strategyProgram
+      ? allocateEntry(
+          signal,
+          snapshot,
+          componentStates,
+          quantity,
+          referenceCents,
+        )
+      : null;
+    if (entryAllocation) quantity = entryAllocation.quantity;
     if (quantity < 100) {
       audit.reason = "剩余资金或敞口不足一手";
       continue;
@@ -435,6 +535,9 @@ export function createPlan(
       action: "OPEN",
       side: "BUY",
       quantity,
+      ...(entryAllocation
+        ? { strategyAllocations: entryAllocation.allocations }
+        : {}),
       maxPriceCents: Math.round(referenceCents * (1 + strategy.maxBuyGap)),
       stopCents: Math.round(referenceCents * (1 - strategy.stopLoss)),
       takeProfitCents: Math.round(referenceCents * (1 + strategy.takeProfit)),
@@ -449,6 +552,8 @@ export function createPlan(
         book.feeModel || "legacy-v1",
       ).total;
     plannedExposure += quantity * referenceCents;
+    if (entryAllocation)
+      chargeEntry(componentStates, entryAllocation.allocations, referenceCents);
     opened++;
   }
   return {
@@ -461,13 +566,14 @@ export function createPlan(
     createdAt,
     strategyVersion,
     strategy,
+    ...(strategyProgram ? { strategyProgram } : {}),
     ...policyFields,
     selectionAudit,
     executionCostModel: EXECUTION_COST_MODEL,
     executionCostPolicy: structuredClone(executionCostPolicy),
     previousLimitUpCodes,
     previousLimitUpKnown: true,
-    emotion,
+    emotion: strategyProgram ? strategyProgram.emotion : emotion,
     targetExposure,
     maxExposure: riskLimits.maxGrossExposure,
     orders: carriedPlanOrders(
@@ -482,7 +588,59 @@ export function createPlan(
   };
 }
 
-function consumeLots(position, quantity, date) {
+export function assertProgramSnapshot(plan, snapshot, initialBook) {
+  if (!plan?.strategy?.program) return;
+  assertProgramPlan(plan, initialBook);
+  if (
+    !plan.sourceSnapshotMissing &&
+    (!snapshot || snapshot.date !== plan.signalDate)
+  )
+    throw new Error("策略程序缺少信号日原始快照");
+  if (
+    !plan.sourceSnapshotMissing &&
+    (!Number.isFinite(Date.parse(snapshot.createdAt)) ||
+      !Number.isFinite(Date.parse(plan.createdAt)) ||
+      Date.parse(snapshot.createdAt) > Date.parse(plan.createdAt))
+  )
+    throw new Error("策略程序信号快照在计划冻结后才可用，拒绝未来信息");
+  const options = {
+    executionCostPolicy: plan.executionCostPolicy,
+    selectionPolicy: frozenSelectionPolicy(plan),
+    snapshotDigest: plan.selectionAudit?.snapshotDigest,
+    originalScoreLookup: (code) =>
+      plan.orders.find((order) => order.code === code)?.originalScore ?? null,
+  };
+  const referenceBook = {
+    ...initialBook,
+    riskLimits: plan.riskLimits,
+    riskLimitsVersion: plan.riskLimitsVersion,
+    feeConfig: plan.feeConfig,
+    feeConfigVersion: plan.feeConfigVersion,
+    feeModel: plan.feeModel,
+  };
+  const expected = plan.sourceSnapshotMissing
+    ? defensivePlan(
+        plan.signalDate,
+        referenceBook,
+        plan.strategy,
+        plan.strategyVersion,
+        plan.createdAt,
+        options,
+      )
+    : createPlan(
+        snapshot,
+        referenceBook,
+        plan.strategy,
+        plan.strategyVersion,
+        plan.createdAt,
+        options,
+      );
+  for (const key of ["strategyProgram", "orders", "targetExposure", "emotion"])
+    if (canonicalJson(plan[key]) !== canonicalJson(expected[key]))
+      throw new Error("策略计划与信号日原始快照、情绪选择或资金分配重算不一致");
+}
+
+function consumeLots(position, quantity, date, allocations = null) {
   let remaining = quantity;
   let basis = 0;
   for (const lot of position.lots) {
@@ -493,6 +651,22 @@ function consumeLots(position, quantity, date) {
       taken === lot.quantity
         ? lot.costCents
         : Math.round((lot.costCents * taken) / lot.quantity);
+    if (allocations || lot.strategyAllocations) {
+      const owned = lot.strategyAllocations ?? [
+        { componentId: "carry", familyId: "inherited", quantity: lot.quantity },
+      ];
+      let remainingOwned = taken;
+      for (const row of owned) {
+        const amount = Math.min(remainingOwned, row.quantity);
+        if (amount && allocations)
+          allocations.push({ ...row, quantity: amount });
+        row.quantity -= amount;
+        remainingOwned -= amount;
+      }
+      if (remainingOwned) throw new Error("持仓策略分配无法覆盖可卖数量");
+      if (lot.strategyAllocations)
+        lot.strategyAllocations = owned.filter((row) => row.quantity > 0);
+    }
     lot.quantity -= taken;
     lot.costCents -= takenCost;
     basis += takenCost;
@@ -574,6 +748,19 @@ export function defensivePlan(
   const originalScoreLookup = options.originalScoreLookup ?? null;
   const drawdown = 1 - book.equityCents / book.peakEquityCents;
   const riskLimits = riskLimitsForBook(book);
+  const strategyProgram = resolveStrategyProgram(
+    {
+      ...strategy,
+      exposureTiers: strategy.exposureTiers ?? BASE_STRATEGY.exposureTiers,
+    },
+    { date, emotion: null },
+  );
+  if (strategyProgram)
+    strategyProgram.resources = {
+      initialEquityCents: book.equityCents,
+      components: allocationState(strategyProgram, book, 0),
+    };
+  if (strategyProgram) strategyProgram.snapshotDigest = null;
   return {
     signalDate: date,
     feeModel: book.feeModel || "legacy-v1",
@@ -584,6 +771,7 @@ export function defensivePlan(
     createdAt,
     strategyVersion,
     strategy,
+    ...(strategyProgram ? { strategyProgram } : {}),
     ...selectionPolicyFields(
       options.selectionPolicy ?? selectionPolicyForBook(book),
     ),
@@ -639,8 +827,15 @@ export function defensivePlan(
 
 export function executePlan(inputBook, plan, dataset) {
   if (plan) frozenSelectionPolicy(plan);
+  if (plan) assertProgramPlan(plan, inputBook);
   const book = structuredClone(inputBook);
   const date = dataset.date;
+  if (
+    plan?.strategy?.program &&
+    (!Number.isFinite(Date.parse(plan.createdAt)) ||
+      Date.parse(plan.createdAt) >= Date.parse(`${date}T01:15:00.000Z`))
+  )
+    throw new Error("策略程序计划实际冻结时间晚于执行日前闸门");
   if (
     plan &&
     (plan.signalDate >= date || plan.createdAt >= `${date}T01:15:00.000Z`)
@@ -1096,7 +1291,7 @@ function executeFillWithCostModel(
       reason: side === "BUY" ? "涨停排队不假设成交" : "跌停卖出不假设成交",
     };
   let position = book.positions.find((item) => item.code === order.code);
-  const desired =
+  let desired =
     side === "BUY"
       ? roundLot(desiredQuantity)
       : Math.min(
@@ -1129,6 +1324,22 @@ function executeFillWithCostModel(
       equity * riskLimits.maxGrossExposure - value,
     );
   }
+  const allocationLimits =
+    side === "BUY" && plan.strategyProgram
+      ? remainingEntryAllocations(
+          plan,
+          book,
+          order,
+          order.maxPriceCents ?? point,
+          (notional, fillSide) =>
+            transactionFees(notional, fillSide, feeConfig, feeModel).total,
+        )
+      : null;
+  if (allocationLimits)
+    desired = Math.min(
+      desired,
+      allocationLimits.reduce((n, row) => n + row.quantity, 0),
+    );
   const solved = solveFillQuantity({
     policy: bundle,
     context,
@@ -1156,6 +1367,11 @@ function executeFillWithCostModel(
   const quantity = solved.quantity;
   const notional = quantity * fillPriceCents;
   const fees = transactionFees(notional, side, feeConfig, feeModel);
+  const strategyAllocations = plan.strategyProgram
+    ? side === "BUY"
+      ? fillAllocations(order, quantity, position, allocationLimits)
+      : []
+    : null;
   let basisCents = 0;
   let realizedPnlCents = 0;
   const cashDeltaCents =
@@ -1179,14 +1395,26 @@ function executeFillWithCostModel(
       quantity,
       costCents: notional + fees.total,
       priceCents: fillPriceCents,
+      ...(strategyAllocations
+        ? { strategyAllocations: structuredClone(strategyAllocations) }
+        : {}),
     });
   } else {
-    basisCents = consumeLots(position, quantity, date);
+    basisCents = consumeLots(position, quantity, date, strategyAllocations);
     realizedPnlCents = cashDeltaCents - basisCents;
     book.realizedPnlCents += realizedPnlCents;
   }
   book.cashCents += cashDeltaCents;
   book.feesCents += fees.total;
+  const allocationFees = strategyAllocations
+    ? recordAllocationFees(
+        book,
+        plan,
+        strategyAllocations,
+        fees.total,
+        quantity,
+      )
+    : null;
   prices.set(order.code, point);
   ledger.push({
     id: `${date}:${order.id}:${ledger.length}`,
@@ -1219,6 +1447,16 @@ function executeFillWithCostModel(
     source: dataset.source,
     sourcePriceCents: point,
     executionCost: solved.executionCost.costBreakdown,
+    ...(strategyAllocations
+      ? {
+          strategyAllocations: strategyAllocations.map((row, index) => ({
+            ...row,
+            feeCents: allocationFees[index],
+            notionalCents: row.quantity * fillPriceCents,
+          })),
+          strategySpaceVersion: plan.strategyProgram.version,
+        }
+      : {}),
   });
   return { ok: true, quantity, priceCents: fillPriceCents };
 }

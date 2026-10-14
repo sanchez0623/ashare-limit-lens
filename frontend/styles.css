@@ -1820,6 +1820,15 @@ table {
 #strategies-status .strategy-metrics {
   margin-bottom: 0;
 }
+#strategies-status-note {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+#strategies-view .paper-toolbar > div {
+  min-width: 0;
+  max-width: 100%;
+}
 @media (max-width: 720px) {
   .alert-channel-metrics {
     grid-template-columns: minmax(0, 1fr);

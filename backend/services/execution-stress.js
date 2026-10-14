@@ -9,6 +9,8 @@ import {
   verifyStressFreeze,
 } from "../domain/execution-stress.js";
 import { calibrationForPolicy } from "./execution-calibration.js";
+import { ShadowAccountRepository } from "../storage/shadow.js";
+import { frozenProgramSignal } from "../storage/strategy-signals.js";
 
 export async function cohortStressInput(env, cohort, windowDates) {
   const frozen = cohort.reservationManifest?.executionStress;
@@ -41,7 +43,17 @@ export async function cohortStressInput(env, cohort, windowDates) {
     const dataset = JSON.parse(row.payload);
     if ((await digestOf(dataset)) !== row.digest)
       throw new Error("压力行情摘要不一致");
-    const snapshot = await papers.snapshot(dataset.previousTradingDate);
+    const referenceAccount =
+      manifest.accounts?.candidates?.[0] ?? manifest.accounts?.parentMatch;
+    const referencePlan = referenceAccount
+      ? await new ShadowAccountRepository(env).plan(
+          referenceAccount,
+          dataset.previousTradingDate,
+        )
+      : null;
+    const snapshot =
+      (await frozenProgramSignal(env.DB, referencePlan)) ??
+      (await papers.snapshot(dataset.previousTradingDate));
     if (!snapshot) throw new Error("压力测试缺少事前评分快照");
     const pair = { dataset, snapshot };
     if (dataset.executionMode === "realtime") {

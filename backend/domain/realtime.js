@@ -9,6 +9,7 @@ import {
 } from "./trading.js";
 import { planRiskLimits } from "../../shared/risk-limits.js";
 import { frozenSelectionPolicy } from "./signal-selection.js";
+import { assertProgramPlan } from "./strategy-program.js";
 
 export const TERMINAL = new Set([
   "FILLED",
@@ -49,6 +50,13 @@ function running(order) {
 }
 export function openSession(book, plan, date) {
   if (plan) frozenSelectionPolicy(plan);
+  if (plan) assertProgramPlan(plan, book);
+  if (
+    plan?.strategy?.program &&
+    (!Number.isFinite(Date.parse(plan.createdAt)) ||
+      Date.parse(plan.createdAt) >= Date.parse(`${date}T01:15:00.000Z`))
+  )
+    throw new Error("策略程序计划实际冻结时间晚于执行日前闸门");
   if (
     !plan ||
     plan.signalDate !== book.lastDate ||
@@ -173,6 +181,7 @@ function mark(book) {
 
 // One observation advances only durable state. No future bars, timers or side effects.
 export function advanceSession(inputBook, inputSession, observation) {
+  assertProgramPlan(inputSession.plan, inputSession.initialBook);
   if (inputSession.plan) frozenSelectionPolicy(inputSession.plan);
   const book = structuredClone(inputBook),
     session = structuredClone(inputSession),

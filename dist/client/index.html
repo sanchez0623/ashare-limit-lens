@@ -717,6 +717,16 @@
                 >
               </div>
               <div>
+                <label for="strategies-generation" class="small-muted"
+                  >研究范围</label
+                >
+                <select id="strategies-generation" aria-label="研究范围">
+                  <option value="LEGACY_AI">六因子数值微调</option>
+                  <option value="AI">AI 家族与组合</option>
+                  <option value="FAMILIES">固定家族模板</option>
+                  <option value="SELECTORS">固定情绪选择器</option>
+                  <option value="ALLOCATIONS">固定共享分配</option>
+                </select>
                 <button id="strategies-reserve" class="primary">
                   发起新批次
                 </button>
@@ -731,6 +741,7 @@
                 <span class="outline-tag">受控晋级</span>
               </div>
               <div id="strategies-status"></div>
+              <div id="strategies-space" class="strategy-space"></div>
             </section>
             <section class="panel">
               <div class="panel-heading">
