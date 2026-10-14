@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, unlinkSync } from "node:fs";
 import { localDatabase } from "../scripts/local-db.mjs";
 import { pairs, dateAt } from "./fixtures/trading.mjs";
 import {
@@ -16,6 +16,7 @@ import { ShadowAccountRepository } from "../backend/storage/shadow.js";
 import {
   proposeImprovement,
   researchStatus,
+  proposeBootstrapImprovement,
 } from "../backend/services/research.js";
 import {
   startSingleForward,
@@ -30,11 +31,13 @@ import {
   runTournamentPoll,
   settleTournamentDay,
   runDailyTournament,
+  evaluateCohort,
 } from "../backend/services/strategy-tournament.js";
 import { verifyResearchExport } from "../backend/domain/research-verifier.js";
 import { digestOf } from "../backend/domain/research-lineage.js";
 import { openSession, closeSession } from "../backend/domain/realtime.js";
 import { api } from "../backend/routes/api.js";
+import { openHistoryStore } from "../backend/storage/history.js";
 import {
   pairedComparisonsStreaming,
   pairedLowerBoundTest,
@@ -42,7 +45,11 @@ import {
 } from "../backend/domain/research-statistics.js";
 
 const CAPTURE = 100;
-async function seed({ forwardDays = 90, badPatch = false } = {}) {
+async function seed({
+  forwardDays = 90,
+  badPatch = false,
+  bootstrap = false,
+} = {}) {
   const DB = localDatabase();
   const env = {
     DB,
@@ -86,6 +93,58 @@ async function seed({ forwardDays = 90, badPatch = false } = {}) {
       .run();
   }
   const RealDate = globalThis.Date;
+  let history = null,
+    datasetId = null;
+  if (bootstrap) {
+    env.LOCAL_RESEARCH_DB_PATH = `/tmp/review-bootstrap-${crypto.randomUUID()}.sqlite`;
+    history = openHistoryStore(env);
+    datasetId = `hds-${crypto.randomUUID()}`;
+    const training = all.slice(0, 25);
+    const dates = training.map((pair) => pair.snapshot.date);
+    await history.createDatasetVersion({
+      id: datasetId,
+      provider: "synthetic-test-only",
+      kind: "LIMIT_FEATURES",
+      executionModel: "SIX_FACTOR_V1",
+      requestedStart: dates[0],
+      requestedEnd: dates.at(-1),
+      coverage: { succeededDates: dates, coverage: { ratio: 100 } },
+    });
+    for (const pair of training) {
+      const date = pair.snapshot.date;
+      await history.saveScore(
+        datasetId,
+        date,
+        "rules-v1-historical",
+        "test-params",
+        pair.snapshot,
+      );
+      const normalized = Object.fromEntries(
+        Object.entries(pair.dataset.quotes).map(([code, q]) => [
+          code,
+          {
+            openCents: q.previousCloseCents,
+            closeCents: q.previousCloseCents,
+            highCents: q.previousCloseCents,
+            lowCents: q.previousCloseCents,
+            volumeShares: 2000000,
+          },
+        ]),
+      );
+      await history.saveDailyInputs(datasetId, date, {
+        normalized,
+        provenance: { origin: "HISTORICAL_RECONSTRUCTED" },
+      });
+      await history.saveObservationDaily(datasetId, date, normalized);
+    }
+    await history.updateDatasetCoverage(datasetId, {
+      observedStart: dates[0],
+      observedEnd: dates.at(-1),
+      succeededDates: dates,
+      failedDates: [],
+      executionModel: "SIX_FACTOR_V1",
+    });
+  }
   const frozenTime = `${dateAt(CAPTURE)}T07:15:00.000Z`;
   globalThis.Date = class extends RealDate {
     constructor(...args) {
@@ -97,12 +156,19 @@ async function seed({ forwardDays = 90, badPatch = false } = {}) {
   };
   let result;
   try {
-    result = await proposeImprovement(papers, env, async () => ({
+    const propose = async () => ({
       patch: badPatch ? { minScore: 78 } : { minScore: 82 },
       rationale: "确定性合成测试，仅验证流程",
-    }));
+    });
+    result = bootstrap
+      ? await proposeBootstrapImprovement(papers, env, { datasetId }, propose)
+      : await proposeImprovement(papers, env, propose);
   } finally {
     globalThis.Date = RealDate;
+    if (history) {
+      history.close();
+      unlinkSync(env.LOCAL_RESEARCH_DB_PATH);
+    }
   }
   const account = await papers.account();
   const first = executePlan(account.book, null, all[CAPTURE - 2].dataset);
@@ -276,6 +342,81 @@ test("90 日单候选闭环：匹配账本、完整轮次、独立重放、自�
   const bundle = await exportResearchExperiment(env, result.experimentId);
   const audit = await verifyResearchExport(bundle);
   assert.equal(audit.eligibleForPromotion, true, JSON.stringify(audit));
+  const promotion = bundle.switches.find(
+    (row) => row.payload.eventType === "PROMOTE",
+  ).payload;
+  const frozenReport = bundle.switchReports.find(
+    (row) => row.digest === promotion.reportDigest,
+  );
+  assert.ok(frozenReport, "原子切换必须保留其实际核验报告");
+  assert.equal(frozenReport.payload.digest, promotion.reportDigest);
+  assert.notEqual(
+    promotion.reportDigest,
+    bundle.evaluation.digest,
+    "验证输入和含切换结果的最终报告分别留存",
+  );
+  for (const mutate of [
+    (data) => {
+      data.switches[0].payload.fromVersion = "missing-parent";
+    },
+    (data) => {
+      data.switches[0].payload.toVersion = "missing-candidate";
+    },
+    (data) => {
+      data.switches[0].payload.reportDigest = "f".repeat(64);
+    },
+    (data) => {
+      data.switches[0].payload.experimentId = `exp-${crypto.randomUUID()}`;
+    },
+  ]) {
+    const fake = structuredClone(bundle);
+    mutate(fake);
+    fake.switches[0].digest = await digestOf(fake.switches[0].payload);
+    await assert.rejects(() => verifyResearchExport(fake), /切换审计/);
+  }
+  const missingSnapshot = { ...bundle, switchReports: [] };
+  const fakeOutcome = structuredClone(bundle);
+  const { digest: finalDigest, ...outcomeSource } = fakeOutcome.evaluation;
+  outcomeSource.promotion.versionId = "missing-version";
+  fakeOutcome.evaluation = {
+    ...outcomeSource,
+    digest: await digestOf(outcomeSource),
+  };
+  await assert.rejects(
+    () => verifyResearchExport(fakeOutcome),
+    /发布报告.*实际版本/,
+  );
+  await assert.rejects(() => verifyResearchExport(missingSnapshot), /切换审计/);
+  await assert.rejects(
+    () => verifyResearchExport({ ...missingSnapshot, schemaVersion: 1 }),
+    /导出格式/,
+  );
+  const changedReport = structuredClone(bundle);
+  const snapshot = changedReport.switchReports[0];
+  const { digest: oldDigest, ...changedSource } = snapshot.payload;
+  changedSource.windowDates = [
+    ...changedSource.windowDates.slice(0, -1),
+    "2099-01-01",
+  ];
+  snapshot.digest = await digestOf(changedSource);
+  snapshot.payload = { ...changedSource, digest: snapshot.digest };
+  changedReport.switches[0].payload.reportDigest = snapshot.digest;
+  changedReport.switches[0].digest = await digestOf(
+    changedReport.switches[0].payload,
+  );
+  await assert.rejects(
+    () => verifyResearchExport(changedReport),
+    /报告.*验证输入不一致/,
+  );
+  await assert.rejects(
+    () =>
+      DB.prepare(
+        "UPDATE strategy_switch_reports SET payload='{}' WHERE digest=?",
+      )
+        .bind(promotion.reportDigest)
+        .run(),
+    /不可修改/,
+  );
   writeFileSync(
     "/tmp/single-candidate-research-verified.json",
     JSON.stringify(bundle),
@@ -364,6 +505,24 @@ test("90 日单候选闭环：匹配账本、完整轮次、独立重放、自�
     switches.map((row) => row.event_type),
     ["PROMOTE", "ROLLBACK"],
   );
+  const afterRollback = await exportResearchExperiment(
+    env,
+    result.experimentId,
+  );
+  assert.equal(
+    (await verifyResearchExport(afterRollback)).eligibleForPromotion,
+    false,
+  );
+  const fakeRollback = structuredClone(afterRollback);
+  const rollback = fakeRollback.switches.find(
+    (row) => row.payload.eventType === "ROLLBACK",
+  );
+  rollback.payload.promotionEventId = `switch-${crypto.randomUUID()}`;
+  rollback.digest = await digestOf(rollback.payload);
+  await assert.rejects(
+    () => verifyResearchExport(fakeRollback),
+    /回退未反向引用/,
+  );
   DB.close();
 });
 
@@ -441,6 +600,64 @@ test("自动晋级 CAS 冲突不留状态或事件，人工重试同一报告只
     (await fixture.papers.account()).book.activeStrategy,
     "baseline-v1",
   );
+  const unchanged = await fixture.papers.account();
+  let addedPolicy = null;
+  DB.batch = async (statements) => {
+    const state = statements[0]?.args?.[0];
+    if (
+      typeof state === "string" &&
+      state.startsWith('{"initialCashCents"') &&
+      JSON.parse(state).activeStrategy === result.experimentId
+    ) {
+      const response = await api(
+        new Request("http://localhost/api/research/policy", {
+          method: "POST",
+          body: JSON.stringify({ forwardDays: 90 }),
+        }),
+        env,
+      );
+      assert.equal(
+        response.status,
+        200,
+        "窗口结束后政策写入合法，插入在核验后/提交前",
+      );
+      addedPolicy = await response.json();
+    }
+    return batch(statements);
+  };
+  await assert.rejects(
+    () => promoteSingleCandidate(env, result.experimentId),
+    /主账户正在更新|研究政策/,
+  );
+  DB.batch = batch;
+  assert.ok(addedPolicy);
+  assert.notEqual(
+    addedPolicy.id,
+    (await research.getExperiment(result.experimentId)).policyId,
+  );
+  assert.deepEqual(
+    await fixture.papers.account(),
+    unchanged,
+    "政策插入不改账户 revision，提交仍必须拒绝",
+  );
+  assert.equal(
+    (await DB.prepare("SELECT COUNT(*) n FROM strategy_switch_events").first())
+      .n,
+    0,
+  );
+  assert.equal(
+    (await DB.prepare("SELECT COUNT(*) n FROM strategy_switch_reports").first())
+      .n,
+    0,
+  );
+  assert.equal(
+    (await research.getExperiment(result.experimentId)).stage,
+    "APPROVED",
+  );
+  // 隔离测试恢复原政策，仅用于同一输入的合法重试判别对照。
+  await DB.prepare("DELETE FROM research_policy_versions WHERE id=?")
+    .bind(addedPolicy.id)
+    .run();
   const promoted = await promoteSingleCandidate(env, result.experimentId);
   assert.equal(promoted.promoted, true);
   assert.equal(
@@ -449,6 +666,121 @@ test("自动晋级 CAS 冲突不留状态或事件，人工重试同一报告只
   );
   assert.equal(
     (await promoteSingleCandidate(env, result.experimentId)).duplicate,
+    true,
+  );
+  assert.equal(
+    (await DB.prepare("SELECT COUNT(*) n FROM strategy_switch_events").first())
+      .n,
+    1,
+  );
+  DB.close();
+});
+
+test("真实冷启动生成链：新完整摘要与旧投影样本混存，前瞻通过后允许启用", async () => {
+  const fixture = await seed({ bootstrap: true });
+  const { DB, env, research, result } = fixture;
+  assert.equal(result.status, "AWAITING_SHADOW", JSON.stringify(result));
+  const samples = await research.experimentSamples(result.experimentId);
+  assert.ok(samples.length >= 20);
+  for (const [index, sample] of samples.entries()) {
+    assert.equal(
+      sample.digest,
+      await digestOf(sample.payload),
+      "新生成样本统一使用完整 payload 摘要",
+    );
+    if (index % 2) continue;
+    const { digestVersion, tradeDate, ...legacy } = sample.payload;
+    const legacyDigest = await digestOf({
+      scoreDigest: legacy.scoreDigest,
+      nextDate: sample.outcomeDate,
+      datasetManifestDigest: legacy.datasetManifestDigest,
+    });
+    await DB.prepare(
+      "UPDATE research_sample_uses SET payload=?,digest=? WHERE experiment_id=? AND outcome_date=? AND role='HISTORICAL_TRAIN'",
+    )
+      .bind(
+        JSON.stringify(legacy),
+        legacyDigest,
+        result.experimentId,
+        sample.outcomeDate,
+      )
+      .run();
+  }
+  const { settled } = await drive(fixture);
+  assert.equal(
+    settled.evaluation.promotion?.promoted,
+    true,
+    JSON.stringify(settled.evaluation.promotion),
+  );
+  const bundle = await exportResearchExperiment(env, result.experimentId);
+  assert.equal((await verifyResearchExport(bundle)).eligibleForPromotion, true);
+  const fake = structuredClone(bundle);
+  const legacy = fake.samples.find(
+    (sample) =>
+      sample.role === "HISTORICAL_TRAIN" && !sample.payload.digestVersion,
+  );
+  legacy.payload.datasetId = "hds-foreign";
+  await assert.rejects(() => verifyResearchExport(fake), /冷启动样本与冻结/);
+  const wrongVersion = structuredClone(bundle);
+  const old = wrongVersion.samples.find(
+    (sample) =>
+      sample.role === "HISTORICAL_TRAIN" && !sample.payload.digestVersion,
+  );
+  old.payload.digestVersion = "FULL_PAYLOAD_V1";
+  await assert.rejects(() => verifyResearchExport(wrongVersion), /样本摘要/);
+  writeFileSync("/tmp/cold-start-research-review.json", JSON.stringify(bundle));
+  DB.close();
+});
+
+test("切换提交后报告发布中断：恢复原冻结输入，保留唯一事件和正确报告关联", async () => {
+  const fixture = await seed();
+  const { DB, env, result } = fixture;
+  const prepare = DB.prepare.bind(DB);
+  let interrupted = false;
+  DB.prepare = (sql) => {
+    const statement = prepare(sql);
+    if (sql.startsWith("INSERT INTO cohort_reports")) {
+      const run = statement.run.bind(statement);
+      statement.run = async () => {
+        if (!interrupted) {
+          interrupted = true;
+          throw new Error("TEST_PUBLICATION_INTERRUPTED");
+        }
+        return run();
+      };
+    }
+    return statement;
+  };
+  await assert.rejects(() => drive(fixture), /TEST_PUBLICATION_INTERRUPTED/);
+  DB.prepare = prepare;
+  assert.equal(interrupted, true);
+  assert.equal(
+    (await fixture.papers.account()).book.activeStrategy,
+    result.experimentId,
+  );
+  assert.equal(
+    (await DB.prepare("SELECT COUNT(*) n FROM strategy_switch_events").first())
+      .n,
+    1,
+  );
+  assert.equal(
+    (await DB.prepare("SELECT COUNT(*) n FROM strategy_switch_reports").first())
+      .n,
+    1,
+  );
+  const member = await new CohortRepository(env).memberByExperiment(
+    result.experimentId,
+  );
+  const accountBefore = await fixture.papers.account();
+  const recovered = await evaluateCohort(env, member.cohortId);
+  assert.equal(recovered.promotion.recovered, true);
+  assert.deepEqual(await fixture.papers.account(), accountBefore);
+  assert.equal(
+    (
+      await verifyResearchExport(
+        await exportResearchExperiment(env, result.experimentId),
+      )
+    ).eligibleForPromotion,
     true,
   );
   assert.equal(

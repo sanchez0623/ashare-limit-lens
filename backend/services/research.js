@@ -19,6 +19,7 @@ import {
 } from "../domain/research-lineage.js";
 import { ResearchRepository } from "../storage/research.js";
 import { CohortRepository } from "../storage/cohorts.js";
+import { historicalTrainingSample } from "../domain/research-samples.js";
 import { safeError } from "../http.js";
 import {
   selectionPolicyForBook,
@@ -687,21 +688,15 @@ export async function proposeBootstrapImprovement(
       },
     });
     trainingDates.push(nextDate);
-    samples.push({
-      date: nextDate,
-      payload: {
-        role: "HISTORICAL_TRAIN",
+    samples.push(
+      await historicalTrainingSample({
         signalDate: signal.tradeDate,
+        nextDate,
         datasetId,
         datasetManifestDigest: dataset.manifestDigest,
         scoreDigest: signal.digest,
-      },
-      digest: await digestOf({
-        scoreDigest: signal.digest,
-        nextDate,
-        datasetManifestDigest: dataset.manifestDigest,
       }),
-    });
+    );
   }
   if (trainingPairs.length < minTrainingDays)
     return {

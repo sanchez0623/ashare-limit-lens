@@ -361,3 +361,10 @@ export const strategySwitchEvents = sqliteTable(
     uniqueIndex("strategy_switch_once").on(table.cohortId, table.eventType),
   ],
 );
+
+export const strategySwitchReports = sqliteTable("strategy_switch_reports", {
+  digest: text("digest").primaryKey(),
+  cohortId: text("cohort_id").notNull(),
+  payload: text("payload").notNull(),
+  createdAt: text("created_at").notNull(),
+});

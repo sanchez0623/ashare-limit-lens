@@ -251,6 +251,8 @@ export async function promoteCohortChampion(
       cohort.reservationManifest.executionStress.parentParams,
     ),
     candidateParamsDigest: member.paramsDigest,
+    researchPolicyId: cohort.researchPolicyId,
+    researchPolicyDigest: cohort.researchPolicyDigest,
     reportDigest: promotionDigest,
     bookBeforeDigest: await digestOf(account.book),
     bookAfterDigest: await digestOf(book),
@@ -295,7 +297,7 @@ export async function promoteCohortChampion(
   const statements = [
     papers.db
       .prepare(
-        "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?) AND EXISTS(SELECT 1 FROM strategy_cohort_members WHERE cohort_id=? AND member_id=? AND stage='ELIGIBLE' AND params_digest=?) AND EXISTS(SELECT 1 FROM research_experiments WHERE id=? AND stage=? AND revision=?) AND EXISTS(SELECT 1 FROM strategy_cohorts WHERE id=? AND revision=?)",
+        "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?) AND EXISTS(SELECT 1 FROM strategy_cohort_members WHERE cohort_id=? AND member_id=? AND stage='ELIGIBLE' AND params_digest=?) AND EXISTS(SELECT 1 FROM research_experiments WHERE id=? AND stage=? AND revision=?) AND EXISTS(SELECT 1 FROM strategy_cohorts WHERE id=? AND revision=?) AND (SELECT id FROM research_policy_versions ORDER BY created_at DESC,id DESC LIMIT 1)=?",
       )
       .bind(
         JSON.stringify(book),
@@ -315,6 +317,7 @@ export async function promoteCohortChampion(
         experiment.revision,
         cohortId,
         cohort.revision,
+        cohort.researchPolicyId,
       ),
     guarded(
       "UPDATE strategy_versions SET status = 'RETIRED' WHERE status = 'ACTIVE'",
@@ -326,6 +329,10 @@ export async function promoteCohortChampion(
     guarded(
       "UPDATE strategy_cohorts SET promotion_digest = ?, effective_trade_date = ?, revision = revision + 1, updated_at = ? WHERE id = ?",
       [promotionDigest, effectiveTradeDate, new Date().toISOString(), cohortId],
+    ),
+    guarded(
+      "INSERT INTO strategy_switch_reports(digest,cohort_id,payload,created_at) SELECT ?,?,?,?",
+      [promotionDigest, cohortId, JSON.stringify(report), now],
     ),
     guarded(
       "INSERT INTO strategy_switch_events(id,cohort_id,experiment_id,event_type,from_version,to_version,account_revision,payload,digest,created_at) SELECT ?,?,?,'PROMOTE',?,?,?,?,?,?",
@@ -380,13 +387,22 @@ export async function promoteCohortChampion(
     results[0].meta.changes !== 1 ||
     after.revision !== nextRevision ||
     after.book.activeStrategy !== championVersionId
-  )
+  ) {
+    const latest = await papers.db
+      .prepare(
+        "SELECT id FROM research_policy_versions ORDER BY created_at DESC,id DESC LIMIT 1",
+      )
+      .first();
+    if (latest?.id !== cohort.researchPolicyId)
+      throw new Error("研究政策在核验后变化，晋级未应用；旧报告资格失效");
     throw new Error("主账户正在更新，晋级未应用，请重新核验后重试");
+  }
   return {
     promoted: true,
     versionId: championVersionId,
     memberId: member.memberId,
     effectiveTradeDate,
+    reportDigest: promotionDigest,
     effectiveNote:
       effectiveNote ??
       "启用只切换未来策略引用；已冻结计划、持仓、风险峰值与旧亏损不被影子结果替换",

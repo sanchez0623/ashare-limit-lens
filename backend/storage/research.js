@@ -376,6 +376,7 @@ export class ResearchRepository {
     const protocol = {
       version: 1,
       mode: "SINGLE",
+      switchAuditVersion: 2,
       policyId: policy.id,
       policyDigest: policy.digest,
       ruleBuildDigest: await researchForwardBuildDigest(),

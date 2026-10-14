@@ -53,7 +53,8 @@ import {
 import { promoteCohortChampion } from "./promotion.js";
 import { runCohortExecutionStress } from "./execution-stress.js";
 import { adoptPendingSingle } from "../storage/walk-forward.js";
-import { researchForwardBuildDigest } from "../domain/research-build.js";
+import { researchForwardBuildMatches } from "../domain/research-build.js";
+import { verifySwitchReport } from "../domain/research-switches.js";
 import {
   selectionPolicyForBook,
   selectionPolicyFields,
@@ -633,8 +634,9 @@ export async function scheduleCohortForward(
     )
       return { scheduled: false, reason: "等待候选冻结后的完整闭市结算起点" };
     if (
-      cohort.reservationManifest.cohortPolicy.ruleBuildDigest !==
-      (await researchForwardBuildDigest())
+      !(await researchForwardBuildMatches(
+        cohort.reservationManifest.cohortPolicy.ruleBuildDigest,
+      ))
     ) {
       await closeCohort(
         cohorts,
@@ -1432,6 +1434,57 @@ export async function evaluateCohort(
     await cohorts.releaseWindowOwner("COHORT", cohortId).catch(() => {});
     return published.payload;
   }
+  // 切换已提交、最终报告尚未发布即中断：复用原核验报告，不在新父策略下重评。
+  const committedSwitch = await papers.db
+    .prepare(
+      "SELECT payload,digest FROM strategy_switch_events WHERE cohort_id=? AND event_type='PROMOTE'",
+    )
+    .bind(cohortId)
+    .first();
+  if (committedSwitch) {
+    const change = JSON.parse(committedSwitch.payload);
+    if ((await digestOf(change)) !== committedSwitch.digest)
+      throw new Error("已提交切换事件摘要不一致");
+    const snapshot = await papers.db
+      .prepare(
+        "SELECT payload,digest FROM strategy_switch_reports WHERE digest=?",
+      )
+      .bind(change.reportDigest)
+      .first();
+    const original = await verifySwitchReport(
+      snapshot
+        ? { digest: snapshot.digest, payload: JSON.parse(snapshot.payload) }
+        : null,
+      cohortId,
+    );
+    const report = {
+      ...original,
+      promotion: {
+        promoted: true,
+        versionId: change.toVersion,
+        memberId: original.champion.memberId,
+        effectiveTradeDate: change.effectiveTradeDate,
+        reportDigest: change.reportDigest,
+        recovered: true,
+      },
+    };
+    const { digest, ...source } = report;
+    report.digest = await digestOf(source);
+    const saved = await cohorts.saveReport(cohortId, "EVALUATION", report);
+    await cohorts.transitionCohort(cohortId, {
+      from: "EVALUATING",
+      to: "CLOSED",
+      eventType: "CHAMPION_PROMOTED",
+      payload: { champion: report.champion, recovered: true },
+      set: {
+        evaluation_manifest: JSON.stringify(report),
+        effective_trade_date: change.effectiveTradeDate,
+        promotion_digest: saved.digest,
+      },
+    });
+    await cohorts.releaseWindowOwner("COHORT", cohortId);
+    return report;
+  }
   const manifest = cohort.forwardManifest;
   // 固定窗口（§8.2）：评估用冻结窗口日历（含缺失日），缺失由覆盖与共同数据
   // 检查暴露；窗口内的 tradingDates 只包含实际结算并登记的共同市场日。
@@ -1548,9 +1601,9 @@ export async function evaluateCohort(
       .prepare("SELECT params FROM strategy_versions WHERE id=?")
       .bind(cohort.parentVersion)
       .first();
-    fingerprint.ruleBuildMatches =
-      cohort.reservationManifest.cohortPolicy.ruleBuildDigest ===
-      (await researchForwardBuildDigest());
+    fingerprint.ruleBuildMatches = await researchForwardBuildMatches(
+      cohort.reservationManifest.cohortPolicy.ruleBuildDigest,
+    );
     fingerprint.researchPolicyMatches =
       (await new ResearchRepository(env).getPolicy()).id ===
       cohort.researchPolicyId;

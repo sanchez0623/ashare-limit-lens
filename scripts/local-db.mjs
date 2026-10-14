@@ -51,15 +51,24 @@ export function localDatabase(path = ":memory:") {
     prepare,
     exec: (sql) => sqlite.exec(sql),
     async batch(statements) {
-      sqlite.exec("BEGIN IMMEDIATE");
-      try {
-        const results = statements.map((statement) => statement._run());
-        sqlite.exec("COMMIT");
-        return results;
-      } catch (error) {
-        sqlite.exec("ROLLBACK");
-        throw error;
-      }
+      // 与显式异步事务共用连接队列；整批执行及 COMMIT 之间不让出事件循环。
+      // 否则另一个预留事务仍未结束时，CAS 提交会嵌套 BEGIN 或被其回滚。
+      const run = this.transactionQueue.then(() => {
+        sqlite.exec("BEGIN IMMEDIATE");
+        try {
+          const results = statements.map((statement) => statement._run());
+          sqlite.exec("COMMIT");
+          return results;
+        } catch (error) {
+          sqlite.exec("ROLLBACK");
+          throw error;
+        }
+      });
+      this.transactionQueue = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return run;
     },
     transactionQueue: Promise.resolve(),
     async transaction(fn) {

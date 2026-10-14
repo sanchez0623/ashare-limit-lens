@@ -7,7 +7,7 @@ import {
   selectionPolicyFields,
   frozenSelectionPolicy,
 } from "../domain/signal-selection.js";
-import { researchForwardBuildDigest } from "../domain/research-build.js";
+import { researchForwardBuildMatches } from "../domain/research-build.js";
 
 // 单候选复用前瞻执行器。仅将已预留的窗口交给一个 SINGLE 运行组；
 // 不调用模型，不消耗新预算，不改变提案清单，也不重新登记历史样本。
@@ -36,7 +36,7 @@ export async function adoptSingleExperiment(env, experimentId) {
   const { digest: protocolDigest, ...protocolSource } = protocol;
   if ((await digestOf(protocolSource)) !== protocolDigest)
     throw new Error("单候选事前协议摘要不一致");
-  if (protocol.ruleBuildDigest !== (await researchForwardBuildDigest())) {
+  if (!(await researchForwardBuildMatches(protocol.ruleBuildDigest))) {
     await research.recordInvalidated(
       experimentId,
       experiment.candidateVersion,

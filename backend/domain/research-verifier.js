@@ -25,7 +25,12 @@ import {
   frozenSelectionPolicy,
   selectionSnapshotDigest,
 } from "./signal-selection.js";
-import { researchForwardBuildDigest } from "./research-build.js";
+import {
+  researchForwardBuildMatches,
+  isLegacyForwardBuild,
+} from "./research-build.js";
+import { verifyResearchSample } from "./research-samples.js";
+import { verifyStrategySwitches } from "./research-switches.js";
 
 const requireEvidence = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -73,8 +78,15 @@ function closingQuotes(frames, existing, date) {
 // 独立核验器：重新生成计划、逐帧成交及日净值，再计算轮次、统计和压力闸门。
 // 不信任报告里的通过标记；尚未结束或缺失输入明确没有启用资格。
 export async function verifyResearchExport(bundle) {
+  const legacy =
+    bundle?.experiment?.reservationPayload?.singleForward
+      ?.switchAuditVersion === undefined &&
+    isLegacyForwardBuild(
+      bundle?.experiment?.reservationPayload?.singleForward?.ruleBuildDigest,
+    );
   requireEvidence(
-    bundle?.format === "limit-lens-research-v1" && bundle.schemaVersion === 1,
+    bundle?.format === "limit-lens-research-v1" &&
+      (bundle.schemaVersion === 2 || (bundle.schemaVersion === 1 && legacy)),
     "研究导出格式无效",
   );
   const experiment = bundle.experiment;
@@ -88,11 +100,20 @@ export async function verifyResearchExport(bundle) {
   );
   await chain(bundle.events, "研究");
   await hashRows(bundle.reports, "研究报告");
-  await hashRows(
-    bundle.samples.map((row) => ({ payload: row.payload, digest: row.digest })),
-    "样本",
-  );
+  for (const sample of bundle.samples)
+    await verifyResearchSample(sample, experiment);
   await hashRows(bundle.switches, "切换");
+  await verifyStrategySwitches({
+    experiment,
+    members: bundle.forward?.members ?? [],
+    versions: bundle.versions,
+    switches: bundle.switches,
+    switchReports: bundle.switchReports ?? [],
+    events: bundle.events,
+    cohortEvents: bundle.forward?.events ?? [],
+    evaluation: bundle.evaluation,
+    allowLegacyReports: bundle.schemaVersion === 1 && legacy,
+  });
   const protocol = experiment.reservationPayload.singleForward;
   const reasons = [];
   if (
@@ -115,7 +136,7 @@ export async function verifyResearchExport(bundle) {
     "单候选协议版本不支持",
   );
   requireEvidence(
-    protocol.ruleBuildDigest === (await researchForwardBuildDigest()),
+    await researchForwardBuildMatches(protocol.ruleBuildDigest),
     "前瞻规则源码版本不匹配",
   );
   await verifyStressFreeze(protocol.executionStress);

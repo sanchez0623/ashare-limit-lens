@@ -12,6 +12,8 @@ import { promoteCohortChampion } from "./promotion.js";
 import { digestOf, eventDigest } from "../domain/research-lineage.js";
 import { windowMetrics, completeRounds } from "../domain/cohort-metrics.js";
 import { verifyResearchExport } from "../domain/research-verifier.js";
+import { switchReportRows } from "../storage/switch-reports.js";
+import { verifyStrategySwitches } from "../domain/research-switches.js";
 
 export async function listResearchExperiments(
   env,
@@ -348,12 +350,19 @@ export async function exportResearchExperiment(
       .bind(detail.experiment.parentVersion, detail.experiment.candidateVersion)
       .all()
   ).results.map((row) => ({ id: row.id, params: JSON.parse(row.params) }));
+  const actualEvaluation = evaluation ?? detail.forward?.evaluation ?? null;
+  const switchReports = await switchReportRows(
+    db,
+    detail.switches,
+    actualEvaluation,
+  );
   return {
     format: "limit-lens-research-v1",
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     ...detail,
-    evaluation: evaluation ?? detail.forward?.evaluation ?? null,
+    evaluation: actualEvaluation,
+    switchReports,
     policy: policy
       ? { payload: JSON.parse(policy.payload), digest: policy.digest }
       : null,
@@ -405,6 +414,28 @@ export async function rollbackResearchCandidate(env, id, reason) {
   if (typeof reason !== "string" || !reason.trim() || reason.length > 500)
     throw new Error("回退需填写 1–500 字原因");
   const db = env.DB;
+  const detail = await researchExperimentDetail(env, id);
+  if (!detail) throw new Error("研究实验不存在");
+  const versions = (
+    await db
+      .prepare("SELECT id,params FROM strategy_versions WHERE id IN (?,?)")
+      .bind(detail.experiment.parentVersion, detail.experiment.candidateVersion)
+      .all()
+  ).results.map((row) => ({ id: row.id, params: JSON.parse(row.params) }));
+  await verifyStrategySwitches({
+    experiment: detail.experiment,
+    members: detail.forward?.members ?? [],
+    versions,
+    switches: detail.switches,
+    switchReports: await switchReportRows(
+      db,
+      detail.switches,
+      detail.forward?.evaluation,
+    ),
+    events: detail.events,
+    cohortEvents: detail.forward?.events ?? [],
+    evaluation: detail.forward?.evaluation,
+  });
   const readSwitch = async (type) => {
     const row = await db
       .prepare(

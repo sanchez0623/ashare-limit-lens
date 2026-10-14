@@ -2279,14 +2279,14 @@ function solveFillQuantity({
   while (low < high) {
     const mid = side === "BUY" ? Math.max(low, Math.floor((low + high) / 2 / 100) * 100) : Math.floor((low + high) / 2);
     if (mid === low) break;
-    const check = violates(mid);
-    if (check.violated) {
+    const check2 = violates(mid);
+    if (check2.violated) {
       high = mid;
-      lastReason = check.reason;
-      lastDetail = check.detail;
+      lastReason = check2.reason;
+      lastDetail = check2.detail;
     } else {
       low = mid;
-      best = check.estimate;
+      best = check2.estimate;
     }
   }
   if (best)
@@ -8555,9 +8555,12 @@ var init_research_windows = __esm({
 });
 
 // backend/domain/research-build.js
+async function researchForwardBuildMatches(value) {
+  return value === await researchForwardBuildDigest() || isLegacyForwardBuild(value);
+}
 function researchForwardBuildDigest() {
   if (true)
-    return Promise.resolve("6bc2075feac2d09f371ab2a405afc93e98803d1184bce6f94bea2ab0fe526b02");
+    return Promise.resolve("80cea86fe7c2ce6ccf4d81f5c24175b94e92c39b15bd0f29c6bfae08e21c01be");
   cached2 ??= (async () => {
     const { readFileSync } = await import("node:fs");
     return digestOf(
@@ -8568,6 +8571,8 @@ function researchForwardBuildDigest() {
         "backend/domain/cohort-metrics.js",
         "backend/domain/research-statistics.js",
         "backend/domain/research-verifier.js",
+        "backend/domain/research-samples.js",
+        "backend/domain/research-switches.js",
         "backend/services/portfolio-runner.js",
         "backend/services/strategy-tournament.js",
         "backend/services/promotion.js",
@@ -8584,10 +8589,12 @@ function researchForwardBuildDigest() {
   })();
   return cached2;
 }
-var cached2;
+var LEGACY_FORWARD_BUILD, isLegacyForwardBuild, cached2;
 var init_research_build = __esm({
   "backend/domain/research-build.js"() {
     init_research_lineage();
+    LEGACY_FORWARD_BUILD = "6bc2075feac2d09f371ab2a405afc93e98803d1184bce6f94bea2ab0fe526b02";
+    isLegacyForwardBuild = (value) => value === LEGACY_FORWARD_BUILD;
   }
 });
 
@@ -8873,6 +8880,7 @@ var init_research = __esm({
         const protocol = {
           version: 1,
           mode: "SINGLE",
+          switchAuditVersion: 2,
           policyId: policy.id,
           policyDigest: policy.digest,
           ruleBuildDigest: await researchForwardBuildDigest(),
@@ -9573,6 +9581,61 @@ var init_research = __esm({
   }
 });
 
+// backend/domain/research-samples.js
+async function historicalTrainingSample({
+  signalDate,
+  nextDate,
+  datasetId,
+  datasetManifestDigest,
+  scoreDigest
+}) {
+  const payload = {
+    role: "HISTORICAL_TRAIN",
+    digestVersion: FULL_SAMPLE_DIGEST,
+    signalDate,
+    tradeDate: nextDate,
+    datasetId,
+    datasetManifestDigest,
+    scoreDigest
+  };
+  return { date: nextDate, payload, digest: await digestOf(payload) };
+}
+async function verifyResearchSample(sample, experiment) {
+  const p = sample.payload;
+  if (!p || p.role && p.role !== sample.role || p.tradeDate && p.tradeDate !== sample.outcomeDate)
+    throw new Error("\u6837\u672C\u65E5\u671F\u6216\u7528\u9014\u4E0E\u5B58\u50A8\u8EAB\u4EFD\u4E0D\u4E00\u81F4");
+  if (sample.role === "HISTORICAL_TRAIN") {
+    const reservation = experiment.reservationPayload;
+    if (experiment.kind !== "BOOTSTRAP" || p.role !== "HISTORICAL_TRAIN" || p.datasetId !== reservation.datasetId || p.datasetManifestDigest !== reservation.datasetManifestDigest || !reservation.trainingDates.includes(sample.outcomeDate) || !/^\d{4}-\d{2}-\d{2}$/.test(p.signalDate ?? "") || p.signalDate >= sample.outcomeDate)
+      throw new Error("\u51B7\u542F\u52A8\u6837\u672C\u4E0E\u51BB\u7ED3\u6570\u636E\u96C6\u3001\u65E5\u671F\u6216\u7528\u9014\u4E0D\u4E00\u81F4");
+  }
+  if (p.digestVersion !== void 0 && p.digestVersion !== FULL_SAMPLE_DIGEST)
+    throw new Error("\u6837\u672C\u6458\u8981\u7248\u672C\u4E0D\u652F\u6301");
+  if (await digestOf(p) === sample.digest) return;
+  if (sample.role === "HISTORICAL_TRAIN" && p.digestVersion === void 0 && Object.keys(p).length === 5 && Object.keys(p).every(
+    (key) => [
+      "role",
+      "signalDate",
+      "datasetId",
+      "datasetManifestDigest",
+      "scoreDigest"
+    ].includes(key)
+  ) && await digestOf({
+    scoreDigest: p.scoreDigest,
+    nextDate: sample.outcomeDate,
+    datasetManifestDigest: p.datasetManifestDigest
+  }) === sample.digest)
+    return;
+  throw new Error("\u6837\u672C\u6458\u8981\u4E0D\u4E00\u81F4");
+}
+var FULL_SAMPLE_DIGEST;
+var init_research_samples = __esm({
+  "backend/domain/research-samples.js"() {
+    init_research_lineage();
+    FULL_SAMPLE_DIGEST = "FULL_PAYLOAD_V1";
+  }
+});
+
 // backend/storage/realtime.js
 var RealtimeRepository;
 var init_realtime2 = __esm({
@@ -9912,7 +9975,7 @@ async function adoptSingleExperiment(env, experimentId) {
   const { digest: protocolDigest, ...protocolSource } = protocol;
   if (await digestOf(protocolSource) !== protocolDigest)
     throw new Error("\u5355\u5019\u9009\u4E8B\u524D\u534F\u8BAE\u6458\u8981\u4E0D\u4E00\u81F4");
-  if (protocol.ruleBuildDigest !== await researchForwardBuildDigest()) {
+  if (!await researchForwardBuildMatches(protocol.ruleBuildDigest)) {
     await research.recordInvalidated(
       experimentId,
       experiment.candidateVersion,
@@ -12709,6 +12772,8 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
       cohort.reservationManifest.executionStress.parentParams
     ),
     candidateParamsDigest: member.paramsDigest,
+    researchPolicyId: cohort.researchPolicyId,
+    researchPolicyDigest: cohort.researchPolicyDigest,
     reportDigest: promotionDigest,
     bookBeforeDigest: await digestOf(account.book),
     bookAfterDigest: await digestOf(book),
@@ -12743,7 +12808,7 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
   ).bind(...args, ...guardArgs);
   const statements = [
     papers.db.prepare(
-      "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?) AND EXISTS(SELECT 1 FROM strategy_cohort_members WHERE cohort_id=? AND member_id=? AND stage='ELIGIBLE' AND params_digest=?) AND EXISTS(SELECT 1 FROM research_experiments WHERE id=? AND stage=? AND revision=?) AND EXISTS(SELECT 1 FROM strategy_cohorts WHERE id=? AND revision=?)"
+      "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?) AND EXISTS(SELECT 1 FROM strategy_cohort_members WHERE cohort_id=? AND member_id=? AND stage='ELIGIBLE' AND params_digest=?) AND EXISTS(SELECT 1 FROM research_experiments WHERE id=? AND stage=? AND revision=?) AND EXISTS(SELECT 1 FROM strategy_cohorts WHERE id=? AND revision=?) AND (SELECT id FROM research_policy_versions ORDER BY created_at DESC,id DESC LIMIT 1)=?"
     ).bind(
       JSON.stringify(book),
       runId,
@@ -12761,7 +12826,8 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
       experiment.stage,
       experiment.revision,
       cohortId,
-      cohort.revision
+      cohort.revision,
+      cohort.researchPolicyId
     ),
     guarded(
       "UPDATE strategy_versions SET status = 'RETIRED' WHERE status = 'ACTIVE'",
@@ -12773,6 +12839,10 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
     guarded(
       "UPDATE strategy_cohorts SET promotion_digest = ?, effective_trade_date = ?, revision = revision + 1, updated_at = ? WHERE id = ?",
       [promotionDigest, effectiveTradeDate, (/* @__PURE__ */ new Date()).toISOString(), cohortId]
+    ),
+    guarded(
+      "INSERT INTO strategy_switch_reports(digest,cohort_id,payload,created_at) SELECT ?,?,?,?",
+      [promotionDigest, cohortId, JSON.stringify(report), now]
     ),
     guarded(
       "INSERT INTO strategy_switch_events(id,cohort_id,experiment_id,event_type,from_version,to_version,account_revision,payload,digest,created_at) SELECT ?,?,?,'PROMOTE',?,?,?,?,?,?",
@@ -12823,13 +12893,20 @@ async function promoteCohortChampion(env, cohortId, { evaluation = null, effecti
   ];
   const results = await papers.db.batch(statements);
   const after = await papers.account();
-  if (results[0].meta.changes !== 1 || after.revision !== nextRevision || after.book.activeStrategy !== championVersionId)
+  if (results[0].meta.changes !== 1 || after.revision !== nextRevision || after.book.activeStrategy !== championVersionId) {
+    const latest = await papers.db.prepare(
+      "SELECT id FROM research_policy_versions ORDER BY created_at DESC,id DESC LIMIT 1"
+    ).first();
+    if (latest?.id !== cohort.researchPolicyId)
+      throw new Error("\u7814\u7A76\u653F\u7B56\u5728\u6838\u9A8C\u540E\u53D8\u5316\uFF0C\u664B\u7EA7\u672A\u5E94\u7528\uFF1B\u65E7\u62A5\u544A\u8D44\u683C\u5931\u6548");
     throw new Error("\u4E3B\u8D26\u6237\u6B63\u5728\u66F4\u65B0\uFF0C\u664B\u7EA7\u672A\u5E94\u7528\uFF0C\u8BF7\u91CD\u65B0\u6838\u9A8C\u540E\u91CD\u8BD5");
+  }
   return {
     promoted: true,
     versionId: championVersionId,
     memberId: member.memberId,
     effectiveTradeDate,
+    reportDigest: promotionDigest,
     effectiveNote: effectiveNote ?? "\u542F\u7528\u53EA\u5207\u6362\u672A\u6765\u7B56\u7565\u5F15\u7528\uFF1B\u5DF2\u51BB\u7ED3\u8BA1\u5212\u3001\u6301\u4ED3\u3001\u98CE\u9669\u5CF0\u503C\u4E0E\u65E7\u4E8F\u635F\u4E0D\u88AB\u5F71\u5B50\u7ED3\u679C\u66FF\u6362"
   };
 }
@@ -12847,6 +12924,165 @@ var init_promotion = __esm({
     init_portfolio_runner();
     init_execution_stress2();
     REPORT_UNTRUSTED = "\u6CA1\u6709\u901A\u8FC7\u5168\u90E8\u95F8\u95E8\u7684\u62A5\u544A\u4E0D\u80FD\u542F\u7528";
+  }
+});
+
+// backend/domain/research-switches.js
+async function verifySwitchReport(row, cohortId) {
+  const p = row?.payload;
+  check(
+    p && row.digest === p.digest && p.cohortId === cohortId,
+    "\u51BB\u7ED3\u62A5\u544A\u8EAB\u4EFD\u6216\u5F15\u7528\u4E0D\u4E00\u81F4"
+  );
+  const { digest: digest2, ...source } = p;
+  check(await digestOf(source) === digest2, "\u51BB\u7ED3\u62A5\u544A\u6458\u8981\u4E0D\u4E00\u81F4");
+  return p;
+}
+async function recoverSwitchReport(evaluation, reference, cohortId) {
+  if (!evaluation) throw new Error("\u5207\u6362\u5BA1\u8BA1\uFF1A\u4E8B\u4EF6\u5B9E\u9645\u5F15\u7528\u7684\u51BB\u7ED3\u62A5\u544A\u7F3A\u5931");
+  const candidates = [evaluation];
+  const { digest: digest2, ...source } = evaluation;
+  const beforePromotion = { ...source, promotion: null };
+  candidates.push({
+    ...beforePromotion,
+    digest: await digestOf(beforePromotion)
+  });
+  for (const payload of candidates) {
+    if (payload.digest !== reference) continue;
+    const row = { digest: reference, payload };
+    await verifySwitchReport(row, cohortId);
+    return row;
+  }
+  throw new Error("\u5207\u6362\u5BA1\u8BA1\uFF1A\u6700\u7EC8\u62A5\u544A\u65E0\u6CD5\u8FD8\u539F\u4E8B\u4EF6\u5F15\u7528\u7684\u539F\u59CB\u6458\u8981");
+}
+async function verifyStrategySwitches({
+  experiment,
+  members = [],
+  versions = [],
+  switches = [],
+  switchReports = [],
+  events = [],
+  cohortEvents = [],
+  evaluation = null,
+  allowLegacyReports = false
+}) {
+  check(
+    new Set(switches.map((row) => row.payload.id)).size === switches.length,
+    "\u4E8B\u4EF6 id \u91CD\u590D"
+  );
+  check(
+    new Set(switchReports.map((row) => row.digest)).size === switchReports.length,
+    "\u51BB\u7ED3\u62A5\u544A\u5F15\u7528\u91CD\u590D"
+  );
+  const member = members.find((m) => m.experimentId === experiment.id);
+  const parent = versions.find((v) => v.id === experiment.parentVersion);
+  const candidate = versions.find((v) => v.id === experiment.candidateVersion);
+  const byType = /* @__PURE__ */ new Map();
+  let previousRevision = 0;
+  for (const row of switches) {
+    const p = row.payload;
+    check(await digestOf(p) === row.digest, "\u4E8B\u4EF6\u6458\u8981\u4E0D\u4E00\u81F4");
+    check(
+      member && p.experimentId === experiment.id && p.cohortId === member.cohortId,
+      "\u4E8B\u4EF6\u4E0E\u5B9E\u9A8C\u6216\u8FD0\u884C\u7EC4\u4E0D\u4E00\u81F4"
+    );
+    check(
+      Number.isInteger(p.accountRevision) && p.accountRevision > previousRevision,
+      "\u8D26\u6237 revision \u6B21\u5E8F\u65E0\u6548"
+    );
+    previousRevision = p.accountRevision;
+    check(
+      !byType.has(p.eventType) && ["PROMOTE", "ROLLBACK"].includes(p.eventType),
+      "\u4E8B\u4EF6\u7C7B\u578B\u91CD\u590D\u6216\u65E0\u6548"
+    );
+    check(
+      parent && candidate && member.strategyVersion === candidate.id,
+      "\u4E8B\u4EF6\u5F15\u7528\u7684\u7B56\u7565\u7248\u672C\u4E0D\u5B58\u5728"
+    );
+    const researchEvent = events.filter(
+      (e) => e.payload?.switchEventId === p.id
+    );
+    check(
+      researchEvent.length === 1 && researchEvent[0].createdAt === p.createdAt,
+      "\u7814\u7A76\u4E8B\u4EF6\u672A\u7ED1\u5B9A\u5207\u6362\u8BB0\u5F55"
+    );
+    if (p.eventType === "PROMOTE") {
+      if (experiment.reservationPayload.singleForward?.switchAuditVersion === 2)
+        check(
+          p.researchPolicyId === experiment.policyId && p.researchPolicyDigest === experiment.reservationPayload.policyDigest,
+          "\u542F\u7528\u4E8B\u4EF6\u4E0E\u51BB\u7ED3\u7814\u7A76\u653F\u7B56\u4E0D\u4E00\u81F4"
+        );
+      check(
+        p.fromVersion === parent.id && p.toVersion === candidate.id && p.parentParamsDigest === await digestOf(parent.params) && p.candidateParamsDigest === await digestOf(candidate.params) && p.candidateParamsDigest === member.paramsDigest,
+        "\u542F\u7528\u7248\u672C\u6216\u53C2\u6570\u4E0E\u51BB\u7ED3\u5019\u9009\u4E0D\u4E00\u81F4"
+      );
+      check(
+        researchEvent[0].eventType === "MEMBER_PROMOTED",
+        "\u542F\u7528\u672A\u7ED1\u5B9A\u6B63\u786E\u7814\u7A76\u4E8B\u4EF6"
+      );
+      const cohortEvent = cohortEvents.filter(
+        (e) => e.payload?.switchEventId === p.id
+      );
+      check(
+        cohortEvent.length === 1 && cohortEvent[0].eventType === "MEMBER_PROMOTED" && cohortEvent[0].createdAt === p.createdAt,
+        "\u8FD0\u884C\u7EC4\u4E8B\u4EF6\u672A\u7ED1\u5B9A\u542F\u7528\u8BB0\u5F55"
+      );
+      let reportRow = switchReports.find((r) => r.digest === p.reportDigest);
+      if (!reportRow && allowLegacyReports)
+        reportRow = await recoverSwitchReport(
+          evaluation,
+          p.reportDigest,
+          p.cohortId
+        );
+      const frozen = await verifySwitchReport(reportRow, p.cohortId);
+      check(
+        frozen.champion?.memberId === member.memberId && frozen.verdicts.some(
+          (v) => v.memberId === member.memberId && ["ELIGIBLE", "PROMOTED"].includes(v.stage)
+        ),
+        "\u51BB\u7ED3\u62A5\u544A\u672A\u6279\u51C6\u8BE5\u5019\u9009"
+      );
+      if (evaluation)
+        check(
+          await digestOf(reportCore(frozen)) === await digestOf(reportCore(evaluation)),
+          "\u4E8B\u4EF6\u5F15\u7528\u62A5\u544A\u4E0E\u53D1\u5E03\u62A5\u544A\u7684\u9A8C\u8BC1\u8F93\u5165\u4E0D\u4E00\u81F4"
+        );
+      if (evaluation?.promotion?.promoted) {
+        const legacy = experiment.reservationPayload.singleForward?.switchAuditVersion !== 2;
+        check(
+          evaluation.promotion.versionId === p.toVersion && (evaluation.promotion.memberId === member.memberId || legacy && evaluation.promotion.memberId === void 0) && (evaluation.promotion.reportDigest === p.reportDigest || legacy && evaluation.promotion.reportDigest === void 0),
+          "\u53D1\u5E03\u62A5\u544A\u7684\u542F\u7528\u7ED3\u679C\u672A\u7ED1\u5B9A\u5B9E\u9645\u7248\u672C\u6216\u62A5\u544A"
+        );
+      }
+    } else {
+      const promotion = byType.get("PROMOTE");
+      check(
+        promotion && p.promotionEventId === promotion.id && p.fromVersion === promotion.toVersion && p.toVersion === promotion.fromVersion,
+        "\u56DE\u9000\u672A\u53CD\u5411\u5F15\u7528\u539F\u542F\u7528\u4E8B\u4EF6"
+      );
+      check(
+        researchEvent[0].eventType === "ROLLED_BACK" && researchEvent[0].payload.fromVersion === p.fromVersion && researchEvent[0].payload.toVersion === p.toVersion,
+        "\u56DE\u9000\u7814\u7A76\u4E8B\u4EF6\u7684\u7248\u672C\u5173\u8054\u4E0D\u4E00\u81F4"
+      );
+    }
+    byType.set(p.eventType, p);
+  }
+  if (experiment.stage === "PROMOTED")
+    check(
+      byType.has("PROMOTE") && !byType.has("ROLLBACK"),
+      "\u5B9E\u9A8C\u542F\u7528\u72B6\u6001\u7F3A\u5C11\u6709\u6548\u5207\u6362\u4E8B\u4EF6"
+    );
+  if (experiment.stage === "ROLLED_BACK")
+    check(byType.has("ROLLBACK"), "\u5B9E\u9A8C\u56DE\u9000\u72B6\u6001\u7F3A\u5C11\u6709\u6548\u5207\u6362\u4E8B\u4EF6");
+  return { passed: true, switches: switches.length };
+}
+var check, reportCore;
+var init_research_switches = __esm({
+  "backend/domain/research-switches.js"() {
+    init_research_lineage();
+    check = (condition, reason) => {
+      if (!condition) throw new Error(`\u5207\u6362\u5BA1\u8BA1\uFF1A${reason}`);
+    };
+    reportCore = ({ digest: digest2, promotion, ...core }) => core;
   }
 });
 
@@ -13369,7 +13605,9 @@ async function scheduleCohortForward(env, cohortId, { now = (/* @__PURE__ */ new
     );
     if (new Date(now).getTime() < Date.parse(experiment.frozenAt) || account.book.lastDate < marketClock(new Date(experiment.frozenAt)).date || account.book.lastDate < (experiment.reservationPayload.testDates?.at(-1) ?? ""))
       return { scheduled: false, reason: "\u7B49\u5F85\u5019\u9009\u51BB\u7ED3\u540E\u7684\u5B8C\u6574\u95ED\u5E02\u7ED3\u7B97\u8D77\u70B9" };
-    if (cohort.reservationManifest.cohortPolicy.ruleBuildDigest !== await researchForwardBuildDigest()) {
+    if (!await researchForwardBuildMatches(
+      cohort.reservationManifest.cohortPolicy.ruleBuildDigest
+    )) {
       await closeCohort(
         cohorts,
         cohortId,
@@ -14029,6 +14267,48 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
     });
     return published.payload;
   }
+  const committedSwitch = await papers.db.prepare(
+    "SELECT payload,digest FROM strategy_switch_events WHERE cohort_id=? AND event_type='PROMOTE'"
+  ).bind(cohortId).first();
+  if (committedSwitch) {
+    const change = JSON.parse(committedSwitch.payload);
+    if (await digestOf(change) !== committedSwitch.digest)
+      throw new Error("\u5DF2\u63D0\u4EA4\u5207\u6362\u4E8B\u4EF6\u6458\u8981\u4E0D\u4E00\u81F4");
+    const snapshot = await papers.db.prepare(
+      "SELECT payload,digest FROM strategy_switch_reports WHERE digest=?"
+    ).bind(change.reportDigest).first();
+    const original = await verifySwitchReport(
+      snapshot ? { digest: snapshot.digest, payload: JSON.parse(snapshot.payload) } : null,
+      cohortId
+    );
+    const report2 = {
+      ...original,
+      promotion: {
+        promoted: true,
+        versionId: change.toVersion,
+        memberId: original.champion.memberId,
+        effectiveTradeDate: change.effectiveTradeDate,
+        reportDigest: change.reportDigest,
+        recovered: true
+      }
+    };
+    const { digest: digest2, ...source } = report2;
+    report2.digest = await digestOf(source);
+    const saved2 = await cohorts.saveReport(cohortId, "EVALUATION", report2);
+    await cohorts.transitionCohort(cohortId, {
+      from: "EVALUATING",
+      to: "CLOSED",
+      eventType: "CHAMPION_PROMOTED",
+      payload: { champion: report2.champion, recovered: true },
+      set: {
+        evaluation_manifest: JSON.stringify(report2),
+        effective_trade_date: change.effectiveTradeDate,
+        promotion_digest: saved2.digest
+      }
+    });
+    await cohorts.releaseWindowOwner("COHORT", cohortId);
+    return report2;
+  }
   const manifest = cohort.forwardManifest;
   const windowDates = manifest.windowDates?.length ? manifest.windowDates : manifest.tradingDates;
   const frozenPolicy = cohort.reservationManifest?.cohortPolicy;
@@ -14104,7 +14384,9 @@ async function evaluateCohort(env, cohortId, { now = (/* @__PURE__ */ new Date()
   fingerprint.environmentValid &&= fingerprint.selectionPolicyMatches;
   if (cohort.mode === "SINGLE") {
     const parentRow = await papers.db.prepare("SELECT params FROM strategy_versions WHERE id=?").bind(cohort.parentVersion).first();
-    fingerprint.ruleBuildMatches = cohort.reservationManifest.cohortPolicy.ruleBuildDigest === await researchForwardBuildDigest();
+    fingerprint.ruleBuildMatches = await researchForwardBuildMatches(
+      cohort.reservationManifest.cohortPolicy.ruleBuildDigest
+    );
     fingerprint.researchPolicyMatches = (await new ResearchRepository(env).getPolicy()).id === cohort.researchPolicyId;
     fingerprint.parentParamsMatch = Boolean(parentRow) && await digestOf(JSON.parse(parentRow.params)) === cohort.reservationManifest.executionStress.parentParamsDigest;
     fingerprint.environmentValid &&= fingerprint.ruleBuildMatches && fingerprint.researchPolicyMatches && fingerprint.parentParamsMatch;
@@ -14594,6 +14876,7 @@ var init_strategy_tournament = __esm({
     init_execution_stress2();
     init_walk_forward();
     init_research_build();
+    init_research_switches();
     init_signal_selection();
     REQUEST_LEASE_MS = 12e4;
     continuousBaselineId = "shadow-baseline-continuous";
@@ -14639,8 +14922,11 @@ function closingQuotes(frames, existing, date) {
   return quotes;
 }
 async function verifyResearchExport(bundle) {
+  const legacy = bundle?.experiment?.reservationPayload?.singleForward?.switchAuditVersion === void 0 && isLegacyForwardBuild(
+    bundle?.experiment?.reservationPayload?.singleForward?.ruleBuildDigest
+  );
   requireEvidence(
-    bundle?.format === "limit-lens-research-v1" && bundle.schemaVersion === 1,
+    bundle?.format === "limit-lens-research-v1" && (bundle.schemaVersion === 2 || bundle.schemaVersion === 1 && legacy),
     "\u7814\u7A76\u5BFC\u51FA\u683C\u5F0F\u65E0\u6548"
   );
   const experiment = bundle.experiment;
@@ -14654,11 +14940,20 @@ async function verifyResearchExport(bundle) {
   );
   await chain(bundle.events, "\u7814\u7A76");
   await hashRows(bundle.reports, "\u7814\u7A76\u62A5\u544A");
-  await hashRows(
-    bundle.samples.map((row) => ({ payload: row.payload, digest: row.digest })),
-    "\u6837\u672C"
-  );
+  for (const sample of bundle.samples)
+    await verifyResearchSample(sample, experiment);
   await hashRows(bundle.switches, "\u5207\u6362");
+  await verifyStrategySwitches({
+    experiment,
+    members: bundle.forward?.members ?? [],
+    versions: bundle.versions,
+    switches: bundle.switches,
+    switchReports: bundle.switchReports ?? [],
+    events: bundle.events,
+    cohortEvents: bundle.forward?.events ?? [],
+    evaluation: bundle.evaluation,
+    allowLegacyReports: bundle.schemaVersion === 1 && legacy
+  });
   const protocol = experiment.reservationPayload.singleForward;
   const reasons = [];
   if (!protocol || !bundle.forward?.cohort.forwardManifest || !bundle.evaluation)
@@ -14677,7 +14972,7 @@ async function verifyResearchExport(bundle) {
     "\u5355\u5019\u9009\u534F\u8BAE\u7248\u672C\u4E0D\u652F\u6301"
   );
   requireEvidence(
-    protocol.ruleBuildDigest === await researchForwardBuildDigest(),
+    await researchForwardBuildMatches(protocol.ruleBuildDigest),
     "\u524D\u77BB\u89C4\u5219\u6E90\u7801\u7248\u672C\u4E0D\u5339\u914D"
   );
   await verifyStressFreeze(protocol.executionStress);
@@ -15070,9 +15365,49 @@ var init_research_verifier = __esm({
     init_realtime();
     init_signal_selection();
     init_research_build();
+    init_research_samples();
+    init_research_switches();
     requireEvidence = (condition, message) => {
       if (!condition) throw new Error(message);
     };
+  }
+});
+
+// backend/storage/switch-reports.js
+async function switchReportRows(db, switches, evaluation) {
+  const reports = [];
+  for (const { payload: event } of switches) {
+    if (event.eventType !== "PROMOTE") continue;
+    let stored = await db.prepare(
+      "SELECT payload,digest FROM strategy_switch_reports WHERE digest=?"
+    ).bind(event.reportDigest).first();
+    if (!stored) {
+      const recovered = await recoverSwitchReport(
+        evaluation,
+        event.reportDigest,
+        event.cohortId
+      );
+      await db.prepare(
+        "INSERT INTO strategy_switch_reports(digest,cohort_id,payload,created_at) VALUES(?,?,?,?) ON CONFLICT(digest) DO NOTHING"
+      ).bind(
+        recovered.digest,
+        event.cohortId,
+        JSON.stringify(recovered.payload),
+        event.createdAt
+      ).run();
+      stored = await db.prepare(
+        "SELECT payload,digest FROM strategy_switch_reports WHERE digest=?"
+      ).bind(event.reportDigest).first();
+    }
+    const row = { digest: stored.digest, payload: JSON.parse(stored.payload) };
+    await verifySwitchReport(row, event.cohortId);
+    reports.push(row);
+  }
+  return reports;
+}
+var init_switch_reports = __esm({
+  "backend/storage/switch-reports.js"() {
+    init_research_switches();
   }
 });
 
@@ -15308,12 +15643,19 @@ async function exportResearchExperiment(env, id, { evaluation = null } = {}) {
     "SELECT payload FROM execution_stress_reports WHERE cohort_id=? ORDER BY created_at DESC LIMIT 1"
   ).bind(detail.forward.cohort.id).first() : null;
   const versions = (await db.prepare("SELECT id,params FROM strategy_versions WHERE id IN (?,?)").bind(detail.experiment.parentVersion, detail.experiment.candidateVersion).all()).results.map((row) => ({ id: row.id, params: JSON.parse(row.params) }));
+  const actualEvaluation = evaluation ?? detail.forward?.evaluation ?? null;
+  const switchReports = await switchReportRows(
+    db,
+    detail.switches,
+    actualEvaluation
+  );
   return {
     format: "limit-lens-research-v1",
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
     ...detail,
-    evaluation: evaluation ?? detail.forward?.evaluation ?? null,
+    evaluation: actualEvaluation,
+    switchReports,
     policy: policy ? { payload: JSON.parse(policy.payload), digest: policy.digest } : null,
     versions,
     market,
@@ -15355,6 +15697,23 @@ async function rollbackResearchCandidate(env, id, reason) {
   if (typeof reason !== "string" || !reason.trim() || reason.length > 500)
     throw new Error("\u56DE\u9000\u9700\u586B\u5199 1\u2013500 \u5B57\u539F\u56E0");
   const db = env.DB;
+  const detail = await researchExperimentDetail(env, id);
+  if (!detail) throw new Error("\u7814\u7A76\u5B9E\u9A8C\u4E0D\u5B58\u5728");
+  const versions = (await db.prepare("SELECT id,params FROM strategy_versions WHERE id IN (?,?)").bind(detail.experiment.parentVersion, detail.experiment.candidateVersion).all()).results.map((row) => ({ id: row.id, params: JSON.parse(row.params) }));
+  await verifyStrategySwitches({
+    experiment: detail.experiment,
+    members: detail.forward?.members ?? [],
+    versions,
+    switches: detail.switches,
+    switchReports: await switchReportRows(
+      db,
+      detail.switches,
+      detail.forward?.evaluation
+    ),
+    events: detail.events,
+    cohortEvents: detail.forward?.events ?? [],
+    evaluation: detail.forward?.evaluation
+  });
   const readSwitch = async (type) => {
     const row = await db.prepare(
       "SELECT payload,digest FROM strategy_switch_events WHERE experiment_id=? AND event_type=?"
@@ -15487,6 +15846,8 @@ var init_walk_forward2 = __esm({
     init_research_lineage();
     init_cohort_metrics();
     init_research_verifier();
+    init_switch_reports();
+    init_research_switches();
   }
 });
 
@@ -16099,21 +16460,15 @@ async function proposeBootstrapImprovement(repository, env, { datasetId } = {}, 
       }
     });
     trainingDates.push(nextDate);
-    samples.push({
-      date: nextDate,
-      payload: {
-        role: "HISTORICAL_TRAIN",
+    samples.push(
+      await historicalTrainingSample({
         signalDate: signal.tradeDate,
+        nextDate,
         datasetId,
         datasetManifestDigest: dataset.manifestDigest,
         scoreDigest: signal.digest
-      },
-      digest: await digestOf({
-        scoreDigest: signal.digest,
-        nextDate,
-        datasetManifestDigest: dataset.manifestDigest
       })
-    });
+    );
   }
   if (trainingPairs.length < minTrainingDays)
     return {
@@ -16395,6 +16750,7 @@ var init_research2 = __esm({
     init_research_lineage();
     init_research();
     init_cohorts();
+    init_research_samples();
     init_http();
     init_signal_selection();
     EXECUTOR_ID = crypto.randomUUID();
