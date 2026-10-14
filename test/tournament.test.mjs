@@ -66,6 +66,9 @@ import {
   EXECUTION_VERSION,
   SCORING_VERSION,
 } from "../backend/domain/research-lineage.js";
+import { STRATEGY_SPACE_VERSION } from "../shared/strategy-program.js";
+import { assertFrozenStrategyPrograms } from "../backend/services/strategy-program-evidence.js";
+import { api } from "../backend/routes/api.js";
 
 const SEED = 260;
 const FORWARD_DAYS = 30;
@@ -76,6 +79,297 @@ const CANDIDATE_PATCHES = [
   { tSellRise: 0.025 },
   { minScore: 78, maxPositions: 5 },
 ];
+
+for (const mode of ["FAMILIES", "SELECTORS", "ALLOCATIONS"])
+  test(`离散策略完整闭环 ${mode}：事前冻结、共享真实起点、30 日重放与成本压力后受控启用`, async () => {
+    const RealDate = globalThis.Date;
+    let simulatedNow = `${dateAt(SEED)}T07:15:00.000Z`;
+    globalThis.Date = class extends RealDate {
+      constructor(...args) {
+        super(...(args.length ? args : [simulatedNow]));
+      }
+      static now() {
+        return RealDate.parse(simulatedNow);
+      }
+    };
+    const { DB, env, repository, all } = await buildEnv();
+    const setFeatures = async (pair) => {
+      if (mode === "ALLOCATIONS") {
+        // 等比例提高合成弱股的价格：保留全部收益率，使两个对照都能在同一容量内建足仓。
+        // 避免极低价格让对照弱股永远只成交极小金额，掩盖资金分配的行为差异。
+        pair.snapshot.stocks[1].price *= 100;
+        const quote = pair.dataset.quotes["600002"];
+        for (const key of [
+          "previousCloseCents",
+          "openCents",
+          "closeCents",
+          "limitUpCents",
+          "limitDownCents",
+        ])
+          quote[key] *= 100;
+        for (const bar of pair.dataset.minutes["600002"]) bar.priceCents *= 100;
+        await DB.prepare(
+          "UPDATE paper_market_days SET payload=?,digest=? WHERE trade_date=?",
+        )
+          .bind(
+            JSON.stringify(pair.dataset),
+            await digest(pair.dataset),
+            pair.dataset.date,
+          )
+          .run();
+      }
+      if (mode === "SELECTORS" && pair.snapshot.date >= dateAt(SEED + 15))
+        pair.snapshot.emotion = 50;
+      pair.snapshot.stocks.forEach((stock, index) => {
+        stock.height =
+          mode === "ALLOCATIONS" ? (index === 0 ? 1 : 3) : index === 0 ? 2 : 1;
+        stock.consecutiveBoards = stock.height;
+        stock.turnover = index === 0 ? 5 : 20;
+      });
+      await DB.prepare("UPDATE snapshots SET payload=? WHERE trade_date=?")
+        .bind(JSON.stringify(pair.snapshot), pair.snapshot.date)
+        .run();
+    };
+    try {
+      for (const pair of all) await setFeatures(pair);
+      const cohorts = new CohortRepository(env);
+      await cohorts.saveTournamentPolicy({
+        version: 2,
+        strategySpaceVersion: STRATEGY_SPACE_VERSION,
+        generationMode: mode,
+        forwardDays: FORWARD_DAYS,
+        minimumCompletedRounds: 1,
+      });
+      await settlePrimaryToCaptureDay(env, repository, all);
+      const reserved = await reserveCohort(repository, env);
+      assert.equal(reserved.status, "SCHEDULED", JSON.stringify(reserved));
+      const forwardPairs = await seedForwardData(DB, env);
+      for (const pair of forwardPairs) await setFeatures(pair);
+      const calendar = {
+        dates: [...all, ...forwardPairs].map((pair) => pair.dataset.date),
+        benchmark: [],
+      };
+      const datasetByDate = datasetByDateOf(all, forwardPairs);
+      const scheduled = await scheduleCohortForward(env, reserved.cohortId, {
+        now: `${dateAt(SEED)}T07:30:00.000Z`,
+      });
+      assert.equal(scheduled.scheduled, true, JSON.stringify(scheduled));
+      for (let offset = 1; offset <= FORWARD_DAYS; offset++) {
+        const index = SEED + offset,
+          date = dateAt(index);
+        for (const [utc, time, volume] of forwardFrames()) {
+          simulatedNow = `${date}T${utc}.000Z`;
+          await runTournamentPoll(env, new Date(`${date}T${utc}Z`), {
+            providers: {
+              calendar,
+              quotes: makeQuotes(datasetByDate, index, time, volume),
+            },
+          });
+        }
+        simulatedNow = `${date}T07:30:00.000Z`;
+        const settled = await settleTournamentDay(env, date, {
+          calendarDates: [dateAt(index + 1), dateAt(index + 2)],
+          now: `${date}T07:30:00.000Z`,
+        });
+        assert.equal(
+          settled.status,
+          "SETTLED",
+          JSON.stringify(settled).slice(0, 300),
+        );
+      }
+      const evaluation = (await cohorts.report(reserved.cohortId, "EVALUATION"))
+        .payload;
+      assert.equal(evaluation.fingerprint.programRulesValid, true);
+      assert.ok(
+        evaluation.champion,
+        JSON.stringify({
+          error: evaluation.executionStressError,
+          verdicts: evaluation.verdicts,
+        }),
+      );
+      assert.equal(
+        evaluation.promotion?.promoted,
+        true,
+        JSON.stringify(evaluation.promotion),
+      );
+      const champion = await cohorts.member(
+        reserved.cohortId,
+        evaluation.champion.memberId,
+      );
+      assert.ok(
+        mode === "FAMILIES"
+          ? ["relay-board-v1", "low-turnover-v1"].includes(champion.familyId)
+          : champion.familyId ===
+              (mode === "SELECTORS"
+                ? "emotion-selector-v1"
+                : "shared-allocation-v1"),
+      );
+      assert.equal(
+        (await new RealtimeRepository(env).account()).book.activeStrategy,
+        champion.strategyVersion,
+      );
+      assert.equal(
+        (await promoteCohortChampion(env, reserved.cohortId)).duplicate,
+        true,
+      );
+      const ledger = await new ShadowAccountRepository(env).ledger(
+        `shadow-${champion.experimentId}`,
+      );
+      assert.ok(ledger.some((row) => row.strategyAllocations?.length));
+      if (mode === "SELECTORS") {
+        const shadows = new ShadowAccountRepository(env);
+        assert.equal(
+          (
+            await shadows.session(
+              `shadow-${champion.experimentId}`,
+              dateAt(SEED + 2),
+            )
+          ).plan.strategyProgram.regime,
+          "high",
+        );
+        assert.equal(
+          (
+            await shadows.session(
+              `shadow-${champion.experimentId}`,
+              dateAt(SEED + 20),
+            )
+          ).plan.strategyProgram.regime,
+          "mid",
+        );
+      }
+      for (const row of ledger.filter((row) => row.strategyAllocations))
+        assert.equal(
+          row.strategyAllocations.reduce((n, part) => n + part.feeCents, 0),
+          row.feeCents,
+        );
+    } finally {
+      globalThis.Date = RealDate;
+      DB.close();
+    }
+  });
+
+test("同毫秒追加的策略空间政策按提交顺序读取，不被默认政策 id 字典序覆盖", async () => {
+  const DB = localDatabase();
+  try {
+    const cohorts = new CohortRepository({ DB });
+    const initial = await cohorts.getTournamentPolicy();
+    const time = (
+      await DB.prepare(
+        "SELECT created_at FROM tournament_policy_versions WHERE id=?",
+      )
+        .bind(initial.id)
+        .first()
+    ).created_at;
+    const payload = validateCohortPolicy({
+      version: 2,
+      strategySpaceVersion: STRATEGY_SPACE_VERSION,
+      generationMode: "ALLOCATIONS",
+    });
+    await DB.prepare(
+      "INSERT INTO tournament_policy_versions(id,created_at,effective_at,payload,digest) VALUES(?,?,?,?,?)",
+    )
+      .bind(
+        "cohort-policy-0000",
+        time,
+        time,
+        JSON.stringify(payload),
+        await digestOf(payload),
+      )
+      .run();
+    assert.equal(
+      (await cohorts.getTournamentPolicy()).id,
+      "cohort-policy-0000",
+    );
+  } finally {
+    DB.close();
+  }
+});
+
+test("新版家族研究：无需模型密钥冻结四种家族并登记同一预算；旧政策拒绝离散配置", async () => {
+  const { DB, env, repository } = await buildEnv();
+  try {
+    delete env.AI_API_KEY;
+    const cohorts = new CohortRepository(env);
+    await cohorts.saveTournamentPolicy({
+      version: 2,
+      strategySpaceVersion: STRATEGY_SPACE_VERSION,
+      generationMode: "FAMILIES",
+    });
+    const result = await reserveCohort(repository, env);
+    assert.notEqual(result.status, "NOT_CONFIGURED");
+    assert.ok(result.cohortId, JSON.stringify(result));
+    const cohort = await cohorts.getCohort(result.cohortId);
+    assert.equal(
+      cohort.reservationManifest.strategySpace.payload.version,
+      STRATEGY_SPACE_VERSION,
+    );
+    const members = await cohorts.members(cohort.id);
+    assert.deepEqual(
+      members.map((member) => member.familyId),
+      [
+        "first-board-v1",
+        "relay-board-v1",
+        "sector-resonance-v1",
+        "low-turnover-v1",
+      ],
+    );
+    assert.equal(
+      (await new ResearchRepository(env).ensureRegistry()).attemptSequence,
+      4,
+    );
+    await assertFrozenStrategyPrograms(env, cohort, members);
+    const before = await cohorts.member(cohort.id, "m1");
+    const downgraded = structuredClone(before.params);
+    delete downgraded.program;
+    downgraded.minScore += 2;
+    await cohorts.updateMember(cohort.id, "m1", {
+      params: downgraded,
+      params_digest: await digestOf(downgraded),
+      family_id: "limit-momentum-v1",
+    });
+    await assert.rejects(
+      async () =>
+        assertFrozenStrategyPrograms(
+          env,
+          cohort,
+          await cohorts.members(cohort.id),
+        ),
+      /冻结提案/,
+    );
+    await cohorts.updateMember(cohort.id, "m1", {
+      params: before.params,
+      params_digest: before.paramsDigest,
+      family_id: before.familyId,
+    });
+    await cohorts.updateMember(cohort.id, "m1", {
+      family_id: "relay-board-v1",
+    });
+    await assert.rejects(
+      async () =>
+        assertFrozenStrategyPrograms(
+          env,
+          cohort,
+          await cohorts.members(cohort.id),
+        ),
+      /冻结提案/,
+    );
+    await cohorts.updateMember(cohort.id, "m1", { family_id: before.familyId });
+    const response = await api(
+      new Request("https://test.local/api/strategies/policy", {
+        method: "POST",
+        headers: {
+          Origin: "https://test.local",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ version: 1 }),
+      }),
+      env,
+    );
+    if (await cohorts.windowOwner()) assert.equal(response.status, 409);
+  } finally {
+    DB.close();
+  }
+});
 
 function stubCohortModel(patches = CANDIDATE_PATCHES) {
   const calls = [];

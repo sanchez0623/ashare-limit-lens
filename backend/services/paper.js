@@ -9,6 +9,7 @@ import {
   defensivePlan,
   executePlan,
   auditLedger,
+  assertProgramSnapshot,
 } from "../domain/trading.js";
 import {
   collectTradingDay,
@@ -22,6 +23,7 @@ import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { calibrationForPolicy } from "./execution-calibration.js";
 import { verifyCalibratedPolicy } from "../domain/execution-calibration.js";
 import { safeError } from "../http.js";
+import { exportProgramSignals } from "../storage/strategy-signals.js";
 import { feesForBook } from "../../shared/fees.js";
 import { riskLimitsForBook } from "../../shared/risk-limits.js";
 import { DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
@@ -305,6 +307,10 @@ export async function exportPaper(env, attempt = 0) {
       .reverse(),
     snapshots: rows[4].map((row) => JSON.parse(row.payload)).reverse(),
     versions,
+    signalSnapshots: await exportProgramSignals(
+      env.DB,
+      rows[2].map((row) => JSON.parse(row.payload)),
+    ),
     configurationHistory: rows[5]
       .map((row) => ({ payload: JSON.parse(row.payload), digest: row.digest }))
       .reverse(),
@@ -359,9 +365,13 @@ export async function verifyExport(bundle) {
       frozenSelectionPolicy(row.payload);
       const audit = row.payload.selectionAudit;
       if (audit?.snapshotDigest) {
-        const snapshot = bundle.snapshots?.find(
-          (s) => s.date === row.payload.signalDate,
-        );
+        const snapshot =
+          bundle.signalSnapshots?.find(
+            (entry) => entry.digest === audit.snapshotDigest,
+          )?.payload ??
+          (row.payload.strategyProgram
+            ? null
+            : bundle.snapshots?.find((s) => s.date === row.payload.signalDate));
         if (
           !snapshot ||
           (await selectionSnapshotDigest(snapshot)) !== audit.snapshotDigest
@@ -383,6 +393,14 @@ export async function verifyExport(bundle) {
     for (let index = 0; index < bundle.datasets.length; index++) {
       const dataset = bundle.datasets[index].payload;
       const plan = index ? plans.get(dataset.previousTradingDate) : null;
+      if (plan?.strategy?.program)
+        assertProgramSnapshot(
+          plan,
+          bundle.signalSnapshots?.find(
+            (entry) => entry.digest === plan.strategyProgram.snapshotDigest,
+          )?.payload,
+          book,
+        );
       if (index && (!plan || book.lastDate !== dataset.previousTradingDate)) {
         replay = false;
         break;
@@ -427,7 +445,16 @@ export async function verifyExport(bundle) {
       a[0].localeCompare(b[0]),
     )) {
       if (date <= (book.lastDate || "")) continue;
-      let session = openSession(book, plans.get(book.lastDate), date),
+      const plan = plans.get(book.lastDate);
+      if (plan?.strategy?.program)
+        assertProgramSnapshot(
+          plan,
+          bundle.signalSnapshots?.find(
+            (entry) => entry.digest === plan.strategyProgram.snapshotDigest,
+          )?.payload,
+          book,
+        );
+      let session = openSession(book, plan, date),
         fills = [];
       for (const tick of liveTicks.get(date) || []) {
         const step = advanceSession(book, session, tick.payload);

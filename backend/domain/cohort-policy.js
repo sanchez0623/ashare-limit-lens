@@ -1,4 +1,8 @@
 import { STEP_LIMITS, DEFAULT_RESEARCH_POLICY } from "./research-policy.js";
+import {
+  STRATEGY_SPACE_VERSION,
+  programIdentity,
+} from "../../shared/strategy-program.js";
 
 // 赛马政策（§3）：数量、预算、窗口与排序规则全部事前冻结；
 // AI 不能修改候选数量、比较方式、统计预算、费用、初始资金或风控。
@@ -39,6 +43,20 @@ export function validateCohortPolicy(input) {
   for (const key of Object.keys(input))
     if (FORBIDDEN_KEYS.has(key)) throw new Error("赛马政策包含未授权字段");
   const policy = { ...DEFAULT_COHORT_POLICY, ...input };
+  if (![1, 2].includes(policy.version)) throw new Error("赛马政策版本不支持");
+  if (policy.version === 2) {
+    if (
+      policy.strategySpaceVersion !== STRATEGY_SPACE_VERSION ||
+      !["AI", "FAMILIES", "SELECTORS", "ALLOCATIONS"].includes(
+        policy.generationMode,
+      )
+    )
+      throw new Error("新版赛马策略空间或生成方式无效");
+  } else if (
+    policy.strategySpaceVersion !== undefined ||
+    (policy.generationMode !== undefined && policy.generationMode !== "AI")
+  )
+    throw new Error("离散策略需要新版策略空间政策");
   if (
     !Number.isInteger(policy.maxCandidates) ||
     policy.maxCandidates < policy.maxCandidatesMin ||
@@ -143,6 +161,8 @@ export function computeStatisticsBudget({ ks, statistical }) {
 export function frozenParamDistance(candidateParams, parentParams) {
   const steps = STEP_LIMITS;
   let distance = 0;
+  if (programIdentity(candidateParams) !== programIdentity(parentParams))
+    distance++;
   for (const [key, value] of Object.entries(candidateParams)) {
     if (key === "weights") continue;
     const parent = parentParams[key];

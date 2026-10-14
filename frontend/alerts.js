@@ -86,15 +86,16 @@ function formatFacts(facts) {
   if (!entries.length) return '<p class="small-muted">无安全事实</p>';
   return `<dl class="alerts-facts">${entries
     .map(
-      ([key, value]) => `<dt>${escape(key)}</dt><dd>${
-        Array.isArray(value)
-          ? escape(value.join(", "))
-          : typeof value === "boolean"
-            ? value
-              ? "是"
-              : "否"
-            : escape(String(value))
-      }</dd>`,
+      ([key, value]) =>
+        `<dt>${escape(key)}</dt><dd>${
+          Array.isArray(value)
+            ? escape(value.join(", "))
+            : typeof value === "boolean"
+              ? value
+                ? "是"
+                : "否"
+              : escape(String(value))
+        }</dd>`,
     )
     .join("")}</dl>`;
 }
@@ -155,10 +156,10 @@ function renderIncidents(reset) {
       <td>${fmtTime(incident.lastSeen)}</td>
       <td>
         <button class="text-button" data-detail="${escape(incident.id)}">详情</button>${
-        incident.status !== "RESOLVED"
-          ? `<button class="text-button" data-ack="${escape(incident.id)}">确认 2 小时</button>`
-          : ""
-      }</td>
+          incident.status !== "RESOLVED"
+            ? `<button class="text-button" data-ack="${escape(incident.id)}">确认 2 小时</button>`
+            : ""
+        }</td>
     </tr>`,
     )
     .join("");

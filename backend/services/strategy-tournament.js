@@ -11,7 +11,17 @@ import {
   selectResearchWindows,
   beijingMonth,
 } from "../domain/research-windows.js";
-import { validateCandidatePatch } from "../domain/research-policy.js";
+import {
+  validateStrategyCandidate,
+  programTemplates,
+  strategySpaceManifest,
+  describeStrategySpace,
+} from "../domain/strategy-catalog.js";
+import {
+  programFamily,
+  programDescription,
+} from "../../shared/strategy-program.js";
+import { assertFrozenStrategyPrograms } from "./strategy-program-evidence.js";
 import { validateCandidate } from "../domain/validation.js";
 import { BASE_STRATEGY } from "../domain/trading.js";
 import {
@@ -70,14 +80,15 @@ function captureState(book) {
   };
 }
 // ---------- 批次预留：一次生成并冻结全部候选（§3/§5.1） ----------
-export async function reserveCohort(
-  repository,
-  env,
-  { propose = requestCohortProposal } = {},
-) {
+export async function reserveCohort(repository, env, { propose = null } = {}) {
   const cohorts = new CohortRepository(env);
   const research = new ResearchRepository(env);
   const policy = await cohorts.getTournamentPolicy();
+  const mode = policy.payload.generationMode ?? "AI";
+  propose ??=
+    mode === "AI"
+      ? requestCohortProposal
+      : async (...args) => programTemplates(mode, args[5]);
   const researchPolicy = await research.getPolicy();
   await research.ensureRegistry();
   const account = await repository.account();
@@ -235,8 +246,15 @@ export async function reserveCohort(
       account.book.initialCashCents / 100,
       feeConfig,
       memberCount,
-      { selectionPolicy },
+      { selectionPolicy, cohortPolicy: policy.payload },
     );
+    if (mode !== "AI" && !modelOutput.requestDigest)
+      modelOutput.requestDigest = await digestOf({
+        mode,
+        candidates: modelOutput.candidates,
+        trainingDates: windows.trainingDates,
+        strategySpace: reserved.reservation.strategySpace ?? null,
+      });
   } catch (error) {
     modelError = safeError(error);
   }
@@ -262,10 +280,11 @@ export async function reserveCohort(
     }
     const output = modelOutput.candidates[member.slotIndex - 1];
     try {
-      const candidate = validateCandidatePatch({
+      const candidate = validateStrategyCandidate({
         proposal: output,
         parentParams: base,
         frozenPolicy: researchPolicy.payload,
+        cohortPolicy: policy.payload,
       });
       const paramsDigest = await digestOf(candidate.params);
       if (seenDigests.has(paramsDigest))
@@ -290,7 +309,7 @@ export async function reserveCohort(
         paramsDigest,
         policyId: researchPolicy.id,
         cohortPolicyId: policy.id,
-        modelAlias: aiConfig(env).model,
+        modelAlias: modelOutput.modelAlias ?? aiConfig(env).model,
         modelVersionReported: null,
         promptDigest,
         output: { rationale: candidate.rationale, patch: candidate.patch },
@@ -303,6 +322,10 @@ export async function reserveCohort(
         initialCashCents: account.book.initialCashCents,
         executionVersion: EXECUTION_VERSION,
         scoringVersion: SCORING_VERSION,
+        ...programFamily(candidate.params),
+        ...(candidate.params.program
+          ? { strategySpace: await strategySpaceManifest() }
+          : {}),
         ...selectionPolicyFields(selectionPolicy),
         frozenAt: new Date().toISOString(),
       });
@@ -311,6 +334,8 @@ export async function reserveCohort(
         params: candidate.params,
         params_digest: paramsDigest,
         params_distance: frozenParamDistance(candidate.params, base),
+        family_id: programFamily(candidate.params).familyId,
+        family_version: programFamily(candidate.params).familyVersion,
       });
       members.push({
         memberId,
@@ -336,7 +361,7 @@ export async function reserveCohort(
     to: "FROZEN",
     eventType: "CANDIDATES_FROZEN",
     payload: {
-      modelAlias: aiConfig(env).model,
+      modelAlias: modelOutput?.modelAlias ?? aiConfig(env).model,
       promptDigest: modelOutput?.requestDigest ?? null,
       members: members.map((member) => ({
         memberId: member.memberId,
@@ -352,7 +377,9 @@ export async function reserveCohort(
     set: {
       proposal_manifest: JSON.stringify({
         frozenAt: new Date().toISOString(),
-        modelAlias: modelError ? null : aiConfig(env).model,
+        modelAlias: modelError
+          ? null
+          : (modelOutput?.modelAlias ?? aiConfig(env).model),
         promptDigest: modelOutput?.requestDigest ?? null,
         evidenceDigest: modelOutput?.evidenceDigest ?? null,
         requestDigest: modelOutput?.requestDigest ?? null,
@@ -553,6 +580,15 @@ export async function scheduleCohortForward(
   const account = await papers.account();
   if (!account?.book?.lastDate)
     return { scheduled: false, reason: "主账户尚未结算，无法捕获匹配起点" };
+  if (
+    cohort.reservationManifest.strategySpace &&
+    (!Number.isFinite(Date.parse(cohort.proposalManifest?.frozenAt)) ||
+      Date.parse(cohort.proposalManifest.frozenAt) > Date.parse(now))
+  )
+    return {
+      scheduled: false,
+      reason: "候选尚未在捕获时刻前冻结，等待新的捕获时点",
+    };
   // 今日会话仍开放（午休、收盘后未结算）时同样拒绝：
   // 当日不是已结算的闭市时点，捕获会把盘中时点冒充为历史起点。
   const todaySession = await papers.session(clock.date);
@@ -1445,6 +1481,12 @@ export async function evaluateCohort(
   // 绑定到正式评估报告；捕获清单记录了成本摘要的批次在政策变化后失效，
   // 旧批次（清单无此字段）不受影响。
   const members = await cohorts.members(cohortId);
+  let programRulesValid = true;
+  try {
+    await assertFrozenStrategyPrograms(env, cohort, members);
+  } catch {
+    programRulesValid = false;
+  }
   const membersIntact = (
     await Promise.all(
       members.map((member) =>
@@ -1473,6 +1515,7 @@ export async function evaluateCohort(
       }
     : null;
   const fingerprint = {
+    programRulesValid,
     selectionPolicyMatches: selectionPolicyMatches(manifest, primary.book),
     feeConfigMatches: feeConfigDigest === manifest.feeConfigDigest,
     parentStrategyMatches: primary.book.activeStrategy === cohort.parentVersion,
@@ -1484,6 +1527,7 @@ export async function evaluateCohort(
       feeConfigDigest === manifest.feeConfigDigest &&
       primary.book.activeStrategy === cohort.parentVersion &&
       membersIntact &&
+      programRulesValid &&
       executionCost?.matchesManifest !== false,
     // 当前账户与窗口冻结政策必须相同；源码同时保留 v1/v2，部署本身不改窗口。
   };
@@ -1825,6 +1869,12 @@ export async function tournamentStatus(env, { limit = 10, offset = 0 } = {}) {
   const cohorts = new CohortRepository(env);
   const shadows = new ShadowAccountRepository(env);
   const policy = await cohorts.getTournamentPolicy();
+  const primary = await new RealtimeRepository(env).account();
+  const strategy = primary
+    ? await env.DB.prepare("SELECT params FROM strategy_versions WHERE id=?")
+        .bind(primary.book.activeStrategy)
+        .first()
+    : null;
   const active = await cohorts.activeCohort();
   const { cohorts: list, total } = await cohorts.listCohorts({
     limit,
@@ -1834,7 +1884,16 @@ export async function tournamentStatus(env, { limit = 10, offset = 0 } = {}) {
     ? await shadows.accounts({ cohortId: active.id })
     : [];
   return {
+    activeStrategy: primary
+      ? {
+          versionId: primary.book.activeStrategy,
+          description: programDescription(
+            strategy ? JSON.parse(strategy.params) : null,
+          ),
+        }
+      : null,
     policy: {
+      payload: policy.payload,
       id: policy.id,
       digest: policy.digest,
       maxCandidates: policy.payload.maxCandidates,
@@ -1870,6 +1929,7 @@ export async function tournamentStatus(env, { limit = 10, offset = 0 } = {}) {
       maxCandidates: cohort.maxCandidates,
     })),
     total,
+    strategySpace: describeStrategySpace(),
     note: "排行榜领先只是纸面领先；只有最终合格报告支持启用，收益不在独立候选之间求和",
   };
 }

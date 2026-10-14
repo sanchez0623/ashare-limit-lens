@@ -2,6 +2,7 @@ import { aiConfig } from "./review.js";
 import { DEFAULT_FEES } from "../../shared/fees.js";
 import { replayStrategy, validateProposal } from "../domain/validation.js";
 import { digestOf } from "../domain/research-lineage.js";
+import { describeStrategySpace } from "../domain/strategy-catalog.js";
 
 export async function requestProposal(
   env,
@@ -109,6 +110,9 @@ export async function requestCohortProposal(
     options,
   );
   const evidence = {
+    ...(options.cohortPolicy?.version === 2
+      ? { strategySpace: describeStrategySpace() }
+      : {}),
     currentStrategy: base,
     feeConfig,
     performance: { ...training, equities: undefined },
@@ -122,6 +126,21 @@ export async function requestCohortProposal(
         sector: stock.sector,
         factors: stock.factors,
         risks: stock.risks,
+        ...(options.cohortPolicy?.version === 2
+          ? {
+              consecutiveBoards: Object.hasOwn(stock, "consecutiveBoards")
+                ? stock.consecutiveBoards
+                : (stock.height ?? null),
+              turnover: stock.turnover ?? null,
+              sectorScore:
+                pair.snapshot.sectors.find(
+                  (sector) => sector.name === stock.sector,
+                )?.score ?? null,
+              sectorLimitCount: pair.snapshot.stocks.filter(
+                (row) => row.sector === stock.sector,
+              ).length,
+            }
+          : {}),
       })),
     })),
   };
@@ -139,6 +158,10 @@ export async function requestCohortProposal(
       { role: "user", content: JSON.stringify(evidence) },
     ],
   };
+  if (options.cohortPolicy?.version === 2) requestPayload.max_tokens = 5000;
+  if (options.cohortPolicy?.version === 2)
+    requestPayload.messages[0].content +=
+      " 当前批次授权 strategy-space-v2，patch 还可包含 program（算一个逻辑参数组）。program 严格使用训练证据 strategySpace 声明：version=1；FAMILY 形如 {version:1,kind:'FAMILY',family:{familyId:'first-board-v1',familyVersion:1}}；EMOTION_SELECTOR 含 high/mid/low 三个家族引用，阈值沿用 exposureTiers；ALLOCATION 含 2–4 个成员，每项 id、weightBps、family，权重 5% 步长且合计 10000。只读上一信号日；家族共享退出和风险参数；分配成员共用一个账本，未用额度留现金。不允许代码、未来日期、另设初始资金、费用或风险参数。";
   const requestDigest = await digestOf(requestPayload);
   const response = await fetch(
     `${config.base.replace(/\/$/, "")}/chat/completions`,

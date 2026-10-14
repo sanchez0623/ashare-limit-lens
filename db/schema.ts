@@ -342,3 +342,12 @@ export const executionCalibrationDateUses = sqliteTable(
     index("execution_calibration_date_idx").on(table.outcomeDate),
   ],
 );
+
+export const strategySignalSnapshots = sqliteTable(
+  "strategy_signal_snapshots",
+  {
+    digest: text("digest").primaryKey(),
+    signalDate: text("signal_date").notNull(),
+    payload: text("payload").notNull(),
+  },
+);

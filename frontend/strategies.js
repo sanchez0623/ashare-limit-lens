@@ -1,6 +1,18 @@
 // 策略赛马页面：批次列表、净值比较、资格与血缘（§11）。
 // 只请求后端 DTO，不持有模型密钥，也不在前端计算成交。
+import {
+  programDescription,
+  STRATEGY_SPACE_VERSION,
+} from "../shared/strategy-program.js";
 const state = { status: null, detailId: null, initialized: false };
+const escape = (value) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        char
+      ],
+  );
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -49,6 +61,16 @@ function renderStatus() {
     return;
   }
   const active = status.activeCohort;
+  const generation = el("strategies-generation");
+  if (document.activeElement !== generation)
+    generation.value =
+      status.policy.payload?.version === 2
+        ? status.policy.payload.generationMode
+        : "LEGACY_AI";
+  generation.disabled = Boolean(active);
+  el("strategies-reserve").disabled = Boolean(active);
+  el("strategies-space").innerHTML =
+    `<p class="panel-footnote">家族：六因子、首板、连板、板块共振、低换手。情绪选择只使用信号日，低档保留现金并执行持仓保护。组合成员共用现金、单股风险与成交容量，统一处理退出及做 T；未用额度留现金。新增家族与组合均需完整研究闸门后启用。</p><p class="small-muted">${status.policy.payload?.generationMode === "ALLOCATIONS" ? "固定分配模板：首板 / 板块共振 / 低换手，四组权重 50/30/20、40/40/20、30/50/20、20/30/50。" : status.policy.payload?.generationMode === "SELECTORS" ? "四个事前选择器，高/中档分别为：连板/首板、板块/低换手、连板/低换手、首板/板块；低档统一现金防守。" : "每批同时冻结全部候选；模板与 AI 共用预算及日期占用。"}</p>`;
   container.innerHTML = `
     <div class="metrics panel-metrics strategy-metrics">
       <div><span class="mini-label">活动批次</span><strong>${
@@ -56,9 +78,9 @@ function renderStatus() {
       }</strong><small>${active ? (stageNames[active.stage] ?? active.stage) : "可发起新批次"}</small></div>
       <div><span class="mini-label">候选上限</span><strong>${status.policy.maxCandidates}</strong><small>每月生成批次 ${status.policy.monthlyGenerationLimit} 次</small></div>
       <div><span class="mini-label">前瞻窗口</span><strong>${status.policy.forwardDays} 交易日</strong><small>完整轮次门槛 ${status.policy.minimumCompletedRounds}</small></div>
-      <div><span class="mini-label">当前策略</span><strong>${
-        active?.parentVersion ?? "baseline-v1"
-      }</strong><small>${active ? "赛马期间保持父策略" : "等待批次结论"}</small></div>
+      <div><span class="mini-label">当前策略</span><strong>${escape(
+        status.activeStrategy?.versionId ?? active?.parentVersion ?? "未初始化",
+      )}</strong><small>${active ? "赛马期间保持父策略" : escape(status.activeStrategy?.description ?? "等待初始化")}</small></div>
     </div>
     <p class="panel-footnote">${status.note ?? ""}</p>`;
 }
@@ -112,7 +134,7 @@ async function renderDetail() {
         <td>${stageNames[member.stage] ?? member.stage}</td>
         <td>${member.k}</td>
         <td>${member.strategyVersion ? `${member.strategyVersion.slice(0, 18)}…` : "—"}</td>
-        <td>${member.paramsDistance ?? "—"}</td>
+        <td>${member.paramsDistance ?? "—"}<small class="stock-code">${member.params ? escape(programDescription(member.params)) : "未冻结"}</small></td>
         <td>${member.failureReason ?? "—"}</td>
       </tr>`,
     )
@@ -248,8 +270,28 @@ export function initializeStrategies() {
     const button = el("strategies-reserve");
     button.disabled = true;
     el("strategies-status-note").textContent =
-      "正在预留批次并调用模型生成候选…";
+      "正在按事前研究范围预留并冻结候选…";
     try {
+      const mode = el("strategies-generation").value;
+      const desiredMode = mode === "LEGACY_AI" ? "AI" : mode;
+      const policy = {
+        ...state.status.policy.payload,
+        version: mode === "LEGACY_AI" ? 1 : 2,
+      };
+      if (mode === "LEGACY_AI") {
+        delete policy.strategySpaceVersion;
+        delete policy.generationMode;
+      } else {
+        policy.strategySpaceVersion = STRATEGY_SPACE_VERSION;
+        policy.generationMode = desiredMode;
+      }
+      if (
+        JSON.stringify(policy) !== JSON.stringify(state.status.policy.payload)
+      )
+        await request("/api/strategies/policy", {
+          method: "POST",
+          body: JSON.stringify(policy),
+        });
       const result = await request("/api/strategies/cohorts", {
         method: "POST",
         body: "{}",

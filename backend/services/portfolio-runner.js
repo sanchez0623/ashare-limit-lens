@@ -12,6 +12,7 @@ import {
   closeSession,
 } from "../domain/realtime.js";
 import { createPlan, defensivePlan } from "../domain/trading.js";
+import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
 import {
   latestPolicyBundle,
   verifyPolicyBundle,
@@ -63,6 +64,7 @@ export async function consumePortfolioFrame(
         stalled: true,
         reason: "计划成本政策与摘要不一致，账户暂停消费；请重新冻结计划",
       };
+    await assertStoredProgramPlan(env, plan, account.book);
     working = openSession(account.book, plan, frame.tradeDate);
   } else if (
     // 已有会话同样逐帧核验：政策被篡改的会话不得继续成交（§5.4）。
@@ -79,6 +81,8 @@ export async function consumePortfolioFrame(
     pollIntervalSeconds:
       frame.payload?.pollIntervalSeconds ?? frame.pollIntervalSeconds,
   };
+  if (session)
+    await assertStoredProgramPlan(env, working.plan, working.initialBook);
   const result = advanceSession(account.book, working, observation);
   const runId = `shadow-${accountId}-${frame.tradeDate}-${frame.sequence}-${crypto.randomUUID()}`;
   const commit = await shadows.commitFrame({

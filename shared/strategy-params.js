@@ -5,6 +5,7 @@
 // 纯数据与纯函数，不读数据库、不做交易计算。
 
 import { PRESETS } from "./scoring.js";
+import { normalizeStrategyProgram } from "./strategy-program.js";
 
 // 情绪档位：highEmotion/midEmotion 为两档情绪阈值（整数），
 // high/mid/low 为对应目标敞口。阈值同时驱动加仓、做 T、开仓与减仓闸门，
@@ -242,6 +243,7 @@ export function normalizeStrategyParams(value) {
     ...Object.keys(STRATEGY_RANGES),
     "weights",
     "exposureTiers",
+    ...(Object.hasOwn(value, "program") ? ["program"] : []),
   ];
   if (
     keys.length !== expected.length ||
@@ -302,6 +304,8 @@ export function normalizeStrategyParams(value) {
   )
     invalid("目标敞口必须满足 高档 ≥ 中档 ≥ 低档");
   params.exposureTiers = exposureTiers;
+  if (Object.hasOwn(value, "program"))
+    params.program = normalizeStrategyProgram(value.program);
   return params;
 }
 

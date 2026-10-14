@@ -15,6 +15,8 @@ import {
   withExposureTiers,
 } from "../../shared/strategy-params.js";
 import { BENCHMARK_CODES, DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
+import { programIdentity } from "../../shared/strategy-program.js";
+import { preserveProgramSignal } from "./strategy-signals.js";
 import { latestPolicyBundle, verifyPolicyBundle } from "./execution-cost.js";
 import {
   DEFAULT_SELECTION_VERSION,
@@ -187,6 +189,7 @@ export class PaperRepository {
       !(await verifyPolicyBundle(plan.executionCostPolicy))
     )
       throw new Error("计划成本政策与摘要不一致，拒绝冻结");
+    await preserveProgramSignal(this.db, plan);
     const hash = await digest(plan);
     await this.db
       .prepare(
@@ -385,6 +388,8 @@ export class PaperRepository {
     let strategyChange = null;
     if (settings.strategyParams !== undefined) {
       const params = normalizeStrategyParams(settings.strategyParams);
+      if (programIdentity(params) !== programIdentity(currentStrategy))
+        throw new Error("家族、情绪选择器与资金分配变化需通过研究批次启用");
       const changed =
         JSON.stringify(canonical(withExposureTiers(currentStrategy))) !==
         JSON.stringify(canonical(params));
@@ -505,6 +510,7 @@ export class PaperRepository {
             originalScoreLookup,
             selectionPolicy: policy,
           });
+      await preserveProgramSignal(this.db, replacement, snapshot);
       if (previousPlan)
         statements.push(
           this.db

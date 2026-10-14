@@ -13,6 +13,10 @@ import {
   DEFAULT_BENCHMARK,
 } from "../shared/benchmarks.js";
 const $ = (id) => document.getElementById(id);
+import {
+  programDescription,
+  FAMILY_DEFINITIONS,
+} from "../shared/strategy-program.js";
 const escape = (value) =>
   String(value ?? "").replace(
     /[&<>"']/g,
@@ -134,7 +138,13 @@ function riskSummary(config) {
 }
 const strategyDisplay = (field, value) =>
   field.percent ? Number((value * 100).toFixed(2)) : value;
-function fillStrategyInputs(config) {
+let inheritedStrategyProgram;
+function fillStrategyInputs(config, { preserveProgram = false } = {}) {
+  // 重置数值参数仍沿用已验证程序，不能经设置表单绕过家族研究。
+  if (!preserveProgram)
+    inheritedStrategyProgram = config.program
+      ? structuredClone(config.program)
+      : undefined;
   const tiers = { ...EXPOSURE_TIERS_DEFAULTS, ...config.exposureTiers };
   WEIGHT_FIELDS.forEach(
     ({ key }, index) =>
@@ -169,6 +179,9 @@ function collectStrategyParams() {
           : Number($(`strat-tier-${key}`).value),
       ]),
     ),
+    ...(inheritedStrategyProgram
+      ? { program: structuredClone(inheritedStrategyProgram) }
+      : {}),
   };
 }
 function breakdown(fill) {
@@ -179,9 +192,15 @@ function breakdown(fill) {
     regulatory: "证管费",
     transfer: "过户费",
   };
-  return Object.entries(labels)
+  const fees = Object.entries(labels)
     .map(([key, label]) => `${label} ¥ ${money(fill.feeBreakdown[key] || 0)}`)
     .join("；");
+  return (
+    fees +
+    (fill.strategyAllocations
+      ? `；成员费用 ${fill.strategyAllocations.map((row) => `${FAMILY_DEFINITIONS[row.familyId]?.name ?? "继承仓位"} ${row.quantity} 股 / ¥ ${money(row.feeCents)}`).join("，")}`
+      : "")
+  );
 }
 function priceConditions(order) {
   const reference = `<span class="stock-code">参考价 ¥ ${money(order.referenceCents)}</span>`;
@@ -412,7 +431,7 @@ function render() {
   if (!settingsDirty) fillStrategyInputs(data.strategyParams);
   $("paper-strategy-version").textContent = `策略 ${book.activeStrategy}`;
   $("paper-strategy-summary").textContent =
-    `当前版本 ${book.activeStrategy}${plan ? ` · 下一计划 ${plan.strategyVersion}` : ""}。保存后登记为新版本并用于下一份计划，已冻结计划保持原参数。`;
+    `当前版本 ${book.activeStrategy} · ${programDescription(data.strategyParams)}${plan ? ` · 下一计划 ${plan.strategyVersion}` : ""}。保存数值参数登记为新版本，已冻结计划保持原参数；家族与组合变化通过策略赛马验证。`;
   if (!settingsDirty)
     $("paper-improvement-mode").value = book.improvementMode || "auto";
   if (!settingsDirty)
@@ -501,7 +520,7 @@ export function initializePaper() {
     message("已填入默认风控约束，保存设置后生效。");
   };
   $("paper-strategy-defaults").onclick = () => {
-    fillStrategyInputs(STRATEGY_DEFAULTS);
+    fillStrategyInputs(STRATEGY_DEFAULTS, { preserveProgram: true });
     settingsDirty = true;
     message("已填入默认策略参数，保存设置后登记为新版本并用于下一份计划。");
   };
