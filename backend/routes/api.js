@@ -201,6 +201,9 @@ export async function api(request, env) {
   // 告警实例 ID 形如 inc-<ISO 时间戳>-<随机段>，含 ":" 与 "."；
   // 只允许 [a-z0-9-] 会让确认按钮永远 404。
   const incidentMatch = path.match(
+    /^\/api\/alerts\/incidents\/([A-Za-z0-9._:-]+)$/,
+  );
+  const incidentAckMatch = path.match(
     /^\/api\/alerts\/incidents\/([A-Za-z0-9._:-]+)\/ack$/,
   );
   if (
@@ -208,7 +211,8 @@ export async function api(request, env) {
     !historyImportMatch &&
     !backtestMatch &&
     !cohortMatch &&
-    !incidentMatch
+    !incidentMatch &&
+    !incidentAckMatch
   )
     return json({ error: "接口不存在" }, 404);
   const allowedMethods = methods[path] ?? ["GET", "POST"];
@@ -397,14 +401,22 @@ export async function api(request, env) {
         );
       return json({ error: "不支持此请求方法" }, 405);
     }
-    if (incidentMatch) {
+    if (incidentAckMatch) {
       if (request.method !== "POST")
         return json({ error: "不支持此请求方法" }, 405);
       const body = await readJson(request);
-      const result = await ackIncident(env, incidentMatch[1], {
+      const result = await ackIncident(env, incidentAckMatch[1], {
         hours: Number(body?.hours ?? 1),
       });
       return result ? json(result) : json({ error: "告警实例不存在" }, 404);
+    }
+    if (incidentMatch) {
+      if (request.method !== "GET")
+        return json({ error: "不支持此请求方法" }, 405);
+      const detail = await incidentDetail(env, incidentMatch[1]);
+      return detail
+        ? json(detail)
+        : json({ error: "告警实例不存在" }, 404);
     }
     if (path === "/api/alerts/rules") {
       const body = await readJson(request);

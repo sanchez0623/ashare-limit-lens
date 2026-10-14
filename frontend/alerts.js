@@ -72,6 +72,71 @@ function renderStatus() {
     <div><span class="outline-tag">发送队列</span><div class="panel-metric-value">待发送 ${status.outbox?.pending ?? 0}，逾期未领 ${status.outbox?.overdue ?? 0}，已发送 ${status.outbox?.sent ?? 0}，过期 ${status.outbox?.expired ?? 0}</div></div>`;
 }
 
+const EVENT_LABELS = {
+  OPENED: "首次触发",
+  OBSERVED: "持续观测",
+  RESOLVED: "恢复",
+  ACKED: "确认静音",
+  NOTIFIED: "已发送",
+  FAILED: "发送失败",
+};
+
+function formatFacts(facts) {
+  const entries = Object.entries(facts ?? {});
+  if (!entries.length) return '<p class="small-muted">无安全事实</p>';
+  return `<dl class="alerts-facts">${entries
+    .map(
+      ([key, value]) => `<dt>${escape(key)}</dt><dd>${
+        Array.isArray(value)
+          ? escape(value.join(", "))
+          : typeof value === "boolean"
+            ? value
+              ? "是"
+              : "否"
+            : escape(String(value))
+      }</dd>`,
+    )
+    .join("")}</dl>`;
+}
+
+function renderDetail(detail) {
+  const { incident, events = [] } = detail ?? {};
+  if (!incident) return '<p class="small-muted">告警实例不存在</p>';
+  const latestEvent = events[events.length - 1];
+  const facts = latestEvent?.payload ?? {};
+  const timeline = events.length
+    ? `<ol class="alerts-timeline">${events
+        .map(
+          (event) =>
+            `<li><span class="alerts-timeline-time">${fmtTime(event.createdAt)}</span><span class="alerts-timeline-type">${escape(EVENT_LABELS[event.type] ?? event.type)}</span></li>`,
+        )
+        .join("")}</ol>`
+    : "";
+  return `<div class="alerts-detail-section">
+      <div class="alerts-detail-header">
+        <span class="outline-tag">${escape(incident.id)}</span>
+        <span class="outline-tag">${escape(RULE_LABELS[incident.ruleType] ?? incident.ruleType)}</span>
+        <span class="outline-tag">${incident.severity === "CRITICAL" ? "严重" : "警告"}</span>
+        <span class="outline-tag">${incident.status}</span>
+      </div>
+      <div class="alerts-detail-meta">
+        <div><span class="small-muted">指纹</span> ${escape(incident.fingerprint ?? "—")}</div>
+        <div><span class="small-muted">首次</span> ${fmtTime(incident.firstSeen)}</div>
+        <div><span class="small-muted">最近</span> ${fmtTime(incident.lastSeen)}</div>
+        <div><span class="small-muted">恢复</span> ${fmtTime(incident.resolvedAt)}</div>
+        ${incident.ackUntil ? `<div><span class="small-muted">静音至</span> ${fmtTime(incident.ackUntil)}</div>` : ""}
+      </div>
+      <div class="alerts-detail-subsection">
+        <h4>安全事实（最新事件）</h4>
+        ${formatFacts(facts)}
+      </div>
+      <div class="alerts-detail-subsection">
+        <h4>事件时间线（${events.length}）</h4>
+        ${timeline}
+      </div>
+    </div>`;
+}
+
 function renderIncidents(reset) {
   const rows = state.incidents ?? [];
   el("alerts-incident-rows").innerHTML = rows
@@ -88,7 +153,8 @@ function renderIncidents(reset) {
       }${incident.ackUntil && incident.ackUntil > new Date().toISOString() ? `（确认至 ${fmtTime(incident.ackUntil)}）` : ""}</td>
       <td>${fmtTime(incident.firstSeen)}</td>
       <td>${fmtTime(incident.lastSeen)}</td>
-      <td>${
+      <td>
+        <button class="text-button" data-detail="${escape(incident.id)}">详情</button>${
         incident.status !== "RESOLVED"
           ? `<button class="text-button" data-ack="${escape(incident.id)}">确认 2 小时</button>`
           : ""
@@ -110,6 +176,42 @@ function renderIncidents(reset) {
         el("alerts-list-status").textContent = error.message;
       }
       await refresh(true);
+    };
+  for (const button of el("alerts-incident-rows").querySelectorAll(
+    "[data-detail]",
+  ))
+    button.onclick = async () => {
+      const row = button.closest("tr");
+      const next = row.nextElementSibling;
+      if (next?.dataset.detailRow === "1") {
+        next.remove();
+        button.textContent = "详情";
+        row.removeAttribute("aria-expanded");
+        return;
+      }
+      const tbody = el("alerts-incident-rows");
+      for (const other of tbody.querySelectorAll("tr[data-detail-row='1']"))
+        other.remove();
+      for (const otherBtn of tbody.querySelectorAll("[data-detail]")) {
+        otherBtn.textContent = "详情";
+        otherBtn.closest("tr").removeAttribute("aria-expanded");
+      }
+      button.textContent = "收起";
+      row.setAttribute("aria-expanded", "true");
+      const detailRow = document.createElement("tr");
+      detailRow.dataset.detailRow = "1";
+      detailRow.innerHTML = `<td colspan="6"><div class="alerts-detail"><div class="alerts-detail-loading">加载中…</div></div></td>`;
+      row.after(detailRow);
+      try {
+        const detail = await request(
+          `/api/alerts/incidents/${button.dataset.detail}`,
+        );
+        detailRow.innerHTML = `<td colspan="6"><div class="alerts-detail">${renderDetail(detail)}</div></td>`;
+      } catch (error) {
+        detailRow.innerHTML = `<td colspan="6"><div class="alerts-detail alerts-detail-error">${escape(error.message)}</div></td>`;
+        button.textContent = "详情";
+        row.removeAttribute("aria-expanded");
+      }
     };
   el("alerts-more").hidden = !state.nextCursor;
   el("alerts-list-status").textContent = reset
