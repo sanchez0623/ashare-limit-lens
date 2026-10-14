@@ -46,6 +46,16 @@ import {
 } from "../services/strategy-tournament.js";
 import { promoteCohortChampion } from "../services/promotion.js";
 import { CohortRepository } from "../storage/cohorts.js";
+import { ResearchRepository } from "../storage/research.js";
+import {
+  listResearchExperiments,
+  researchExperimentDetail,
+  exportResearchExperiment,
+  startSingleForward,
+  promoteSingleCandidate,
+  rollbackResearchCandidate,
+} from "../services/walk-forward.js";
+import { verifyResearchExport } from "../domain/research-verifier.js";
 import {
   alertsStatus,
   listAlertIncidents,
@@ -180,6 +190,9 @@ export async function api(request, env) {
     "/api/paper/live": ["GET"],
     "/api/paper/poll": ["POST"],
     "/api/research/status": ["GET"],
+    "/api/research/experiments": ["GET"],
+    "/api/research/propose": ["POST"],
+    "/api/research/policy": ["GET", "POST"],
     "/api/strategies/cohorts": ["GET", "POST"],
     "/api/strategies/policy": ["POST"],
     "/api/history/capabilities": ["GET"],
@@ -198,6 +211,9 @@ export async function api(request, env) {
   const cohortMatch = path.match(
     /^\/api\/strategies\/cohorts\/([a-z0-9-]+)(\/lineage|\/export)?$/,
   );
+  const experimentMatch = path.match(
+    /^\/api\/research\/experiments\/(exp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/(lineage|performance|export|verify|start|promote|rollback))?$/,
+  );
   // 告警实例 ID 形如 inc-<ISO 时间戳>-<随机段>，含 ":" 与 "."；
   // 只允许 [a-z0-9-] 会让确认按钮永远 404。
   const incidentMatch = path.match(
@@ -208,10 +224,21 @@ export async function api(request, env) {
     !historyImportMatch &&
     !backtestMatch &&
     !cohortMatch &&
+    !experimentMatch &&
     !incidentMatch
   )
     return json({ error: "接口不存在" }, 404);
-  const allowedMethods = methods[path] ?? ["GET", "POST"];
+  const allowedMethods =
+    methods[path] ??
+    (experimentMatch
+      ? [
+          ["start", "promote", "rollback", "verify"].includes(
+            experimentMatch[2],
+          )
+            ? "POST"
+            : "GET",
+        ]
+      : ["GET", "POST"]);
   if (!allowedMethods.includes(request.method))
     return json({ error: "不支持此请求方法" }, 405);
   if (
@@ -247,6 +274,77 @@ export async function api(request, env) {
     }
     if (path === "/api/history") return json(await historyList(env));
     if (path === "/api/research/status") return json(await researchStatus(env));
+    if (path === "/api/research/experiments")
+      return json(
+        await listResearchExperiments(env, {
+          limit: Number(url.searchParams.get("limit") ?? 20),
+          cursor: url.searchParams.get("cursor"),
+        }),
+      );
+    if (path === "/api/research/policy") {
+      const research = new ResearchRepository(env);
+      if (request.method === "GET") return json(await research.getPolicy());
+      const body = await readJson(request);
+      if (
+        Object.keys(body).some(
+          (key) =>
+            ![
+              "trainDays",
+              "histTestDays",
+              "forwardDays",
+              "monthlyProposalLimit",
+              "minimumCompletedRounds",
+            ].includes(key),
+        )
+      )
+        return json({ error: "研究政策包含未授权字段" }, 400);
+      if (await research.activeExperiment())
+        return json({ error: "活动窗口内不能修改研究政策" }, 409);
+      return json(
+        await research.savePolicy(
+          {
+            ...(await research.getPolicy()).payload,
+            ...body,
+          },
+          undefined,
+          { requireIdle: true },
+        ),
+      );
+    }
+    if (experimentMatch) {
+      const [, id, action] = experimentMatch;
+      if (action === "start") return json(await startSingleForward(env, id));
+      if (action === "promote")
+        return json(await promoteSingleCandidate(env, id));
+      if (action === "rollback") {
+        const body = await readJson(request);
+        if (Object.keys(body).some((key) => key !== "reason"))
+          return json({ error: "回退请求包含未授权字段" }, 400);
+        return json(await rollbackResearchCandidate(env, id, body.reason));
+      }
+      if (action === "export" || action === "verify") {
+        const bundle = await exportResearchExperiment(env, id);
+        if (!bundle) return json({ error: "研究实验不存在" }, 404);
+        return json(
+          action === "verify" ? await verifyResearchExport(bundle) : bundle,
+        );
+      }
+      const detail = await researchExperimentDetail(env, id);
+      if (!detail) return json({ error: "研究实验不存在" }, 404);
+      return json(
+        action === "lineage"
+          ? {
+              experiment: detail.experiment,
+              events: detail.events,
+              samples: detail.samples,
+              switches: detail.switches,
+              forwardEvents: detail.forward?.events ?? [],
+            }
+          : action === "performance"
+            ? { performance: detail.performance, progress: detail.progress }
+            : detail,
+      );
+    }
     if (path === "/api/history/capabilities") {
       const start = url.searchParams.get("start");
       const end = url.searchParams.get("end");
@@ -612,7 +710,7 @@ export async function api(request, env) {
     }
     const repository = new PaperRepository(env);
     await repository.initialize(await readWeights(env));
-    if (path === "/api/paper/improve")
+    if (path === "/api/paper/improve" || path === "/api/research/propose")
       return json(await proposeImprovement(repository, env));
     if (path === "/api/research/bootstrap") {
       const body = await readJson(request);

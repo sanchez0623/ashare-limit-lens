@@ -5,6 +5,7 @@ import { digest } from "../storage/paper.js";
 import { latestPolicyBundle } from "../storage/execution-cost.js";
 import {
   digestOf,
+  eventDigest,
   EXECUTION_VERSION,
   SCORING_VERSION,
 } from "../domain/research-lineage.js";
@@ -48,6 +49,13 @@ export async function promoteCohortChampion(
   const member = await cohorts.member(cohortId, report.champion.memberId);
   if (!member || !["ELIGIBLE", "PROMOTED"].includes(member.stage))
     throw new Error("冠军成员不符合启用条件");
+  const rollback = await papers.db
+    .prepare(
+      "SELECT id FROM strategy_switch_events WHERE cohort_id=? AND event_type='ROLLBACK'",
+    )
+    .bind(cohortId)
+    .first();
+  if (rollback) throw new Error("该候选已回退，旧报告不能再次启用");
   if (member.stage === "PROMOTED")
     return {
       promoted: true,
@@ -56,6 +64,10 @@ export async function promoteCohortChampion(
     };
   const championVersionId = member.strategyVersion;
   if (!championVersionId) throw new Error("冠军成员缺少冻结的策略版本");
+  if (cohort.mode === "SINGLE") {
+    const { assertSinglePromotionEvidence } = await import("./walk-forward.js");
+    await assertSinglePromotionEvidence(env, member.experimentId, report);
+  }
   // 报告完整性（§8.3）：重算报告摘要，防篡改的报告输入才可晋级。
   const { digest: reportDigest, ...digestSource } = report;
   if (!reportDigest || (await digestOf(digestSource)) !== reportDigest)
@@ -207,6 +219,15 @@ export async function promoteCohortChampion(
       member.paramsDigest
   )
     throw new Error("待启用策略版本与成本压力验证的冻结参数不一致");
+  if (
+    await papers.db
+      .prepare(
+        "SELECT id FROM strategy_switch_events WHERE cohort_id=? AND event_type='PROMOTE'",
+      )
+      .bind(cohortId)
+      .first()
+  )
+    throw new Error("启用事件已提交，不能通过回写成员或主账户状态再次切换");
   // 以主账户 revision CAS 更新未来策略引用；不复制影子持仓、不重置风险峰值。
   const revision = account.revision;
   const runId = crypto.randomUUID();
@@ -214,17 +235,67 @@ export async function promoteCohortChampion(
   const book = structuredClone(account.book);
   book.activeStrategy = championVersionId;
   const promotionDigest = report.digest ?? (await digestOf(report));
+  const now = new Date().toISOString();
+  const frozenPlan = await papers.plan(book.lastDate);
+  const switchPayload = {
+    id: `switch-${runId}`,
+    cohortId,
+    experimentId: member.experimentId,
+    eventType: "PROMOTE",
+    fromVersion: cohort.parentVersion,
+    toVersion: championVersionId,
+    accountRevision: nextRevision,
+    effectiveTradeDate,
+    frozenThroughSignalDate: frozenPlan?.signalDate ?? null,
+    parentParamsDigest: await digestOf(
+      cohort.reservationManifest.executionStress.parentParams,
+    ),
+    candidateParamsDigest: member.paramsDigest,
+    reportDigest: promotionDigest,
+    bookBeforeDigest: await digestOf(account.book),
+    bookAfterDigest: await digestOf(book),
+    createdAt: now,
+  };
+  const experiment = await papers.db
+    .prepare("SELECT revision,stage FROM research_experiments WHERE id=?")
+    .bind(member.experimentId)
+    .first();
+  if (!experiment) throw new Error("冠军研究实验缺失");
+  const researchLast = await papers.db
+    .prepare(
+      "SELECT sequence,digest FROM research_events WHERE experiment_id=? ORDER BY sequence DESC LIMIT 1",
+    )
+    .bind(member.experimentId)
+    .first();
+  const researchEvent = {
+    sequence: (researchLast?.sequence ?? 0) + 1,
+    eventType: "MEMBER_PROMOTED",
+    createdAt: now,
+    payload: {
+      memberId: member.memberId,
+      from: "ELIGIBLE",
+      to: "PROMOTED",
+      switchEventId: switchPayload.id,
+    },
+    previousDigest: researchLast?.digest ?? null,
+  };
+  const cohortLast = await cohorts.lastEvent(cohortId);
+  const cohortEvent = {
+    ...researchEvent,
+    sequence: (cohortLast?.sequence ?? 0) + 1,
+    previousDigest: cohortLast?.digest ?? null,
+  };
   const guardArgs = [nextRevision, runId];
   const guarded = (sql, args) =>
     papers.db
       .prepare(
-        `${sql} AND EXISTS (SELECT 1 FROM paper_accounts WHERE id = 'primary' AND revision = ? AND last_run_id = ?)`,
+        `${sql} ${sql.startsWith("INSERT") ? "WHERE" : "AND"} EXISTS (SELECT 1 FROM paper_accounts WHERE id = 'primary' AND revision = ? AND last_run_id = ?)`,
       )
       .bind(...args, ...guardArgs);
   const statements = [
     papers.db
       .prepare(
-        "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?)",
+        "UPDATE paper_accounts SET state = ?, revision = revision + 1, last_run_id = ?, updated_at = ? WHERE id = ? AND revision = ? AND COALESCE((SELECT id FROM execution_cost_policies WHERE model_version=? ORDER BY version DESC LIMIT 1),'default')=? AND EXISTS (SELECT 1 FROM strategy_versions WHERE id=? AND params=?) AND EXISTS(SELECT 1 FROM strategy_cohort_members WHERE cohort_id=? AND member_id=? AND stage='ELIGIBLE' AND params_digest=?) AND EXISTS(SELECT 1 FROM research_experiments WHERE id=? AND stage=? AND revision=?) AND EXISTS(SELECT 1 FROM strategy_cohorts WHERE id=? AND revision=?)",
       )
       .bind(
         JSON.stringify(book),
@@ -236,6 +307,14 @@ export async function promoteCohortChampion(
         costPolicy.id,
         championVersionId,
         championParamsRow.params,
+        cohortId,
+        member.memberId,
+        member.paramsDigest,
+        member.experimentId,
+        experiment.stage,
+        experiment.revision,
+        cohortId,
+        cohort.revision,
       ),
     guarded(
       "UPDATE strategy_versions SET status = 'RETIRED' WHERE status = 'ACTIVE'",
@@ -248,20 +327,61 @@ export async function promoteCohortChampion(
       "UPDATE strategy_cohorts SET promotion_digest = ?, effective_trade_date = ?, revision = revision + 1, updated_at = ? WHERE id = ?",
       [promotionDigest, effectiveTradeDate, new Date().toISOString(), cohortId],
     ),
+    guarded(
+      "INSERT INTO strategy_switch_events(id,cohort_id,experiment_id,event_type,from_version,to_version,account_revision,payload,digest,created_at) SELECT ?,?,?,'PROMOTE',?,?,?,?,?,?",
+      [
+        switchPayload.id,
+        cohortId,
+        member.experimentId,
+        cohort.parentVersion,
+        championVersionId,
+        nextRevision,
+        JSON.stringify(switchPayload),
+        await digestOf(switchPayload),
+        now,
+      ],
+    ),
+    guarded(
+      "UPDATE research_experiments SET stage='PROMOTED',revision=revision+1,last_run_id=? WHERE id=?",
+      [runId, member.experimentId],
+    ),
+    guarded(
+      "UPDATE strategy_cohort_members SET stage='PROMOTED',updated_at=? WHERE cohort_id=? AND member_id=?",
+      [now, cohortId, member.memberId],
+    ),
+    guarded(
+      "INSERT INTO research_events(experiment_id,sequence,event_type,created_at,payload,previous_digest,digest) SELECT ?,?,?,?,?,?,?",
+      [
+        member.experimentId,
+        researchEvent.sequence,
+        researchEvent.eventType,
+        now,
+        JSON.stringify(researchEvent.payload),
+        researchEvent.previousDigest,
+        await eventDigest(researchEvent),
+      ],
+    ),
+    guarded(
+      "INSERT INTO cohort_events(cohort_id,sequence,event_type,created_at,payload,previous_digest,digest) SELECT ?,?,?,?,?,?,?",
+      [
+        cohortId,
+        cohortEvent.sequence,
+        cohortEvent.eventType,
+        now,
+        JSON.stringify(cohortEvent.payload),
+        cohortEvent.previousDigest,
+        await eventDigest(cohortEvent),
+      ],
+    ),
   ];
-  await papers.db.batch(statements);
+  const results = await papers.db.batch(statements);
   const after = await papers.account();
   if (
+    results[0].meta.changes !== 1 ||
     after.revision !== nextRevision ||
     after.book.activeStrategy !== championVersionId
   )
     throw new Error("主账户正在更新，晋级未应用，请重新核验后重试");
-  await cohorts
-    .transitionMember(cohortId, member.memberId, {
-      from: "ELIGIBLE",
-      to: "PROMOTED",
-    })
-    .catch(() => {});
   return {
     promoted: true,
     versionId: championVersionId,

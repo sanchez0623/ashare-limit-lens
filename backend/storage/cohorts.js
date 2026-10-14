@@ -687,6 +687,10 @@ export class CohortRepository {
       previousDigest: previous?.digest ?? null,
     };
     const expectedRevision = Number(experiment?.revision ?? 0);
+    const experimentStage = (stage) =>
+      cohort.mode === "SINGLE"
+        ? ({ RUNNING: "SHADOWING", ELIGIBLE: "APPROVED" }[stage] ?? stage)
+        : stage;
     // runId 锚（§7.2）：实验 UPDATE 与两条事件在同一事务内通过
     // last_run_id 绑定，读后变交错（并发者已推进到相同 revision）时
     // 事件零行写入，不会留下孤儿事件或断裂的事件链。
@@ -696,7 +700,13 @@ export class CohortRepository {
         .prepare(
           "UPDATE research_experiments SET stage = ?, revision = revision + 1, last_run_id = ? WHERE id = ? AND stage = ? AND revision = ?",
         )
-        .bind(to, runId, member.experimentId, from, expectedRevision),
+        .bind(
+          experimentStage(to),
+          runId,
+          member.experimentId,
+          experimentStage(from),
+          expectedRevision,
+        ),
       this.db
         .prepare(
           `UPDATE strategy_cohort_members SET stage = ?, failure_reason = ?, updated_at = ?${setSql} WHERE cohort_id = ? AND member_id = ? AND stage = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND revision = ? AND last_run_id = ?)`,
@@ -756,7 +766,7 @@ export class CohortRepository {
             versionStatus,
             versionId,
             member.experimentId,
-            to,
+            experimentStage(to),
             nextRevision,
             runId,
           ),

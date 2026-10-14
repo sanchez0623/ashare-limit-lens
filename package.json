@@ -11,6 +11,7 @@
     "verify:paper": "node scripts/verify-paper.mjs",
     "verify:execution-cost": "node scripts/verify-execution-cost.mjs",
     "verify:execution-evidence": "node scripts/verify-execution-evidence.mjs",
+    "verify:research": "node scripts/verify-research.mjs",
     "verify:evidence": "node scripts/verify-evidence.mjs",
     "verify:evidence-simulation": "node scripts/evidence-simulation.mjs",
     "format": "prettier --write frontend backend shared scripts test db build.mjs dev.mjs server.mjs",

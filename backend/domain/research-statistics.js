@@ -115,6 +115,84 @@ export function dailyReturns({ initialEquityCents, equities, dates }) {
   });
 }
 
+// 单候选共享两个对照的日期重采样，分片计算，避免 B×天数的完整索引矩阵。
+// PRNG、区块顺序和单侧分位点与既有正式检验完全一致，种子不能重选。
+export async function pairedComparisonsStreaming({
+  dates,
+  memberReturns,
+  comparisons,
+  blockLength,
+  resamples,
+  seedInput,
+  alphaPerComparison,
+}) {
+  if (
+    dates.length < 2 ||
+    memberReturns.length !== dates.length ||
+    !Number.isInteger(blockLength) ||
+    blockLength < 1 ||
+    !Number.isInteger(resamples) ||
+    resamples < 1
+  )
+    throw new Error("分片配对统计输入无效");
+  const random = mulberry32(seedToUint32(await digestOf(seedInput)));
+  const diffs = Object.fromEntries(
+    Object.entries(comparisons).map(([key, values]) => {
+      if (values.length !== dates.length) throw new Error("对照日期未对齐");
+      return [
+        key,
+        memberReturns.map((value, i) => {
+          const difference = Math.log(1 + value) - Math.log(1 + values[i]);
+          if (!Number.isFinite(difference))
+            throw new Error("配对收益出现非有限值");
+          return difference;
+        }),
+      ];
+    }),
+  );
+  const means = Object.fromEntries(Object.keys(diffs).map((key) => [key, []]));
+  for (let r = 0; r < resamples; r++) {
+    const sums = Object.fromEntries(Object.keys(diffs).map((key) => [key, 0]));
+    let cursor = 0;
+    while (cursor < dates.length) {
+      const start = Math.floor(random() * dates.length);
+      for (let j = 0; j < blockLength && cursor < dates.length; j++, cursor++) {
+        const index = (start + j) % dates.length;
+        for (const key of Object.keys(diffs)) sums[key] += diffs[key][index];
+      }
+    }
+    for (const key of Object.keys(diffs))
+      means[key].push(sums[key] / dates.length);
+    if (r % 512 === 511) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  return Object.fromEntries(
+    Object.keys(diffs).map((key) => {
+      means[key].sort((a, b) => a - b);
+      const lowerBound =
+        means[key][
+          Math.min(
+            resamples - 1,
+            Math.max(0, Math.floor(alphaPerComparison * resamples)),
+          )
+        ];
+      return [
+        key,
+        {
+          passed: lowerBound > 0,
+          lowerBound,
+          observedMean: diffs[key].reduce((n, v) => n + v, 0) / dates.length,
+          alphaPerComparison,
+          days: dates.length,
+          reason:
+            lowerBound > 0
+              ? "配对对数收益差的单侧下界大于零"
+              : "配对对数收益差的单侧下界不大于零，统计证据不足",
+        },
+      ];
+    }),
+  );
+}
+
 // ---------- 证据诊断扩展（docs/design/statistical-evidence.md §6） ----------
 // 诊断方法版本与既有正式方法（pairedLowerBoundTest）严格区分；
 // 复用同一 PRNG 与区块基础设施，不另建 bootstrap 模块。

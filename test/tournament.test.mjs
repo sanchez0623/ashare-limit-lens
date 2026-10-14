@@ -2484,7 +2484,7 @@ test("旧报告晋级重试要求完整登记：窗口日缺席 tradingDates 时
     "拒绝时不产生任何晋级副作用",
   );
   // 判别性对照：同一份报告在登记完整的清单上不再被登记校验拦截——
-  // 恢复完整登记与父策略引用后，重试应完成晋级。
+  // 恢复完整登记后，登记检查可以通过；已提交切换事件仍阻止再次晋级。
   await DB.prepare(
     "UPDATE strategy_cohorts SET forward_manifest = ? WHERE id = ?",
   )
@@ -2496,7 +2496,9 @@ test("旧报告晋级重试要求完整登记：窗口日缺席 tradingDates 时
   )
     .bind(cohort.parentVersion)
     .run();
-  const retried = await promoteCohortChampion(env, cohortId, {});
-  assert.equal(retried.promoted, true, "登记完整后同一份报告可正常重试晋级");
+  await assert.rejects(
+    () => promoteCohortChampion(env, cohortId, {}),
+    /启用事件已提交/,
+  );
   DB.close();
 });

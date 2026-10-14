@@ -82,6 +82,55 @@ svg {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* 单候选研究图表使用自己的尺寸，避免继承导航图标的 18px 尺寸。 */
+.research-chart {
+  margin: 24px var(--panel-inline-padding, 22px);
+}
+.research-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.research-chart svg text {
+  fill: #60768c;
+  stroke: none;
+  font-size: 11px;
+}
+.research-chart figcaption {
+  color: #60768c;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.research-policy,
+.research-copy {
+  display: block;
+  margin: 16px var(--panel-inline-padding, 22px);
+}
+.research-policy input {
+  width: 90px;
+  padding: 7px;
+  margin-left: 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+#research-save-policy {
+  margin: 0 var(--panel-inline-padding, 22px) 18px;
+}
+#experiments-detail pre {
+  overflow: auto;
+  max-height: 420px;
+  font-size: 12px;
+}
+#experiments-detail textarea {
+  display: block;
+  max-width: 100%;
+  width: 360px;
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
 .shell {
   display: flex;
   min-height: 100vh;

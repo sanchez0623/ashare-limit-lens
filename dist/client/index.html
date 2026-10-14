@@ -43,6 +43,9 @@
           <button data-view="strategies" class="nav-item">
             <span data-icon="sliders"></span>策略赛马
           </button>
+          <button data-view="experiments" class="nav-item">
+            <span data-icon="shield"></span>AI 策略研究
+          </button>
           <button data-view="alerts" class="nav-item">
             <span data-icon="shield"></span>运维告警
           </button>
@@ -708,6 +711,63 @@
                 </button>
               </form>
             </section>
+          </section>
+          <section id="experiments-view" hidden>
+            <div class="paper-toolbar">
+              <span id="experiments-note" class="outline-tag"
+                >单候选固定窗口前瞻验证</span
+              >
+              <div>
+                <button id="experiments-refresh" class="secondary">
+                  刷新研究</button
+                ><button id="experiments-propose" class="primary">
+                  生成单候选
+                </button>
+              </div>
+            </div>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>研究政策与预算</h2>
+                  <p>单候选与赛马共用日期占用、月度预算和活动窗口</p>
+                </div>
+              </div>
+              <div id="experiments-status"></div>
+              <label
+                >以后实验的前瞻窗口（交易日）<input
+                  id="research-forward-days"
+                  type="number"
+                  min="20"
+                  max="90" /></label
+              ><button id="research-save-policy" class="secondary">
+                保存新政策
+              </button>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>全部研究尝试</h2>
+                  <p>保留失败、错误和证据不足的实验；分页不会重置次数</p>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>实验</th>
+                      <th>阶段</th>
+                      <th>尝试序号</th>
+                      <th>来源</th>
+                      <th>父策略</th>
+                      <th>创建时间（UTC）</th>
+                    </tr>
+                  </thead>
+                  <tbody id="experiments-rows"></tbody>
+                </table>
+              </div>
+              <button id="experiments-more" class="secondary">加载更多</button>
+            </section>
+            <section class="panel" id="experiments-detail"></section>
           </section>
           <section id="strategies-view" hidden>
             <div class="paper-toolbar">

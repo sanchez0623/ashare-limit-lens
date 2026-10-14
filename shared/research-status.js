@@ -7,7 +7,10 @@ export const RESEARCH_STAGES = {
   APPROVED: "已批准待排期",
   SCHEDULED: "已排期",
   PROMOTED: "已启用",
-  REJECTED: "历史筛查未通过",
+  ROLLED_BACK: "已回退",
+  RUNNING: "影子验证中",
+  ELIGIBLE: "已批准待启用",
+  REJECTED: "验证未通过",
   ERROR: "提案或验证出错",
   INCONCLUSIVE: "证据不足",
   INVALIDATED: "环境变化已失效",
@@ -30,6 +33,7 @@ export const RESEARCH_PROPOSE_STATUS = {
   ERROR: "提案或验证出错",
 };
 export const RESEARCH_TERMINAL_STAGES = new Set([
+  "ROLLED_BACK",
   "REJECTED",
   "ERROR",
   "INCONCLUSIVE",

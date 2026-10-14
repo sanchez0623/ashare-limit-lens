@@ -7,6 +7,7 @@ import {
 } from "../shared/scoring.js";
 import { initializePaper } from "./paper.js";
 import { initializeStrategies } from "./strategies.js";
+import { initializeWalkForward } from "./walk-forward.js";
 import { initializeAlerts } from "./alerts.js";
 const $ = (id) => document.getElementById(id);
 const escape = (value) =>
@@ -113,6 +114,11 @@ const titles = {
     "多策略并行赛马与受控晋级",
     "同一份行情、同一冻结起点，固定窗口内比较，只有合格报告支持启用。",
   ],
+  experiments: [
+    "AI 策略研究",
+    "单候选前瞻验证",
+    "事前冻结规则与匹配账本，在固定窗口结束后核验启用资格。",
+  ],
   alerts: [
     "运维告警",
     "常驻执行不静默失联",
@@ -141,17 +147,28 @@ function setView(view) {
     "review",
     "paper",
     "strategies",
+    "experiments",
     "alerts",
   ].includes(view);
   $("paper-view").hidden = view !== "paper";
   $("strategies-view").hidden = view !== "strategies";
+  $("experiments-view").hidden = view !== "experiments";
   $("alerts-view").hidden = view !== "alerts";
-  document.querySelector(".heading-actions").hidden =
-    view === "paper" || view === "strategies" || view === "alerts";
-  document.querySelector(".data-strip").hidden =
-    view === "paper" || view === "strategies" || view === "alerts";
+  document.querySelector(".heading-actions").hidden = [
+    "paper",
+    "strategies",
+    "experiments",
+    "alerts",
+  ].includes(view);
+  document.querySelector(".data-strip").hidden = [
+    "paper",
+    "strategies",
+    "experiments",
+    "alerts",
+  ].includes(view);
   if (view === "paper") void paper.refresh();
   if (view === "strategies") initializeStrategies();
+  if (view === "experiments") initializeWalkForward();
   if (view === "alerts") initializeAlerts();
   document.querySelector(".right-column").hidden = view === "stocks";
   $("overview-content").style.gridTemplateColumns =

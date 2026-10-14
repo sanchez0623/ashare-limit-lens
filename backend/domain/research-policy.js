@@ -24,12 +24,18 @@ export const DEFAULT_RESEARCH_POLICY = Object.freeze({
   forwardMinDays: 20,
   forwardMaxDays: 90,
   monthlyProposalLimit: 1,
+  minimumCompletedRounds: 10,
   maxParamGroups: 2,
   weightsMaxComponents: 2,
   weightsMaxStep: 2,
   stepLimits: STEP_LIMITS,
   ranges: RANGES,
-  statistical: { familyAlpha: 0.05, blockLength: 5 },
+  statistical: {
+    familyAlpha: 0.05,
+    blockLength: 5,
+    resampleFloor: 10000,
+    resampleCap: 1000000,
+  },
   methodNote:
     "训练与历史测试窗口按冻结政策划分；测试日期全历史一次性占用；历史通过只获得影子阶段资格，不构成启用权",
 });
@@ -72,6 +78,28 @@ export function validateResearchPolicy(input) {
     policy.monthlyProposalLimit > 12
   )
     throw new Error("研究政策月度提案次数无效");
+  if (
+    !Number.isInteger(policy.minimumCompletedRounds) ||
+    policy.minimumCompletedRounds < 10
+  )
+    throw new Error("研究完整轮次门槛至少为 10");
+  policy.statistical = {
+    ...DEFAULT_RESEARCH_POLICY.statistical,
+    ...input.statistical,
+  };
+  const stats = policy.statistical;
+  if (
+    !(stats.familyAlpha > 0 && stats.familyAlpha <= 0.05) ||
+    !Number.isInteger(stats.blockLength) ||
+    stats.blockLength < 2 ||
+    stats.blockLength > 20 ||
+    !Number.isInteger(stats.resampleFloor) ||
+    stats.resampleFloor < 10000 ||
+    !Number.isInteger(stats.resampleCap) ||
+    stats.resampleCap > 1000000 ||
+    stats.resampleCap < stats.resampleFloor
+  )
+    throw new Error("研究统计规则无效");
   if (
     !Number.isInteger(policy.maxParamGroups) ||
     policy.maxParamGroups < 1 ||

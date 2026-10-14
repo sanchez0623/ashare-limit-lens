@@ -31,6 +31,7 @@ import {
   resampleIndexMatrix,
   pairedLowerBoundTest,
   dailyReturns,
+  pairedComparisonsStreaming,
 } from "../domain/research-statistics.js";
 import {
   windowMetrics,
@@ -51,6 +52,8 @@ import {
 } from "./portfolio-runner.js";
 import { promoteCohortChampion } from "./promotion.js";
 import { runCohortExecutionStress } from "./execution-stress.js";
+import { adoptPendingSingle } from "../storage/walk-forward.js";
+import { researchForwardBuildDigest } from "../domain/research-build.js";
 import {
   selectionPolicyForBook,
   selectionPolicyFields,
@@ -486,6 +489,16 @@ async function appendCohortEvent(cohorts, cohortId, eventType, payload) {
 }
 
 async function closeCohort(cohorts, cohortId, from, reason) {
+  const cohort = await cohorts.getCohort(cohortId);
+  if (cohort?.mode === "SINGLE") {
+    for (const member of await cohorts.members(cohortId))
+      if (["SCHEDULED", "RUNNING"].includes(member.stage))
+        await cohorts.transitionMember(cohortId, member.memberId, {
+          from: member.stage,
+          to: "INVALIDATED",
+          failureReason: reason,
+        });
+  }
   await cohorts.transitionCohort(cohortId, {
     from,
     to: "CLOSED",
@@ -607,6 +620,47 @@ export async function scheduleCohortForward(
     .first();
   if (!parentRow) throw new Error("父策略版本缺失");
   const parentParams = JSON.parse(parentRow.params);
+  if (cohort.mode === "SINGLE") {
+    const member = (await cohorts.members(cohortId))[0];
+    const experiment = await new ResearchRepository(env).getExperiment(
+      member.experimentId,
+    );
+    if (
+      new Date(now).getTime() < Date.parse(experiment.frozenAt) ||
+      account.book.lastDate < marketClock(new Date(experiment.frozenAt)).date ||
+      account.book.lastDate <
+        (experiment.reservationPayload.testDates?.at(-1) ?? "")
+    )
+      return { scheduled: false, reason: "等待候选冻结后的完整闭市结算起点" };
+    if (
+      cohort.reservationManifest.cohortPolicy.ruleBuildDigest !==
+      (await researchForwardBuildDigest())
+    ) {
+      await closeCohort(
+        cohorts,
+        cohortId,
+        "SCHEDULED",
+        "单候选前瞻规则源码已变化",
+      );
+      return { scheduled: false, reason: "单候选前瞻规则源码已变化" };
+    }
+  }
+  if (
+    cohort.mode === "SINGLE" &&
+    (account.book.activeStrategy !== cohort.parentVersion ||
+      (await digestOf(parentParams)) !==
+        (await digestOf(
+          cohort.reservationManifest.executionStress.parentParams,
+        )))
+  ) {
+    await closeCohort(
+      cohorts,
+      cohortId,
+      "SCHEDULED",
+      "单候选父策略已变化，冻结资格失效",
+    );
+    return { scheduled: false, reason: "单候选父策略已变化" };
+  }
   // 历史可重放起点（§6）：捕获日快照缺失时拒绝捕获，等待评分快照补齐。
   const snapshot = await papers.snapshot(account.book.lastDate);
   if (!snapshot)
@@ -799,7 +853,7 @@ export async function scheduleCohortForward(
       baselineMatch: captured.baselineAccountId,
       baselineContinuous: continuousBaselineId,
     },
-    note: "六个匹配组合共享同一期初权益、现金和持仓状态；期间指标从捕获时点起算，不重复累计",
+    note: "候选与匹配对照共享同一期初权益、现金和持仓状态；期间指标从捕获时点起算，不重复累计",
   };
   await cohorts.transitionCohort(cohortId, {
     from: "SCHEDULED",
@@ -1264,6 +1318,7 @@ export async function runDailyTournament(
   date,
   { calendarDates = [], now = null } = {},
 ) {
+  const single = await adoptPendingSingle(env);
   const cohorts = new CohortRepository(env);
   const papers = new RealtimeRepository(env);
   const shadows = new ShadowAccountRepository(env);
@@ -1334,7 +1389,7 @@ export async function runDailyTournament(
       }
     }
   }
-  return { schedule, settle, continuous };
+  return { single, schedule, settle, continuous };
 }
 
 // ---------- 最终评估、固定排序与受控晋级（§8） ----------
@@ -1488,6 +1543,26 @@ export async function evaluateCohort(
     // 当前账户与窗口冻结政策必须相同；源码同时保留 v1/v2，部署本身不改窗口。
   };
   fingerprint.environmentValid &&= fingerprint.selectionPolicyMatches;
+  if (cohort.mode === "SINGLE") {
+    const parentRow = await papers.db
+      .prepare("SELECT params FROM strategy_versions WHERE id=?")
+      .bind(cohort.parentVersion)
+      .first();
+    fingerprint.ruleBuildMatches =
+      cohort.reservationManifest.cohortPolicy.ruleBuildDigest ===
+      (await researchForwardBuildDigest());
+    fingerprint.researchPolicyMatches =
+      (await new ResearchRepository(env).getPolicy()).id ===
+      cohort.researchPolicyId;
+    fingerprint.parentParamsMatch =
+      Boolean(parentRow) &&
+      (await digestOf(JSON.parse(parentRow.params))) ===
+        cohort.reservationManifest.executionStress.parentParamsDigest;
+    fingerprint.environmentValid &&=
+      fingerprint.ruleBuildMatches &&
+      fingerprint.researchPolicyMatches &&
+      fingerprint.parentParamsMatch;
+  }
   const controlSelection = await Promise.all(
     [manifest.accounts.parentMatch, manifest.accounts.baselineMatch].map((id) =>
       portfolioSelectionEvidence(env, id, { ...manifest, windowDates }),
@@ -1543,17 +1618,20 @@ export async function evaluateCohort(
   let baselineReturns = null;
   if (budget && parentMetrics && baselineMetrics) {
     try {
-      matrix = await resampleIndexMatrix({
-        dates: windowDates,
-        blockLength: budget.blockLength,
-        resamples: budget.resamples,
-        seedInput: {
-          cohortId,
-          windowDates,
-          alphaPerComparison: budget.alphaPerComparison,
-          blockLength: budget.blockLength,
-        },
-      });
+      matrix =
+        cohort.mode === "SINGLE"
+          ? { streaming: true }
+          : await resampleIndexMatrix({
+              dates: windowDates,
+              blockLength: budget.blockLength,
+              resamples: budget.resamples,
+              seedInput: {
+                cohortId,
+                windowDates,
+                alphaPerComparison: budget.alphaPerComparison,
+                blockLength: budget.blockLength,
+              },
+            });
       parentReturns = dailyReturns({
         initialEquityCents:
           manifest.initialAccounts[manifest.accounts.parentMatch].equityCents,
@@ -1643,18 +1721,42 @@ export async function evaluateCohort(
       }
     }
     if (memberReturns && parentReturns && baselineReturns) {
-      const againstParent = pairedLowerBoundTest({
-        memberReturns,
-        comparisonReturns: parentReturns,
-        matrix,
-        alphaPerComparison: budget.alphaPerComparison,
-      });
-      const againstBaseline = pairedLowerBoundTest({
-        memberReturns,
-        comparisonReturns: baselineReturns,
-        matrix,
-        alphaPerComparison: budget.alphaPerComparison,
-      });
+      const streaming =
+        cohort.mode === "SINGLE"
+          ? await pairedComparisonsStreaming({
+              dates: windowDates,
+              memberReturns,
+              comparisons: {
+                againstParent: parentReturns,
+                againstBaseline: baselineReturns,
+              },
+              blockLength: budget.blockLength,
+              resamples: budget.resamples,
+              alphaPerComparison: budget.alphaPerComparison,
+              seedInput: {
+                cohortId,
+                windowDates,
+                alphaPerComparison: budget.alphaPerComparison,
+                blockLength: budget.blockLength,
+              },
+            })
+          : null;
+      const againstParent =
+        streaming?.againstParent ??
+        pairedLowerBoundTest({
+          memberReturns,
+          comparisonReturns: parentReturns,
+          matrix,
+          alphaPerComparison: budget.alphaPerComparison,
+        });
+      const againstBaseline =
+        streaming?.againstBaseline ??
+        pairedLowerBoundTest({
+          memberReturns,
+          comparisonReturns: baselineReturns,
+          matrix,
+          alphaPerComparison: budget.alphaPerComparison,
+        });
       statisticsDetail = { againstParent, againstBaseline };
       checks.statistics = againstParent.passed && againstBaseline.passed;
       // 收益闸门（整数分比较）：候选净收益高于匹配父策略至少 0.1 个百分点，

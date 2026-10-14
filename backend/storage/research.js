@@ -10,6 +10,11 @@ import {
   validateResearchPolicy,
 } from "../domain/research-policy.js";
 import { RESEARCH_TERMINAL_STAGES } from "../../shared/research-status.js";
+import { freezeExecutionStress } from "../domain/execution-stress.js";
+import { computeStatisticsBudget } from "../domain/cohort-policy.js";
+import { latestPolicyBundle } from "./execution-cost.js";
+import { feesForBook } from "../../shared/fees.js";
+import { researchForwardBuildDigest } from "../domain/research-build.js";
 
 export const RESEARCH_NAMESPACE = "main";
 const mapRow = (row) =>
@@ -208,13 +213,17 @@ export class ResearchRepository {
       };
     return this.savePolicy(DEFAULT_RESEARCH_POLICY, "policy-default-v1");
   }
-  async savePolicy(input, id = `policy-${crypto.randomUUID()}`) {
+  async savePolicy(
+    input,
+    id = `policy-${crypto.randomUUID()}`,
+    { requireIdle = false } = {},
+  ) {
     const payload = validateResearchPolicy(input);
     const now = new Date().toISOString();
     const digest = await digestOf(payload);
     await this.db
       .prepare(
-        "INSERT OR IGNORE INTO research_policy_versions (id, created_at, effective_at, payload, digest) VALUES (?, ?, ?, ?, ?)",
+        `INSERT OR IGNORE INTO research_policy_versions (id, created_at, effective_at, payload, digest) SELECT ?, ?, ?, ?, ? ${requireIdle ? "WHERE NOT EXISTS(SELECT 1 FROM research_window_owners WHERE namespace='main')" : ""}`,
       )
       .bind(id, now, now, JSON.stringify(payload), digest)
       .run();
@@ -222,6 +231,7 @@ export class ResearchRepository {
       .prepare("SELECT * FROM research_policy_versions WHERE id = ?")
       .bind(id)
       .first();
+    if (!row) throw new Error("活动窗口内不能修改研究政策");
     return {
       id: row.id,
       createdAt: row.created_at,
@@ -343,6 +353,45 @@ export class ResearchRepository {
   async assertFreshOutcomeDates(dates) {
     return this.assertReservationFreshness(dates);
   }
+  // 在模型请求之前冻结单候选验证协议；影子开户只引用该协议，不能事后补闸门。
+  async freezeSingleForward(policy, parentVersion, k) {
+    const payload = validateResearchPolicy(policy.payload);
+    const statisticsBudget = computeStatisticsBudget({
+      ks: [k],
+      statistical: payload.statistical,
+    });
+    if (!statisticsBudget.sufficient)
+      throw new Error(
+        "COMPUTE_BUDGET_INSUFFICIENT：全历史尝试序号已超出统计计算额度",
+      );
+    const parent = await this.db
+      .prepare("SELECT params FROM strategy_versions WHERE id=?")
+      .bind(parentVersion)
+      .first();
+    const account = await this.db
+      .prepare("SELECT state FROM paper_accounts WHERE id='primary'")
+      .first();
+    if (!parent || !account) throw new Error("单候选协议缺少父策略或主账本");
+    const feeConfig = feesForBook(JSON.parse(account.state));
+    const protocol = {
+      version: 1,
+      mode: "SINGLE",
+      policyId: policy.id,
+      policyDigest: policy.digest,
+      ruleBuildDigest: await researchForwardBuildDigest(),
+      forwardDays: payload.forwardDays,
+      minimumCompletedRounds: payload.minimumCompletedRounds,
+      statistical: payload.statistical,
+      statisticsBudget,
+      feeConfig,
+      feeConfigDigest: await digestOf(feeConfig),
+      executionStress: await freezeExecutionStress(
+        await latestPolicyBundle(this.db),
+        JSON.parse(parent.params),
+      ),
+    };
+    return { ...protocol, digest: await digestOf(protocol) };
+  }
   async reserveAttempt({
     policy,
     month,
@@ -358,10 +407,26 @@ export class ResearchRepository {
       const nonce = crypto.randomUUID();
       const experimentId = `exp-${crypto.randomUUID()}`;
       const attemptSequence = registry.attemptSequence + 1;
+      const singleForward = await this.freezeSingleForward(
+        policy,
+        parentVersion,
+        attemptSequence,
+      );
+      const slot = Number(
+        (
+          await this.db
+            .prepare(
+              "SELECT COALESCE(MAX(slot),0)+1 AS n FROM research_generation_slots WHERE namespace=? AND month=?",
+            )
+            .bind(this.namespace, month)
+            .first()
+        ).n,
+      );
       const reservation = {
         experimentId,
         namespace: this.namespace,
         attemptSequence,
+        singleForward,
         parentVersion,
         trainingDates: samples
           .filter((sample) => sample.role === "TRAIN")
@@ -391,9 +456,16 @@ export class ResearchRepository {
       const statements = [
         this.db
           .prepare(
-            "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, last_run_id = ? WHERE namespace = ? AND revision = ?",
+            "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, last_run_id = ? WHERE namespace = ? AND revision = ? AND (SELECT COUNT(DISTINCT owner_id) FROM research_generation_slots WHERE namespace=? AND month=?) < ?",
           )
-          .bind(nonce, this.namespace, registry.revision),
+          .bind(
+            nonce,
+            this.namespace,
+            registry.revision,
+            this.namespace,
+            month,
+            policy.payload.monthlyProposalLimit,
+          ),
         guarded(
           "INSERT INTO research_window_owners (namespace, owner_type, owner_id, window_payload, created_at) SELECT ?, 'EXPERIMENT', ?, ?, ?",
           [
@@ -404,8 +476,8 @@ export class ResearchRepository {
           ],
         ),
         guarded(
-          "INSERT INTO research_generation_slots (namespace, month, slot, owner_type, owner_id, reserved_at) SELECT ?, ?, 1, 'EXPERIMENT', ?, ?",
-          [this.namespace, month, experimentId, now],
+          "INSERT INTO research_generation_slots (namespace, month, slot, owner_type, owner_id, reserved_at) SELECT ?, ?, ?, 'EXPERIMENT', ?, ?",
+          [this.namespace, month, slot, experimentId, now],
         ),
         ...testDates.map((date) =>
           this.db
@@ -518,12 +590,28 @@ export class ResearchRepository {
       const nonce = crypto.randomUUID();
       const experimentId = `exp-${crypto.randomUUID()}`;
       const attemptSequence = registryRow.attempt_sequence + 1;
+      const singleForward = await this.freezeSingleForward(
+        policy,
+        parentVersion,
+        attemptSequence,
+      );
+      const slot = Number(
+        (
+          await this.db
+            .prepare(
+              "SELECT COALESCE(MAX(slot),0)+1 AS n FROM research_generation_slots WHERE namespace=? AND month=?",
+            )
+            .bind(this.namespace, month)
+            .first()
+        ).n,
+      );
       const reservation = {
         experimentId,
         namespace: this.namespace,
         kind: "BOOTSTRAP",
         ...(selectionPolicy ? selectionPolicyFields(selectionPolicy) : {}),
         attemptSequence,
+        singleForward,
         parentVersion,
         trainingDates,
         testDates: [],
@@ -551,9 +639,16 @@ export class ResearchRepository {
       const statements = [
         this.db
           .prepare(
-            "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, bootstrap_done = 1, last_run_id = ? WHERE namespace = ? AND revision = ? AND bootstrap_done = 0",
+            "UPDATE research_registry SET revision = revision + 1, attempt_sequence = attempt_sequence + 1, bootstrap_done = 1, last_run_id = ? WHERE namespace = ? AND revision = ? AND bootstrap_done = 0 AND (SELECT COUNT(DISTINCT owner_id) FROM research_generation_slots WHERE namespace=? AND month=?) < ?",
           )
-          .bind(nonce, this.namespace, registryRow.revision),
+          .bind(
+            nonce,
+            this.namespace,
+            registryRow.revision,
+            this.namespace,
+            month,
+            policy.payload.monthlyProposalLimit,
+          ),
         guarded(
           "INSERT INTO research_window_owners (namespace, owner_type, owner_id, window_payload, created_at) SELECT ?, 'EXPERIMENT', ?, ?, ?",
           [
@@ -564,8 +659,8 @@ export class ResearchRepository {
           ],
         ),
         guarded(
-          "INSERT INTO research_generation_slots (namespace, month, slot, owner_type, owner_id, reserved_at) SELECT ?, ?, 1, 'EXPERIMENT', ?, ?",
-          [this.namespace, month, experimentId, now],
+          "INSERT INTO research_generation_slots (namespace, month, slot, owner_type, owner_id, reserved_at) SELECT ?, ?, ?, 'EXPERIMENT', ?, ?",
+          [this.namespace, month, slot, experimentId, now],
         ),
         ...samples.map((sample) =>
           guarded(
@@ -698,11 +793,6 @@ export class ResearchRepository {
           experimentId,
           stage,
         ),
-      this.db
-        .prepare(
-          "DELETE FROM research_window_owners WHERE namespace = ? AND owner_type = 'EXPERIMENT' AND owner_id = ? AND EXISTS (SELECT 1 FROM research_experiments WHERE id = ? AND stage = ?)",
-        )
-        .bind(this.namespace, experimentId, experimentId, stage),
     ];
     await this.db.batch(statements);
     const after = mapRow(

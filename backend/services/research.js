@@ -18,6 +18,7 @@ import {
   SCORING_VERSION,
 } from "../domain/research-lineage.js";
 import { ResearchRepository } from "../storage/research.js";
+import { CohortRepository } from "../storage/cohorts.js";
 import { safeError } from "../http.js";
 import {
   selectionPolicyForBook,
@@ -155,8 +156,7 @@ async function evaluateAndConclude({
     initialCashCents: initialCapitalCents ?? account.book.initialCashCents,
     recovered,
     ...selectionPolicyFields(selectionPolicy),
-    method:
-      "历史筛查只提供进入影子阶段的资格；通过不代表可启用，前瞻影子验证由后续批次实施",
+    method: "历史筛查只提供进入固定窗口影子阶段的资格；通过不代表可启用",
     passed: validation.passed,
   };
   const { stage } = await research.concludeHistorical(experimentId, versionId, {
@@ -385,11 +385,16 @@ export async function proposeImprovement(
       reason: windows.reason,
     };
   const active = await research.activeExperiment();
-  if (active?.ownerType === "COHORT")
+  if (active?.ownerType === "COHORT") {
+    const cohort = await new CohortRepository(env).getCohort(active.ownerId);
     return {
       status: "BUSY",
-      reason: "多策略赛马批次占用研究窗口，单候选提案等待批次结束",
+      reason:
+        cohort?.mode === "SINGLE"
+          ? "单候选前瞻实验占用研究窗口，请等待固定窗口结束"
+          : "多策略赛马批次占用研究窗口，单候选提案等待批次结束",
     };
+  }
   if (active) {
     let recovery;
     try {
@@ -472,7 +477,7 @@ export async function proposeImprovement(
         trainDays: policy.payload.trainDays,
         histTestDays: policy.payload.histTestDays,
         forwardDays: policy.payload.forwardDays,
-        forwardRule: "前瞻窗口由后续批次按冻结规则登记与计数",
+        forwardRule: "前瞻按事前协议和主账户结算日计数，缺失不顺延",
       },
       testDates: windows.testDates,
       samples,
@@ -480,6 +485,11 @@ export async function proposeImprovement(
     });
   } catch (error) {
     const reason = String(error?.message ?? error);
+    if (reason.includes("COMPUTE_BUDGET_INSUFFICIENT"))
+      return {
+        status: "COMPUTE_BUDGET_INSUFFICIENT",
+        reason: "全历史尝试序号需要的统计次数超出额度，未调用模型或消耗预算",
+      };
     if (reason.includes("不能同时作为冷启动训练数据"))
       return {
         status: "NEED_DATA",
@@ -574,7 +584,7 @@ export async function proposeImprovement(
       attemptSequence: reserved.attemptSequence,
       reason:
         stage === "AWAITING_SHADOW"
-          ? "历史筛查通过；前瞻影子验证尚未实施，期间不提供任何启用资格"
+          ? "历史筛查通过；闭市结算后捕获匹配影子账户，完成固定前瞻窗口后核验启用资格"
           : "历史筛查未通过，原策略继续运行",
     };
   } catch (error) {
@@ -899,19 +909,43 @@ export async function promoteCandidate(repository, env, id) {
     );
   const experiment = await research.getExperiment(id);
   if (!experiment) throw new Error("研究实验不存在");
-  if (experiment.stage !== "PROMOTED")
-    throw new Error(
-      `只有完成前瞻影子验证的实验才能启用（当前阶段：${experiment.stage}）；历史筛查通过不构成启用资格`,
-    );
-  throw new Error(
-    "旧单候选报告未冻结成本压力闸门，请通过赛马批次重新验证后启用",
-  );
+  const { promoteSingleCandidate } = await import("./walk-forward.js");
+  const result = await promoteSingleCandidate(env, id);
+  return result.promoted;
 }
 export async function researchStatus(env) {
   const research = new ResearchRepository(env);
   const registry = await research.ensureRegistry();
   const policy = await research.getPolicy();
   const active = await research.activeExperiment();
+  let activeView = active
+    ? {
+        ownerType: active.ownerType ?? "EXPERIMENT",
+        experimentId: active.experimentId,
+        stage: active.experiment?.stage ?? null,
+        window: active.windowPayload,
+        createdAt: active.createdAt,
+      }
+    : null;
+  if (active?.ownerType === "COHORT") {
+    const cohorts = new CohortRepository(env);
+    const cohort = await cohorts.getCohort(active.ownerId);
+    if (cohort?.mode === "SINGLE") {
+      const member = (await cohorts.members(cohort.id))[0];
+      const experiment = member
+        ? await research.getExperiment(member.experimentId)
+        : null;
+      activeView = {
+        ...activeView,
+        mode: "SINGLE",
+        cohortId: cohort.id,
+        experimentId: experiment?.id ?? null,
+        stage: experiment?.stage ?? cohort.stage,
+        completedDays: cohort.forwardManifest?.tradingDates.length ?? 0,
+        requiredDays: cohort.forwardDays,
+      };
+    }
+  }
   const month = beijingMonth();
   const used = await research.monthUsage(month);
   const experiments = await research.listExperiments(20);
@@ -925,6 +959,7 @@ export async function researchStatus(env) {
       histTestDays: policy.payload.histTestDays,
       forwardDays: policy.payload.forwardDays,
       monthlyProposalLimit: policy.payload.monthlyProposalLimit,
+      minimumCompletedRounds: policy.payload.minimumCompletedRounds,
       methodNote: policy.payload.methodNote,
     },
     registry: {
@@ -933,15 +968,7 @@ export async function researchStatus(env) {
       legacyIncomplete: registry.payload.legacyIncomplete ?? false,
       legacyBackfillDone: registry.payload.legacyBackfillDone ?? false,
     },
-    activeExperiment: active
-      ? {
-          ownerType: active.ownerType ?? "EXPERIMENT",
-          experimentId: active.experimentId,
-          stage: active.experiment?.stage ?? null,
-          window: active.windowPayload,
-          createdAt: active.createdAt,
-        }
-      : null,
+    activeExperiment: activeView,
     budget: { month, used, limit: policy.payload.monthlyProposalLimit },
     experiments: experiments.map((experiment) => ({
       experimentId: experiment.id,

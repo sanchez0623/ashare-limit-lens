@@ -4,6 +4,7 @@ import { unlinkSync } from "node:fs";
 import { localDatabase } from "../scripts/local-db.mjs";
 import { PaperRepository } from "../backend/storage/paper.js";
 import { ResearchRepository } from "../backend/storage/research.js";
+import { adoptSingleExperiment } from "../backend/storage/walk-forward.js";
 import { openHistoryStore } from "../backend/storage/history.js";
 import {
   proposeBootstrapImprovement,
@@ -156,7 +157,18 @@ test("AI 冷启动：一次性初始化进入影子队列并消耗资格", async
     assert.equal(second.status, "BOOTSTRAP_DONE");
     const status = await researchStatus(env);
     assert.equal(status.bootstrapDone, true);
-    assert.equal(status.activeExperiment, null);
+    assert.equal(status.activeExperiment.experimentId, first.experimentId);
+    const adopted = await adoptSingleExperiment(env, first.experimentId);
+    assert.ok(adopted.cohortId.startsWith("single-"));
+    assert.equal(
+      (await research.getExperiment(first.experimentId)).stage,
+      "SCHEDULED",
+    );
+    assert.equal((await research.activeExperiment()).ownerType, "COHORT");
+    assert.equal(
+      (await research.ensureRegistry()).attemptSequence,
+      registry.attemptSequence,
+    );
   } finally {
     stub.restore();
     DB.close();

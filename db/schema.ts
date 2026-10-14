@@ -342,3 +342,22 @@ export const executionCalibrationDateUses = sqliteTable(
     index("execution_calibration_date_idx").on(table.outcomeDate),
   ],
 );
+
+export const strategySwitchEvents = sqliteTable(
+  "strategy_switch_events",
+  {
+    id: text("id").primaryKey(),
+    cohortId: text("cohort_id").notNull(),
+    experimentId: text("experiment_id").notNull(),
+    eventType: text("event_type").notNull(),
+    fromVersion: text("from_version").notNull(),
+    toVersion: text("to_version").notNull(),
+    accountRevision: integer("account_revision").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("strategy_switch_once").on(table.cohortId, table.eventType),
+  ],
+);
