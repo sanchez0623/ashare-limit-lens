@@ -1,4 +1,5 @@
 import { database } from "../storage/database.js";
+import { getMa5ByCode } from "./daily-closes.js";
 export { database } from "../storage/database.js";
 export function beijingDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -60,11 +61,13 @@ export async function saveSnapshot(env, market, weights) {
       date: old.trade_date,
       createdAt: old.created_at,
     };
+  const { ma5ByCode } = await getMa5ByCode(env, market.date);
   const a = analyze(
     market.rows.map(normalize),
     market.broken,
     market.previous?.map(normalize) ?? null,
     weights,
+    { ma5ByCode },
   );
   const { stocks, sectors, ...marketSummary } = a;
   const createdAt = new Date().toISOString();

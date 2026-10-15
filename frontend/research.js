@@ -188,6 +188,8 @@ function recalculate() {
           state.payload.broken,
           state.payload.previous?.map(normalize) || null,
           state.weights,
+          // 服务端随 payload 下发的 MA5（daily parquet 计算），供首阴校验
+          state.payload.ma5ByCode ? { ma5ByCode: state.payload.ma5ByCode } : {},
         )
       : null;
 }

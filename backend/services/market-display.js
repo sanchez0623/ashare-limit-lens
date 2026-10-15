@@ -1,6 +1,7 @@
 import { database } from "../storage/database.js";
 import { beijingDate } from "./review.js";
 import { marketData } from "./market.js";
+import { getMa5ByCode } from "./daily-closes.js";
 import { safeError } from "../http.js";
 import { normalize, promotionStats } from "../../shared/scoring.js";
 
@@ -104,7 +105,17 @@ export async function marketForDisplay(
     if (archive) return archive;
   }
   try {
-    return await loadMarket(date);
+    const market = await loadMarket(date);
+    // 研究页客户端会用原始行重新 analyze，MA5 随 payload 下发供首阴校验；
+    // 只带池内代码避免 payload 膨胀。数据缺失时 ma5ByCode 为空对象（优雅降级）。
+    const { ma5ByCode, asOf } = await getMa5ByCode(env, date);
+    const poolCodes = new Set(
+      (market.rows ?? []).map((row) => row?.c).filter(Boolean),
+    );
+    const slim = {};
+    for (const [code, value] of ma5ByCode)
+      if (poolCodes.has(code)) slim[code] = value;
+    return { ...market, ma5ByCode: slim, ...(asOf ? { ma5AsOf: asOf } : {}) };
   } catch (error) {
     if (date === today) {
       const archive = await archivedMarket(env, date);

@@ -266,20 +266,32 @@ export function promotionStats(rows, previous = null) {
     previousCount: prevCodes ? prevCodes.size : null,
   };
 }
+// MA5 查表：ma5ByCode 支持 Map（服务端）或普通对象（前端 JSON payload）。
+function ma5Of(ma5ByCode, code) {
+  if (!ma5ByCode || !code) return null;
+  const v =
+    typeof ma5ByCode.get === "function" ? ma5ByCode.get(code) : ma5ByCode[code];
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function analyze(
   rows,
   broken = null,
   previous = null,
   weights = PRESETS.balanced,
+  options = {},
 ) {
   const clean = rows.filter((r) => r.code && !/ST|退/.test(r.name));
   const sectors = sectorAnalysis(clean),
     bySector = new Map(sectors.map((s) => [s.name, s.score]));
   // 昨日同代码行作为 prevRow 传入，供买点分类器计算 prevChange/prevBreaks。
   const prevByCode = previous ? new Map(previous.map((r) => [r.code, r])) : null;
-  // 补齐买点分类器需要的派生字段：isLimitUp / boardLimit / openChange。
+  // 补齐买点分类器需要的派生字段：isLimitUp / boardLimit / openChange / ma5。
   // isLimitUp 用 boardLimit 感知判断：创业板/科创板 20% 涨停不能按 9.7% 一刀切。
   // 判定条件：change >= boardLimit - 0.3（容差），且有首封时间或连板数 >=1。
+  // ma5 来自 options.ma5ByCode（backend/services/daily-closes.js 直读
+  // parquet 计算），未知时不写字段——首阴分类器按"MA5 未知即拒绝"处理。
   const enriched = clean.map((r) => {
     const change = num(r.change);
     const boardLimit = r.boardLimit ?? (r.code?.startsWith("30") ? 20 : 10);
@@ -288,11 +300,13 @@ export function analyze(
       change >= boardLimit - 0.3 &&
       (r.first !== null || (r.height ?? 0) >= 1);
     const openChange = num(r.openChange);
+    const ma5 = ma5Of(options.ma5ByCode, r.code);
     return {
       ...r,
       isLimitUp,
       boardLimit,
       ...(openChange !== null ? { openChange } : {}),
+      ...(ma5 !== null ? { ma5 } : {}),
     };
   });
   const stocks = enriched

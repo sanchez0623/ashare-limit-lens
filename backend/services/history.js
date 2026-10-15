@@ -7,6 +7,7 @@ import {
   normalizeLimitFeatureRow,
 } from "../domain/historical-input.js";
 import { analyze, PRESETS } from "../../shared/scoring.js";
+import { getMa5ByCode } from "./daily-closes.js";
 import { digestOf } from "../domain/research-lineage.js";
 import {
   HistoryDatasetStore,
@@ -387,11 +388,15 @@ async function runHistoryImportInner(
       await guardOwnership();
       const previousEntry =
         succeeded.slice(0, succeeded.indexOf(entry)).at(-1) ?? null;
+      // MA5 按重构日期 as-of 计算（数据集缓存后按日期查表，成本可忽略），
+      // 历史评分的买点标签与实时链路共用同一首阴校验口径。
+      const { ma5ByCode } = await getMa5ByCode(env, entry.date);
       const a = analyze(
         entry.normalized,
         entry.broken ?? null,
         previousEntry ? previousEntry.normalized : null,
         weights,
+        { ma5ByCode },
       );
       entry.scoresByCode = new Map(
         a.stocks.map((stock) => [stock.code, stock.score]),

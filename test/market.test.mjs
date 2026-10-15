@@ -132,16 +132,17 @@ test("当天查询仍优先新行情，来源失败才读取已冻结的当日�
     await insertArchive(DB);
     let calls = 0;
     const live = { date: DATE, rows: [raw], source: "合成实时测试" };
-    assert.equal(
-      await marketForDisplay({ DB }, DATE, {
-        today: DATE,
-        loadMarket: async () => {
-          calls++;
-          return live;
-        },
-      }),
-      live,
-    );
+    const displayed = await marketForDisplay({ DB }, DATE, {
+      today: DATE,
+      loadMarket: async () => {
+        calls++;
+        return live;
+      },
+    });
+    // 行情本身保持引用不变，仅附加 MA5 供研究页首阴校验（未配置数据目录时为空对象）
+    assert.equal(displayed.rows, live.rows);
+    assert.equal(displayed.date, live.date);
+    assert.deepEqual(displayed.ma5ByCode, {});
     assert.equal(calls, 1);
     const archive = await marketForDisplay({ DB }, DATE, {
       today: DATE,
