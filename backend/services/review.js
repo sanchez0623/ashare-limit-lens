@@ -40,6 +40,37 @@ export function validWeights(w) {
     w.some((x) => x > 0)
   );
 }
+
+// 买点分类参数（可调研究参数）：首阴低吸的昨日连板门槛。
+// 2 还是 3 更优尚未定论，先对齐 skill 默认 3，留作配置。
+export const BUY_POINT_PARAMS_DEFAULTS = Object.freeze({
+  firstNegMinPrevHeight: 3,
+});
+export function validBuyPointParams(p) {
+  return (
+    !!p &&
+    typeof p === "object" &&
+    !Array.isArray(p) &&
+    Number.isInteger(p.firstNegMinPrevHeight) &&
+    p.firstNegMinPrevHeight >= 1 &&
+    p.firstNegMinPrevHeight <= 10
+  );
+}
+export async function readBuyPointParams(env) {
+  try {
+    const row = await database(env)
+      .prepare("SELECT value FROM settings WHERE key = ?")
+      .bind("buyPointParams")
+      .first();
+    if (!row) return { ...BUY_POINT_PARAMS_DEFAULTS };
+    const parsed = JSON.parse(row.value);
+    return validBuyPointParams(parsed)
+      ? { ...BUY_POINT_PARAMS_DEFAULTS, ...parsed }
+      : { ...BUY_POINT_PARAMS_DEFAULTS };
+  } catch {
+    return { ...BUY_POINT_PARAMS_DEFAULTS };
+  }
+}
 export async function saveSnapshot(env, market, weights) {
   if (market.date !== beijingDate() || !afterClose())
     return {
@@ -62,13 +93,15 @@ export async function saveSnapshot(env, market, weights) {
       createdAt: old.created_at,
     };
   const { ma5ByCode } = await getMa5ByCode(env, market.date);
+  // 首阴门槛等买点参数从 settings 读取（可调研究参数，默认对齐 skill）
+  const buyPointParams = await readBuyPointParams(env);
   const a = analyze(
     market.rows.map(normalize),
     market.broken,
     market.previous?.map(normalize) ?? null,
     weights,
     // saveSnapshot 仅在收盘后（15:05+）执行，尾盘时点成立
-    { ma5ByCode, lateSession: true },
+    { ma5ByCode, lateSession: true, ...buyPointParams },
   );
   const { stocks, sectors, ...marketSummary } = a;
   const createdAt = new Date().toISOString();

@@ -107,20 +107,30 @@ function testBrokenBoard(row) {
   };
 }
 
-function testFirstNegative(row) {
-  // 首阴低吸：连板股（昨日 >=3 连板）中断后的首根实体阴线，5 日均线未破。
-  // 门槛与 skill 文档对齐：3 连板以上的首阴才值得参与。
+// 首阴低吸的连板门槛（昨日连板数下限），默认与 skill 文档对齐为 3。
+// 可通过 analyze options.firstNegMinPrevHeight 配置（settings 表
+// buyPointParams.firstNegMinPrevHeight），当前 2/3 的优劣尚未定论，
+// 留作可调研究参数。
+export const FIRST_NEG_MIN_PREV_HEIGHT_DEFAULT = 3;
+
+function testFirstNegative(row, options = {}) {
+  // 首阴低吸：连板股（昨日 >= minPrevHeight 连板）中断后的首根实体阴线，
+  // 5 日均线未破。门槛可配置（默认 3，对齐 skill 文档）。
   // 严格校验 K 线与序列条件：
   //   1. 今日连板中断：当前 height 必须为 0（阴线日本身不可能涨停；
   //      height 未知时由 change<0 间接保证，显式 height>0 视为数据矛盾拒绝）
-  //   2. 昨日 height >= 3（"首阴"必须发生在 3 连板以上序列的中断处）
+  //   2. 昨日连板数 >= firstNegMinPrevHeight（默认 3）
   //   3. 今日开 > 收（实体阴线，而非"跌但收阳线"）
   //   4. 今日 change 在 -5% ~ 0 之间（阴线实体不大）
   //   5. MA5 必须已知且未破（收盘 > MA5）；未知时无法验证，拒绝
   const height = num(row.height);
   if (height !== null && height !== 0) return null; // 今日仍在连板，不是首阴
+  const minPrevHeight = Math.max(
+    1,
+    num(options.firstNegMinPrevHeight) ?? FIRST_NEG_MIN_PREV_HEIGHT_DEFAULT,
+  );
   const prevHeight = num(row.prevHeight);
-  if (prevHeight === null || prevHeight < 3) return null; // 昨日不足 3 连板，不算"首阴"
+  if (prevHeight === null || prevHeight < minPrevHeight) return null; // 昨日连板数不足门槛
   const open = num(row.open);
   const close = num(row.close) ?? num(row.price);
   if (open === null || close === null) return null;
@@ -199,11 +209,11 @@ function testLateDip(row) {
   };
 }
 
-export function classifyBuyPoint(row = {}) {
+export function classifyBuyPoint(row = {}, options = {}) {
   const hits = [
     testMomentum(row),
     testBrokenBoard(row),
-    testFirstNegative(row),
+    testFirstNegative(row, options),
     testFakeNegativeLimit(row),
     testAuctionDip(row),
     testLateDip(row),
@@ -223,10 +233,9 @@ export function classifyBuyPoint(row = {}) {
 }
 
 // 给 analyze 输出追加 buyPointType 字段的便利函数。
-// 接收 normalize 后的 row + 可选的昨日快照（prevRow）。
-// 合并昨日的 prevChange / prevBreaks / prevHeight / prevOpen / prevClose
-// 等字段，供买点分类器做 K 线阴阳校验。
-export function annotateBuyPoint(row, prevRow = null) {
+// 接收 normalize 后的 row + 可选的昨日快照（prevRow）+ 可选配置（options，
+// 如 firstNegMinPrevHeight），透传给分类器。
+export function annotateBuyPoint(row, prevRow = null, options = {}) {
   if (!row) return row;
   const merged = { ...row };
   if (prevRow) {
@@ -266,7 +275,7 @@ export function annotateBuyPoint(row, prevRow = null) {
     derived.intradayDrawdownFromHigh = ((high - close) / high) * 100;
     merged.intradayDrawdownFromHigh = derived.intradayDrawdownFromHigh;
   }
-  const classification = classifyBuyPoint(merged);
+  const classification = classifyBuyPoint(merged, options);
   return {
     ...row,
     ...derived,

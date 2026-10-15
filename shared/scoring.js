@@ -136,7 +136,13 @@ export function sectorAnalysis(rows) {
     })
     .sort((a, b) => b.score - a.score || b.count - a.count);
 }
-export function analyzeStock(row, sectorScore, weights = PRESETS.balanced, prevRow = null) {
+export function analyzeStock(
+  row,
+  sectorScore,
+  weights = PRESETS.balanced,
+  prevRow = null,
+  options = {},
+) {
   const factorValues = {
     quality: row.breaks === null ? null : clamp(100 - row.breaks * 15, 10),
     capital:
@@ -241,7 +247,7 @@ export function analyzeStock(row, sectorScore, weights = PRESETS.balanced, prevR
     sealRatio:
       row.seal !== null && row.amount > 0 ? row.seal / row.amount : null,
   };
-  return annotateBuyPoint(enriched, prevRow);
+  return annotateBuyPoint(enriched, prevRow, options);
 }
 // 只计算晋级统计，供实时评分和旧归档展示共用，不重算冻结评分。
 export function promotionStats(rows, previous = null) {
@@ -319,6 +325,7 @@ export function analyze(
         bySector.get(r.sector),
         weights,
         prevByCode?.get(r.code) ?? null,
+        options,
       ),
     )
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));

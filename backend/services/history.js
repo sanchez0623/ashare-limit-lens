@@ -8,6 +8,7 @@ import {
 } from "../domain/historical-input.js";
 import { analyze, PRESETS } from "../../shared/scoring.js";
 import { getMa5ByCode } from "./daily-closes.js";
+import { readBuyPointParams } from "./review.js";
 import { digestOf } from "../domain/research-lineage.js";
 import {
   HistoryDatasetStore,
@@ -388,20 +389,22 @@ async function runHistoryImportInner(
     const dateIndex = new Map(
       calendar.dates.map((date, index) => [date, index]),
     );
+    // MA5 按重构日期 as-of 计算（数据集缓存后按日期查表，成本可忽略），
+    // 历史评分的买点标签与实时链路共用同一首阴校验口径。
+    // 历史重构以日线为观测粒度，尾盘时点成立。买点参数（首阴门槛）
+    // 从 settings 读取，与实时链路同一配置。
+    const buyPointParams = await readBuyPointParams(env);
     for (const entry of succeeded) {
       await guardOwnership();
       const previousEntry =
         succeeded.slice(0, succeeded.indexOf(entry)).at(-1) ?? null;
-      // MA5 按重构日期 as-of 计算（数据集缓存后按日期查表，成本可忽略），
-      // 历史评分的买点标签与实时链路共用同一首阴校验口径。
-      // 历史重构以日线为观测粒度，尾盘时点成立。
       const { ma5ByCode } = await getMa5ByCode(env, entry.date);
       const a = analyze(
         entry.normalized,
         entry.broken ?? null,
         previousEntry ? previousEntry.normalized : null,
         weights,
-        { ma5ByCode, lateSession: true },
+        { ma5ByCode, lateSession: true, ...buyPointParams },
       );
       entry.scoresByCode = new Map(
         a.stocks.map((stock) => [stock.code, stock.score]),

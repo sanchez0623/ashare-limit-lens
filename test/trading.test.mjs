@@ -643,8 +643,45 @@ test("API 阻止跨站写入、错误方法和未验证版本；密钥不进入�
     403,
   );
   assert.equal((await api(make("/api/paper", "POST"), env)).status, 405);
+  assert.equal((await api(make("/api/settings"), env)).status, 200);
   const config = await api(make("/api/settings"), env);
   assert.ok(!(await config.text()).includes(env.AI_API_KEY));
+  // 设置接口支持 weights 与 buyPointParams 部分保存；GET 回读买点参数
+  const savedParams = await api(
+    make(
+      "/api/settings",
+      "POST",
+      { "Content-Type": "application/json" },
+      {
+        weights: [10, 10, 10, 10, 10, 10],
+        buyPointParams: { firstNegMinPrevHeight: 2 },
+      },
+    ),
+    env,
+  );
+  assert.equal(savedParams.status, 200);
+  const cfg = await (await api(make("/api/settings"), env)).json();
+  assert.equal(cfg.buyPointParams.firstNegMinPrevHeight, 2);
+  const badParams = await api(
+    make(
+      "/api/settings",
+      "POST",
+      { "Content-Type": "application/json" },
+      { buyPointParams: { firstNegMinPrevHeight: 11 } },
+    ),
+    env,
+  );
+  assert.equal(badParams.status, 400);
+  const partial = await api(
+    make(
+      "/api/settings",
+      "POST",
+      { "Content-Type": "application/json" },
+      { buyPointParams: { firstNegMinPrevHeight: 3 } },
+    ),
+    env,
+  );
+  assert.equal(partial.status, 200);
   const bad = await api(
     make("/api/paper/activate", "POST", {}, { id: "ai-2026-01-30" }),
     env,

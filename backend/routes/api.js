@@ -5,6 +5,8 @@ import {
   afterClose,
   readWeights,
   validWeights,
+  readBuyPointParams,
+  validBuyPointParams,
   saveSnapshot,
   loadReview,
   aiConfig,
@@ -234,19 +236,41 @@ export async function api(request, env) {
   try {
     if (path === "/api/settings") {
       if (request.method === "GET")
-        return json({ weights: await readWeights(env), ai: aiConfig(env) });
+        return json({
+          weights: await readWeights(env),
+          buyPointParams: await readBuyPointParams(env),
+          ai: aiConfig(env),
+        });
       const body = await readJson(request);
-      if (!validWeights(body.weights))
-        return json(
-          { error: "权重必须为六个 0–50 的整数，且至少一项大于零" },
-          400,
-        );
-      await database(env)
-        .prepare(
-          "INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        )
-        .bind("weights", JSON.stringify(body.weights))
-        .run();
+      // weights 与 buyPointParams 均可单独更新（部分保存）
+      if (body.weights !== undefined) {
+        if (!validWeights(body.weights))
+          return json(
+            { error: "权重必须为六个 0–50 的整数，且至少一项大于零" },
+            400,
+          );
+        await database(env)
+          .prepare(
+            "INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          )
+          .bind("weights", JSON.stringify(body.weights))
+          .run();
+      }
+      if (body.buyPointParams !== undefined) {
+        if (!validBuyPointParams(body.buyPointParams))
+          return json(
+            { error: "买点参数无效：firstNegMinPrevHeight 必须为 1–10 的整数" },
+            400,
+          );
+        await database(env)
+          .prepare(
+            "INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          )
+          .bind("buyPointParams", JSON.stringify(body.buyPointParams))
+          .run();
+      }
+      if (body.weights === undefined && body.buyPointParams === undefined)
+        return json({ error: "缺少可保存的设置（weights 或 buyPointParams）" }, 400);
       return json({ saved: true });
     }
     if (path === "/api/history") return json(await historyList(env));

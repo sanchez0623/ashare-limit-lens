@@ -127,6 +127,36 @@ test("首阴但昨日不足 3 连板（prevHeight=2）不触发，与 skill 门�
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
 });
 
+test("首阴门槛可配置：firstNegMinPrevHeight=2 时 2 连板首阴触发", () => {
+  const result = classifyBuyPoint(
+    {
+      height: 0,
+      prevHeight: 2,
+      open: 11,
+      close: 10.5,
+      change: -3,
+      ma5: 10,
+    },
+    { firstNegMinPrevHeight: 2 },
+  );
+  assert.equal(result.primary.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
+});
+
+test("首阴门槛非法配置（非数值）回退默认 3", () => {
+  const result = classifyBuyPoint(
+    {
+      height: 0,
+      prevHeight: 2,
+      open: 11,
+      close: 10.5,
+      change: -3,
+      ma5: 10,
+    },
+    { firstNegMinPrevHeight: "很多" },
+  );
+  assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
+});
+
 test("首阴但收阳线（close > open）不触发", () => {
   const result = classifyBuyPoint({
     height: 0,

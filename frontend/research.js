@@ -185,7 +185,8 @@ function recalculate() {
     ...(state.payload?.ma5ByCode
       ? { ma5ByCode: state.payload.ma5ByCode }
       : {}),
-    // 尾盘时点由服务端按观测时刻下发；盘中早段缺省，尾盘买点不触发
+    // 买点参数（首阴门槛等，settings 表配置）与尾盘时点标记
+    ...(state.payload?.buyPointParams ?? {}),
     ...(state.payload?.lateSession === true ? { lateSession: true } : {}),
   };
   state.analysis = state.payload?.archived
