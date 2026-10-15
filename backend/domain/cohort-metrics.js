@@ -78,6 +78,8 @@ export function windowMetrics({ initial, final, equities, windowDates }) {
 // 完整轮次：窗口内从零建仓到归零的新轮次；继承持仓平仓与 T 两腿不凑次数。
 // initialPositionsByCode 为捕获时点的继承持仓数量（code → quantity）：
 // 从该数量起步重建持仓流，只有继承持仓清零之后的新建仓轮次才计数。
+// 每轮记录 buyPoint（来自 BUY 行的 order.buyPoint）、累计成本、累计卖出收入
+// 与已实现盈亏，供上层按买点类型分组统计胜率与盈亏比。
 export function completeRounds(
   ledgerRows,
   windowDates,
@@ -92,6 +94,7 @@ export function completeRounds(
         a.date.localeCompare(b.date) || (a.sequence ?? 0) - (b.sequence ?? 0),
     );
   const state = new Map();
+  const roundsList = [];
   for (const fill of fills) {
     let entry = state.get(fill.code);
     if (!entry) {
@@ -104,15 +107,33 @@ export function completeRounds(
       };
     }
     if (fill.side === "BUY" || fill.action === "BUY") {
-      if (entry.quantity === 0 && !entry.inherited) entry.openedInWindow = true;
+      if (entry.quantity === 0 && !entry.inherited) {
+        entry.openedInWindow = true;
+        entry.currentRound = {
+          code: fill.code,
+          buyPoint: fill.buyPoint ?? null,
+          buyNotional: 0,
+          sellNotional: 0,
+          realizedPnlCents: 0,
+        };
+      }
       entry.quantity += fill.quantity;
+      if (entry.currentRound) {
+        entry.currentRound.buyNotional += fill.notionalCents ?? 0;
+      }
     } else {
       entry.quantity = Math.max(0, entry.quantity - fill.quantity);
+      if (entry.currentRound) {
+        entry.currentRound.sellNotional += fill.notionalCents ?? 0;
+        entry.currentRound.realizedPnlCents += fill.realizedPnlCents ?? 0;
+      }
       if (entry.quantity === 0) {
-        if (entry.openedInWindow) {
+        if (entry.openedInWindow && entry.currentRound) {
+          roundsList.push(entry.currentRound);
           entry.rounds += 1;
           entry.openedInWindow = false;
         }
+        entry.currentRound = null;
         entry.inherited = false;
       }
     }
@@ -124,7 +145,36 @@ export function completeRounds(
     rounds += entry.rounds ?? 0;
     if (entry.rounds) byCode[code] = entry.rounds;
   }
-  return { rounds, byCode };
+  // 按买点类型分组统计胜率与盈亏比。
+  const byBuyPoint = {};
+  for (const r of roundsList) {
+    const key = r.buyPoint ?? "unknown";
+    if (!byBuyPoint[key])
+      byBuyPoint[key] = { count: 0, wins: 0, losses: 0, pnlCents: 0, avgWin: 0, avgLoss: 0 };
+    const g = byBuyPoint[key];
+    g.count += 1;
+    g.pnlCents += r.realizedPnlCents;
+    if (r.realizedPnlCents > 0) {
+      g.wins += 1;
+      g.avgWin += r.realizedPnlCents;
+    } else if (r.realizedPnlCents < 0) {
+      g.losses += 1;
+      g.avgLoss += r.realizedPnlCents;
+    }
+  }
+  for (const key of Object.keys(byBuyPoint)) {
+    const g = byBuyPoint[key];
+    g.winRate = g.count > 0 ? g.wins / g.count : 0;
+    g.avgWin = g.wins > 0 ? g.avgWin / g.wins : 0;
+    g.avgLoss = g.losses > 0 ? g.avgLoss / g.losses : 0;
+    g.profitFactor =
+      g.avgLoss < 0 && g.losses > 0
+        ? g.avgWin / Math.abs(g.avgLoss)
+        : g.wins > 0
+          ? Number.POSITIVE_INFINITY
+          : 0;
+  }
+  return { rounds, byCode, roundsList, byBuyPoint };
 }
 
 // 固定排序（§8.2）：期末权益分较高 → 窗口回撤百万分值较低 → 期间费用分较低

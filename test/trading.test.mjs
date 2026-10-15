@@ -333,6 +333,68 @@ test("情绪档位可配置：目标敞口与开新仓闸门随版本参数变�
     0.55,
   );
 });
+test("情绪周期闸门：冰点期禁止开新仓、退潮期压缩敞口", () => {
+  // 冰点期：即使情绪档位判定为可开仓，cycle.phase=freezing 也硬阻塞
+  const freezing = {
+    ...snapshot(dateAt(0)),
+    cycle: {
+      phase: "freezing",
+      label: "冰点",
+      score: 0.1,
+      maxGrossExposure: 0.0,
+      subscores: {},
+      reason: "冰点测试",
+    },
+  };
+  const freezingPlan = createPlan(
+    freezing,
+    newBook(100000),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  );
+  assert.equal(freezingPlan.orders.length, 0, "冰点期禁止开新仓");
+  assert.equal(freezingPlan.cycle.phase, "freezing");
+  assert.equal(freezingPlan.maxExposure, 0);
+  const skip = freezingPlan.selectionAudit.candidates.find(
+    (c) => c.reason.includes("冰点"),
+  );
+  assert.ok(skip, "候选审计应说明冰点期原因");
+
+  // 退潮期：maxGrossExposure=0.2，targetExposure 被压缩到 0.2
+  const ebbing = {
+    ...snapshot(dateAt(0)),
+    cycle: {
+      phase: "ebbing",
+      label: "退潮",
+      score: 0.4,
+      maxGrossExposure: 0.2,
+      subscores: {},
+      reason: "退潮测试",
+    },
+  };
+  const ebbingPlan = createPlan(
+    ebbing,
+    newBook(100000),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  );
+  assert.ok(ebbingPlan.orders.length > 0, "退潮期仍允许开新仓");
+  assert.equal(ebbingPlan.targetExposure, 0.2);
+  assert.equal(ebbingPlan.maxExposure, 0.2);
+
+  // 无 cycle 字段（旧快照）行为不变
+  const legacyPlan = createPlan(
+    snapshot(dateAt(0)),
+    newBook(100000),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  );
+  assert.equal(legacyPlan.cycle, null);
+  assert.equal(legacyPlan.maxExposure, 0.6);
+});
 test("手动策略参数校验拒绝越界、缺字段与档位倒挂", () => {
   assert.deepEqual(normalizeStrategyParams(STRATEGY_DEFAULTS), {
     ...STRATEGY_DEFAULTS,

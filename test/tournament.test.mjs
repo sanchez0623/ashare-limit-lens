@@ -598,6 +598,56 @@ test("统计预算、政策校验与固定排序由代码强制校验", async ()
     ["2026-01-01", "2026-01-05"],
   );
   assert.equal(rounds.rounds, 1, "继承持仓清仓不计，新轮次完整闭合计一次");
+  // 按买点类型分组统计：同一 buyPoint 的多轮次累计胜率与盈亏比
+  const byBp = completeRounds(
+    [
+      {
+        code: "600001",
+        side: "BUY",
+        quantity: 1000,
+        notionalCents: 1000000,
+        realizedPnlCents: 0,
+        buyPoint: "炸板低吸",
+        date: "2026-01-02",
+        sequence: 1,
+      },
+      {
+        code: "600001",
+        side: "SELL",
+        quantity: 1000,
+        notionalCents: 1100000,
+        realizedPnlCents: 100000,
+        date: "2026-01-05",
+        sequence: 2,
+      },
+      {
+        code: "600002",
+        side: "BUY",
+        quantity: 1000,
+        notionalCents: 1000000,
+        realizedPnlCents: 0,
+        buyPoint: "首阴低吸",
+        date: "2026-01-02",
+        sequence: 3,
+      },
+      {
+        code: "600002",
+        side: "SELL",
+        quantity: 1000,
+        notionalCents: 950000,
+        realizedPnlCents: -50000,
+        date: "2026-01-05",
+        sequence: 4,
+      },
+    ],
+    ["2026-01-02", "2026-01-05"],
+  );
+  assert.equal(byBp.rounds, 2);
+  assert.equal(byBp.byBuyPoint["炸板低吸"].wins, 1);
+  assert.equal(byBp.byBuyPoint["炸板低吸"].winRate, 1);
+  assert.equal(byBp.byBuyPoint["首阴低吸"].losses, 1);
+  assert.equal(byBp.byBuyPoint["首阴低吸"].winRate, 0);
+  assert.equal(byBp.roundsList.length, 2);
   // 窗口指标：净收益、费用增量、回撤与覆盖率；期初快照与账本守恒一致
   // （权益变化 = 已实现增量 + 未实现增量，不一致的快照会被拒绝）。
   const metrics = windowMetrics({

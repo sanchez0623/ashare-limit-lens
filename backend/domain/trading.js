@@ -18,6 +18,10 @@ import {
 } from "../../shared/risk-limits.js";
 import { STRATEGY_DEFAULTS } from "../../shared/strategy-params.js";
 import {
+  applyCycleGate,
+  CYCLE_PHASES,
+} from "../../shared/sentiment-cycle.js";
+import {
   resolveStrategyProgram,
   familyEligibility,
   allocationState,
@@ -208,6 +212,10 @@ export function createPlan(
   const equity = book.equityCents;
   const drawdown = book.peakEquityCents ? 1 - equity / book.peakEquityCents : 0;
   const riskLimits = riskLimitsForBook(book);
+  const cycle = snapshot.cycle ?? null;
+  const gatedRiskLimits = cycle
+    ? applyCycleGate(riskLimits, cycle)
+    : riskLimits;
   const emotion = snapshot.emotion ?? 0;
   // 情绪档位（可配置，随计划冻结）：两档阈值同时驱动目标敞口与
   // 加仓 / 做 T / 开新仓 / 减仓闸门，旧版本缺字段时回退默认档位。
@@ -220,12 +228,14 @@ export function createPlan(
         : emotion >= tiers.midEmotion
           ? tiers.mid
           : tiers.low;
+  // 情绪周期闸门：冰点 / 退潮期强制压缩目标敞口。
+  if (cycle) targetExposure = Math.min(targetExposure, cycle.maxGrossExposure);
   const strategyProgram = resolveStrategyProgram(
     { ...strategy, exposureTiers: tiers },
     snapshot,
   );
   if (strategyProgram)
-    targetExposure = Math.min(targetExposure, riskLimits.maxGrossExposure);
+    targetExposure = Math.min(targetExposure, gatedRiskLimits.maxGrossExposure);
   if (strategyProgram?.regime === "unknown") targetExposure = 0;
   const componentStates = strategyProgram
     ? allocationState(strategyProgram, book, targetExposure)
@@ -269,6 +279,15 @@ export function createPlan(
         : {}),
       price: s.price ?? null,
       risks: s.risks.map((r) => r.text),
+      ...(s.buyPoint
+        ? {
+            buyPoint: {
+              primary: s.buyPoint.primary,
+              secondary: s.buyPoint.secondary,
+              confidence: s.buyPoint.confidence,
+            },
+          }
+        : {}),
       ...(strategyProgram
         ? {
             familyChecks: strategyProgram.components.map((component) => ({
@@ -474,9 +493,13 @@ export function createPlan(
     if (
       emotion < tiers.midEmotion ||
       drawdown >= riskLimits.maxDrawdown ||
-      strategyProgram?.regime === "unknown"
+      strategyProgram?.regime === "unknown" ||
+      cycle?.phase === CYCLE_PHASES.FREEZING
     ) {
-      audit.reason = "市场情绪或账户回撤限制新增交易";
+      audit.reason =
+        cycle?.phase === CYCLE_PHASES.FREEZING
+          ? "情绪冰点期禁止开新仓"
+          : "市场情绪或账户回撤限制新增交易";
       continue;
     }
     if (opened >= slots) {
@@ -493,7 +516,7 @@ export function createPlan(
         ...(modernSelection || strategyProgram
           ? [
               equity * riskLimits.maxPositionWeight,
-              equity * riskLimits.maxGrossExposure - plannedExposure,
+              equity * gatedRiskLimits.maxGrossExposure - plannedExposure,
             ]
           : []),
       ),
@@ -522,6 +545,7 @@ export function createPlan(
       name: signal.name,
       sector: signal.sector,
       score: signal.score,
+      ...(signal.buyPoint ? { buyPoint: signal.buyPoint } : {}),
       ...(modernSelection
         ? {
             scoreValue: signal.scoreValue,
@@ -574,8 +598,16 @@ export function createPlan(
     previousLimitUpCodes,
     previousLimitUpKnown: true,
     emotion: strategyProgram ? strategyProgram.emotion : emotion,
+    cycle: cycle
+      ? {
+          phase: cycle.phase,
+          label: cycle.label,
+          score: cycle.score,
+          maxGrossExposure: cycle.maxGrossExposure,
+        }
+      : null,
     targetExposure,
-    maxExposure: riskLimits.maxGrossExposure,
+    maxExposure: gatedRiskLimits.maxGrossExposure,
     orders: carriedPlanOrders(
       orders,
       book,
@@ -1430,6 +1462,9 @@ function executeFillWithCostModel(
     priceCents: fillPriceCents,
     notionalCents: notional,
     feeCents: fees.total,
+    ...(side === "BUY" && order.buyPoint
+      ? { buyPoint: order.buyPoint.primary }
+      : {}),
     feeBreakdown: fees,
     ...(feeModel === "itemized-v2"
       ? {
