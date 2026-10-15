@@ -271,8 +271,31 @@ export function analyze(
   const clean = rows.filter((r) => r.code && !/ST|退/.test(r.name));
   const sectors = sectorAnalysis(clean),
     bySector = new Map(sectors.map((s) => [s.name, s.score]));
-  const stocks = clean
-    .map((r) => analyzeStock(r, bySector.get(r.sector), weights))
+  // 昨日同代码行作为 prevRow 传入，供买点分类器计算 prevChange/prevBreaks。
+  const prevByCode = previous ? new Map(previous.map((r) => [r.code, r])) : null;
+  // 补齐买点分类器需要的派生字段：isLimitUp / boardLimit / openChange。
+  const enriched = clean.map((r) => {
+    const change = num(r.change);
+    const isLimitUp =
+      change !== null && change >= 9.7 && (r.first !== null || r.height >= 1);
+    const boardLimit = r.boardLimit ?? (r.code?.startsWith("30") ? 20 : 10);
+    const openChange = num(r.openChange);
+    return {
+      ...r,
+      isLimitUp,
+      boardLimit,
+      ...(openChange !== null ? { openChange } : {}),
+    };
+  });
+  const stocks = enriched
+    .map((r) =>
+      analyzeStock(
+        r,
+        bySector.get(r.sector),
+        weights,
+        prevByCode?.get(r.code) ?? null,
+      ),
+    )
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   const sealRate =
     broken === null

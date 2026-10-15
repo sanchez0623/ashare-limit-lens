@@ -212,11 +212,13 @@ export function createPlan(
   const equity = book.equityCents;
   const drawdown = book.peakEquityCents ? 1 - equity / book.peakEquityCents : 0;
   const riskLimits = riskLimitsForBook(book);
-  const cycle = snapshot.cycle ?? null;
+  // 真实快照在 review.js 中把 analyze() 的非 stocks/sectors 字段落到
+  // marketSummary；旧测试 fixture 可能直接把 cycle 放在顶层。
+  const cycle = snapshot.cycle ?? snapshot.marketSummary?.cycle ?? null;
   const gatedRiskLimits = cycle
     ? applyCycleGate(riskLimits, cycle)
     : riskLimits;
-  const emotion = snapshot.emotion ?? 0;
+  const emotion = snapshot.emotion ?? snapshot.marketSummary?.emotion ?? 0;
   // 情绪档位（可配置，随计划冻结）：两档阈值同时驱动目标敞口与
   // 加仓 / 做 T / 开新仓 / 减仓闸门，旧版本缺字段时回退默认档位。
   const tiers = strategy.exposureTiers ?? BASE_STRATEGY.exposureTiers;
@@ -424,6 +426,8 @@ export function createPlan(
       continue;
     }
     const tQuantity = roundLot(quantity * strategy.tFraction);
+    // 冰点期禁止正向 T（第一腿是买入），只允许反向 T（先卖后买）或 HOLD。
+    const freezingBlockForwardT = cycle?.phase === CYCLE_PHASES.FREEZING;
     if (
       tQuantity >= 100 &&
       score >= 65 &&
@@ -434,17 +438,21 @@ export function createPlan(
             (component) => component.family.familyId !== "cash-v1",
           )))
     ) {
+      const tAction =
+        score >= 82 && !freezingBlockForwardT ? "T_FORWARD" : "T_REVERSE";
       addOrder({
         ...base,
-        action: score >= 82 ? "T_FORWARD" : "T_REVERSE",
+        action: tAction,
         side: "PAIR",
         quantity: tQuantity,
         buyTriggerCents: Math.round(referenceCents * (1 - strategy.tBuyDip)),
         sellTriggerCents: Math.round(referenceCents * (1 + strategy.tSellRise)),
         reason:
-          score >= 82
+          tAction === "T_FORWARD"
             ? "保留底仓，低吸后在预设价差上兑现旧仓"
-            : "先减旧仓，在预设回落价上买回",
+            : freezingBlockForwardT
+              ? "冰点期禁止正T：先减旧仓，回落价再买回"
+              : "先减旧仓，在预设回落价上买回",
       });
     } else {
       addOrder({
@@ -585,7 +593,9 @@ export function createPlan(
     feeModel: book.feeModel || "legacy-v1",
     feeConfig: structuredClone(feesForBook(book)),
     feeConfigVersion: book.feeConfigVersion || 0,
-    riskLimits: structuredClone(riskLimits),
+    // 冻结成交约束直接用闸门后的 riskLimits，保证 executePlan 内
+    // solveFillQuantity 计算 capCents 时受周期 maxGrossExposure 约束。
+    riskLimits: structuredClone(gatedRiskLimits),
     riskLimitsVersion: book.riskLimitsVersion || 0,
     createdAt,
     strategyVersion,
@@ -1462,8 +1472,8 @@ function executeFillWithCostModel(
     priceCents: fillPriceCents,
     notionalCents: notional,
     feeCents: fees.total,
-    ...(side === "BUY" && order.buyPoint
-      ? { buyPoint: order.buyPoint.primary }
+    ...(side === "BUY" && order.buyPoint?.primary
+      ? { buyPoint: order.buyPoint.primary.type }
       : {}),
     feeBreakdown: fees,
     ...(feeModel === "itemized-v2"

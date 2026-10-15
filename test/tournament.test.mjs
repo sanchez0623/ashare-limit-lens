@@ -607,7 +607,7 @@ test("统计预算、政策校验与固定排序由代码强制校验", async ()
         quantity: 1000,
         notionalCents: 1000000,
         realizedPnlCents: 0,
-        buyPoint: "炸板低吸",
+        buyPoint: "broken-board-dip",
         date: "2026-01-02",
         sequence: 1,
       },
@@ -626,7 +626,7 @@ test("统计预算、政策校验与固定排序由代码强制校验", async ()
         quantity: 1000,
         notionalCents: 1000000,
         realizedPnlCents: 0,
-        buyPoint: "首阴低吸",
+        buyPoint: "first-neg-dip",
         date: "2026-01-02",
         sequence: 3,
       },
@@ -643,10 +643,10 @@ test("统计预算、政策校验与固定排序由代码强制校验", async ()
     ["2026-01-02", "2026-01-05"],
   );
   assert.equal(byBp.rounds, 2);
-  assert.equal(byBp.byBuyPoint["炸板低吸"].wins, 1);
-  assert.equal(byBp.byBuyPoint["炸板低吸"].winRate, 1);
-  assert.equal(byBp.byBuyPoint["首阴低吸"].losses, 1);
-  assert.equal(byBp.byBuyPoint["首阴低吸"].winRate, 0);
+  assert.equal(byBp.byBuyPoint["broken-board-dip"].wins, 1);
+  assert.equal(byBp.byBuyPoint["broken-board-dip"].winRate, 1);
+  assert.equal(byBp.byBuyPoint["first-neg-dip"].losses, 1);
+  assert.equal(byBp.byBuyPoint["first-neg-dip"].winRate, 0);
   assert.equal(byBp.roundsList.length, 2);
   // 窗口指标：净收益、费用增量、回撤与覆盖率；期初快照与账本守恒一致
   // （权益变化 = 已实现增量 + 未实现增量，不一致的快照会被拒绝）。

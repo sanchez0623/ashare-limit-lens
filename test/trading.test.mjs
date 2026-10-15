@@ -394,6 +394,33 @@ test("情绪周期闸门：冰点期禁止开新仓、退潮期压缩敞口", ()
   );
   assert.equal(legacyPlan.cycle, null);
   assert.equal(legacyPlan.maxExposure, 0.6);
+
+  // 真实快照结构：cycle / emotion 嵌套在 marketSummary 下，同样要被闸门识别。
+  const fromMarketSummary = {
+    ...snapshot(dateAt(0)),
+    emotion: undefined,
+    marketSummary: {
+      cycle: {
+        phase: "ebbing",
+        label: "退潮",
+        score: 0.4,
+        maxGrossExposure: 0.2,
+        subscores: {},
+        reason: "退潮",
+      },
+      emotion: 70,
+    },
+  };
+  const summaryPlan = createPlan(
+    fromMarketSummary,
+    newBook(100000),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  );
+  assert.equal(summaryPlan.cycle.phase, "ebbing");
+  assert.equal(summaryPlan.targetExposure, 0.2);
+  assert.equal(summaryPlan.riskLimits.maxGrossExposure, 0.2);
 });
 test("手动策略参数校验拒绝越界、缺字段与档位倒挂", () => {
   assert.deepEqual(normalizeStrategyParams(STRATEGY_DEFAULTS), {
