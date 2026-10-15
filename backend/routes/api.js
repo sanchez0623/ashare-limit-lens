@@ -261,20 +261,24 @@ export async function api(request, env) {
           { error: "买点参数无效：仅接受 firstNegMinPrevHeight（1–10 的整数）" },
           400,
         );
-      if (hasWeights)
-        await database(env)
+      // 两条写入放同一 batch（本地实现为 BEGIN IMMEDIATE/COMMIT 事务）：
+      // 第二条失败时第一条一并回滚，不留下"权重已改、买点参数丢失"的
+      // 半提交状态。
+      const db = database(env);
+      const statement = (key, value) =>
+        db
           .prepare(
             "INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
           )
-          .bind("weights", JSON.stringify(body.weights))
-          .run();
-      if (hasParams)
-        await database(env)
-          .prepare(
-            "INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-          )
-          .bind("buyPointParams", JSON.stringify(body.buyPointParams))
-          .run();
+          .bind(key, value);
+      await db.batch([
+        ...(hasWeights
+          ? [statement("weights", JSON.stringify(body.weights))]
+          : []),
+        ...(hasParams
+          ? [statement("buyPointParams", JSON.stringify(body.buyPointParams))]
+          : []),
+      ]);
       return json({ saved: true });
     }
     if (path === "/api/history") return json(await historyList(env));

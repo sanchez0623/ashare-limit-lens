@@ -739,6 +739,60 @@ test("API 阻止跨站写入、错误方法和未验证版本；密钥不进入�
   DB.close();
 });
 
+test("设置保存原子性：batch 内第二条写入失败时第一条一并回滚", async () => {
+  const real = localDatabase();
+  const make = (path, method = "GET", body) =>
+    new Request(`https://example.test${path}`, {
+      method,
+      ...(body
+        ? {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }
+        : {}),
+    });
+  // 注入：两段同提交时，batch 的第二条（buyPointParams）在事务内抛错
+  //（两条 SQL 文本相同，key 是绑定参数，只能按位置区分）
+  const env = {
+    DB: {
+      prepare: (sql) => real.prepare(sql),
+      batch(statements) {
+        if (statements.length === 2) {
+          const [first] = statements;
+          return real.batch([
+            first,
+            {
+              _run() {
+                throw new Error("注入的买点参数写入失败");
+              },
+            },
+          ]);
+        }
+        return real.batch(statements);
+      },
+    },
+  };
+  // 基线：单段 POST 走同一 batch 路径，正常成功
+  await api(
+    make("/api/settings", "POST", { weights: [1, 1, 1, 1, 1, 1] }),
+    env,
+  );
+  // 两段同提交、第二条注入失败 → 外层 503，且第一条（权重）必须随事务回滚
+  const response = await api(
+    make("/api/settings", "POST", {
+      weights: [9, 9, 9, 9, 9, 9],
+      buyPointParams: { firstNegMinPrevHeight: 2 },
+    }),
+    env,
+  );
+  assert.equal(response.status, 503);
+  // 用真实库读回：权重保持基线 [1×6]，买点参数未被写入（读回默认 3）
+  const after = await (await api(make("/api/settings"), { DB: real })).json();
+  assert.deepEqual(after.weights, [1, 1, 1, 1, 1, 1]);
+  assert.equal(after.buyPointParams.firstNegMinPrevHeight, 3);
+  real.close();
+});
+
 test("评分源缺失时只冻结防守计划，完整多日账本可以独立重放", async () => {
   const DB = localDatabase(),
     env = { DB },
