@@ -27,6 +27,7 @@ import {
   REVERSAL_LOOKBACK_DAYS,
   SWING_LOOKBACK_DAYS,
 } from "../../shared/stock-class.js";
+import { EXIT_LOOKBACK_DAYS } from "../../shared/exit-signals.js";
 import { safeError } from "../http.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -141,36 +142,43 @@ async function parseDataset(dailyPath, adjPath) {
     "high",
     "low",
     "close",
+    "volume",
   ]);
   const dCode = daily.get("code"),
     dDate = daily.get("date"),
     dHigh = daily.get("high"),
     dLow = daily.get("low"),
-    dClose = daily.get("close");
+    dClose = daily.get("close"),
+    dVolume = daily.get("volume");
   const datesSet = new Set();
-  const builders = new Map(); // code -> { d: string[], c/h/l: number[] }
+  const builders = new Map(); // code -> { d: string[], c/h/l/v: number[] }
   for (let i = 0; i < dCode.length; i++) {
     const code = dCode[i],
       date = dDate[i],
       close = Number(dClose[i]);
     const high = Number(dHigh[i]),
-      low = Number(dLow[i]);
+      low = Number(dLow[i]),
+      volume = Number(dVolume[i]);
     if (typeof code !== "string" || !code) continue;
     if (typeof date !== "string" || !DATE_RE.test(date)) continue;
     if (!Number.isFinite(close) || close <= 0) continue;
     // high/low 仅用于 20 日振幅；缺行不丢弃（close 仍可用于 MA/涨停基因），
-    // 以 NaN 占位，振幅计算按"窗口内存在 NaN → 振幅未知"处理。
-    const validHighLow = Number.isFinite(high) && high > 0 && Number.isFinite(low) && low > 0;
+    // 以 NaN 占位，振幅计算按"窗口内存在 NaN → 未知"处理。
+    const validHighLow =
+      Number.isFinite(high) && high > 0 && Number.isFinite(low) && low > 0;
+    // volume 用于放量滞涨（20 日均量）；缺失以 NaN 占位（量能为非复权口径）。
+    const validVolume = Number.isFinite(volume) && volume >= 0;
     datesSet.add(date);
     let rec = builders.get(code);
     if (!rec) {
-      rec = { d: [], c: [], h: [], l: [] };
+      rec = { d: [], c: [], h: [], l: [], v: [] };
       builders.set(code, rec);
     }
     rec.d.push(date);
     rec.c.push(close);
     rec.h.push(validHighLow ? high : Number.NaN);
     rec.l.push(validHighLow ? low : Number.NaN);
+    rec.v.push(validVolume ? volume : Number.NaN);
   }
 
   // 复权因子按 code+date 建索引；缺失的因子在 per-code 数组里以 NaN 表示
@@ -206,6 +214,7 @@ async function parseDataset(dailyPath, adjPath) {
     const cs = new Float64Array(n);
     const hs = new Float64Array(n).fill(Number.NaN);
     const ls = new Float64Array(n).fill(Number.NaN);
+    const vs = new Float64Array(n).fill(Number.NaN);
     const as = new Float64Array(n).fill(Number.NaN);
     const fm = adjByCode.get(code) ?? null;
     for (let k = 0; k < n; k++) {
@@ -214,6 +223,7 @@ async function parseDataset(dailyPath, adjPath) {
       cs[k] = rec.c[i];
       hs[k] = rec.h[i];
       ls[k] = rec.l[i];
+      vs[k] = rec.v[i];
       const f = fm?.get(rec.d[i]);
       if (f !== undefined) as[k] = f;
     }
@@ -222,6 +232,7 @@ async function parseDataset(dailyPath, adjPath) {
       closes: cs,
       highs: hs,
       lows: ls,
+      volumes: vs,
       adjs: as,
       // 该股在因子文件中是否有任何覆盖：完全没有 → 才允许未复权口径
       hasFactor: (fm?.size ?? 0) > 0,
@@ -319,16 +330,22 @@ function boardLimitOf(code) {
   return code.startsWith("30") || code.startsWith("68") ? 20 : 10;
 }
 
-// 返回 { featuresByCode: Map<code, { limitUp10d, ma20, amplitude20 }>, asOf, reason? }。
+// 返回 { featuresByCode: Map<code, { limitUp10d, ma20, amplitude20, ma5,
+//   vol20Avg, todayVolume, high20Prev }>, asOf, reason? }。
 // 与 MA5 相同的严格日期口径：数据未覆盖快照日时返回空 Map（带 reason）。
 //   - limitUp10d：近 10 个交易日内存在收盘涨停（boardLimit 感知，容差 0.3%）
 //   - ma20：截至快照日（含）20 日收盘均线，不足 20 根为 null
 //   - amplitude20：20 日区间振幅 (maxHigh-minLow)/minLow×100，窗口内
 //     任一根 high/low 缺失则为 null
+//   - 卖出信号特征（方案 5）：
+//     ma5：截至快照日（含）5 日收盘均线，窗口因子不齐全 → null；
+//     vol20Avg：前 19 根（不含当日）均量，纯未复权口径（量不随复权缩放）；
+//     todayVolume：当日成交量；
+//     high20Prev：前 19 根（不含当日）最高价最大值，前复权口径
+//       （与 high/low 同比例缩放），窗口因子不齐全 → null。
 export function computeStockFeaturesByCode(dataset, snapshotDate) {
   const { dates, dateIdx, codes } = dataset;
-  if (!dates.length)
-    return { featuresByCode: new Map(), asOf: null };
+  if (!dates.length) return { featuresByCode: new Map(), asOf: null };
   if (snapshotDate && DATE_RE.test(snapshotDate) && !dateIdx.has(snapshotDate))
     return {
       featuresByCode: new Map(),
@@ -359,8 +376,7 @@ export function computeStockFeaturesByCode(dataset, snapshotDate) {
       }
       return false;
     };
-    const adjPrice = (k) =>
-      hasFactor ? s.closes[k] * s.adjs[k] : s.closes[k];
+    const adjPrice = (k) => (hasFactor ? s.closes[k] * s.adjs[k] : s.closes[k]);
     // 近 10 日涨停基因（前复权收盘比；首根无前收跳过；
     // 基因窗口因子缺失时保持 false——分类器仅以 ===true 触发反包，
     // 此时均线/振幅亦为 null，整体保持"未分类"，不会误判平庸）
@@ -406,7 +422,59 @@ export function computeStockFeaturesByCode(dataset, snapshotDate) {
         amplitude20 =
           Math.round(((maxHigh - minLow) / minLow) * 100 * 100) / 100;
     }
-    featuresByCode.set(code, { limitUp10d, ma20, amplitude20 });
+    // 卖出信号特征（方案 5）：
+    //   ma5 与 computeMa5ByCode 同口径（前复权到快照日，因子缺失 → null）；
+    //   vol20Avg / todayVolume 为纯未复权口径（成交量不随复权缩放）；
+    //   high20Prev 为前 19 根（不含当日）复权最高价最大值，窗口因子不全 → null。
+    let ma5 = null,
+      vol20Avg = null,
+      todayVolume = null,
+      high20Prev = null;
+    if (p >= 4 && !factorMissing(p - 4, p)) {
+      let sum5 = 0;
+      if (hasFactor) {
+        const fEnd = s.adjs[p];
+        for (let k = p - 4; k <= p; k++)
+          sum5 += (s.closes[k] * s.adjs[k]) / fEnd;
+      } else {
+        for (let k = p - 4; k <= p; k++) sum5 += s.closes[k];
+      }
+      ma5 = Math.round((sum5 / 5) * 1000) / 1000;
+    }
+    if (p >= EXIT_LOOKBACK_DAYS - 1) {
+      const vs = s.volumes; // 兼容未带 volume 列的夹具：缺失则该项为 null
+      let vsum = 0,
+        vvalid = true;
+      for (let k = p - EXIT_LOOKBACK_DAYS + 1; k <= p - 1; k++) {
+        const v = vs?.[k];
+        if (!Number.isFinite(v) || v < 0) vvalid = false;
+        else vsum += v;
+      }
+      if (vvalid && vs)
+        vol20Avg = Math.round((vsum / (EXIT_LOOKBACK_DAYS - 1)) * 100) / 100;
+      const tv = vs?.[p];
+      if (Number.isFinite(tv) && tv >= 0) todayVolume = tv;
+      if (!factorMissing(p - EXIT_LOOKBACK_DAYS + 1, p - 1)) {
+        const base = hasFactor ? s.adjs[p] : 1;
+        let hmax = Number.NEGATIVE_INFINITY,
+          hvalid = true;
+        for (let k = p - EXIT_LOOKBACK_DAYS + 1; k <= p - 1; k++) {
+          const h = hasFactor ? s.highs[k] * (s.adjs[k] / base) : s.highs[k];
+          if (!Number.isFinite(h)) hvalid = false;
+          else if (h > hmax) hmax = h;
+        }
+        if (hvalid) high20Prev = Math.round(hmax * 1000) / 1000;
+      }
+    }
+    featuresByCode.set(code, {
+      limitUp10d,
+      ma20,
+      amplitude20,
+      ma5,
+      vol20Avg,
+      todayVolume,
+      high20Prev,
+    });
   }
   return { featuresByCode, asOf };
 }

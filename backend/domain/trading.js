@@ -21,6 +21,7 @@ import {
   planRiskLimits,
 } from "../../shared/risk-limits.js";
 import { STRATEGY_DEFAULTS } from "../../shared/strategy-params.js";
+import { checkExitSignals } from "../../shared/exit-signals.js";
 import {
   classifySentimentCycle,
   resolveExposureCap,
@@ -156,39 +157,39 @@ export function scoreSignals(snapshot, strategy, policy = selectionPolicy()) {
   );
   const signals = snapshot.stocks.map((stock) => {
     const weights = weightsFor(stock);
-      let weight = 0,
-        weighted = 0;
-      stock.factors.forEach((factor, index) => {
-        if (legacy ? factor.value === null : !Number.isFinite(factor.value))
-          return;
-        const factorWeight =
-          weights[
-            policy.version === LEGACY_SELECTION_VERSION
-              ? stock.factors.indexOf(factor)
-              : index
-          ];
-        weight += factorWeight;
-        weighted += factor.value * factorWeight;
-      });
-      const raw = weight ? clamp(weighted / weight - stock.deduction) : null;
-      const scoreValue = Number.isFinite(raw) ? raw : null;
-      return {
-        ...stock,
-        originalScore: stock.score,
-        score: legacy
-          ? weight
-            ? Math.round(raw)
-            : null
-          : scoreValue === null
-            ? null
-            : Math.round(scoreValue),
-        scoreValue,
-        scoreRankKey:
-          scoreValue === null ? null : Math.round(scoreValue * 1_000_000),
-        liquidityAmountCents: liquidityAmountCents(stock.amount),
-        sectorScore: sectorScores.get(stock.sector) ?? null,
-      };
+    let weight = 0,
+      weighted = 0;
+    stock.factors.forEach((factor, index) => {
+      if (legacy ? factor.value === null : !Number.isFinite(factor.value))
+        return;
+      const factorWeight =
+        weights[
+          policy.version === LEGACY_SELECTION_VERSION
+            ? stock.factors.indexOf(factor)
+            : index
+        ];
+      weight += factorWeight;
+      weighted += factor.value * factorWeight;
     });
+    const raw = weight ? clamp(weighted / weight - stock.deduction) : null;
+    const scoreValue = Number.isFinite(raw) ? raw : null;
+    return {
+      ...stock,
+      originalScore: stock.score,
+      score: legacy
+        ? weight
+          ? Math.round(raw)
+          : null
+        : scoreValue === null
+          ? null
+          : Math.round(scoreValue),
+      scoreValue,
+      scoreRankKey:
+        scoreValue === null ? null : Math.round(scoreValue * 1_000_000),
+      liquidityAmountCents: liquidityAmountCents(stock.amount),
+      sectorScore: sectorScores.get(stock.sector) ?? null,
+    };
+  });
   return rankSignals(signals, policy);
 }
 
@@ -207,6 +208,11 @@ export function createPlan(
   // 原始分跨日回查：持仓股掉出当日涨停池时，按最近一次快照归档评分回填，
   // 查不到才如实置空；不参与任何策略决策，仅还原展示口径。
   const originalScoreLookup = options.originalScoreLookup ?? null;
+  // 卖出信号检测器（方案 5）：日线历史特征 + 板块退潮集合 + 情绪周期切换。
+  // 三项均为可选上下文；缺失时对应信号跳过，不猜。
+  const exitFeaturesByCode = options.exitFeaturesByCode ?? null;
+  const sectorLimitDrops = options.sectorLimitDrops ?? new Map();
+  const phaseShift = options.phaseShift === true;
   const policy = options.selectionPolicy ?? selectionPolicyForBook(book);
   const policyFields = selectionPolicyFields(policy);
   const modernSelection = policy.version !== LEGACY_SELECTION_VERSION;
@@ -357,6 +363,14 @@ export function createPlan(
     const pnl = costBasis(position)
       ? (quantity * referenceCents) / costBasis(position) - 1
       : 0;
+    // 方案 5：主动卖出信号检测（固定止损之外的止盈/退潮退出）。
+    // 任一信号命中 → 清仓（优先级高于减仓/持有逻辑）。
+    const exitResult = checkExitSignals(position, {
+      row: signal,
+      features: exitFeaturesByCode?.get(position.code) ?? null,
+      sectorLimitDrop: sectorLimitDrops.get(position.sector) === true,
+      phaseShift,
+    });
     const base = {
       code: position.code,
       name: position.name,
@@ -389,6 +403,18 @@ export function createPlan(
             : pnl <= -strategy.stopLoss
               ? "收盘亏损达到止损阈值"
               : "持仓达到最长观察期",
+      });
+      plannedExposure -= quantity * referenceCents;
+      continue;
+    }
+    // 方案 5：主动卖出信号命中 → 清仓（优先级高于减仓/做T）
+    if (exitResult.exit) {
+      addOrder({
+        ...base,
+        action: "EXIT",
+        side: "SELL",
+        quantity,
+        reason: `主动卖出信号：${exitResult.reason}`,
       });
       plannedExposure -= quantity * referenceCents;
       continue;

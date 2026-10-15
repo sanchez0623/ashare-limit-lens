@@ -197,17 +197,14 @@ test("MA5 注入后首阴买点在真实 analyze 链路激活（3 连板后首�
 
 // ---------- 股票分类历史特征 ----------
 
-const F25 = Array.from({ length: 25 }, (_, i) => `2026-09-${String(1 + i).padStart(2, "0")}`);
+const F25 = Array.from(
+  { length: 25 },
+  (_, i) => `2026-09-${String(1 + i).padStart(2, "0")}`,
+);
 
 test("特征：近10日涨停基因（收盘比口径，boardLimit 感知）", () => {
   // 主板：D15 从 10 → 11（+10%），快照 D20 时落在近 10 日内
-  const series = F25.map((d, i) => [
-    d,
-    i === 14 ? 11 : 10,
-    1,
-    11,
-    9.8,
-  ]);
+  const series = F25.map((d, i) => [d, i === 14 ? 11 : 10, 1, 11, 9.8]);
   const dataset = makeDataset(F25, [["600001", series]]);
   const inWindow = computeStockFeaturesByCode(dataset, F25[19]);
   assert.equal(inWindow.featuresByCode.get("600001").limitUp10d, true);
@@ -217,13 +214,7 @@ test("特征：近10日涨停基因（收盘比口径，boardLimit 感知）", (
 });
 
 test("特征：20% 板（300 开头）按 19.7% 阈值识别涨停", () => {
-  const series = F25.map((d, i) => [
-    d,
-    i === 20 ? 12 : 10,
-    1,
-    12,
-    9.8,
-  ]);
+  const series = F25.map((d, i) => [d, i === 20 ? 12 : 10, 1, 12, 9.8]);
   const dataset = makeDataset(F25, [["300001", series]]);
   const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
   // +20% 对 20% 板算涨停；若误用 10% 板口径则 +20% 也算，无法区分——
@@ -245,13 +236,7 @@ test("特征：20% 板（300 开头）按 19.7% 阈值识别涨停", () => {
 });
 
 test("特征：MA20 与 20 日区间振幅，不足 20 根为 null", () => {
-  const series = F25.map((d, i) => [
-    d,
-    10,
-    1,
-    i === 24 ? 12 : 11,
-    10,
-  ]);
+  const series = F25.map((d, i) => [d, 10, 1, i === 24 ? 12 : 11, 10]);
   const dataset = makeDataset(F25, [["600001", series]]);
   const full = computeStockFeaturesByCode(dataset, F25[24]);
   const f = full.featuresByCode.get("600001");
@@ -264,13 +249,7 @@ test("特征：MA20 与 20 日区间振幅，不足 20 根为 null", () => {
 });
 
 test("特征：窗口内 high/low 缺失（NaN）时振幅未知", () => {
-  const series = F25.map((d, i) => [
-    d,
-    10,
-    1,
-    i === 10 ? Number.NaN : 11,
-    10,
-  ]);
+  const series = F25.map((d, i) => [d, 10, 1, i === 10 ? Number.NaN : 11, 10]);
   const dataset = makeDataset(F25, [["600001", series]]);
   const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
   assert.equal(featuresByCode.get("600001").amplitude20, null);
@@ -282,9 +261,7 @@ test("特征：跨除权窗口按快照日前复权，MA20/振幅不受除权跳
   // 全窗价格连续为 5：未复权 MA20 = (10×15+5×5)/20 = 8.75（失真），
   // 复权 MA20 = 5；未复权振幅 (11-4.5)/4.5 ≈ 144%，复权 (5.5-4.5)/4.5 ≈ 22%。
   const series = F25.map((d, i) =>
-    i < 15
-      ? [d, 10, 1, 11, 9]
-      : [d, 5, 2, 5.5, 4.5],
+    i < 15 ? [d, 10, 1, 11, 9] : [d, 5, 2, 5.5, 4.5],
   );
   const dataset = makeDataset(F25, [["600001", series]]);
   const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
@@ -297,9 +274,7 @@ test("特征：有因子覆盖但 MA20 窗口内因子缺失 → 特征 null（�
   // 同上跨除权构造，但除权日（D15）因子缺失：MA20/振幅口径不明确 → null；
   // 涨停基因窗口（D16–D25）因子齐全 → 不受影响。
   const series = F25.map((d, i) =>
-    i < 15
-      ? [d, 10, 1, 11, 9]
-      : [d, 5, i === 15 ? undefined : 2, 5.5, 4.5],
+    i < 15 ? [d, 10, 1, 11, 9] : [d, 5, i === 15 ? undefined : 2, 5.5, 4.5],
   );
   const dataset = makeDataset(F25, [["600001", series]]);
   const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
