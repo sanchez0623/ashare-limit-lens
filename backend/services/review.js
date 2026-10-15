@@ -67,7 +67,8 @@ export async function saveSnapshot(env, market, weights) {
     market.broken,
     market.previous?.map(normalize) ?? null,
     weights,
-    { ma5ByCode },
+    // saveSnapshot 仅在收盘后（15:05+）执行，尾盘时点成立
+    { ma5ByCode, lateSession: true },
   );
   const { stocks, sectors, ...marketSummary } = a;
   const createdAt = new Date().toISOString();

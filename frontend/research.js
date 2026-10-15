@@ -180,6 +180,14 @@ function scoreHtml(s) {
   return `<div class="score-cell"><span class="score-number ${scoreClass(s)}">${s ?? "—"}</span><span class="score-track"><i style="width:${s ?? 0}%"></i></span></div>`;
 }
 function recalculate() {
+  const options = {
+    // 服务端随 payload 下发的 MA5（daily parquet 计算），供首阴校验
+    ...(state.payload?.ma5ByCode
+      ? { ma5ByCode: state.payload.ma5ByCode }
+      : {}),
+    // 尾盘时点由服务端按观测时刻下发；盘中早段缺省，尾盘买点不触发
+    ...(state.payload?.lateSession === true ? { lateSession: true } : {}),
+  };
   state.analysis = state.payload?.archived
     ? structuredClone(state.payload.analysis)
     : state.payload
@@ -188,8 +196,7 @@ function recalculate() {
           state.payload.broken,
           state.payload.previous?.map(normalize) || null,
           state.weights,
-          // 服务端随 payload 下发的 MA5（daily parquet 计算），供首阴校验
-          state.payload.ma5ByCode ? { ma5ByCode: state.payload.ma5ByCode } : {},
+          options,
         )
       : null;
 }

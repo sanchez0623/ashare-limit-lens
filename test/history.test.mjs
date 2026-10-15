@@ -154,6 +154,8 @@ test("历史输入规范化：缺失与零区分、单位转换与异常隔离",
     name: "样本一",
     sector: "测试行业",
     price: 10.5,
+    open: 10.2,
+    high: 10.8,
     change: 10.02,
     amount: 5.2e8,
     floatCap: 4.2e9,
@@ -165,11 +167,18 @@ test("历史输入规范化：缺失与零区分、单位转换与异常隔离",
     height: 1,
   });
   assert.equal(normalized.row.price, 10.5);
+  // 开盘/最高价透传（买点分类器的 K 线阴阳与尾盘回落校验依赖它们）
+  assert.equal(normalized.row.open, 10.2);
+  assert.equal(normalized.row.high, 10.8);
   assert.equal(normalized.row.breaks, 0);
   assert.equal(normalized.provenance.fieldCoverage.complete, true);
   assert.throws(
     () => normalizeLimitFeatureRow({ code: "600001", breaks: -1 }),
     /不能为负数/,
+  );
+  assert.throws(
+    () => normalizeLimitFeatureRow({ code: "600001", open: -1 }),
+    /必须为正数/,
   );
   assert.throws(
     () => normalizeLimitFeatureRow({ code: "ABC", price: 10 }),

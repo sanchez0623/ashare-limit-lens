@@ -27,6 +27,8 @@
 //  - last: 最后一次封板时间 HHMMSS
 //  - openChange: 当日开盘相对昨收的涨跌幅 (%)（竞价低开幅度）
 //  - intradayDrawdownFromHigh: 当日最高价到当前/收盘的回落幅度 (%)
+//  - lateSession: 尾盘时点标记，由调用方依据观测时刻声明（北京时间
+//    14:30 后或收盘后为 true）；未知时不设置，尾盘跳水买点不触发
 //  - ma5: 当日 5 日均线值（元），缺省表示未知
 //  - turnover: 当日换手率 (%)
 
@@ -106,18 +108,19 @@ function testBrokenBoard(row) {
 }
 
 function testFirstNegative(row) {
-  // 首阴低吸：连板股（昨日 >=2 连板）中断后的首根实体阴线，5 日均线未破。
+  // 首阴低吸：连板股（昨日 >=3 连板）中断后的首根实体阴线，5 日均线未破。
+  // 门槛与 skill 文档对齐：3 连板以上的首阴才值得参与。
   // 严格校验 K 线与序列条件：
   //   1. 今日连板中断：当前 height 必须为 0（阴线日本身不可能涨停；
   //      height 未知时由 change<0 间接保证，显式 height>0 视为数据矛盾拒绝）
-  //   2. 昨日 height >= 2（"首阴"必须发生在连板序列中断处）
+  //   2. 昨日 height >= 3（"首阴"必须发生在 3 连板以上序列的中断处）
   //   3. 今日开 > 收（实体阴线，而非"跌但收阳线"）
   //   4. 今日 change 在 -5% ~ 0 之间（阴线实体不大）
   //   5. MA5 必须已知且未破（收盘 > MA5）；未知时无法验证，拒绝
   const height = num(row.height);
   if (height !== null && height !== 0) return null; // 今日仍在连板，不是首阴
   const prevHeight = num(row.prevHeight);
-  if (prevHeight === null || prevHeight < 2) return null; // 昨日不在连板中，不算"首阴"
+  if (prevHeight === null || prevHeight < 3) return null; // 昨日不足 3 连板，不算"首阴"
   const open = num(row.open);
   const close = num(row.close) ?? num(row.price);
   if (open === null || close === null) return null;
@@ -152,14 +155,11 @@ function testFakeNegativeLimit(row) {
     (prevHeight !== null && prevHeight >= 1);
   if (!prevWasLimitUp) return null;
   // 假阴校验：昨日必须是实体阴线（prevOpen > prevClose）且涨跌幅在
-  // 平盘附近（-2%~+2%）。开收盘已知时严格按 K 线阴阳判定，
-  // 明确阳线直接拒绝；只有开收盘未知时才回退用涨跌幅 -2%~+4% 近似。
-  if (prevOpen !== null && prevClose !== null) {
-    if (prevOpen <= prevClose) return null; // 昨日明确为阳线，不是假阴
-    if (prevChange < -2 || prevChange > 2) return null;
-  } else if (prevChange < -2 || prevChange > 4) {
-    return null;
-  }
+  // 平盘附近（-2%~+2%）。昨日开收盘未知时保持未知——不猜测阴阳，
+  // 宁可漏标也不把阴阳不明的 K 线当成假阴。
+  if (prevOpen === null || prevClose === null) return null;
+  if (prevOpen <= prevClose) return null; // 昨日阳线/平盘，不是假阴
+  if (prevChange < -2 || prevChange > 2) return null;
   if (openChange > -8) return null;
   return {
     type: BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP,
@@ -236,12 +236,13 @@ export function annotateBuyPoint(row, prevRow = null) {
     merged.prevOpen = prevRow.open;
     merged.prevClose = prevRow.close;
   }
-  // 数据链路缺字段时从价量数据推导，保证竞价 / 尾盘买点在真实链路可用：
+  // 数据链路缺字段时从价量数据推导，保证竞价买点在真实链路可用：
   //  - openChange：今日开盘相对昨收的涨跌幅（竞价低开幅度）
-  //  - intradayDrawdownFromHigh：最高价到收盘的回落幅度
-  //  - lateSession：analyze() 链路均为收盘后观测（review / backtest /
-  //    研究页），收盘价已知即视为盘尾时点；尾盘跳水用"最高价到收盘"
-  //    的回落近似，无法区分盘中早段的跳水是当前数据的已知局限。
+  //  - intradayDrawdownFromHigh：最高价到当前/收盘的回落幅度
+  // 注意：lateSession（尾盘时点）不在此推导——盘中 10 点的报价同样有
+  // "最高到现价回落"，无脑置 true 会把全天回撤误标为尾盘跳水。
+  // 尾盘时点必须由调用方依据观测时刻声明（analyze options.lateSession，
+  // 北京时间 14:30 后或收盘后），未知时保持未设置，尾盘跳水不触发。
   const derived = {};
   const open = num(merged.open);
   const prevClose = num(merged.prevClose);
@@ -265,8 +266,6 @@ export function annotateBuyPoint(row, prevRow = null) {
     derived.intradayDrawdownFromHigh = ((high - close) / high) * 100;
     merged.intradayDrawdownFromHigh = derived.intradayDrawdownFromHigh;
   }
-  if (merged.lateSession === undefined && close !== null)
-    merged.lateSession = true;
   const classification = classifyBuyPoint(merged);
   return {
     ...row,

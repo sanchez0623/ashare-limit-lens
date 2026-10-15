@@ -86,6 +86,10 @@ function emRowToCanonical(raw) {
     name: orNull(raw.n),
     sector: String(raw.hybk ?? "未分类"),
     price: orNull(raw.p) === null ? null : Number(raw.p) / 1000,
+    // 开盘/最高价随池数据透传（与 p 同为千分位），供买点分类器做
+    // K 线阴阳与尾盘回落校验；缺失保持 null，不猜。
+    open: orNull(raw.o) === null ? null : Number(raw.o) / 1000,
+    high: orNull(raw.h) === null ? null : Number(raw.h) / 1000,
     change: orNull(raw.zdp) === null ? null : Number(raw.zdp),
     amount: orNull(raw.amount) === null ? null : Number(raw.amount),
     floatCap: orNull(raw.ltsz) === null ? null : Number(raw.ltsz),
@@ -390,13 +394,14 @@ async function runHistoryImportInner(
         succeeded.slice(0, succeeded.indexOf(entry)).at(-1) ?? null;
       // MA5 按重构日期 as-of 计算（数据集缓存后按日期查表，成本可忽略），
       // 历史评分的买点标签与实时链路共用同一首阴校验口径。
+      // 历史重构以日线为观测粒度，尾盘时点成立。
       const { ma5ByCode } = await getMa5ByCode(env, entry.date);
       const a = analyze(
         entry.normalized,
         entry.broken ?? null,
         previousEntry ? previousEntry.normalized : null,
         weights,
-        { ma5ByCode },
+        { ma5ByCode, lateSession: true },
       );
       entry.scoresByCode = new Map(
         a.stocks.map((stock) => [stock.code, stock.score]),

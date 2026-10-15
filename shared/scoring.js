@@ -292,6 +292,8 @@ export function analyze(
   // 判定条件：change >= boardLimit - 0.3（容差），且有首封时间或连板数 >=1。
   // ma5 来自 options.ma5ByCode（backend/services/daily-closes.js 直读
   // parquet 计算），未知时不写字段——首阴分类器按"MA5 未知即拒绝"处理。
+  // lateSession（尾盘时点）由调用方声明：仅在观测时刻确认处于尾盘或盘后
+  // 时传 true；盘中报价不传，避免全天回撤被误标为尾盘跳水。
   const enriched = clean.map((r) => {
     const change = num(r.change);
     const boardLimit = r.boardLimit ?? (r.code?.startsWith("30") ? 20 : 10);
@@ -307,6 +309,7 @@ export function analyze(
       boardLimit,
       ...(openChange !== null ? { openChange } : {}),
       ...(ma5 !== null ? { ma5 } : {}),
+      ...(options.lateSession === true ? { lateSession: true } : {}),
     };
   });
   const stocks = enriched

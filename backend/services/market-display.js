@@ -11,6 +11,18 @@ const validPool = (rows) =>
     (row) => row && typeof row.c === "string" && typeof row.n === "string",
   );
 
+// 观测时刻在北京时间 14:30 及以后视为尾盘时点（收盘后同样成立）；
+// 盘中早段保持未知，避免把全天回撤误标为尾盘跳水。
+function tailSessionNow() {
+  const hm = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date());
+  return hm >= "14:30";
+}
+
 // Display archived judgments without fetching today's provider data or rescoring
 // an old snapshot with current weights. Trading continues to use marketData.
 async function archivedMarket(env, date) {
@@ -115,7 +127,13 @@ export async function marketForDisplay(
     const slim = {};
     for (const [code, value] of ma5ByCode)
       if (poolCodes.has(code)) slim[code] = value;
-    return { ...market, ma5ByCode: slim, ...(asOf ? { ma5AsOf: asOf } : {}) };
+    return {
+      ...market,
+      ma5ByCode: slim,
+      ...(asOf ? { ma5AsOf: asOf } : {}),
+      // 研究页客户端用原始行重新 analyze，尾盘时点随观测时刻下发
+      ...(tailSessionNow() ? { lateSession: true } : {}),
+    };
   } catch (error) {
     if (date === today) {
       const archive = await archivedMarket(env, date);

@@ -92,6 +92,16 @@ export function normalizeLimitFeatureRow(
       raw.price === null || raw.price === undefined
         ? null
         : finiteOrThrow(raw.price, "price"),
+    // 开盘/最高价为可选字段：缺失保持 null（买点分类器按未知处理），
+    // 提供时必须为正数。
+    open:
+      raw.open === null || raw.open === undefined
+        ? null
+        : finiteOrThrow(raw.open, "open"),
+    high:
+      raw.high === null || raw.high === undefined
+        ? null
+        : finiteOrThrow(raw.high, "high"),
     change:
       raw.change === null || raw.change === undefined
         ? null
@@ -128,6 +138,9 @@ export function normalizeLimitFeatureRow(
   };
   if (row.price !== null && row.price <= 0)
     throw new Error("历史价格必须为正数");
+  for (const field of ["open", "high"])
+    if (row[field] !== null && row[field] <= 0)
+      throw new Error(`历史价格字段 ${field} 必须为正数`);
   const coverage = assessFieldCoverage([row]);
   return {
     row,

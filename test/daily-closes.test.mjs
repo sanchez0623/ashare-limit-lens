@@ -114,7 +114,7 @@ const PREV = {
   p: 9900,
   o: 9000,
   zdp: 9.9,
-  lbc: 2,
+  lbc: 3, // 昨日 3 连板（首阴门槛与 skill 对齐：>=3）
 };
 
 test("analyze 注入 ma5ByCode（普通对象与 Map 皆可）", () => {

@@ -68,10 +68,10 @@ test("20% 板涨 6%：真实回撤 14/120 ≈ 11.67%，回落过深不触发", (
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.BROKEN_BOARD_DIP);
 });
 
-test("首阴低吸：连板中断（height=0）、昨日 2 连板、开高收低、MA5 未破", () => {
+test("首阴低吸：连板中断（height=0）、昨日 3 连板、开高收低、MA5 未破", () => {
   const result = classifyBuyPoint({
     height: 0,
-    prevHeight: 2,
+    prevHeight: 3,
     open: 11,
     close: 10.5,
     change: -3,
@@ -83,7 +83,7 @@ test("首阴低吸：连板中断（height=0）、昨日 2 连板、开高收低
 test("首阴但今日仍在连板（height>0）不触发", () => {
   const result = classifyBuyPoint({
     height: 3,
-    prevHeight: 2,
+    prevHeight: 3,
     open: 11,
     close: 10.5,
     change: -3,
@@ -95,7 +95,7 @@ test("首阴但今日仍在连板（height>0）不触发", () => {
 test("首阴但破5日线不触发", () => {
   const result = classifyBuyPoint({
     height: 0,
-    prevHeight: 2,
+    prevHeight: 3,
     open: 11,
     close: 10.5,
     change: -3,
@@ -107,7 +107,7 @@ test("首阴但破5日线不触发", () => {
 test("首阴但 MA5 未知不触发（无法验证未破线，拒绝）", () => {
   const result = classifyBuyPoint({
     height: 0,
-    prevHeight: 2,
+    prevHeight: 3,
     open: 11,
     close: 10.5,
     change: -3,
@@ -115,10 +115,10 @@ test("首阴但 MA5 未知不触发（无法验证未破线，拒绝）", () => 
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
 });
 
-test("首阴但没有昨日连板（prevHeight 不足）不触发", () => {
+test("首阴但昨日不足 3 连板（prevHeight=2）不触发，与 skill 门槛对齐", () => {
   const result = classifyBuyPoint({
     height: 0,
-    prevHeight: 0,
+    prevHeight: 2,
     open: 11,
     close: 10.5,
     change: -3,
@@ -130,7 +130,7 @@ test("首阴但没有昨日连板（prevHeight 不足）不触发", () => {
 test("首阴但收阳线（close > open）不触发", () => {
   const result = classifyBuyPoint({
     height: 0,
-    prevHeight: 2,
+    prevHeight: 3,
     open: 10,
     close: 10.5,
     change: -1,
@@ -139,13 +139,24 @@ test("首阴但收阳线（close > open）不触发", () => {
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
 });
 
-test("假阴跌停低吸：昨日假阴+今日竞价大幅低开", () => {
+test("假阴跌停低吸：昨日假阴（开高收低微涨）+今日竞价大幅低开", () => {
+  const result = classifyBuyPoint({
+    prevChange: 1.5,
+    prevBreaks: 1,
+    prevOpen: 10.5,
+    prevClose: 10.2,
+    openChange: -9.5,
+  });
+  assert.equal(result.primary.type, BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP);
+});
+
+test("假阴：昨日开收盘未知不触发（不猜测阴阳）", () => {
   const result = classifyBuyPoint({
     prevChange: 1.5,
     prevBreaks: 1,
     openChange: -9.5,
   });
-  assert.equal(result.primary.type, BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP);
+  assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP);
 });
 
 test("假阴：昨日明确为实体阴线（开高收低、微涨）时触发", () => {
@@ -188,7 +199,7 @@ test("尾盘跳水低吸：lateSession 且从高点回落 4%", () => {
   assert.equal(result.primary.type, BUY_POINT_TYPES.LATE_DIP);
 });
 
-test("annotateBuyPoint：缺字段时从价量推导 openChange 与尾盘回落", () => {
+test("annotateBuyPoint：缺字段时从价量推导 openChange 与回落幅度", () => {
   // 昨收 9.5，今开 9.6（+1.05% 微高开），最高 10.5 收 10（回落 4.76%）。
   const row = annotateBuyPoint(
     {
@@ -212,7 +223,21 @@ test("annotateBuyPoint：缺字段时从价量推导 openChange 与尾盘回落"
   //（低开需 <= -5%），此处只验证推导本身与尾盘回落标签。
   assert.ok(Math.abs(row.openChange - 1.0526) < 1e-3);
   assert.ok(Math.abs(row.intradayDrawdownFromHigh - 4.7619) < 1e-3);
-  // 尾盘回落 4.76% >= 3%、非跌停 → 尾盘跳水低吸命中。
+  // 尾盘时点未知（调用方未声明 lateSession）→ 尾盘跳水不触发，
+  // 避免盘中报价的全天回撤被误标。
+  assert.equal(row.buyPoint.primary, null);
+});
+
+test("annotateBuyPoint：调用方声明 lateSession 后尾盘跳水才触发", () => {
+  const row = annotateBuyPoint({
+    code: "600001",
+    open: 9.6,
+    close: 10,
+    high: 10.5,
+    change: 1.01,
+    isLimitUp: false,
+    lateSession: true, // 观测时刻在尾盘之后（如收盘后复盘）
+  });
   assert.equal(row.buyPoint.primary?.type, BUY_POINT_TYPES.LATE_DIP);
 });
 

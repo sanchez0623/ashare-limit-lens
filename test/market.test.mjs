@@ -198,6 +198,9 @@ test("新盘后快照同时归档原始行情与统计，重复保存不改写�
       market.rows.map(normalize),
       market.broken,
       market.previous.map(normalize),
+      PRESETS.balanced,
+      // saveSnapshot 仅在收盘后执行，冻结评分按尾盘时点标注 lateSession
+      { lateSession: true },
     );
     const archive = await marketForDisplay({ DB }, DATE, {
       today: "2026-10-12",
