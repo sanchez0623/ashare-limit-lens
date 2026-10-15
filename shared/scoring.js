@@ -1,3 +1,5 @@
+import { classifySentimentCycle } from "./sentiment-cycle.js";
+import { annotateBuyPoint } from "./buy-point-type.js";
 export const FACTORS = [
   {
     key: "quality",
@@ -130,7 +132,7 @@ export function sectorAnalysis(rows) {
     })
     .sort((a, b) => b.score - a.score || b.count - a.count);
 }
-export function analyzeStock(row, sectorScore, weights = PRESETS.balanced) {
+export function analyzeStock(row, sectorScore, weights = PRESETS.balanced, prevRow = null) {
   const factorValues = {
     quality: row.breaks === null ? null : clamp(100 - row.breaks * 15, 10),
     capital:
@@ -224,7 +226,7 @@ export function analyzeStock(row, sectorScore, weights = PRESETS.balanced) {
     20,
     risks.reduce((s, r) => s + r.penalty, 0),
   );
-  return {
+  const enriched = {
     ...row,
     score: raw === null ? null : Math.round(clamp(raw - deduction)),
     rawScore: raw,
@@ -235,6 +237,7 @@ export function analyzeStock(row, sectorScore, weights = PRESETS.balanced) {
     sealRatio:
       row.seal !== null && row.amount > 0 ? row.seal / row.amount : null,
   };
+  return annotateBuyPoint(enriched, prevRow);
 }
 // 只计算晋级统计，供实时评分和旧归档展示共用，不重算冻结评分。
 export function promotionStats(rows, previous = null) {
@@ -295,6 +298,11 @@ export function analyze(
       )
     : null;
   const { promotion, previousCount } = promotionStats(clean, previous);
+  const cycle = classifySentimentCycle({
+    limitUp: clean.length,
+    broken,
+    height,
+  });
   return {
     stocks,
     sectors,
@@ -308,5 +316,6 @@ export function analyze(
     emotionCoverage: eWeight,
     promotion,
     previousCount,
+    cycle,
   };
 }
