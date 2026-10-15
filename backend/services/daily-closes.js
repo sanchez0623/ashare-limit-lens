@@ -5,16 +5,24 @@
 // - 纯 Node 直读，不落库不拷贝：盘后 review / 回测重构各消费一次；
 //   hyparquet（纯 JS parquet 解析）+ hyparquet-compressors（zstd），
 //   无原生依赖、无 Python。
-// - 进程内按文件 mtime+size 缓存解析结果：同进程多次调用零成本，
-//   quan_quant 更新 parquet 后自动失效重读，永远没有陈旧副本。
+// - 不使用 hyparquet 的 asyncBufferFromFile（仅其 Node 入口提供，服务端
+//   构建产物按 platform:browser 打包时选中浏览器入口，该助手不存在）。
+//   这里自实现 AsyncBuffer，浏览器/Node 两种入口形态下行为一致。
+// - 进程内按"规范化路径+mtime+size"缓存解析结果：同进程多次调用零成本，
+//   quan_quant 更新 parquet 后自动失效重读，永远没有陈旧副本；
+//   不同数据目录不会互相串缓存。
 // - 优雅降级：QUAN_DATA_DIR 未配置、依赖缺失或文件读取失败时返回空 Map
 //   （带 reason），MA5 未知 → 首阴买点不触发（宁缺毋滥），不影响其他链路。
-// - MA5 口径：截至快照日（含）最近 5 个交易日的收盘均值；窗口内因子齐全时
-//   前复权到快照日（close × f_i / f_asOf），因子缺失退回未复权口径。
-//   停牌股（快照日无收盘）与不足 5 根 K 线的新股不产出 MA5。
+// - MA5 口径（严格性约定）：
+//   1. 数据必须覆盖快照日：数据截止日落后于快照日时返回空（带 reason），
+//      不把旧 MA5 当作当日均线使用；
+//   2. 窗口 5 根的复权因子齐全 → 前复权到快照日（close × f_i / f_asOf）；
+//      整股完全无因子（数据源未覆盖）→ 未复权口径（一致基准）；
+//      因子部分缺失 → 口径不明确，该股不产出 MA5，不静默混用两种口径；
+//   3. 停牌股（快照日无收盘）与不足 5 根 K 线的新股不产出 MA5。
 
-import { join } from "node:path";
-import { stat } from "node:fs/promises";
+import fs from "node:fs";
+import path from "node:path";
 import { safeError } from "../http.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -23,61 +31,101 @@ export function dailyDataDir(env) {
   return env?.QUAN_DATA_DIR || process.env.QUAN_DATA_DIR || null;
 }
 
+// ---------- AsyncBuffer：基于 node:fs 的字节区间读取 ----------
+// hyparquet 约定：{ byteLength, slice(start, end?) => ArrayBuffer | Promise }
+
+async function openAsyncBuffer(filePath) {
+  const handle = await fs.promises.open(filePath, "r");
+  const size = (await handle.stat()).size;
+  return {
+    byteLength: size,
+    async slice(start, end = size) {
+      const length = end - start;
+      if (length <= 0) return new ArrayBuffer(0);
+      if (start < 0 || end > size)
+        throw new Error(`文件读取越界：${filePath} [${start}, ${end})`);
+      const view = new Uint8Array(length);
+      let read = 0;
+      while (read < length) {
+        const { bytesRead } = await handle.read(
+          view,
+          read,
+          length - read,
+          start + read,
+        );
+        if (bytesRead <= 0)
+          throw new Error(`文件读取不足：${filePath} @${start + read}`);
+        read += bytesRead;
+      }
+      return view.buffer;
+    },
+    close: () => handle.close(),
+  };
+}
+
 // ---------- parquet 列读取：流式按行组归并，避免全量行对象落内存 ----------
 
-async function readColumns(path, columns) {
-  const { asyncBufferFromFile, parquetMetadataAsync, parquetRead } =
-    await import("hyparquet");
+async function readColumns(filePath, columns) {
+  const { parquetMetadataAsync, parquetRead } = await import("hyparquet");
   const { compressors } = await import("hyparquet-compressors");
-  const file = await asyncBufferFromFile(path);
-  const meta = await parquetMetadataAsync(file);
-  const rgRows = meta.row_groups.map((rg) => Number(rg.num_rows));
-  const rgStarts = [];
-  for (let acc = 0, i = 0; i < rgRows.length; i++) {
-    rgStarts.push(acc);
-    acc += rgRows[i];
-  }
-  const pending = new Map(); // rgIndex -> Map(column -> [{ start, data }])
-  const merged = new Map(columns.map((c) => [c, []]));
+  const file = await openAsyncBuffer(filePath);
+  try {
+    const meta = await parquetMetadataAsync(file);
+    const rgRows = meta.row_groups.map((rg) => Number(rg.num_rows));
+    const rgStarts = [];
+    for (let acc = 0, i = 0; i < rgRows.length; i++) {
+      rgStarts.push(acc);
+      acc += rgRows[i];
+    }
+    const pending = new Map(); // rgIndex -> Map(column -> [{ start, data }])
+    const merged = new Map(columns.map((c) => [c, []]));
 
-  await parquetRead({
-    file,
-    compressors,
-    columns,
-    onChunk({ columnName, columnData, rowStart }) {
-      let rg = rgStarts.length - 1;
-      while (rg > 0 && rowStart < rgStarts[rg]) rg--;
-      let bucket = pending.get(rg);
-      if (!bucket) {
-        bucket = new Map();
-        pending.set(rg, bucket);
-      }
-      let parts = bucket.get(columnName);
-      if (!parts) {
-        parts = [];
-        bucket.set(columnName, parts);
-      }
-      parts.push({ start: rowStart, data: columnData });
-      const expected = rgRows[rg];
-      const filled = (ps) => ps.reduce((s, p) => s + p.data.length, 0);
-      // 所有请求列都凑齐本行组后才归并（chunk 到达顺序是乱序的，
-      // 单列先到齐不代表行组可合并）
-      const ready = columns.every((col) => {
-        const ps = bucket.get(col);
-        return ps !== undefined && filled(ps) >= expected;
-      });
-      if (!ready) return;
-      for (const col of columns) {
-        const out = merged.get(col);
-        for (const part of bucket.get(col).slice().sort((a, b) => a.start - b.start))
-          for (let i = 0; i < part.data.length; i++) out.push(part.data[i]);
-      }
-      pending.delete(rg);
-    },
-  });
-  if (pending.size)
-    throw new Error(`parquet 列数据不完整：${path} 有 ${pending.size} 个行组未凑齐`);
-  return merged;
+    await parquetRead({
+      file,
+      compressors,
+      columns,
+      onChunk({ columnName, columnData, rowStart }) {
+        let rg = rgStarts.length - 1;
+        while (rg > 0 && rowStart < rgStarts[rg]) rg--;
+        let bucket = pending.get(rg);
+        if (!bucket) {
+          bucket = new Map();
+          pending.set(rg, bucket);
+        }
+        let parts = bucket.get(columnName);
+        if (!parts) {
+          parts = [];
+          bucket.set(columnName, parts);
+        }
+        parts.push({ start: rowStart, data: columnData });
+        const expected = rgRows[rg];
+        const filled = (ps) => ps.reduce((s, p) => s + p.data.length, 0);
+        // 所有请求列都凑齐本行组后才归并（chunk 到达顺序是乱序的，
+        // 单列先到齐不代表行组可合并）
+        const ready = columns.every((col) => {
+          const ps = bucket.get(col);
+          return ps !== undefined && filled(ps) >= expected;
+        });
+        if (!ready) return;
+        for (const col of columns) {
+          const out = merged.get(col);
+          for (const part of bucket
+            .get(col)
+            .slice()
+            .sort((a, b) => a.start - b.start))
+            for (let i = 0; i < part.data.length; i++) out.push(part.data[i]);
+        }
+        pending.delete(rg);
+      },
+    });
+    if (pending.size)
+      throw new Error(
+        `parquet 列数据不完整：${filePath} 有 ${pending.size} 个行组未凑齐`,
+      );
+    return merged;
+  } finally {
+    await file.close();
+  }
 }
 
 // ---------- 数据集解析与缓存 ----------
@@ -153,14 +201,16 @@ async function parseDataset(dailyPath, adjPath) {
 
 let cache = null; // { key, dataset }
 
-async function fileKey(path) {
-  const s = await stat(path);
-  return `${Math.round(s.mtimeMs)}-${s.size}`;
+// 缓存键必须包含规范化路径：仅 mtime+size 无法区分"两个目录里属性相同的文件"
+async function fileKey(resolvedPath) {
+  const s = await fs.promises.stat(resolvedPath);
+  return `${resolvedPath}@${Math.round(s.mtimeMs)}-${s.size}`;
 }
 
 export async function loadDailyDataset(dataDir) {
-  const dailyPath = join(dataDir, "daily.parquet");
-  const adjPath = join(dataDir, "adj_factor.parquet");
+  const dir = path.resolve(dataDir);
+  const dailyPath = path.join(dir, "daily.parquet");
+  const adjPath = path.join(dir, "adj_factor.parquet");
   const key = `${await fileKey(dailyPath)}|${await fileKey(adjPath)}`;
   if (cache?.key === key) return cache.dataset;
   const dataset = await parseDataset(dailyPath, adjPath);
@@ -183,29 +233,22 @@ function lowerBound(arr, target) {
   return found;
 }
 
-function lastAtOrBefore(dates, dateIdx, snapshotDate) {
-  if (dateIdx.has(snapshotDate)) return dateIdx.get(snapshotDate);
-  let lo = 0,
-    hi = dates.length - 1,
-    found = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (dates[mid] <= snapshotDate) {
-      found = mid;
-      lo = mid + 1;
-    } else hi = mid - 1;
-  }
-  return found;
-}
-
 export function computeMa5ByCode(dataset, snapshotDate) {
   const { dates, dateIdx, codes } = dataset;
   if (!dates.length) return { ma5ByCode: new Map(), asOf: null };
-  let end = dates.length - 1;
-  if (snapshotDate && DATE_RE.test(snapshotDate)) {
-    end = lastAtOrBefore(dates, dateIdx, snapshotDate);
-    if (end < 0) return { ma5ByCode: new Map(), asOf: null }; // 快照早于数据起点
-  }
+  // 严格日期一致：数据必须覆盖快照日。数据滞后（快照日晚于数据截止）时
+  // 返回空并说明原因，绝不把旧 MA5 当作当日均线——首阴判断对当日口径敏感。
+  if (snapshotDate && DATE_RE.test(snapshotDate) && !dateIdx.has(snapshotDate))
+    return {
+      ma5ByCode: new Map(),
+      asOf: dates[dates.length - 1] ?? null,
+      reason: `日线数据未覆盖快照日 ${snapshotDate}（数据截止 ${
+        dates[dates.length - 1] ?? "空"
+      }），MA5 不可用`,
+    };
+  const end = snapshotDate && dateIdx.has(snapshotDate)
+    ? dateIdx.get(snapshotDate)
+    : dates.length - 1;
   if (end < 4) return { ma5ByCode: new Map(), asOf: dates[end] ?? null };
   const asOf = dates[end];
   const ma5ByCode = new Map();
@@ -213,21 +256,23 @@ export function computeMa5ByCode(dataset, snapshotDate) {
     // 快照日必须有收盘（停牌 / 退市股不产出 MA5）
     const p = lowerBound(s.dates, end);
     if (p < 0 || p < 4) continue;
-    const fEnd = s.adjs[p];
-    let sumAdj = 0,
-      sumRaw = 0,
-      allAdjusted = Number.isFinite(fEnd) && fEnd > 0;
+    // 复权口径判定（三选一，不静默混用）：
+    //   - 窗口 5 根因子齐全 → 前复权到 asOf；
+    //   - 窗口完全没有因子（数据源未覆盖该股复权信息）→ 未复权口径；
+    //   - 因子部分缺失 → 口径不明确，该股不产出 MA5。
+    let missing = 0;
     for (let k = p - 4; k <= p; k++) {
-      const c = s.closes[k];
-      sumRaw += c;
-      if (allAdjusted) {
-        const f = s.adjs[k];
-        if (Number.isFinite(f) && f > 0) sumAdj += (c * f) / fEnd;
-        else allAdjusted = false;
-      }
+      const f = s.adjs[k];
+      if (!Number.isFinite(f) || f <= 0) missing++;
     }
-    const ma5 = (allAdjusted ? sumAdj : sumRaw) / 5;
-    ma5ByCode.set(code, Math.round(ma5 * 1000) / 1000);
+    if (missing > 0 && missing < 5) continue; // 口径不明确，标记不可用
+    let sum = 0;
+    const fEnd = s.adjs[p];
+    for (let k = p - 4; k <= p; k++) {
+      sum +=
+        missing === 5 ? s.closes[k] : (s.closes[k] * s.adjs[k]) / fEnd;
+    }
+    ma5ByCode.set(code, Math.round((sum / 5) * 1000) / 1000);
   }
   return { ma5ByCode, asOf };
 }
