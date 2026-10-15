@@ -1,8 +1,5 @@
 import { database } from "../storage/database.js";
-import {
-  getMa5ByCode,
-  getStockFeaturesByCode,
-} from "./daily-closes.js";
+import { getMa5ByCode, getStockFeaturesByCode } from "./daily-closes.js";
 export { database } from "../storage/database.js";
 export function beijingDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -133,6 +130,9 @@ export async function saveSnapshot(env, market, weights) {
     market: {
       rows: market.rows,
       broken: market.broken ?? null,
+      // 炸板池原始行随快照归档：出池持仓的炸板次数来源；旧归档无此
+      // 字段时按缺失处理（对应信号保持未知，不补造）。
+      brokenRows: market.brokenRows ?? null,
       previous: market.previous ?? null,
       fetchedAt: market.fetchedAt ?? createdAt,
     },

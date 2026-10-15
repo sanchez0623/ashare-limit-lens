@@ -34,6 +34,15 @@ import {
   tradingAdjacency,
 } from "../domain/historical-input.js";
 import { openHistoryStore } from "../storage/history.js";
+import {
+  getStockFeaturesByCode,
+  getExitEodRowsByCode,
+} from "./daily-closes.js";
+import {
+  phaseShiftOf,
+  sectorDropsOf,
+  exitBreaksFromBrokenRows,
+} from "./exit-context.js";
 
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -198,7 +207,7 @@ export async function runBacktest(
     },
   });
   try {
-    return await runBacktestInner(store, runId, dataset, {
+    return await runBacktestInner(env, store, runId, dataset, {
       strategyParams,
       feeConfig,
       book,
@@ -216,6 +225,7 @@ export async function runBacktest(
   }
 }
 async function runBacktestInner(
+  env,
   store,
   runId,
   dataset,
@@ -283,6 +293,35 @@ async function runBacktestInner(
     }
     let plan;
     try {
+      // 方案 5 卖出上下文：回测与主账户/影子共用同一构建口径。历史重构
+      // payload 无昨日涨停池原始行 → 用上一评分日规范化 stocks 转换为
+      // 昨日池形状；无炸板池归档 → 出池持仓炸板信号保持未知（不猜）。
+      // QUAN_DATA_DIR 未配置或未覆盖信号日时特征/EOD 为空，信号跳过。
+      const previousPayload = index > 0 ? scores[index - 1].payload : null;
+      const [featuresResult, eodResult] = await Promise.all([
+        getStockFeaturesByCode(env, signalDate),
+        getExitEodRowsByCode(env, signalDate),
+      ]);
+      const exitContext = {
+        exitFeaturesByCode: featuresResult.featuresByCode,
+        exitEodRowsByCode: eodResult.rowsByCode,
+        exitBreaksByCode: exitBreaksFromBrokenRows(
+          snapshot?.market?.brokenRows,
+        ),
+        sectorLimitDrops: sectorDropsOf(
+          snapshot?.stocks,
+          previousPayload?.stocks?.map((stock) => ({
+            hybk: stock.sector,
+            ylbc: stock.height,
+          })) ?? [],
+        ),
+        phaseShift: phaseShiftOf(
+          snapshot?.cycle ?? snapshot?.marketSummary?.cycle?.phase ?? null,
+          previousPayload?.cycle ??
+            previousPayload?.marketSummary?.cycle?.phase ??
+            null,
+        ),
+      };
       plan = createPlan(
         snapshot,
         book,
@@ -294,6 +333,7 @@ async function runBacktestInner(
           originalScoreLookup: (code) => scoreHistory.get(code) ?? null,
           selectionPolicy,
           snapshotDigest: await selectionSnapshotDigest(snapshot),
+          ...exitContext,
         },
       );
     } catch (error) {

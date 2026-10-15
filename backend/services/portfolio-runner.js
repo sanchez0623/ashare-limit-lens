@@ -12,6 +12,7 @@ import {
   closeSession,
 } from "../domain/realtime.js";
 import { createPlan, defensivePlan } from "../domain/trading.js";
+import { buildExitContext } from "./exit-context.js";
 import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
 import {
   latestPolicyBundle,
@@ -166,12 +167,29 @@ export async function freezePortfolioPlan(
     snapshot?.date ?? account.book.lastDate,
     account.book.positions.map((position) => position.code),
   );
+  // 方案 5 卖出上下文与主账户同口径冻结：影子计划对同一快照得到同一
+  // 卖出决策（日线特征/EOD 行/炸板池/板块退潮/情绪切换）。构建失败
+  // 降级为无上下文（对应信号跳过），不阻断计划冻结。
+  let exitContext = null;
+  if (snapshot) {
+    try {
+      exitContext = await buildExitContext({
+        env,
+        db: shadows.db,
+        snapshot,
+        date: snapshot.date,
+      });
+    } catch {
+      exitContext = null;
+    }
+  }
   const plan = snapshot
     ? createPlan(snapshot, account.book, strategy, strategyVersion, now, {
         executionCostPolicy,
         originalScoreLookup,
         selectionPolicy,
         snapshotDigest: await selectionSnapshotDigest(snapshot),
+        ...(exitContext ?? {}),
       })
     : defensivePlan(
         account.book.lastDate,

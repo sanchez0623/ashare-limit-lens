@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   computeMa5ByCode,
   computeStockFeaturesByCode,
+  computeExitEodRowsByCode,
   getMa5ByCode,
 } from "../backend/services/daily-closes.js";
 import { analyze, normalize } from "../shared/scoring.js";
@@ -354,6 +355,49 @@ test("特征：前 19 根 volume 全部有效 → vol20Avg 为窗口均值，当
   // 前 19 根（D5..D23）均为 100
   assert.equal(f.vol20Avg, 100);
   assert.equal(f.todayVolume, 145);
+});
+
+// ---------- EOD 行涨幅口径（P2：无因子股票 change 恒 null） ----------
+
+test("EOD 行：无因子覆盖的股票按未复权价计算涨幅（修复 change 恒 null）", () => {
+  // 复现 Parquet 实测：价格 9.9 → 10、量 100 → 200。修复前
+  // hasFactor=false 仍要求昨日因子有效 → change 恒 null → 放量滞涨
+  // 漏检，仍做正向 T。修复后无因子分支按一致未复权口径计算。
+  const series = F25.map((d, i) => [
+    d,
+    i === 24 ? 10 : 9.9, // 昨收 9.9，今收 10
+    undefined, // 整股无因子覆盖
+    10.2,
+    9.8,
+    i === 24 ? 200 : 100,
+  ]);
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { rowsByCode } = computeExitEodRowsByCode(dataset, F25[24]);
+  const row = rowsByCode.get("600001");
+  assert.ok(row, "应产出 EOD 行");
+  assert.equal(row.close, 10);
+  assert.ok(
+    Math.abs(row.change - 1.01) < 1e-9,
+    `涨幅应按未复权价计算为 1.01%，实际 ${row.change}`,
+  );
+  assert.equal(row.volume, 200);
+  assert.equal(row.limitUpPct, 10);
+});
+
+test("EOD 行：有因子但昨日因子缺失 → change 保持未知（口径不明确不猜）", () => {
+  const series = F25.map((d, i) => [
+    d,
+    10,
+    i === 24 ? 1 : undefined, // 仅快照日有因子，昨日缺失
+    10.2,
+    9.8,
+    100,
+  ]);
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { rowsByCode } = computeExitEodRowsByCode(dataset, F25[24]);
+  const row = rowsByCode.get("600001");
+  assert.ok(row);
+  assert.equal(row.change, null, "因子口径不明确时涨幅保持未知");
 });
 
 test("数据目录存在时烟雾测试（读取真实 parquet）", async (t) => {

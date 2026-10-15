@@ -75,6 +75,9 @@ export async function marketData(date) {
     fetchedAt: new Date().toISOString(),
     rows: main.value.pool,
     broken: broken.status === "fulfilled" ? broken.value.pool.length : null,
+    // 炸板池原始行：出池持仓的炸板次数来源（方案 5 炸板不回封信号）；
+    // broken 仅保留家数供封板率/展示，不丢个股记录。
+    brokenRows: broken.status === "fulfilled" ? broken.value.pool : null,
     previous:
       yesterday.status === "fulfilled" && yesterday.value.pool.length
         ? yesterday.value.pool

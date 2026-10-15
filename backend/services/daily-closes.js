@@ -534,15 +534,17 @@ export function computeExitEodRowsByCode(dataset, snapshotDate) {
       open = hasFactor ? (s.opens[p] * s.adjs[p]) / fEnd : s.opens[p];
     if (Number.isFinite(s.highs[p]))
       high = hasFactor ? (s.highs[p] * s.adjs[p]) / fEnd : s.highs[p];
-    if (
-      p > 0 &&
-      Number.isFinite(s.adjs[p - 1]) &&
-      Number.isFinite(s.closes[p - 1])
-    ) {
+    if (p > 0 && Number.isFinite(s.closes[p - 1])) {
+      // 涨幅口径与价格一致：无因子覆盖的股票按未复权价直接计算（一致
+      // 未复权基准，跨日可比）；有因子但昨日因子缺失 → 口径不明确，
+      // 保持未知（不猜）。
       const prevClose = hasFactor
-        ? (s.closes[p - 1] * s.adjs[p - 1]) / fEnd
+        ? Number.isFinite(s.adjs[p - 1])
+          ? (s.closes[p - 1] * s.adjs[p - 1]) / fEnd
+          : null
         : s.closes[p - 1];
-      if (prevClose > 0) change = (close / prevClose) * 100 - 100;
+      if (prevClose !== null && prevClose > 0)
+        change = (close / prevClose) * 100 - 100;
     }
     const volume = s.volumes?.[p];
     rowsByCode.set(code, {

@@ -456,3 +456,65 @@ test("重新计算选择声明不能伪造信号日情绪或把连板订单移�
     /实际冻结时间/,
   );
 });
+
+// P1-2（第二轮）：核验器重算必须读取计划冻结的卖出上下文。复现用户
+// 验收用例：合法程序清仓计划被核验器以"重算不一致"拒绝——重算不带
+// 冻结上下文时，出池持仓的 EXIT 回退为做 T，orders 与原计划不一致。
+test("核验器读取冻结卖出上下文：合法清仓程序计划不再被报重算不一致", () => {
+  const book = newBook(100000);
+  book.lastDate = dateAt(0);
+  book.positions = [
+    {
+      code: "600099", // 跌出当日涨停池（合成池只有 600001/600003）
+      name: "跌出池样本",
+      sector: "测试行业",
+      heldDays: 0,
+      markCents: 1000,
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const source = sample();
+  const strategy = {
+    ...structuredClone(BASE_STRATEGY),
+    program: familyProgram("relay-board-v1"),
+  };
+  const plan = createPlan(
+    source,
+    book,
+    strategy,
+    "test-program",
+    `${dateAt(0)}T07:10:00.000Z`,
+    {
+      exitEodRowsByCode: new Map([
+        [
+          "600099",
+          {
+            close: 10,
+            open: 10.2,
+            high: 10.3,
+            change: -3.0,
+            volume: null,
+            limitUpPct: 10,
+          },
+        ],
+      ]),
+      exitFeaturesByCode: new Map([["600099", { ma5: 10.8 }]]),
+    },
+  );
+  assert.ok(plan.strategyProgram, "应为程序化计划");
+  const exitOrder = plan.orders.find((o) => o.code === "600099");
+  assert.equal(exitOrder?.action, "EXIT", "出池持仓应按冻结上下文清仓");
+  // 修复前：核验器重算不带 exitContextFrozen，出池持仓回退做 T →
+  // orders 不一致 → 误报"重算不一致"。修复后重放冻结上下文，重算通过。
+  assertProgramSnapshot(plan, source, book);
+});

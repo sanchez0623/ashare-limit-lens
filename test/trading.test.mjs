@@ -1047,3 +1047,73 @@ test("P1-2：exitContextFrozen 反序列化复现同一决策；缺失上下文�
   // 序列化往返安全（JSON.stringify）：plan 直接入库时不能因 Map/undefined 崩。
   assert.doesNotThrow(() => JSON.stringify(original));
 });
+
+// P1-1（第二轮）：出池持仓的炸板次数接入真实炸板池记录，炸板不回封
+// 信号不再漏检。复现用户验收用例：炸板 3 次、收盘涨 5%（未回封），
+// 原实现 breaks 固定 null → 信号跳过，仍生成正向做 T。
+test("P1-1：出池持仓接入炸板池记录，炸板 3 次未回封触发清仓", () => {
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600099", // 不在 snapshot.stocks，但在当日炸板池
+      name: "炸板样本",
+      sector: "测试行业",
+      heldDays: 0,
+      markCents: 1050, // 收盘 10.5 元，涨 5%
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const snap = snapshot(dateAt(1));
+  const plan = createPlan(snap, book, BASE_STRATEGY, "v", "now", {
+    exitEodRowsByCode: new Map([
+      [
+        "600099",
+        {
+          close: 10.5,
+          open: 10.4,
+          high: 11.0, // 盘中触及涨停但收盘未回封
+          change: 5.0,
+          volume: null,
+          limitUpPct: 10,
+        },
+      ],
+    ]),
+    exitBreaksByCode: new Map([["600099", 3]]),
+  });
+  const order = plan.orders.find((o) => o.code === "600099");
+  assert.ok(order, "应生成卖出订单");
+  assert.equal(order.action, "EXIT");
+  assert.match(order.reason, /炸板/);
+  assert.match(order.reason, /3 次/);
+  // 炸板记录随上下文冻结，重算可复现同一决策
+  assert.equal(plan.exitContext?.breaks?.["600099"], 3);
+  // 不在炸板池的出池持仓：炸板次数保持未知（不猜 0），信号跳过
+  const noBreaks = createPlan(snap, book, BASE_STRATEGY, "v", "now", {
+    exitEodRowsByCode: new Map([
+      [
+        "600099",
+        {
+          close: 10.5,
+          open: 10.4,
+          high: 11.0,
+          change: 5.0,
+          volume: null,
+          limitUpPct: 10,
+        },
+      ],
+    ]),
+  });
+  const holdOrder = noBreaks.orders.find((o) => o.code === "600099");
+  assert.notEqual(holdOrder?.action, "EXIT");
+  assert.equal(noBreaks.exitContext?.breaks, undefined);
+});

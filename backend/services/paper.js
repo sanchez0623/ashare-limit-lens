@@ -18,12 +18,7 @@ import {
 } from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
-import {
-  getStockFeaturesByCode,
-  getExitEodRowsByCode,
-} from "./daily-closes.js";
-import { sectorLimitUpDrops } from "../../shared/exit-signals.js";
-import { CYCLE_PHASES } from "../../shared/sentiment-cycle.js";
+import { buildExitContext } from "./exit-context.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { calibrationForPolicy } from "./execution-calibration.js";
@@ -189,60 +184,18 @@ async function settlePaperDay(env, date) {
   account = await repository.account();
   const snapshot = await repository.snapshot(date);
   let nextPlan = await repository.plan(date);
-  // 方案 5 卖出信号上下文（仅生成新计划时计算；已有冻结计划不重写）：
-  //   exitFeaturesByCode：日线历史特征（ma5/vol20Avg/todayVolume/high20Prev）；
-  //   sectorLimitDrops：板块退潮集合（今日 vs 昨日涨停池同板块降幅 ≥50%）；
-  //   phaseShift：情绪周期是否由高潮/上升跌入退潮/冰点（昨日为参照）。
+  // 方案 5 卖出上下文（仅生成新计划时计算；已有冻结计划不重写）：
+  // 与影子组合/回测共用 buildExitContext 构建口径（日线历史特征、当日
+  // EOD 行、炸板池记录、板块退潮、情绪切换），同一快照在任一链路得到
+  // 同一上下文，卖出决策可跨链路复现。
   let exitContext = null;
   if (snapshot && !nextPlan) {
-    const { featuresByCode } = await getStockFeaturesByCode(env, date);
-    // 持仓股跌出涨停池时也能拿到当日日线 EOD 行（开/收/高/涨幅/量/
-    // 板块涨停阈值），卖出检测器不依赖个股是否在池。
-    const { rowsByCode: exitEodRowsByCode } = await getExitEodRowsByCode(
+    exitContext = await buildExitContext({
       env,
+      db: repository.db,
+      snapshot,
       date,
-    );
-    const previousRows = snapshot.market?.previous ?? [];
-    const sectorLimitDrops = sectorLimitUpDrops(
-      (snapshot.stocks ?? []).map((stock) => ({
-        ...stock,
-        sector: stock.sector ?? "未分类",
-        height: stock.height ?? 0,
-      })),
-      previousRows,
-    );
-    const todayPhase = snapshot.cycle ?? snapshot.marketSummary?.cycle?.phase;
-    const yesterdayRow = await repository
-      .history("snapshots", 60)
-      .then(
-        (rows) =>
-          rows
-            .map((row) => ({
-              date: row.trade_date,
-              payload: JSON.parse(row.payload),
-            }))
-            .filter((row) => row.date < date)
-            .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null,
-      )
-      .catch(() => null);
-    const yesterdayPhase =
-      yesterdayRow?.payload?.cycle ??
-      yesterdayRow?.payload?.marketSummary?.cycle?.phase ??
-      null;
-    // 情绪切换：昨日在高潮/上升期，今日退潮/冰点 → 主动卖出信号
-    const prevHot =
-      yesterdayPhase === CYCLE_PHASES.CLIMAX ||
-      yesterdayPhase === CYCLE_PHASES.RISING;
-    const todayCold =
-      todayPhase === CYCLE_PHASES.EBBING ||
-      todayPhase === CYCLE_PHASES.FREEZING;
-    const phaseShift = prevHot && todayCold;
-    exitContext = {
-      exitFeaturesByCode: featuresByCode,
-      exitEodRowsByCode,
-      sectorLimitDrops,
-      phaseShift,
-    };
+    });
   }
   if (!nextPlan) {
     // 新政策从下一个尚未冻结的计划生效（§3.2）：计划冻结完整政策 bundle。

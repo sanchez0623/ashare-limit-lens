@@ -195,28 +195,36 @@ export function scoreSignals(snapshot, strategy, policy = selectionPolicy()) {
 
 // 卖出上下文序列化：Map → 纯对象（JSON.stringify 安全）。无任何上下文
 // 时返回 null；phaseShift 仅在有板块/个股上下文时才写 true（否则重算
-// 会把无上下文的普通计划误判为退潮期）。
+// 会把无上下文的普通计划误判为退潮期）。特征/EOD 行/炸板记录只保留
+// 决策实际读取的持仓代码（检测器仅按持仓查找），避免把全市场日线
+// 特征塞进计划 payload。
 function freezeExitContext({
   exitFeaturesByCode,
   exitEodRowsByCode,
+  exitBreaksByCode,
   sectorLimitDrops,
   phaseShift,
+  codes,
 }) {
-  const features =
-    exitFeaturesByCode && exitFeaturesByCode.size
-      ? Object.fromEntries(exitFeaturesByCode)
-      : null;
-  const eodRows =
-    exitEodRowsByCode && exitEodRowsByCode.size
-      ? Object.fromEntries(exitEodRowsByCode)
-      : null;
+  const pick = (map) => {
+    if (!map?.size) return null;
+    const entries = [...map.entries()].filter(([code]) =>
+      codes ? codes.has(code) : true,
+    );
+    return entries.length ? Object.fromEntries(entries) : null;
+  };
+  const features = pick(exitFeaturesByCode);
+  const eodRows = pick(exitEodRowsByCode);
+  const breaks = pick(exitBreaksByCode);
   const sectorDrops = sectorLimitDrops?.size
     ? [...sectorLimitDrops.keys()].sort()
     : null;
-  if (!features && !eodRows && !sectorDrops && !phaseShift) return null;
+  if (!features && !eodRows && !breaks && !sectorDrops && !phaseShift)
+    return null;
   return {
     ...(features ? { features } : {}),
     ...(eodRows ? { eodRows } : {}),
+    ...(breaks ? { breaks } : {}),
     ...(sectorDrops ? { sectorDrops } : {}),
     ...(phaseShift ? { phaseShift: true } : {}),
   };
@@ -242,6 +250,9 @@ export function createPlan(
   // 全部为可选上下文；缺失时对应信号跳过，不猜。
   let exitFeaturesByCode = options.exitFeaturesByCode ?? null;
   let exitEodRowsByCode = options.exitEodRowsByCode ?? null;
+  // 炸板池记录：出池持仓的炸板次数来自当日炸板池归档（涨停池行只覆盖
+  // 封住涨停的股票）；不在炸板池的出池持仓保持未知（null，不猜 0）。
+  let exitBreaksByCode = options.exitBreaksByCode ?? null;
   let sectorLimitDrops = options.sectorLimitDrops ?? new Map();
   let phaseShift = options.phaseShift === true;
   // 冻结态：序列化后的上下文，供重算 / 影子 / 回测 / 核验复现同一决策。
@@ -255,6 +266,9 @@ export function createPlan(
       : null;
     exitEodRowsByCode = exitContextFrozen.eodRows
       ? new Map(Object.entries(exitContextFrozen.eodRows))
+      : null;
+    exitBreaksByCode = exitContextFrozen.breaks
+      ? new Map(Object.entries(exitContextFrozen.breaks))
       : null;
     sectorLimitDrops = new Map(
       (exitContextFrozen.sectorDrops ?? []).map((sector) => [sector, true]),
@@ -417,7 +431,7 @@ export function createPlan(
     //   - 已在池：以评分 normalize 行（含真实 breaks / isLimitUp）为准；
     //   - 不在池：用 exitEodRowsByCode 推算 close/open/high/change；
     //     isLimitUp 由 change 距 limitUpPct 阈值推断（容差 0.3%）；
-    //     breaks 无法从日线恢复 → 置 null（炸板不回封信号跳过，不猜）。
+    //     breaks 取当日炸板池归档记录，不在池内也保持未知（null，不猜）。
     let exitRow = signal ?? null;
     if (!exitRow) {
       const eod = exitEodRowsByCode?.get(position.code);
@@ -437,7 +451,7 @@ export function createPlan(
           open: eod.open,
           high: eod.high,
           change,
-          breaks: null, // 日线无法还原盘中炸板次数
+          breaks: exitBreaksByCode?.get(position.code) ?? null,
           isLimitUp,
         };
       }
@@ -770,8 +784,10 @@ export function createPlan(
     exitContext: freezeExitContext({
       exitFeaturesByCode,
       exitEodRowsByCode,
+      exitBreaksByCode,
       sectorLimitDrops,
       phaseShift,
+      codes: holdings,
     }),
     orders: carriedPlanOrders(
       orders,
@@ -806,6 +822,9 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
     snapshotDigest: plan.selectionAudit?.snapshotDigest,
     originalScoreLookup: (code) =>
       plan.orders.find((order) => order.code === code)?.originalScore ?? null,
+    // 重算复用计划冻结的卖出上下文（方案 5）：EXIT 决策由冻结输入复现，
+    // 不按当前环境重推（缺失时出池持仓回退做 T，会误报"重算不一致"）。
+    ...(plan.exitContext ? { exitContextFrozen: plan.exitContext } : {}),
   };
   const referenceBook = {
     ...initialBook,
