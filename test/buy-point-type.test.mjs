@@ -27,27 +27,32 @@ test("一字板（低换手）不触发打板", () => {
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.LIMIT_UP_MOMENTUM);
 });
 
-test("炸板低吸：涨停后回落到 3%~7%", () => {
+test("炸板低吸：涨停后从涨停价回落 3%~7%（change=9.5%, boardLimit=10%）", () => {
   const result = classifyBuyPoint({
     isLimitUp: false,
     breaks: 2,
-    change: 5,
+    change: 9.5,
+    boardLimit: 10,
   });
   assert.equal(result.primary.type, BUY_POINT_TYPES.BROKEN_BOARD_DIP);
 });
 
-test("炸板但回落到 1%（不够安全垫）不触发", () => {
+test("炸板但回落到 1%（change=9.9%，不够安全垫）不触发", () => {
   const result = classifyBuyPoint({
     isLimitUp: false,
     breaks: 2,
-    change: 1,
+    change: 9.9,
+    boardLimit: 10,
   });
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.BROKEN_BOARD_DIP);
 });
 
-test("首阴低吸：3连板后首根小阴线", () => {
+test("首阴低吸：3连板后首根实体阴线（开高收低，未破5日线）", () => {
   const result = classifyBuyPoint({
     height: 3,
+    prevHeight: 2,
+    open: 11,
+    close: 10.5,
     change: -3,
     ma5Broken: false,
   });
@@ -57,8 +62,22 @@ test("首阴低吸：3连板后首根小阴线", () => {
 test("首阴但破5日线不触发", () => {
   const result = classifyBuyPoint({
     height: 3,
+    prevHeight: 2,
+    open: 11,
+    close: 10.5,
     change: -3,
-    ma5Broken: true,
+    ma5: 11, // MA5 高于收盘 → 破 5 日线
+  });
+  assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
+});
+
+test("首阴但没有昨日连板（prevHeight 不足）不触发", () => {
+  const result = classifyBuyPoint({
+    height: 3,
+    prevHeight: 0,
+    open: 11,
+    close: 10.5,
+    change: -3,
   });
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
 });

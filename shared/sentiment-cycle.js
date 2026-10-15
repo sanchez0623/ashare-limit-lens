@@ -7,13 +7,16 @@
 //
 // 设计原则：
 // 1. 纯函数、不读数据库，可被 scoring / risk-limits / 赛马任意复用。
-// 2. 缺数据时降级：缺失分项按中性 0.5 计，不抛错。
+// 2. 缺数据时降级：缺失分项按中性 0.5 计，不抛错；但"炸板数缺失"
+//    不能被解释为"没有炸板"，必须保留未知状态以避免封板率被高估。
 // 3. 仓位闸门是"上限"而非"目标"——用户/策略可以更保守，不能更激进。
 // 4. 阈值与 skill 文档对齐：
 //    上升期 S>=0.70 仓位上限 0.80
 //    高潮期 0.50<=S<0.70 仓位上限 0.50
 //    退潮期 0.30<=S<0.50 仓位上限 0.20
 //    冰点期 S<0.30 仓位上限 0.00
+// 5. 高潮期有独立硬触发：高度足够高（>=7 板）且涨停数足够多（>=60），
+//    无论子项加权分多高都直接归高潮，避免"过热被误判为上升期"。
 
 export const CYCLE_PHASES = Object.freeze({
   RISING: "rising",
@@ -46,7 +49,9 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v));
 //  - premium: 昨日涨停今日平均溢价率。正=赚钱效应好，负=亏钱效应扩散。
 function subscores(input) {
   const limitUp = Number.isFinite(input.limitUp) ? input.limitUp : 0;
-  const broken = Number.isFinite(input.broken) ? input.broken : 0;
+  // 炸板数缺失（null/undefined/NaN）时不强制视为 0——保留 null 让
+  // sealRate 走"未知"分支给中性分，否则会把缺数据误判为封板率满分。
+  const broken = Number.isFinite(input.broken) ? input.broken : null;
   const limitDown = Number.isFinite(input.limitDown) ? input.limitDown : 0;
   const height = Number.isFinite(input.height) ? input.height : 0;
   const heightAvg5 = Number.isFinite(input.heightAvg5)
@@ -58,10 +63,14 @@ function subscores(input) {
   let limitUpScore = clamp01(limitUp / 80);
   if (limitDown > limitUp && limitUp > 0) limitUpScore *= 0.5;
 
-  // 封板率：分母为 0 时返回 null（中性）。
-  const sealDenom = limitUp + broken;
-  const sealRate = sealDenom > 0 ? limitUp / sealDenom : null;
-  const sealScore = sealRate === null ? 0.5 : clamp01((sealRate - 0.4) / 0.4);
+  // 封板率：炸板数未知时不给满分，走中性 0.5（等同无信号）。
+  // 分母为 0（无涨停也无炸板）同样返回 null。
+  let sealRate = null;
+  if (broken !== null && limitUp + broken > 0) {
+    sealRate = limitUp / (limitUp + broken);
+  }
+  const sealScore =
+    sealRate === null ? 0.5 : clamp01((sealRate - 0.4) / 0.4);
 
   // 高度趋势：无历史均值时按高度本身估计（>=5 板为强）。
   let heightScore;
@@ -97,7 +106,17 @@ function compose(subs) {
   return totalW > 0 ? acc / totalW : 0.5;
 }
 
-function phaseOf(score) {
+// 高潮硬触发：高度 ≥7 板且涨停 ≥60 家，无论加权分多高都归高潮期。
+// 这对应 skill 中"涨停百股、高度打开"的过热描述——此时再按高分判上升期
+// 会错过退潮前的最后风险窗口。
+function isClimaxOverride(input) {
+  const height = Number.isFinite(input.height) ? input.height : 0;
+  const limitUp = Number.isFinite(input.limitUp) ? input.limitUp : 0;
+  return height >= 7 && limitUp >= 60;
+}
+
+function phaseOf(score, input) {
+  if (isClimaxOverride(input)) return CYCLE_PHASES.CLIMAX;
   if (score >= 0.7) return CYCLE_PHASES.RISING;
   if (score >= 0.5) return CYCLE_PHASES.CLIMAX;
   if (score >= 0.3) return CYCLE_PHASES.EBBING;
@@ -109,7 +128,7 @@ function phaseOf(score) {
 export function classifySentimentCycle(input = {}) {
   const subs = subscores(input);
   const score = Math.round(compose(subs) * 100) / 100;
-  const phase = phaseOf(score);
+  const phase = phaseOf(score, input);
   const maxExposure = CYCLE_MAX_EXPOSURE[phase];
   const reason = describe(input, subs, phase);
   return {
@@ -134,16 +153,15 @@ function describe(input, subs, phase) {
   return `判定为${CYCLE_LABELS[phase]}：${bits.join("，")}。`;
 }
 
-// 便利函数：在已知 riskLimits 上叠加情绪闸门，返回被收紧后的版本。
-// 取两者较小值，保证不突破原计划上限。
+// 便利函数：在已知 riskLimits 上叠加情绪闸门。
+// 设计：不直接改写 riskLimits.maxGrossExposure（normalizeRiskLimits 禁止 0
+// 或过低值，冰点期会报错）。而是新增独立的 effectiveExposureCap 字段，
+// 由调用方在计算实际敞口上限时取 min(maxGrossExposure, effectiveExposureCap)。
+// 这样既保留账户硬限制的合法性，又让周期闸门生效。
 export function applyCycleGate(riskLimits, cycle) {
   if (!riskLimits || !cycle) return riskLimits;
-  const capped = Math.min(
-    riskLimits.maxGrossExposure ?? 1,
-    cycle.maxGrossExposure,
-  );
   return {
     ...riskLimits,
-    maxGrossExposure: capped,
+    effectiveExposureCap: cycle.maxGrossExposure,
   };
 }

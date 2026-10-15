@@ -62,6 +62,10 @@ export function normalize(row) {
     name: String(row.n || ""),
     sector: String(row.hybk || "未分类"),
     price: num(row.p) === null ? null : Number(row.p) / 1000,
+    // 买点分类器需要开/收/最高价做 K 线阴阳校验，缺字段时为 null。
+    open: num(row.o) === null ? null : Number(row.o) / 1000,
+    close: num(row.p) === null ? null : Number(row.p) / 1000,
+    high: num(row.h) === null ? null : Number(row.h) / 1000,
     change: num(row.zdp),
     amount: num(row.amount),
     floatCap: num(row.ltsz),
@@ -274,11 +278,15 @@ export function analyze(
   // 昨日同代码行作为 prevRow 传入，供买点分类器计算 prevChange/prevBreaks。
   const prevByCode = previous ? new Map(previous.map((r) => [r.code, r])) : null;
   // 补齐买点分类器需要的派生字段：isLimitUp / boardLimit / openChange。
+  // isLimitUp 用 boardLimit 感知判断：创业板/科创板 20% 涨停不能按 9.7% 一刀切。
+  // 判定条件：change >= boardLimit - 0.3（容差），且有首封时间或连板数 >=1。
   const enriched = clean.map((r) => {
     const change = num(r.change);
-    const isLimitUp =
-      change !== null && change >= 9.7 && (r.first !== null || r.height >= 1);
     const boardLimit = r.boardLimit ?? (r.code?.startsWith("30") ? 20 : 10);
+    const isLimitUp =
+      change !== null &&
+      change >= boardLimit - 0.3 &&
+      (r.first !== null || (r.height ?? 0) >= 1);
     const openChange = num(r.openChange);
     return {
       ...r,

@@ -13,15 +13,21 @@
 // 字段说明（与 shared/scoring.js normalize 对齐）：
 //  - isLimitUp: 是否当日涨停（收盘封板）
 //  - change: 当日涨跌幅 (%)
+//  - open: 当日开盘价（元）
+//  - close: 当日收盘价（元），缺省等于 price
+//  - high: 当日最高价（元）
 //  - prevChange: 昨日涨跌幅 (%)
-//  - prevPrevChange: 前日涨跌幅 (%)
+//  - prevOpen: 昨日开盘价（元）
+//  - prevClose: 昨日收盘价（元）
+//  - prevHeight: 昨日连板数
+//  - prevBreaks: 昨日炸板次数
 //  - height: 当前连板数（涨停股）
 //  - breaks: 当日炸板次数
 //  - first: 首次封板时间 HHMMSS（整数）
 //  - last: 最后一次封板时间 HHMMSS
 //  - openChange: 当日开盘相对昨收的涨跌幅 (%)（竞价低开幅度）
 //  - intradayDrawdownFromHigh: 当日最高价到当前/收盘的回落幅度 (%)
-//  - ma5Broken: 当日收盘是否跌破 5 日均线
+//  - ma5: 当日 5 日均线值（元），缺省表示未知
 //  - turnover: 当日换手率 (%)
 
 export const BUY_POINT_TYPES = Object.freeze({
@@ -75,55 +81,86 @@ function testMomentum(row) {
 
 function testBrokenBoard(row) {
   // 炸板低吸：当日曾涨停但收盘未封，从涨停价回落 3%~7%。
-  // 以 change 近似：涨停后回落到 3%~7% 之间（主板 10% 涨停，创业板 20%）。
+  // 回撤幅度必须基于真实涨停价计算，不能用 change% 区间近似：
+  //   pullback = (boardLimit - change) / boardLimit * 100
+  // 例：20% 涨停股，收盘涨 6% → 回撤 = (20-6)/20 = 70% 的涨停幅度 = 11.67%
+  // 例：20% 涨停股，收盘涨 15% → 回撤 = (20-15)/20 = 25% = 4.17%
   if (row.isLimitUp) return null;
   const breaks = num(row.breaks);
   const change = num(row.change);
   if (breaks === null || breaks <= 0) return null;
   if (change === null) return null;
-  // 涨停板 10% 时，回落到 3%~7% = change 在 3~7；创业板按 20% 涨停，放宽到 6~14。
-  const upperLimit = row.boardLimit === 20 ? 14 : 7;
-  const lowerLimit = row.boardLimit === 20 ? 6 : 3;
-  if (change < lowerLimit || change > upperLimit) return null;
+  const boardLimit = num(row.boardLimit) ?? 10;
+  // 回撤幅度：从涨停价回落到当前价的百分比（相对涨停价）。
+  const pullback = ((boardLimit - change) / boardLimit) * 100;
+  if (pullback < 3 || pullback > 7) return null;
   return {
     type: BUY_POINT_TYPES.BROKEN_BOARD_DIP,
     confidence: 0.75,
-    reason: `盘中炸板 ${breaks} 次，收盘涨幅 ${change.toFixed(2)}%，符合回落安全垫区间`,
+    reason: `盘中炸板 ${breaks} 次，相对涨停价回撤 ${pullback.toFixed(2)}%（当前涨 ${change.toFixed(2)}%），符合 3%~7% 安全垫`,
   };
 }
 
 function testFirstNegative(row) {
   // 首阴低吸：连板 >=3 后首次收阴，阴线实体 <=5%，5 日均线未破。
+  // 严格校验 K 线条件：
+  //   1. 当前 height >= 3（连板高度足够）
+  //   2. 昨日 height >= 2（昨天还在连板，保证"首次"从连板中断）
+  //   3. 今日开 > 收（实体阴线，而非"跌但收阳线"）
+  //   4. 今日 change 在 -5% ~ 0 之间（阴线实体不大）
+  //   5. MA5 已知且未破（收盘 > MA5）
   const height = num(row.height);
-  const change = num(row.change);
   if (height === null || height < 3) return null;
-  if (change === null || change >= 0) return null; // 必须是阴线
+  const prevHeight = num(row.prevHeight);
+  if (prevHeight === null || prevHeight < 2) return null; // 昨日不在连板中，不算"首阴"
+  const open = num(row.open);
+  const close = num(row.close) ?? num(row.price);
+  if (open === null || close === null) return null;
+  if (open <= close) return null; // 必须是实体阴线（开高收低）
+  const change = num(row.change);
+  if (change === null || change >= 0) return null;
   if (change < -5) return null; // 阴线实体过大
-  if (row.ma5Broken === true) return null;
+  // MA5 已知时才校验，未知则跳过（不通过也不拒绝）
+  const ma5 = num(row.ma5);
+  if (ma5 !== null && close < ma5) return null;
   return {
     type: BUY_POINT_TYPES.FIRST_NEG_DIP,
     confidence: 0.7,
-    reason: `连板 ${height} 后首根阴线，跌幅 ${change.toFixed(2)}%，未破 5 日线`,
+    reason: `连板 ${height} 后首根实体阴线（开 ${open} 收 ${close}），跌幅 ${change.toFixed(2)}%，未破 5 日线`,
   };
 }
 
 function testFakeNegativeLimit(row) {
   // 假阴跌停低吸：
-  //  - 昨日：高开低走但收盘未跌（prevChange 在 -2%~+2% 之间，
-  //    或 prevOpenChange > 3% 且 prevChange > -2%），且昨日涨停过（breaks>0）
+  //  - 昨日：实体阴线（prevOpen > prevClose）但 prevChange 接近 0（"假阴"——实际
+  //    收在昨收附近，只是开高走低才收阴），且昨日涨停过（breaks>0 或 prevHeight>=1）
   //  - 今日：openChange <= -8%（大幅低开或跌停开）
   const prevChange = num(row.prevChange);
   const prevBreaks = num(row.prevBreaks);
+  const prevHeight = num(row.prevHeight);
+  const prevOpen = num(row.prevOpen);
+  const prevClose = num(row.prevClose);
   const openChange = num(row.openChange);
-  if (prevChange === null || prevBreaks === null || openChange === null)
-    return null;
-  if (prevBreaks <= 0) return null;
-  if (prevChange < -2 || prevChange > 4) return null; // 昨日是假阴
+  if (prevChange === null || openChange === null) return null;
+  // 昨日有涨停特征：炸过板或连板数 >=1
+  const prevWasLimitUp =
+    (prevBreaks !== null && prevBreaks > 0) ||
+    (prevHeight !== null && prevHeight >= 1);
+  if (!prevWasLimitUp) return null;
+  // 假阴校验：昨日开高收低（prevOpen > prevClose）但涨跌幅在 -2%~+2% 之间
+  // （实体阴线但相对昨收几乎平盘，这才叫"假阴"）
+  if (prevOpen !== null && prevClose !== null && prevOpen > prevClose) {
+    // 实体阴线，且涨跌幅在平盘附近
+    if (prevChange < -2 || prevChange > 2) return null;
+  } else {
+    // 没有昨日开收盘数据时，回退到旧规则：prevChange 在 -2%~+4%
+    if (prevChange < -2 || prevChange > 4) return null;
+  }
   if (openChange > -8) return null;
   return {
     type: BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP,
     confidence: 0.85,
-    reason: `昨日假阴（${prevChange.toFixed(2)}%），今日竞价低开 ${openChange.toFixed(2)}%，恐慌盘集中释放`,
+    reason: `昨日假阴（实体阴线但涨 ${prevChange.toFixed(2)}%），今日竞价低开 ${openChange.toFixed(2)}%，恐慌盘集中释放`,
   };
 }
 
@@ -183,12 +220,17 @@ export function classifyBuyPoint(row = {}) {
 
 // 给 analyze 输出追加 buyPointType 字段的便利函数。
 // 接收 normalize 后的 row + 可选的昨日快照（prevRow）。
+// 合并昨日的 prevChange / prevBreaks / prevHeight / prevOpen / prevClose
+// 等字段，供买点分类器做 K 线阴阳校验。
 export function annotateBuyPoint(row, prevRow = null) {
   if (!row) return row;
   const merged = { ...row };
   if (prevRow) {
     merged.prevChange = prevRow.change;
     merged.prevBreaks = prevRow.breaks;
+    merged.prevHeight = prevRow.height;
+    merged.prevOpen = prevRow.open;
+    merged.prevClose = prevRow.close;
   }
   const classification = classifyBuyPoint(merged);
   return {

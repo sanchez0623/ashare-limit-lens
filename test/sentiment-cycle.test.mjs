@@ -66,17 +66,19 @@ test("缺数据时降级中性，不抛错", () => {
   assert.ok(result.phase);
 });
 
-test("applyCycleGate 取两者较小值", () => {
+test("applyCycleGate 在账户风险限制上叠加 effectiveExposureCap（不改写 maxGrossExposure）", () => {
   const limits = { maxGrossExposure: 0.6, maxPositionWeight: 0.2 };
   const frozenCycle = { maxGrossExposure: 0.2 };
   const gated = applyCycleGate(limits, frozenCycle);
-  assert.equal(gated.maxGrossExposure, 0.2);
+  assert.equal(gated.maxGrossExposure, 0.6); // 账户硬限制保持不变
+  assert.equal(gated.effectiveExposureCap, 0.2); // 周期闸门通过新字段叠加
   assert.equal(gated.maxPositionWeight, 0.2);
 });
 
-test("applyCycleGate 闸门更宽松时不放大原上限", () => {
+test("applyCycleGate 闸门更宽松时 effectiveExposureCap 仍记录周期上限", () => {
   const limits = { maxGrossExposure: 0.3, maxPositionWeight: 0.1 };
   const rising = { maxGrossExposure: 0.8 };
   const gated = applyCycleGate(limits, rising);
-  assert.equal(gated.maxGrossExposure, 0.3);
+  assert.equal(gated.maxGrossExposure, 0.3); // 不放大账户硬限制
+  assert.equal(gated.effectiveExposureCap, 0.8); // 但记录周期上限
 });

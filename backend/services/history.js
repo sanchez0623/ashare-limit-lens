@@ -413,6 +413,14 @@ async function runHistoryImportInner(
           stocks: a.stocks,
           sectors: a.sectors,
           emotion: a.emotion,
+          // backtest 链路 createPlan 需要 marketSummary.cycle 驱动情绪闸门，
+          // 历史重构 payload 必须显式写入，否则回测计划永远看不到周期。
+          marketSummary: {
+            cycle: a.cycle,
+            sealRate: a.sealRate,
+            height: a.height,
+            emotion: a.emotion,
+          },
           origin: "HISTORICAL_RECONSTRUCTED",
         },
         datasetOwner,

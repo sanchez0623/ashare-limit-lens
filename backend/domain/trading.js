@@ -19,6 +19,7 @@ import {
 import { STRATEGY_DEFAULTS } from "../../shared/strategy-params.js";
 import {
   applyCycleGate,
+  classifySentimentCycle,
   CYCLE_PHASES,
 } from "../../shared/sentiment-cycle.js";
 import {
@@ -214,10 +215,32 @@ export function createPlan(
   const riskLimits = riskLimitsForBook(book);
   // 真实快照在 review.js 中把 analyze() 的非 stocks/sectors 字段落到
   // marketSummary；旧测试 fixture 可能直接把 cycle 放在顶层。
-  const cycle = snapshot.cycle ?? snapshot.marketSummary?.cycle ?? null;
+  // 若快照中已有 marketSummary（说明走了 analyze() 链路）但 cycle 缺失
+  // （如 backtest 历史重构旧 payload），则从 stocks 高度/数量兜底重算，
+  // 确保情绪闸门始终生效。旧式合成 fixture（无 marketSummary 字段）跳过。
+  let cycle = snapshot.cycle ?? snapshot.marketSummary?.cycle ?? null;
+  if (
+    !cycle &&
+    snapshot.marketSummary &&
+    Array.isArray(snapshot.stocks) &&
+    snapshot.stocks.length
+  ) {
+    const height = Math.max(
+      0,
+      ...snapshot.stocks.map((s) => Number(s.height) || 0),
+    );
+    cycle = classifySentimentCycle({
+      limitUp: snapshot.stocks.length,
+      broken: snapshot.marketSummary.broken ?? null,
+      height,
+    });
+  }
   const gatedRiskLimits = cycle
     ? applyCycleGate(riskLimits, cycle)
     : riskLimits;
+  // 实际敞口上限 = 周期闸门（若有）叠加账户硬限制的较小值。
+  const effectiveCap =
+    gatedRiskLimits.effectiveExposureCap ?? gatedRiskLimits.maxGrossExposure;
   const emotion = snapshot.emotion ?? snapshot.marketSummary?.emotion ?? 0;
   // 情绪档位（可配置，随计划冻结）：两档阈值同时驱动目标敞口与
   // 加仓 / 做 T / 开新仓 / 减仓闸门，旧版本缺字段时回退默认档位。
@@ -237,7 +260,7 @@ export function createPlan(
     snapshot,
   );
   if (strategyProgram)
-    targetExposure = Math.min(targetExposure, gatedRiskLimits.maxGrossExposure);
+    targetExposure = Math.min(targetExposure, effectiveCap);
   if (strategyProgram?.regime === "unknown") targetExposure = 0;
   const componentStates = strategyProgram
     ? allocationState(strategyProgram, book, targetExposure)
@@ -524,7 +547,7 @@ export function createPlan(
         ...(modernSelection || strategyProgram
           ? [
               equity * riskLimits.maxPositionWeight,
-              equity * gatedRiskLimits.maxGrossExposure - plannedExposure,
+              equity * effectiveCap - plannedExposure,
             ]
           : []),
       ),
@@ -617,7 +640,7 @@ export function createPlan(
         }
       : null,
     targetExposure,
-    maxExposure: gatedRiskLimits.maxGrossExposure,
+    maxExposure: effectiveCap,
     orders: carriedPlanOrders(
       orders,
       book,
