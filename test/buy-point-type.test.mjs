@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   classifyBuyPoint,
+  annotateBuyPoint,
   BUY_POINT_TYPES,
 } from "../shared/buy-point-type.js";
 
@@ -27,41 +28,73 @@ test("一字板（低换手）不触发打板", () => {
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.LIMIT_UP_MOMENTUM);
 });
 
-test("炸板低吸：涨停后从涨停价回落 3%~7%（change=9.5%, boardLimit=10%）", () => {
+test("炸板低吸：主板涨 4.5%，真实回撤 (10-4.5)/110 = 5%，符合 3%~7%", () => {
+  const result = classifyBuyPoint({
+    isLimitUp: false,
+    breaks: 2,
+    change: 4.5,
+    boardLimit: 10,
+  });
+  assert.equal(result.primary.type, BUY_POINT_TYPES.BROKEN_BOARD_DIP);
+});
+
+test("主板涨 9.5%：真实回撤仅 0.5/110 ≈ 0.45%，安全垫不足不触发", () => {
   const result = classifyBuyPoint({
     isLimitUp: false,
     breaks: 2,
     change: 9.5,
     boardLimit: 10,
   });
-  assert.equal(result.primary.type, BUY_POINT_TYPES.BROKEN_BOARD_DIP);
+  assert.notEqual(result.primary?.type, BUY_POINT_TYPES.BROKEN_BOARD_DIP);
 });
 
-test("炸板但回落到 1%（change=9.9%，不够安全垫）不触发", () => {
+test("炸板低吸：20% 板涨 15%，真实回撤 5/120 ≈ 4.17%，触发", () => {
   const result = classifyBuyPoint({
     isLimitUp: false,
     breaks: 2,
-    change: 9.9,
-    boardLimit: 10,
+    change: 15,
+    boardLimit: 20,
+  });
+  assert.equal(result.primary.type, BUY_POINT_TYPES.BROKEN_BOARD_DIP);
+});
+
+test("20% 板涨 6%：真实回撤 14/120 ≈ 11.67%，回落过深不触发", () => {
+  const result = classifyBuyPoint({
+    isLimitUp: false,
+    breaks: 2,
+    change: 6,
+    boardLimit: 20,
   });
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.BROKEN_BOARD_DIP);
 });
 
-test("首阴低吸：3连板后首根实体阴线（开高收低，未破5日线）", () => {
+test("首阴低吸：连板中断（height=0）、昨日 2 连板、开高收低、MA5 未破", () => {
+  const result = classifyBuyPoint({
+    height: 0,
+    prevHeight: 2,
+    open: 11,
+    close: 10.5,
+    change: -3,
+    ma5: 10,
+  });
+  assert.equal(result.primary.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
+});
+
+test("首阴但今日仍在连板（height>0）不触发", () => {
   const result = classifyBuyPoint({
     height: 3,
     prevHeight: 2,
     open: 11,
     close: 10.5,
     change: -3,
-    ma5Broken: false,
+    ma5: 10,
   });
-  assert.equal(result.primary.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
+  assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
 });
 
 test("首阴但破5日线不触发", () => {
   const result = classifyBuyPoint({
-    height: 3,
+    height: 0,
     prevHeight: 2,
     open: 11,
     close: 10.5,
@@ -71,13 +104,37 @@ test("首阴但破5日线不触发", () => {
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
 });
 
+test("首阴但 MA5 未知不触发（无法验证未破线，拒绝）", () => {
+  const result = classifyBuyPoint({
+    height: 0,
+    prevHeight: 2,
+    open: 11,
+    close: 10.5,
+    change: -3,
+  });
+  assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
+});
+
 test("首阴但没有昨日连板（prevHeight 不足）不触发", () => {
   const result = classifyBuyPoint({
-    height: 3,
+    height: 0,
     prevHeight: 0,
     open: 11,
     close: 10.5,
     change: -3,
+    ma5: 10,
+  });
+  assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
+});
+
+test("首阴但收阳线（close > open）不触发", () => {
+  const result = classifyBuyPoint({
+    height: 0,
+    prevHeight: 2,
+    open: 10,
+    close: 10.5,
+    change: -1,
+    ma5: 10,
   });
   assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FIRST_NEG_DIP);
 });
@@ -89,6 +146,28 @@ test("假阴跌停低吸：昨日假阴+今日竞价大幅低开", () => {
     openChange: -9.5,
   });
   assert.equal(result.primary.type, BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP);
+});
+
+test("假阴：昨日明确为实体阴线（开高收低、微涨）时触发", () => {
+  const result = classifyBuyPoint({
+    prevChange: 0.5,
+    prevBreaks: 1,
+    prevOpen: 10.5,
+    prevClose: 10.2,
+    openChange: -9,
+  });
+  assert.equal(result.primary.type, BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP);
+});
+
+test("假阴：昨日明确为阳线（开低收高）时不触发", () => {
+  const result = classifyBuyPoint({
+    prevChange: 1.5,
+    prevBreaks: 1,
+    prevOpen: 10,
+    prevClose: 10.5,
+    openChange: -9,
+  });
+  assert.notEqual(result.primary?.type, BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP);
 });
 
 test("早盘竞价低吸：昨日涨停+今日低开5%以上但未跌停", () => {
@@ -107,6 +186,58 @@ test("尾盘跳水低吸：lateSession 且从高点回落 4%", () => {
     lateSession: true,
   });
   assert.equal(result.primary.type, BUY_POINT_TYPES.LATE_DIP);
+});
+
+test("annotateBuyPoint：缺字段时从价量推导 openChange 与尾盘回落", () => {
+  // 昨收 9.5，今开 9.6（+1.05% 微高开），最高 10.5 收 10（回落 4.76%）。
+  const row = annotateBuyPoint(
+    {
+      code: "600001",
+      open: 9.6,
+      close: 10,
+      high: 10.5,
+      change: 1.01,
+      isLimitUp: false,
+    },
+    {
+      code: "600001",
+      change: 10,
+      breaks: 0,
+      height: 1,
+      open: 9.5,
+      close: 9.5,
+    },
+  );
+  // openChange = (9.6 - 9.5) / 9.5 ≈ +1.05%，昨日涨 10% → 竞价低吸条件不满足
+  //（低开需 <= -5%），此处只验证推导本身与尾盘回落标签。
+  assert.ok(Math.abs(row.openChange - 1.0526) < 1e-3);
+  assert.ok(Math.abs(row.intradayDrawdownFromHigh - 4.7619) < 1e-3);
+  // 尾盘回落 4.76% >= 3%、非跌停 → 尾盘跳水低吸命中。
+  assert.equal(row.buyPoint.primary?.type, BUY_POINT_TYPES.LATE_DIP);
+});
+
+test("annotateBuyPoint：昨日涨停 + 今日竞价低开 6% 推导出竞价低吸", () => {
+  const row = annotateBuyPoint(
+    {
+      code: "600001",
+      open: 8.9,
+      close: 9.2,
+      high: 9.6,
+      change: -3.16,
+      isLimitUp: false,
+    },
+    {
+      code: "600001",
+      change: 10,
+      breaks: 0,
+      height: 1,
+      open: 9.4,
+      close: 9.5,
+    },
+  );
+  // openChange = (8.9 - 9.5) / 9.5 ≈ -6.32%，昨日涨 10% → 竞价低吸命中。
+  assert.ok(Math.abs(row.openChange + 6.3158) < 1e-3);
+  assert.equal(row.buyPoint.primary?.type, BUY_POINT_TYPES.AUCTION_DIP);
 });
 
 test("无任何买点触发时返回 null", () => {

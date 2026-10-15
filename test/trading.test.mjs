@@ -420,9 +420,13 @@ test("情绪周期闸门：冰点期禁止开新仓、退潮期压缩敞口", ()
   );
   assert.equal(summaryPlan.cycle.phase, "ebbing");
   assert.equal(summaryPlan.targetExposure, 0.2);
-  // 周期闸门不再改写 maxGrossExposure，而是通过 effectiveExposureCap 叠加。
+  // 计划冻结账户原始 5 字段 riskLimits（严格风控 schema 兼容），
+  // 周期上限单独冻结在 cycle，成交求解与家族核验用 resolveExposureCap
+  // 统一读取，实际敞口上限 = min(0.6, 0.2) = 0.2。
   assert.equal(summaryPlan.riskLimits.maxGrossExposure, 0.6);
-  assert.equal(summaryPlan.riskLimits.effectiveExposureCap, 0.2);
+  assert.equal(summaryPlan.riskLimits.effectiveExposureCap, undefined);
+  assert.equal(summaryPlan.cycle.maxGrossExposure, 0.2);
+  assert.equal(summaryPlan.maxExposure, 0.2);
 });
 test("手动策略参数校验拒绝越界、缺字段与档位倒挂", () => {
   assert.deepEqual(normalizeStrategyParams(STRATEGY_DEFAULTS), {

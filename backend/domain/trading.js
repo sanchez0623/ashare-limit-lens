@@ -18,8 +18,8 @@ import {
 } from "../../shared/risk-limits.js";
 import { STRATEGY_DEFAULTS } from "../../shared/strategy-params.js";
 import {
-  applyCycleGate,
   classifySentimentCycle,
+  resolveExposureCap,
   CYCLE_PHASES,
 } from "../../shared/sentiment-cycle.js";
 import {
@@ -235,12 +235,9 @@ export function createPlan(
       height,
     });
   }
-  const gatedRiskLimits = cycle
-    ? applyCycleGate(riskLimits, cycle)
-    : riskLimits;
-  // 实际敞口上限 = 周期闸门（若有）叠加账户硬限制的较小值。
-  const effectiveCap =
-    gatedRiskLimits.effectiveExposureCap ?? gatedRiskLimits.maxGrossExposure;
+  // 实际敞口上限 = 周期闸门与账户硬限制的较小值（唯一口径），
+  // 成交求解与家族核验同用 resolveExposureCap 读取，避免各处漂移。
+  const effectiveCap = resolveExposureCap(riskLimits, cycle);
   const emotion = snapshot.emotion ?? snapshot.marketSummary?.emotion ?? 0;
   // 情绪档位（可配置，随计划冻结）：两档阈值同时驱动目标敞口与
   // 加仓 / 做 T / 开新仓 / 减仓闸门，旧版本缺字段时回退默认档位。
@@ -616,9 +613,10 @@ export function createPlan(
     feeModel: book.feeModel || "legacy-v1",
     feeConfig: structuredClone(feesForBook(book)),
     feeConfigVersion: book.feeConfigVersion || 0,
-    // 冻结成交约束直接用闸门后的 riskLimits，保证 executePlan 内
-    // solveFillQuantity 计算 capCents 时受周期 maxGrossExposure 约束。
-    riskLimits: structuredClone(gatedRiskLimits),
+    // 冻结账户原始 5 字段 riskLimits（严格风控 schema 兼容，extra 字段
+    // 会被 normalizeRiskLimits 拒绝）；周期闸门单独冻结在 cycle.maxGrossExposure，
+    // executeFillWithCostModel 与家族核验通过 resolveExposureCap 复原同一口径。
+    riskLimits: structuredClone(riskLimits),
     riskLimitsVersion: book.riskLimitsVersion || 0,
     createdAt,
     strategyVersion,
@@ -1386,7 +1384,9 @@ function executeFillWithCostModel(
     capCents = Math.min(
       book.cashCents,
       equity * riskLimits.maxPositionWeight - current,
-      equity * riskLimits.maxGrossExposure - value,
+      // 成交上限必须读周期口径：周期 20% 时不能按账户原始 60% 放行，
+      // 否则会出现实际敞口突破周期上限的回归。
+      equity * resolveExposureCap(riskLimits, plan?.cycle) - value,
     );
   }
   const allocationLimits =

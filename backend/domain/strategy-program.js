@@ -5,6 +5,7 @@ import {
 } from "../../shared/strategy-program.js";
 import { EXPOSURE_TIERS_DEFAULTS } from "../../shared/strategy-params.js";
 import { planRiskLimits } from "../../shared/risk-limits.js";
+import { resolveExposureCap } from "../../shared/sentiment-cycle.js";
 import { EXECUTION_COST_MODEL } from "../../shared/execution-cost.js";
 
 export function familyEligibility(familyId, signal, snapshot) {
@@ -305,7 +306,13 @@ export function assertProgramPlan(plan, initialBook) {
           : plan.emotion >= tiers.midEmotion
             ? tiers.mid
             : tiers.low;
-    const exposure = Math.min(desiredExposure, risk.maxGrossExposure);
+    // 与 createPlan 同一口径：周期闸门叠加账户硬限制。退潮 / 冰点期
+    // 冻结的 targetExposure 与 resources 按周期上限计算，这里若只用
+    // 账户原始 maxGrossExposure 重算会误报"资金上限与期初账本不一致"。
+    const exposure = Math.min(
+      desiredExposure,
+      resolveExposureCap(risk, plan.cycle),
+    );
     const resources = {
       initialEquityCents: initialBook.equityCents,
       components: allocationState(expected, initialBook, exposure),

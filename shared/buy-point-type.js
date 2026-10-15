@@ -81,18 +81,22 @@ function testMomentum(row) {
 
 function testBrokenBoard(row) {
   // 炸板低吸：当日曾涨停但收盘未封，从涨停价回落 3%~7%。
-  // 回撤幅度必须基于真实涨停价计算，不能用 change% 区间近似：
-  //   pullback = (boardLimit - change) / boardLimit * 100
-  // 例：20% 涨停股，收盘涨 6% → 回撤 = (20-6)/20 = 70% 的涨停幅度 = 11.67%
-  // 例：20% 涨停股，收盘涨 15% → 回撤 = (20-15)/20 = 25% = 4.17%
+  // 回撤必须以真实涨停价为基准：涨停价 = 昨收 × (1 + boardLimit/100)，
+  // 当前价 = 昨收 × (1 + change/100)，故
+  //   pullback = (boardLimit - change) / (100 + boardLimit) × 100
+  // 例：主板涨 9.5% → 回撤 0.5/110 ≈ 0.45%（刚开板，安全垫不足）
+  // 例：主板涨 4.5% → 回撤 5.5/110 = 5%（符合 3%~7%）
+  // 例：20% 板涨 15% → 回撤 5/120 ≈ 4.17%（符合）
+  // 例：20% 板涨 6%  → 回撤 14/120 ≈ 11.67%（回落过深）
+  // 分母用 (100 + boardLimit) 而非 boardLimit：回撤百分比相对的是涨停价
+  // 本身（含昨日收盘基数），不是涨停幅度。
   if (row.isLimitUp) return null;
   const breaks = num(row.breaks);
   const change = num(row.change);
   if (breaks === null || breaks <= 0) return null;
   if (change === null) return null;
   const boardLimit = num(row.boardLimit) ?? 10;
-  // 回撤幅度：从涨停价回落到当前价的百分比（相对涨停价）。
-  const pullback = ((boardLimit - change) / boardLimit) * 100;
+  const pullback = ((boardLimit - change) / (100 + boardLimit)) * 100;
   if (pullback < 3 || pullback > 7) return null;
   return {
     type: BUY_POINT_TYPES.BROKEN_BOARD_DIP,
@@ -102,15 +106,16 @@ function testBrokenBoard(row) {
 }
 
 function testFirstNegative(row) {
-  // 首阴低吸：连板 >=3 后首次收阴，阴线实体 <=5%，5 日均线未破。
-  // 严格校验 K 线条件：
-  //   1. 当前 height >= 3（连板高度足够）
-  //   2. 昨日 height >= 2（昨天还在连板，保证"首次"从连板中断）
+  // 首阴低吸：连板股（昨日 >=2 连板）中断后的首根实体阴线，5 日均线未破。
+  // 严格校验 K 线与序列条件：
+  //   1. 今日连板中断：当前 height 必须为 0（阴线日本身不可能涨停；
+  //      height 未知时由 change<0 间接保证，显式 height>0 视为数据矛盾拒绝）
+  //   2. 昨日 height >= 2（"首阴"必须发生在连板序列中断处）
   //   3. 今日开 > 收（实体阴线，而非"跌但收阳线"）
   //   4. 今日 change 在 -5% ~ 0 之间（阴线实体不大）
-  //   5. MA5 已知且未破（收盘 > MA5）
+  //   5. MA5 必须已知且未破（收盘 > MA5）；未知时无法验证，拒绝
   const height = num(row.height);
-  if (height === null || height < 3) return null;
+  if (height !== null && height !== 0) return null; // 今日仍在连板，不是首阴
   const prevHeight = num(row.prevHeight);
   if (prevHeight === null || prevHeight < 2) return null; // 昨日不在连板中，不算"首阴"
   const open = num(row.open);
@@ -120,13 +125,12 @@ function testFirstNegative(row) {
   const change = num(row.change);
   if (change === null || change >= 0) return null;
   if (change < -5) return null; // 阴线实体过大
-  // MA5 已知时才校验，未知则跳过（不通过也不拒绝）
   const ma5 = num(row.ma5);
-  if (ma5 !== null && close < ma5) return null;
+  if (ma5 === null || close < ma5) return null; // MA5 未知无法验证未破线，拒绝
   return {
     type: BUY_POINT_TYPES.FIRST_NEG_DIP,
     confidence: 0.7,
-    reason: `连板 ${height} 后首根实体阴线（开 ${open} 收 ${close}），跌幅 ${change.toFixed(2)}%，未破 5 日线`,
+    reason: `昨日 ${prevHeight} 连板后首根实体阴线（开 ${open} 收 ${close}），跌幅 ${change.toFixed(2)}%，未破 5 日线`,
   };
 }
 
@@ -147,14 +151,14 @@ function testFakeNegativeLimit(row) {
     (prevBreaks !== null && prevBreaks > 0) ||
     (prevHeight !== null && prevHeight >= 1);
   if (!prevWasLimitUp) return null;
-  // 假阴校验：昨日开高收低（prevOpen > prevClose）但涨跌幅在 -2%~+2% 之间
-  // （实体阴线但相对昨收几乎平盘，这才叫"假阴"）
-  if (prevOpen !== null && prevClose !== null && prevOpen > prevClose) {
-    // 实体阴线，且涨跌幅在平盘附近
+  // 假阴校验：昨日必须是实体阴线（prevOpen > prevClose）且涨跌幅在
+  // 平盘附近（-2%~+2%）。开收盘已知时严格按 K 线阴阳判定，
+  // 明确阳线直接拒绝；只有开收盘未知时才回退用涨跌幅 -2%~+4% 近似。
+  if (prevOpen !== null && prevClose !== null) {
+    if (prevOpen <= prevClose) return null; // 昨日明确为阳线，不是假阴
     if (prevChange < -2 || prevChange > 2) return null;
-  } else {
-    // 没有昨日开收盘数据时，回退到旧规则：prevChange 在 -2%~+4%
-    if (prevChange < -2 || prevChange > 4) return null;
+  } else if (prevChange < -2 || prevChange > 4) {
+    return null;
   }
   if (openChange > -8) return null;
   return {
@@ -232,9 +236,41 @@ export function annotateBuyPoint(row, prevRow = null) {
     merged.prevOpen = prevRow.open;
     merged.prevClose = prevRow.close;
   }
+  // 数据链路缺字段时从价量数据推导，保证竞价 / 尾盘买点在真实链路可用：
+  //  - openChange：今日开盘相对昨收的涨跌幅（竞价低开幅度）
+  //  - intradayDrawdownFromHigh：最高价到收盘的回落幅度
+  //  - lateSession：analyze() 链路均为收盘后观测（review / backtest /
+  //    研究页），收盘价已知即视为盘尾时点；尾盘跳水用"最高价到收盘"
+  //    的回落近似，无法区分盘中早段的跳水是当前数据的已知局限。
+  const derived = {};
+  const open = num(merged.open);
+  const prevClose = num(merged.prevClose);
+  if (
+    num(merged.openChange) === null &&
+    open !== null &&
+    prevClose !== null &&
+    prevClose > 0
+  ) {
+    derived.openChange = ((open - prevClose) / prevClose) * 100;
+    merged.openChange = derived.openChange;
+  }
+  const high = num(merged.high);
+  const close = num(merged.close) ?? num(merged.price);
+  if (
+    num(merged.intradayDrawdownFromHigh) === null &&
+    high !== null &&
+    close !== null &&
+    high > 0
+  ) {
+    derived.intradayDrawdownFromHigh = ((high - close) / high) * 100;
+    merged.intradayDrawdownFromHigh = derived.intradayDrawdownFromHigh;
+  }
+  if (merged.lateSession === undefined && close !== null)
+    merged.lateSession = true;
   const classification = classifyBuyPoint(merged);
   return {
     ...row,
+    ...derived,
     buyPoint: classification,
   };
 }

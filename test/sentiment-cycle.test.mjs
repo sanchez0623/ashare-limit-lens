@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   classifySentimentCycle,
+  resolveExposureCap,
   CYCLE_PHASES,
   CYCLE_MAX_EXPOSURE,
-  applyCycleGate,
 } from "../shared/sentiment-cycle.js";
 
 test("情绪上升期：涨停多、封板率高、高度打开", () => {
@@ -66,19 +66,16 @@ test("缺数据时降级中性，不抛错", () => {
   assert.ok(result.phase);
 });
 
-test("applyCycleGate 在账户风险限制上叠加 effectiveExposureCap（不改写 maxGrossExposure）", () => {
-  const limits = { maxGrossExposure: 0.6, maxPositionWeight: 0.2 };
-  const frozenCycle = { maxGrossExposure: 0.2 };
-  const gated = applyCycleGate(limits, frozenCycle);
-  assert.equal(gated.maxGrossExposure, 0.6); // 账户硬限制保持不变
-  assert.equal(gated.effectiveExposureCap, 0.2); // 周期闸门通过新字段叠加
-  assert.equal(gated.maxPositionWeight, 0.2);
-});
-
-test("applyCycleGate 闸门更宽松时 effectiveExposureCap 仍记录周期上限", () => {
-  const limits = { maxGrossExposure: 0.3, maxPositionWeight: 0.1 };
-  const rising = { maxGrossExposure: 0.8 };
-  const gated = applyCycleGate(limits, rising);
-  assert.equal(gated.maxGrossExposure, 0.3); // 不放大账户硬限制
-  assert.equal(gated.effectiveExposureCap, 0.8); // 但记录周期上限
+test("resolveExposureCap：周期闸门与账户硬限制取较小值（唯一口径）", () => {
+  const base = { maxGrossExposure: 0.6, maxPositionWeight: 0.2 };
+  // 退潮 0.2 < 账户 0.6 → 取周期上限
+  assert.equal(resolveExposureCap(base, { maxGrossExposure: 0.2 }), 0.2);
+  // 冰点 0 → 完全禁止
+  assert.equal(resolveExposureCap(base, { maxGrossExposure: 0 }), 0);
+  // 上升期 0.8 > 账户 0.6 → 不放大账户硬限制
+  assert.equal(resolveExposureCap(base, { maxGrossExposure: 0.8 }), 0.6);
+  // 无周期 → 账户原始上限
+  assert.equal(resolveExposureCap(base, null), 0.6);
+  // 无账户限制（异常输入）→ 仅剩周期上限
+  assert.equal(resolveExposureCap(null, { maxGrossExposure: 0.2 }), 0.2);
 });

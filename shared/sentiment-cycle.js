@@ -153,15 +153,16 @@ function describe(input, subs, phase) {
   return `判定为${CYCLE_LABELS[phase]}：${bits.join("，")}。`;
 }
 
-// 便利函数：在已知 riskLimits 上叠加情绪闸门。
-// 设计：不直接改写 riskLimits.maxGrossExposure（normalizeRiskLimits 禁止 0
-// 或过低值，冰点期会报错）。而是新增独立的 effectiveExposureCap 字段，
-// 由调用方在计算实际敞口上限时取 min(maxGrossExposure, effectiveExposureCap)。
-// 这样既保留账户硬限制的合法性，又让周期闸门生效。
-export function applyCycleGate(riskLimits, cycle) {
-  if (!riskLimits || !cycle) return riskLimits;
-  return {
-    ...riskLimits,
-    effectiveExposureCap: cycle.maxGrossExposure,
-  };
+// 计划实际敞口上限的唯一口径：周期闸门（若有）与账户硬限制取较小值。
+// createPlan 冻结 targetExposure、executeFillWithCostModel 计算成交上限、
+// strategy-program 家族核验重算资源分配，三处必须共用本函数，避免口径漂移。
+// 计划持久化的 riskLimits 始终保持账户原始 5 字段严格 schema
+// （normalizeRiskLimits 禁止 0 或多余字段，改写 maxGrossExposure 会被拒）；
+// 周期上限单独冻结在 plan.cycle.maxGrossExposure，读取时在此处统一叠加。
+export function resolveExposureCap(riskLimits, cycle) {
+  const base = Number(riskLimits?.maxGrossExposure);
+  const gated = Number(cycle?.maxGrossExposure);
+  if (Number.isFinite(gated))
+    return Number.isFinite(base) ? Math.min(base, gated) : gated;
+  return base;
 }
