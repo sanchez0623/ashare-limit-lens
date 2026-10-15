@@ -18,6 +18,7 @@ import {
   selectionSnapshotDigest,
   liquidityAmountCents,
   LEGACY_SELECTION_VERSION,
+  SELECTION_VERSION_V2,
   DEFAULT_SELECTION_VERSION,
 } from "../backend/domain/signal-selection.js";
 import { digestOf } from "../backend/domain/research-lineage.js";
@@ -92,6 +93,37 @@ async function ownWindow(DB, id = "fixture-owner") {
     .bind(id, dateAt(0))
     .run();
 }
+
+test("v3 股票分类路由：按类别切换权重预设，平庸型被排除出候选池", () => {
+  const snap = tiedSnapshot();
+  // 002343 连板龙头（relay 权重）；002692 未分类（策略权重）；300001 平庸
+  snap.stocks[0].stockClass = "relay-leader";
+  delete snap.stocks[1].stockClass;
+  snap.stocks.push({
+    ...snap.stocks[0],
+    code: "300001",
+    stockClass: "mediocre",
+  });
+  // v2：无路由、无排除 → 三只全部参与，统一策略权重
+  const v2 = scoreSignals(snap, strategy, selectionPolicy(SELECTION_VERSION_V2));
+  assert.equal(v2.length, 3);
+  // v3：平庸被排除；龙头按 relay 权重重算（[30,20,10,10,20,10] → 93.3 分），
+  // 未分类的 002692 保持策略权重（balanced → 94.6 分）并反超龙头居首
+  const v3 = scoreSignals(snap, strategy, selectionPolicy(DEFAULT_SELECTION_VERSION));
+  assert.deepEqual(
+    v3.map((s) => [s.code, s.score]),
+    [
+      ["002692", 95],
+      ["002343", 93],
+    ],
+  );
+  // 计划层（新账户默认 v3）：平庸股不出现在候选审计中
+  const plan = makePlan(snap);
+  assert.equal(
+    plan.selectionAudit.candidates.some((c) => c.code === "300001"),
+    false,
+  );
+});
 
 test("真实同因子并列：v2 选成交额较大者；v1 保留整数分及代码顺序", () => {
   const snap = tiedSnapshot();
@@ -231,7 +263,11 @@ test("打乱股票和板块输入不改变排序、规范化快照摘要及计�
   assert.notEqual(await selectionSnapshotDigest(reversed), sourceDigest);
 });
 test("政策摘要独立 SHA-256 重算一致；未知版本与同版本改内容拒绝", async () => {
-  for (const version of [LEGACY_SELECTION_VERSION, DEFAULT_SELECTION_VERSION]) {
+  for (const version of [
+    LEGACY_SELECTION_VERSION,
+    SELECTION_VERSION_V2,
+    DEFAULT_SELECTION_VERSION,
+  ]) {
     const p = selectionPolicy(version);
     assert.equal(selectionPolicyDigest(p), await digestOf(p));
     assert.deepEqual(frozenSelectionPolicy(selectionPolicyFields(p)), p);

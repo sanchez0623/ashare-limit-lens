@@ -1,8 +1,9 @@
 import { digestOf } from "./research-lineage.js";
 // 选股政策与纯排序内核。每个版本的完整内容固定，禁止同编号改规则。
-// 缺少版本的历史账户/清单按 v1 解释；新账户显式采用 v2。
+// 缺少版本的历史账户/清单按 v1 解释；新账户显式采用最新版本。
 export const LEGACY_SELECTION_VERSION = "signal-ranking-v1";
-export const DEFAULT_SELECTION_VERSION = "signal-ranking-v2";
+export const SELECTION_VERSION_V2 = "signal-ranking-v2";
+export const DEFAULT_SELECTION_VERSION = "signal-ranking-v3";
 const policies = Object.freeze({
   [LEGACY_SELECTION_VERSION]: Object.freeze({
     version: LEGACY_SELECTION_VERSION,
@@ -10,11 +11,20 @@ const policies = Object.freeze({
     liquiditySource: null,
     tieBreak: "code-asc",
   }),
+  [SELECTION_VERSION_V2]: Object.freeze({
+    version: SELECTION_VERSION_V2,
+    scorePrecision: 6,
+    liquiditySource: "signal-day-turnover-cny",
+    tieBreak: "code-asc",
+  }),
+  // v3：股票分类路由。scoreSignals 按股票类别（连板龙头/强势反包/波段震荡）
+  // 路由评分权重，并把明确判定为平庸型的股票排除出候选池（方案 3）。
   [DEFAULT_SELECTION_VERSION]: Object.freeze({
     version: DEFAULT_SELECTION_VERSION,
     scorePrecision: 6,
     liquiditySource: "signal-day-turnover-cny",
     tieBreak: "code-asc",
+    stockClassRouting: true,
   }),
 });
 // SHA-256(canonicalJson(policy))。常量使同步纯内核也能冻结完整摘要；
@@ -22,8 +32,10 @@ const policies = Object.freeze({
 const digests = Object.freeze({
   [LEGACY_SELECTION_VERSION]:
     "7b340abd928a57f1d401351952ad40219e29a81ee74a33f44747b128209f883a",
-  [DEFAULT_SELECTION_VERSION]:
+  [SELECTION_VERSION_V2]:
     "250aed8e31828b808180950a096ecf489c9fef150896d2495ba0708c3ef1cd32",
+  [DEFAULT_SELECTION_VERSION]:
+    "508cd643a3e2ef3842b55a89ec761a0a39851e7fd327c14fae96f39c5a828aa7",
 });
 export function selectionPolicy(version = DEFAULT_SELECTION_VERSION) {
   if (!Object.hasOwn(policies, version))

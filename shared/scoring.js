@@ -1,5 +1,6 @@
 import { classifySentimentCycle } from "./sentiment-cycle.js";
 import { annotateBuyPoint } from "./buy-point-type.js";
+import { classifyStock } from "./stock-class.js";
 export const FACTORS = [
   {
     key: "quality",
@@ -300,6 +301,20 @@ export function analyze(
   // parquet 计算），未知时不写字段——首阴分类器按"MA5 未知即拒绝"处理。
   // lateSession（尾盘时点）由调用方声明：仅在观测时刻确认处于尾盘或盘后
   // 时传 true；盘中报价不传，避免全天回撤被误标为尾盘跳水。
+  // 股票分类（方案 3）：options.historyByCode 提供 { limitUp10d, ma20,
+  // amplitude20 } 历史特征时，为每只股票判定类别（连板龙头/强势反包/
+  // 波段震荡/平庸）并附加 stockClass / stockClassReason；特征不足返回
+  // null（未分类）。板块内最高板由当日快照统计，无需历史数据。
+  const sectorMaxHeight = new Map();
+  for (const r of clean) {
+    const h = Number(r.height) || 0;
+    if (h > (sectorMaxHeight.get(r.sector) ?? 0))
+      sectorMaxHeight.set(r.sector, h);
+  }
+  const historyOf = (code) =>
+    options.historyByCode instanceof Map
+      ? options.historyByCode.get(code) ?? null
+      : (options.historyByCode?.[code] ?? null);
   const enriched = clean.map((r) => {
     const change = num(r.change);
     const boardLimit = r.boardLimit ?? (r.code?.startsWith("30") ? 20 : 10);
@@ -309,6 +324,14 @@ export function analyze(
       (r.first !== null || (r.height ?? 0) >= 1);
     const openChange = num(r.openChange);
     const ma5 = ma5Of(options.ma5ByCode, r.code);
+    const classification =
+      options.historyByCode !== undefined
+        ? classifyStock({
+            row: { ...r, isLimitUp },
+            sectorMaxHeight: sectorMaxHeight.get(r.sector) ?? null,
+            history: historyOf(r.code),
+          })
+        : null;
     return {
       ...r,
       isLimitUp,
@@ -316,6 +339,12 @@ export function analyze(
       ...(openChange !== null ? { openChange } : {}),
       ...(ma5 !== null ? { ma5 } : {}),
       ...(options.lateSession === true ? { lateSession: true } : {}),
+      ...(classification
+        ? {
+            stockClass: classification.stockClass,
+            stockClassReason: classification.reason,
+          }
+        : {}),
     };
   });
   const stocks = enriched

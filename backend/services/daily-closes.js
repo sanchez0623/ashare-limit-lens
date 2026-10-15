@@ -23,6 +23,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import {
+  REVERSAL_LOOKBACK_DAYS,
+  SWING_LOOKBACK_DAYS,
+} from "../../shared/stock-class.js";
 import { safeError } from "../http.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -131,27 +135,42 @@ async function readColumns(filePath, columns) {
 // ---------- 数据集解析与缓存 ----------
 
 async function parseDataset(dailyPath, adjPath) {
-  const daily = await readColumns(dailyPath, ["code", "date", "close"]);
+  const daily = await readColumns(dailyPath, [
+    "code",
+    "date",
+    "high",
+    "low",
+    "close",
+  ]);
   const dCode = daily.get("code"),
     dDate = daily.get("date"),
+    dHigh = daily.get("high"),
+    dLow = daily.get("low"),
     dClose = daily.get("close");
   const datesSet = new Set();
-  const builders = new Map(); // code -> { d: string[], c: number[] }
+  const builders = new Map(); // code -> { d: string[], c/h/l: number[] }
   for (let i = 0; i < dCode.length; i++) {
     const code = dCode[i],
       date = dDate[i],
       close = Number(dClose[i]);
+    const high = Number(dHigh[i]),
+      low = Number(dLow[i]);
     if (typeof code !== "string" || !code) continue;
     if (typeof date !== "string" || !DATE_RE.test(date)) continue;
     if (!Number.isFinite(close) || close <= 0) continue;
+    // high/low 仅用于 20 日振幅；缺行不丢弃（close 仍可用于 MA/涨停基因），
+    // 以 NaN 占位，振幅计算按"窗口内存在 NaN → 振幅未知"处理。
+    const validHighLow = Number.isFinite(high) && high > 0 && Number.isFinite(low) && low > 0;
     datesSet.add(date);
     let rec = builders.get(code);
     if (!rec) {
-      rec = { d: [], c: [] };
+      rec = { d: [], c: [], h: [], l: [] };
       builders.set(code, rec);
     }
     rec.d.push(date);
     rec.c.push(close);
+    rec.h.push(validHighLow ? high : Number.NaN);
+    rec.l.push(validHighLow ? low : Number.NaN);
   }
 
   // 复权因子按 code+date 建索引；缺失的因子在 per-code 数组里以 NaN 表示
@@ -185,18 +204,24 @@ async function parseDataset(dailyPath, adjPath) {
     const n = order.length;
     const ds = new Uint32Array(n);
     const cs = new Float64Array(n);
+    const hs = new Float64Array(n).fill(Number.NaN);
+    const ls = new Float64Array(n).fill(Number.NaN);
     const as = new Float64Array(n).fill(Number.NaN);
     const fm = adjByCode.get(code) ?? null;
     for (let k = 0; k < n; k++) {
       const i = order[k][1];
       ds[k] = order[k][0];
       cs[k] = rec.c[i];
+      hs[k] = rec.h[i];
+      ls[k] = rec.l[i];
       const f = fm?.get(rec.d[i]);
       if (f !== undefined) as[k] = f;
     }
     codes.set(code, {
       dates: ds,
       closes: cs,
+      highs: hs,
+      lows: ls,
       adjs: as,
       // 该股在因子文件中是否有任何覆盖：完全没有 → 才允许未复权口径
       hasFactor: (fm?.size ?? 0) > 0,
@@ -285,6 +310,100 @@ export function computeMa5ByCode(dataset, snapshotDate) {
     ma5ByCode.set(code, Math.round((sum / 5) * 1000) / 1000);
   }
   return { ma5ByCode, asOf };
+}
+
+// ---------- 股票分类历史特征（方案 3：涨停基因 / MA20 / 20 日振幅） ----------
+
+function boardLimitOf(code) {
+  // 创业板 30 / 科创板 68 为 20% 涨停，其余按 10%
+  return code.startsWith("30") || code.startsWith("68") ? 20 : 10;
+}
+
+// 返回 { featuresByCode: Map<code, { limitUp10d, ma20, amplitude20 }>, asOf, reason? }。
+// 与 MA5 相同的严格日期口径：数据未覆盖快照日时返回空 Map（带 reason）。
+//   - limitUp10d：近 10 个交易日内存在收盘涨停（boardLimit 感知，容差 0.3%）
+//   - ma20：截至快照日（含）20 日收盘均线，不足 20 根为 null
+//   - amplitude20：20 日区间振幅 (maxHigh-minLow)/minLow×100，窗口内
+//     任一根 high/low 缺失则为 null
+export function computeStockFeaturesByCode(dataset, snapshotDate) {
+  const { dates, dateIdx, codes } = dataset;
+  if (!dates.length)
+    return { featuresByCode: new Map(), asOf: null };
+  if (snapshotDate && DATE_RE.test(snapshotDate) && !dateIdx.has(snapshotDate))
+    return {
+      featuresByCode: new Map(),
+      asOf: dates[dates.length - 1] ?? null,
+      reason: `日线数据未覆盖快照日 ${snapshotDate}（数据截止 ${
+        dates[dates.length - 1] ?? "空"
+      }），分类特征不可用`,
+    };
+  const end =
+    snapshotDate && dateIdx.has(snapshotDate)
+      ? dateIdx.get(snapshotDate)
+      : dates.length - 1;
+  const asOf = dates[end];
+  const featuresByCode = new Map();
+  for (const [code, s] of codes) {
+    const p = lowerBound(s.dates, end);
+    if (p < 0) continue; // 快照日无收盘（停牌 / 退市）
+    // 近 10 日涨停基因（收盘比口径；首根无前收跳过）
+    let limitUp10d = false;
+    const limit = boardLimitOf(code);
+    for (let k = Math.max(1, p - REVERSAL_LOOKBACK_DAYS + 1); k <= p; k++) {
+      const prev = s.closes[k - 1];
+      if (!Number.isFinite(prev) || prev <= 0) continue;
+      const change = (s.closes[k] / prev - 1) * 100;
+      if (change >= limit - 0.3) {
+        limitUp10d = true;
+        break;
+      }
+    }
+    // MA20 与 20 日振幅：需足 20 根
+    let ma20 = null,
+      amplitude20 = null;
+    if (p >= SWING_LOOKBACK_DAYS - 1) {
+      let sum = 0,
+        maxHigh = Number.NEGATIVE_INFINITY,
+        minLow = Number.POSITIVE_INFINITY,
+        validRange = true;
+      for (let k = p - SWING_LOOKBACK_DAYS + 1; k <= p; k++) {
+        sum += s.closes[k];
+        const h = s.highs[k],
+          l = s.lows[k];
+        if (!Number.isFinite(h) || !Number.isFinite(l)) validRange = false;
+        else {
+          if (h > maxHigh) maxHigh = h;
+          if (l < minLow) minLow = l;
+        }
+      }
+      ma20 = Math.round((sum / SWING_LOOKBACK_DAYS) * 1000) / 1000;
+      if (validRange && minLow > 0)
+        amplitude20 =
+          Math.round(((maxHigh - minLow) / minLow) * 100 * 100) / 100;
+    }
+    featuresByCode.set(code, { limitUp10d, ma20, amplitude20 });
+  }
+  return { featuresByCode, asOf };
+}
+
+export async function getStockFeaturesByCode(env, snapshotDate) {
+  const dataDir = dailyDataDir(env);
+  if (!dataDir)
+    return {
+      featuresByCode: new Map(),
+      asOf: null,
+      reason: "未配置 QUAN_DATA_DIR，分类特征不可用",
+    };
+  try {
+    const dataset = await loadDailyDataset(dataDir);
+    return computeStockFeaturesByCode(dataset, snapshotDate);
+  } catch (error) {
+    return {
+      featuresByCode: new Map(),
+      asOf: null,
+      reason: `日线数据读取失败：${safeError(error)}`,
+    };
+  }
 }
 
 // ---------- 对外 API ----------

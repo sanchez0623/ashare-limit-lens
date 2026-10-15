@@ -1,5 +1,8 @@
 import { database } from "../storage/database.js";
-import { getMa5ByCode } from "./daily-closes.js";
+import {
+  getMa5ByCode,
+  getStockFeaturesByCode,
+} from "./daily-closes.js";
 export { database } from "../storage/database.js";
 export function beijingDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -94,6 +97,8 @@ export async function saveSnapshot(env, market, weights) {
       createdAt: old.created_at,
     };
   const { ma5ByCode } = await getMa5ByCode(env, market.date);
+  // 股票分类历史特征（涨停基因 / MA20 / 20 日振幅），供方案 3 分类路由
+  const { featuresByCode } = await getStockFeaturesByCode(env, market.date);
   // 首阴门槛等买点参数从 settings 读取（可调研究参数，默认对齐 skill）。
   // 显式逐字段构造评分选项：配置永远无法覆盖 ma5ByCode / lateSession
   // 等行情输入。
@@ -104,7 +109,12 @@ export async function saveSnapshot(env, market, weights) {
     market.previous?.map(normalize) ?? null,
     weights,
     // saveSnapshot 仅在收盘后（15:05+）执行，尾盘时点成立
-    { ma5ByCode, lateSession: true, firstNegMinPrevHeight },
+    {
+      ma5ByCode,
+      historyByCode: featuresByCode,
+      lateSession: true,
+      firstNegMinPrevHeight,
+    },
   );
   const { stocks, sectors, ...marketSummary } = a;
   const createdAt = new Date().toISOString();

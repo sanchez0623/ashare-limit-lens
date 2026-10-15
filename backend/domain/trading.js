@@ -1,4 +1,8 @@
-import { clamp } from "../../shared/scoring.js";
+import { clamp, PRESETS } from "../../shared/scoring.js";
+import {
+  CLASS_WEIGHT_PRESETS,
+  STOCK_CLASSES,
+} from "../../shared/stock-class.js";
 import {
   DEFAULT_INITIAL_CAPITAL,
   DEFAULT_FEES,
@@ -137,43 +141,56 @@ export function transactionFees(
 
 export function scoreSignals(snapshot, strategy, policy = selectionPolicy()) {
   const legacy = policy.version === LEGACY_SELECTION_VERSION;
+  // v3 股票分类路由（方案 3）：按类别改用对应权重预设，并把明确判定为
+  // 平庸型的股票排除出候选池。未分类（特征不足）不排除、不路由。
+  const routing = policy.stockClassRouting === true;
+  const weightsFor = (stock) => {
+    if (!routing || !stock.stockClass) return strategy.weights;
+    const preset = CLASS_WEIGHT_PRESETS[stock.stockClass];
+    return preset ? PRESETS[preset] : strategy.weights;
+  };
   const sectorScores = new Map(
     snapshot.sectors.map((sector) => [sector.name, sector.score]),
   );
-  const signals = snapshot.stocks.map((stock) => {
-    let weight = 0,
-      weighted = 0;
-    stock.factors.forEach((factor, index) => {
-      if (legacy ? factor.value === null : !Number.isFinite(factor.value))
-        return;
-      const factorWeight =
-        strategy.weights[
-          policy.version === LEGACY_SELECTION_VERSION
-            ? stock.factors.indexOf(factor)
-            : index
-        ];
-      weight += factorWeight;
-      weighted += factor.value * factorWeight;
+  const signals = snapshot.stocks
+    .filter(
+      (stock) => !(routing && stock.stockClass === STOCK_CLASSES.MEDIOCRE),
+    )
+    .map((stock) => {
+      const weights = weightsFor(stock);
+      let weight = 0,
+        weighted = 0;
+      stock.factors.forEach((factor, index) => {
+        if (legacy ? factor.value === null : !Number.isFinite(factor.value))
+          return;
+        const factorWeight =
+          weights[
+            policy.version === LEGACY_SELECTION_VERSION
+              ? stock.factors.indexOf(factor)
+              : index
+          ];
+        weight += factorWeight;
+        weighted += factor.value * factorWeight;
+      });
+      const raw = weight ? clamp(weighted / weight - stock.deduction) : null;
+      const scoreValue = Number.isFinite(raw) ? raw : null;
+      return {
+        ...stock,
+        originalScore: stock.score,
+        score: legacy
+          ? weight
+            ? Math.round(raw)
+            : null
+          : scoreValue === null
+            ? null
+            : Math.round(scoreValue),
+        scoreValue,
+        scoreRankKey:
+          scoreValue === null ? null : Math.round(scoreValue * 1_000_000),
+        liquidityAmountCents: liquidityAmountCents(stock.amount),
+        sectorScore: sectorScores.get(stock.sector) ?? null,
+      };
     });
-    const raw = weight ? clamp(weighted / weight - stock.deduction) : null;
-    const scoreValue = Number.isFinite(raw) ? raw : null;
-    return {
-      ...stock,
-      originalScore: stock.score,
-      score: legacy
-        ? weight
-          ? Math.round(raw)
-          : null
-        : scoreValue === null
-          ? null
-          : Math.round(scoreValue),
-      scoreValue,
-      scoreRankKey:
-        scoreValue === null ? null : Math.round(scoreValue * 1_000_000),
-      liquidityAmountCents: liquidityAmountCents(stock.amount),
-      sectorScore: sectorScores.get(stock.sector) ?? null,
-    };
-  });
   return rankSignals(signals, policy);
 }
 

@@ -1,7 +1,10 @@
 import { database } from "../storage/database.js";
 import { beijingDate, readBuyPointParams } from "./review.js";
 import { marketData } from "./market.js";
-import { getMa5ByCode } from "./daily-closes.js";
+import {
+  getMa5ByCode,
+  getStockFeaturesByCode,
+} from "./daily-closes.js";
 import { safeError } from "../http.js";
 import { normalize, promotionStats } from "../../shared/scoring.js";
 
@@ -127,11 +130,18 @@ export async function marketForDisplay(
     const slim = {};
     for (const [code, value] of ma5ByCode)
       if (poolCodes.has(code)) slim[code] = value;
+    // 股票分类历史特征随 payload 下发（只带池内代码），研究页客户端
+    // 重算 analyze 时口径与服务端一致
+    const { featuresByCode } = await getStockFeaturesByCode(env, date);
+    const slimFeatures = {};
+    for (const [code, value] of featuresByCode)
+      if (poolCodes.has(code)) slimFeatures[code] = value;
     // 买点参数（首阴门槛）随 payload 下发，研究页客户端重算时口径一致
     const buyPointParams = await readBuyPointParams(env);
     return {
       ...market,
       ma5ByCode: slim,
+      historyByCode: slimFeatures,
       buyPointParams,
       ...(asOf ? { ma5AsOf: asOf } : {}),
       // 研究页客户端用原始行重新 analyze，尾盘时点随观测时刻下发
