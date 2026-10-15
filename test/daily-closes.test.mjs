@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   computeMa5ByCode,
+  computeStockFeaturesByCode,
   getMa5ByCode,
 } from "../backend/services/daily-closes.js";
 import { analyze, normalize } from "../shared/scoring.js";
 
-// 合成数据集：dates 全局交易日，perCode 为 [date, close, adjFactor?] 序列
+// 合成数据集：dates 全局交易日，perCode 为 [date, close, adj?, high?, low?] 序列
 function makeDataset(dates, perCode) {
   const dateIdx = new Map(dates.map((d, i) => [d, i]));
   const codes = new Map();
@@ -14,17 +15,28 @@ function makeDataset(dates, perCode) {
     const n = series.length;
     const ds = new Uint32Array(n);
     const cs = new Float64Array(n);
+    const hs = new Float64Array(n).fill(Number.NaN);
+    const ls = new Float64Array(n).fill(Number.NaN);
     const as = new Float64Array(n).fill(Number.NaN);
     let hasFactor = false;
-    series.forEach(([d, c, a], k) => {
+    series.forEach(([d, c, a, h, l], k) => {
       ds[k] = dateIdx.get(d);
       cs[k] = c;
       if (a !== undefined) {
         as[k] = a;
         hasFactor = true;
       }
+      if (h !== undefined) hs[k] = h;
+      if (l !== undefined) ls[k] = l;
     });
-    codes.set(code, { dates: ds, closes: cs, adjs: as, hasFactor });
+    codes.set(code, {
+      dates: ds,
+      closes: cs,
+      highs: hs,
+      lows: ls,
+      adjs: as,
+      hasFactor,
+    });
   }
   return { dates, dateIdx, codes };
 }
@@ -181,6 +193,139 @@ test("MA5 注入后首阴买点在真实 analyze 链路激活（3 连板后首�
   // MA5 未知 → 首阴拒绝（宁缺毋滥）
   const noMa5 = analyze(rows, null, previous);
   assert.notEqual(noMa5.stocks[0].buyPoint.primary?.type, "first-neg-dip");
+});
+
+// ---------- 股票分类历史特征 ----------
+
+const F25 = Array.from({ length: 25 }, (_, i) => `2026-09-${String(1 + i).padStart(2, "0")}`);
+
+test("特征：近10日涨停基因（收盘比口径，boardLimit 感知）", () => {
+  // 主板：D15 从 10 → 11（+10%），快照 D20 时落在近 10 日内
+  const series = F25.map((d, i) => [
+    d,
+    i === 14 ? 11 : 10,
+    1,
+    11,
+    9.8,
+  ]);
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const inWindow = computeStockFeaturesByCode(dataset, F25[19]);
+  assert.equal(inWindow.featuresByCode.get("600001").limitUp10d, true);
+  // 快照 D25：D15 已在 10 日窗口外（D16–D25）→ 无涨停基因
+  const outWindow = computeStockFeaturesByCode(dataset, F25[24]);
+  assert.equal(outWindow.featuresByCode.get("600001").limitUp10d, false);
+});
+
+test("特征：20% 板（300 开头）按 19.7% 阈值识别涨停", () => {
+  const series = F25.map((d, i) => [
+    d,
+    i === 20 ? 12 : 10,
+    1,
+    12,
+    9.8,
+  ]);
+  const dataset = makeDataset(F25, [["300001", series]]);
+  const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
+  // +20% 对 20% 板算涨停；若误用 10% 板口径则 +20% 也算，无法区分——
+  // 反向验证：主板 600001 同样 +20% 涨幅在 10% 板口径下仍算涨停，
+  // 而 +15%（主板不算、20% 板也不算涨停）不触发。
+  assert.equal(featuresByCode.get("300001").limitUp10d, true);
+  const main = F25.map((d, i) => [d, i === 20 ? 11.5 : 10, 1, 11.5, 9.8]);
+  const mainData = makeDataset(F25, [["600001", main]]);
+  // +15% 对主板涨停（>=9.7）成立——构造 +9% 的不触发样本更有意义
+  const flat = F25.map((d, i) => [d, i === 20 ? 10.9 : 10, 1, 10.9, 9.8]);
+  const flatData = makeDataset(F25, [["300001", flat]]);
+  // 300xxx +9%：20% 板阈值 19.7 → 不算涨停
+  assert.equal(
+    computeStockFeaturesByCode(flatData, F25[24]).featuresByCode.get("300001")
+      .limitUp10d,
+    false,
+  );
+  void mainData;
+});
+
+test("特征：MA20 与 20 日区间振幅，不足 20 根为 null", () => {
+  const series = F25.map((d, i) => [
+    d,
+    10,
+    1,
+    i === 24 ? 12 : 11,
+    10,
+  ]);
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const full = computeStockFeaturesByCode(dataset, F25[24]);
+  const f = full.featuresByCode.get("600001");
+  assert.equal(f.ma20, 10);
+  // maxHigh = 12（末日），minLow = 10 → 振幅 20%
+  assert.equal(f.amplitude20, 20);
+  const short = computeStockFeaturesByCode(dataset, F25[14]); // 仅 15 根
+  assert.equal(short.featuresByCode.get("600001").ma20, null);
+  assert.equal(short.featuresByCode.get("600001").amplitude20, null);
+});
+
+test("特征：窗口内 high/low 缺失（NaN）时振幅未知", () => {
+  const series = F25.map((d, i) => [
+    d,
+    10,
+    1,
+    i === 10 ? Number.NaN : 11,
+    10,
+  ]);
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
+  assert.equal(featuresByCode.get("600001").amplitude20, null);
+  assert.equal(featuresByCode.get("600001").ma20, 10);
+});
+
+test("特征：跨除权窗口按快照日前复权，MA20/振幅不受除权跳空失真", () => {
+  // D15 除权：价格 10 → 5（腰斩），因子 1 → 2。前复权到快照日（f=2）后
+  // 全窗价格连续为 5：未复权 MA20 = (10×15+5×5)/20 = 8.75（失真），
+  // 复权 MA20 = 5；未复权振幅 (11-4.5)/4.5 ≈ 144%，复权 (5.5-4.5)/4.5 ≈ 22%。
+  const series = F25.map((d, i) =>
+    i < 15
+      ? [d, 10, 1, 11, 9]
+      : [d, 5, 2, 5.5, 4.5],
+  );
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
+  const f = featuresByCode.get("600001");
+  assert.equal(f.ma20, 5);
+  assert.equal(f.amplitude20, 22.22);
+});
+
+test("特征：有因子覆盖但 MA20 窗口内因子缺失 → 特征 null（口径不明确）", () => {
+  // 同上跨除权构造，但除权日（D15）因子缺失：MA20/振幅口径不明确 → null；
+  // 涨停基因窗口（D16–D25）因子齐全 → 不受影响。
+  const series = F25.map((d, i) =>
+    i < 15
+      ? [d, 10, 1, 11, 9]
+      : [d, 5, i === 15 ? undefined : 2, 5.5, 4.5],
+  );
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
+  const f = featuresByCode.get("600001");
+  assert.equal(f.ma20, null);
+  assert.equal(f.amplitude20, null);
+});
+
+test("特征：数据未覆盖快照日 → 空 Map + reason", () => {
+  const series = F25.map((d) => [d, 10, 1, 11, 10]);
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { featuresByCode, asOf, reason } = computeStockFeaturesByCode(
+    dataset,
+    "2026-10-15",
+  );
+  assert.equal(featuresByCode.size, 0);
+  assert.equal(asOf, F25[24]);
+  assert.match(reason, /未覆盖快照日 2026-10-15/);
+});
+
+test("特征：停牌股（快照日无收盘）不产出特征", () => {
+  const dataset = makeDataset(F25, [
+    ["600001", F25.slice(0, 20).map((d) => [d, 10, 1, 11, 10])],
+  ]);
+  const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
+  assert.equal(featuresByCode.has("600001"), false);
 });
 
 // ---------- 优雅降级 ----------

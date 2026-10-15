@@ -1,4 +1,8 @@
-import { clamp } from "../../shared/scoring.js";
+import { clamp, PRESETS } from "../../shared/scoring.js";
+import {
+  CLASS_WEIGHT_PRESETS,
+  STOCK_CLASSES,
+} from "../../shared/stock-class.js";
 import {
   DEFAULT_INITIAL_CAPITAL,
   DEFAULT_FEES,
@@ -137,43 +141,54 @@ export function transactionFees(
 
 export function scoreSignals(snapshot, strategy, policy = selectionPolicy()) {
   const legacy = policy.version === LEGACY_SELECTION_VERSION;
+  // v3 股票分类路由（方案 3）：按类别改用对应权重预设。注意：平庸股
+  // 必须保留在信号列表里（按策略权重评分）——持仓股依赖当日信号触发
+  // 减仓/止损等风险动作，在这里剔除会让持仓回退旧评分做出错误动作。
+  // 平庸股的"不进入候选池"由 createPlan 的新增买入阶段执行。
+  const routing = policy.stockClassRouting === true;
+  const weightsFor = (stock) => {
+    if (!routing || !stock.stockClass) return strategy.weights;
+    const preset = CLASS_WEIGHT_PRESETS[stock.stockClass];
+    return preset ? PRESETS[preset] : strategy.weights;
+  };
   const sectorScores = new Map(
     snapshot.sectors.map((sector) => [sector.name, sector.score]),
   );
   const signals = snapshot.stocks.map((stock) => {
-    let weight = 0,
-      weighted = 0;
-    stock.factors.forEach((factor, index) => {
-      if (legacy ? factor.value === null : !Number.isFinite(factor.value))
-        return;
-      const factorWeight =
-        strategy.weights[
-          policy.version === LEGACY_SELECTION_VERSION
-            ? stock.factors.indexOf(factor)
-            : index
-        ];
-      weight += factorWeight;
-      weighted += factor.value * factorWeight;
+    const weights = weightsFor(stock);
+      let weight = 0,
+        weighted = 0;
+      stock.factors.forEach((factor, index) => {
+        if (legacy ? factor.value === null : !Number.isFinite(factor.value))
+          return;
+        const factorWeight =
+          weights[
+            policy.version === LEGACY_SELECTION_VERSION
+              ? stock.factors.indexOf(factor)
+              : index
+          ];
+        weight += factorWeight;
+        weighted += factor.value * factorWeight;
+      });
+      const raw = weight ? clamp(weighted / weight - stock.deduction) : null;
+      const scoreValue = Number.isFinite(raw) ? raw : null;
+      return {
+        ...stock,
+        originalScore: stock.score,
+        score: legacy
+          ? weight
+            ? Math.round(raw)
+            : null
+          : scoreValue === null
+            ? null
+            : Math.round(scoreValue),
+        scoreValue,
+        scoreRankKey:
+          scoreValue === null ? null : Math.round(scoreValue * 1_000_000),
+        liquidityAmountCents: liquidityAmountCents(stock.amount),
+        sectorScore: sectorScores.get(stock.sector) ?? null,
+      };
     });
-    const raw = weight ? clamp(weighted / weight - stock.deduction) : null;
-    const scoreValue = Number.isFinite(raw) ? raw : null;
-    return {
-      ...stock,
-      originalScore: stock.score,
-      score: legacy
-        ? weight
-          ? Math.round(raw)
-          : null
-        : scoreValue === null
-          ? null
-          : Math.round(scoreValue),
-      scoreValue,
-      scoreRankKey:
-        scoreValue === null ? null : Math.round(scoreValue * 1_000_000),
-      liquidityAmountCents: liquidityAmountCents(stock.amount),
-      sectorScore: sectorScores.get(stock.sector) ?? null,
-    };
-  });
   return rankSignals(signals, policy);
 }
 
@@ -290,6 +305,8 @@ export function createPlan(
       coverage: s.coverage ?? null,
       sectorScore: s.sectorScore,
       height: s.height ?? null,
+      // v3 股票分类结果随审计透出（平庸型在新增买入阶段被跳过）
+      stockClass: s.stockClass ?? null,
       ...(strategyProgram
         ? {
             consecutiveBoards: Object.hasOwn(s, "consecutiveBoards")
@@ -486,8 +503,14 @@ export function createPlan(
 
   const slots = Math.max(0, strategy.maxPositions - book.positions.length);
   let opened = 0;
+  // v3：平庸型只在"新增买入候选"阶段排除；信号列表保留完整持仓风险信号
+  const stockClassRouting = policy.stockClassRouting === true;
   for (const [index, signal] of signals.entries()) {
     const audit = selectionAudit.candidates[index];
+    if (stockClassRouting && signal.stockClass === STOCK_CLASSES.MEDIOCRE) {
+      audit.reason = "平庸型不进入新增候选池";
+      continue;
+    }
     if (holdings.has(signal.code)) {
       audit.reason = "已有持仓，按持仓计划处理";
       continue;

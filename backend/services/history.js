@@ -7,7 +7,10 @@ import {
   normalizeLimitFeatureRow,
 } from "../domain/historical-input.js";
 import { analyze, PRESETS } from "../../shared/scoring.js";
-import { getMa5ByCode } from "./daily-closes.js";
+import {
+  getMa5ByCode,
+  getStockFeaturesByCode,
+} from "./daily-closes.js";
 import { readBuyPointParams } from "./review.js";
 import { digestOf } from "../domain/research-lineage.js";
 import {
@@ -399,6 +402,7 @@ async function runHistoryImportInner(
       const previousEntry =
         succeeded.slice(0, succeeded.indexOf(entry)).at(-1) ?? null;
       const { ma5ByCode } = await getMa5ByCode(env, entry.date);
+      const { featuresByCode } = await getStockFeaturesByCode(env, entry.date);
       const a = analyze(
         entry.normalized,
         entry.broken ?? null,
@@ -407,6 +411,7 @@ async function runHistoryImportInner(
         // 显式逐字段构造：配置不得覆盖 ma5ByCode / lateSession 行情输入
         {
           ma5ByCode,
+          historyByCode: featuresByCode,
           lateSession: true,
           firstNegMinPrevHeight: buyPointParams.firstNegMinPrevHeight,
         },
