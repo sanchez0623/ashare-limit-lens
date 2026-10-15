@@ -133,24 +133,28 @@ export function checkExitSignals(position, marketData = {}) {
 }
 
 // 板块退潮统计：今日/昨日涨停池 → 同板块涨停数降幅 ≥50% 的板块集合。
-// todayRows 为 normalize 后的当日行（height/sector），previousRows 为
-// 昨日原始池行（hybk/lbc）。昨日无数据时返回空 Map（不产生该信号）。
+// 输入统一规范化：
+//   - 今日池：normalize() 后行（sector/height），height = lbc ?? ylbc；
+//   - 昨日池：原始行（hybk/ylbc 字段；部分数据可能回填 lbc），
+//     昨日连板数以 ylbc 为准，缺失时回退 lbc，与 normalize 的 height 对齐。
+// 昨日无数据时返回空 Map（不产生该信号）。
 export function sectorLimitUpDrops(todayRows, previousRows) {
   const drops = new Map();
   if (!Array.isArray(previousRows) || previousRows.length === 0) return drops;
-  const countBy = (rows, sectorKey, heightKey) => {
+  const countBy = (rows, sectorKey, heightKeys) => {
     const map = new Map();
     for (const row of rows ?? []) {
       const sector = row?.[sectorKey];
       if (!sector) continue;
-      const height = Number(row?.[heightKey]) || 0;
+      const height =
+        Number(row?.[heightKeys[0]]) || Number(row?.[heightKeys[1]]) || 0;
       if (height < 1) continue;
       map.set(sector, (map.get(sector) ?? 0) + 1);
     }
     return map;
   };
-  const today = countBy(todayRows, "sector", "height");
-  const yesterday = countBy(previousRows, "hybk", "lbc");
+  const today = countBy(todayRows, "sector", ["height"]);
+  const yesterday = countBy(previousRows, "hybk", ["ylbc", "lbc"]);
   // 以昨日板块为基准遍历：板块今日涨停清零同样构成 ≥50% 退潮
   for (const [sector, yesterdayCount] of yesterday) {
     const todayCount = today.get(sector) ?? 0;

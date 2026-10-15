@@ -193,6 +193,35 @@ export function scoreSignals(snapshot, strategy, policy = selectionPolicy()) {
   return rankSignals(signals, policy);
 }
 
+// 卖出上下文序列化：Map → 纯对象（JSON.stringify 安全）。无任何上下文
+// 时返回 null；phaseShift 仅在有板块/个股上下文时才写 true（否则重算
+// 会把无上下文的普通计划误判为退潮期）。
+function freezeExitContext({
+  exitFeaturesByCode,
+  exitEodRowsByCode,
+  sectorLimitDrops,
+  phaseShift,
+}) {
+  const features =
+    exitFeaturesByCode && exitFeaturesByCode.size
+      ? Object.fromEntries(exitFeaturesByCode)
+      : null;
+  const eodRows =
+    exitEodRowsByCode && exitEodRowsByCode.size
+      ? Object.fromEntries(exitEodRowsByCode)
+      : null;
+  const sectorDrops = sectorLimitDrops?.size
+    ? [...sectorLimitDrops.keys()].sort()
+    : null;
+  if (!features && !eodRows && !sectorDrops && !phaseShift) return null;
+  return {
+    ...(features ? { features } : {}),
+    ...(eodRows ? { eodRows } : {}),
+    ...(sectorDrops ? { sectorDrops } : {}),
+    ...(phaseShift ? { phaseShift: true } : {}),
+  };
+}
+
 export function createPlan(
   snapshot,
   book,
@@ -208,11 +237,30 @@ export function createPlan(
   // 原始分跨日回查：持仓股掉出当日涨停池时，按最近一次快照归档评分回填，
   // 查不到才如实置空；不参与任何策略决策，仅还原展示口径。
   const originalScoreLookup = options.originalScoreLookup ?? null;
-  // 卖出信号检测器（方案 5）：日线历史特征 + 板块退潮集合 + 情绪周期切换。
-  // 三项均为可选上下文；缺失时对应信号跳过，不猜。
-  const exitFeaturesByCode = options.exitFeaturesByCode ?? null;
-  const sectorLimitDrops = options.sectorLimitDrops ?? new Map();
-  const phaseShift = options.phaseShift === true;
+  // 卖出信号检测器（方案 5）：日线历史特征 + EOD 当日行（持仓股跌出涨停池
+  // 时也用真实日线补齐，不能漏检）+ 板块退潮集合 + 情绪周期切换。
+  // 全部为可选上下文；缺失时对应信号跳过，不猜。
+  let exitFeaturesByCode = options.exitFeaturesByCode ?? null;
+  let exitEodRowsByCode = options.exitEodRowsByCode ?? null;
+  let sectorLimitDrops = options.sectorLimitDrops ?? new Map();
+  let phaseShift = options.phaseShift === true;
+  // 冻结态：序列化后的上下文，供重算 / 影子 / 回测 / 核验复现同一决策。
+  // 已冻结计划重算时直接反序列化复用原始输入，而不是按当日行情重推
+  // （行情字段当日即快照，重推结果一致；但手续费/资金路径只改 fee 不
+  // 改行情，上下文缺失误判会把 EXIT 变 ADD）。
+  const exitContextFrozen = options.exitContextFrozen ?? null;
+  if (exitContextFrozen) {
+    exitFeaturesByCode = exitContextFrozen.features
+      ? new Map(Object.entries(exitContextFrozen.features))
+      : null;
+    exitEodRowsByCode = exitContextFrozen.eodRows
+      ? new Map(Object.entries(exitContextFrozen.eodRows))
+      : null;
+    sectorLimitDrops = new Map(
+      (exitContextFrozen.sectorDrops ?? []).map((sector) => [sector, true]),
+    );
+    phaseShift = exitContextFrozen.phaseShift === true;
+  }
   const policy = options.selectionPolicy ?? selectionPolicyForBook(book);
   const policyFields = selectionPolicyFields(policy);
   const modernSelection = policy.version !== LEGACY_SELECTION_VERSION;
@@ -364,9 +412,38 @@ export function createPlan(
       ? (quantity * referenceCents) / costBasis(position) - 1
       : 0;
     // 方案 5：主动卖出信号检测（固定止损之外的止盈/退潮退出）。
-    // 任一信号命中 → 清仓（优先级高于减仓/持有逻辑）。
+    // 持仓股不在当日涨停评分池时，用日线 EOD 行补齐 row（开/收/高/涨幅/
+    // 是否封板/炸板次数），避免漏检个股卖出信号。
+    //   - 已在池：以评分 normalize 行（含真实 breaks / isLimitUp）为准；
+    //   - 不在池：用 exitEodRowsByCode 推算 close/open/high/change；
+    //     isLimitUp 由 change 距 limitUpPct 阈值推断（容差 0.3%）；
+    //     breaks 无法从日线恢复 → 置 null（炸板不回封信号跳过，不猜）。
+    let exitRow = signal ?? null;
+    if (!exitRow) {
+      const eod = exitEodRowsByCode?.get(position.code);
+      if (eod) {
+        const limitPct = eod.limitUpPct ?? 10;
+        const change = Number.isFinite(eod.change) ? eod.change : null;
+        const isLimitUp =
+          change !== null && change >= limitPct - 0.3
+            ? true
+            : change !== null
+              ? false
+              : null;
+        exitRow = {
+          code: position.code,
+          close: eod.close,
+          price: eod.close,
+          open: eod.open,
+          high: eod.high,
+          change,
+          breaks: null, // 日线无法还原盘中炸板次数
+          isLimitUp,
+        };
+      }
+    }
     const exitResult = checkExitSignals(position, {
-      row: signal,
+      row: exitRow,
       features: exitFeaturesByCode?.get(position.code) ?? null,
       sectorLimitDrop: sectorLimitDrops.get(position.sector) === true,
       phaseShift,
@@ -687,6 +764,15 @@ export function createPlan(
       : null,
     targetExposure,
     maxExposure: effectiveCap,
+    // 卖出上下文冻结：与政策 digest 同级，重算/影子/回测/核验直接读
+    // 这份快照复现同一决策，不再按当日行情重推（避免手续费变更引起
+    // 上下文漂移、EXIT 变 ADD）。无上下文时置 null，不写空壳。
+    exitContext: freezeExitContext({
+      exitFeaturesByCode,
+      exitEodRowsByCode,
+      sectorLimitDrops,
+      phaseShift,
+    }),
     orders: carriedPlanOrders(
       orders,
       book,

@@ -19,6 +19,7 @@ const files = [
   "shared/scoring.js",
   "shared/stock-class.js",
   "shared/execution-cost.js",
+  "shared/exit-signals.js",
   "shared/fees.js",
   "shared/risk-limits.js",
   "shared/strategy-params.js",

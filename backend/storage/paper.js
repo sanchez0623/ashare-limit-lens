@@ -506,12 +506,20 @@ export class PaperRepository {
         day,
         book.positions.map((position) => position.code),
       );
+      // 卖出上下文沿用被替换计划的冻结快照：仅调费用/资金时，决策输入
+      // 不变（行情当日快照、特征/EOD 行/板块退潮/情绪切换全部复用原值）。
+      const frozenExitContext = previousPlan
+        ? (JSON.parse(previousPlan.payload).exitContext ?? null)
+        : null;
       replacement = snapshot
         ? createPlan(snapshot, book, strategy, book.activeStrategy, stamp, {
             executionCostPolicy,
             originalScoreLookup,
             selectionPolicy: policy,
             snapshotDigest: await selectionSnapshotDigest(snapshot),
+            ...(frozenExitContext
+              ? { exitContextFrozen: frozenExitContext }
+              : {}),
           })
         : defensivePlan(day, book, strategy, book.activeStrategy, stamp, {
             executionCostPolicy,

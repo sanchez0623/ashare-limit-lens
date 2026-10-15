@@ -18,7 +18,10 @@ import {
 } from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
-import { getStockFeaturesByCode } from "./daily-closes.js";
+import {
+  getStockFeaturesByCode,
+  getExitEodRowsByCode,
+} from "./daily-closes.js";
 import { sectorLimitUpDrops } from "../../shared/exit-signals.js";
 import { CYCLE_PHASES } from "../../shared/sentiment-cycle.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
@@ -193,6 +196,12 @@ async function settlePaperDay(env, date) {
   let exitContext = null;
   if (snapshot && !nextPlan) {
     const { featuresByCode } = await getStockFeaturesByCode(env, date);
+    // 持仓股跌出涨停池时也能拿到当日日线 EOD 行（开/收/高/涨幅/量/
+    // 板块涨停阈值），卖出检测器不依赖个股是否在池。
+    const { rowsByCode: exitEodRowsByCode } = await getExitEodRowsByCode(
+      env,
+      date,
+    );
     const previousRows = snapshot.market?.previous ?? [];
     const sectorLimitDrops = sectorLimitUpDrops(
       (snapshot.stocks ?? []).map((stock) => ({
@@ -230,6 +239,7 @@ async function settlePaperDay(env, date) {
     const phaseShift = prevHot && todayCold;
     exitContext = {
       exitFeaturesByCode: featuresByCode,
+      exitEodRowsByCode,
       sectorLimitDrops,
       phaseShift,
     };

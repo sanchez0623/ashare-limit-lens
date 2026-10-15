@@ -7,7 +7,9 @@ import {
 } from "../backend/services/daily-closes.js";
 import { analyze, normalize } from "../shared/scoring.js";
 
-// 合成数据集：dates 全局交易日，perCode 为 [date, close, adj?, high?, low?] 序列
+// 合成数据集：dates 全局交易日，perCode 为 [date, close, adj?, high?, low?, volume?] 序列。
+// volume 缺省 NaN（夹具不带 volume 列时）；显式传入 null/undefined 表示"空成交量"
+// （复现 Parquet 缺失值），显式传数字则按未复权量写入。
 function makeDataset(dates, perCode) {
   const dateIdx = new Map(dates.map((d, i) => [d, i]));
   const codes = new Map();
@@ -17,9 +19,11 @@ function makeDataset(dates, perCode) {
     const cs = new Float64Array(n);
     const hs = new Float64Array(n).fill(Number.NaN);
     const ls = new Float64Array(n).fill(Number.NaN);
+    const vs = new Float64Array(n).fill(Number.NaN);
+    const os = new Float64Array(n).fill(Number.NaN);
     const as = new Float64Array(n).fill(Number.NaN);
     let hasFactor = false;
-    series.forEach(([d, c, a, h, l], k) => {
+    series.forEach(([d, c, a, h, l, v], k) => {
       ds[k] = dateIdx.get(d);
       cs[k] = c;
       if (a !== undefined) {
@@ -28,12 +32,16 @@ function makeDataset(dates, perCode) {
       }
       if (h !== undefined) hs[k] = h;
       if (l !== undefined) ls[k] = l;
+      if (v === null || v === undefined) vs[k] = Number.NaN;
+      else if (Number.isFinite(v)) vs[k] = v;
     });
     codes.set(code, {
       dates: ds,
       closes: cs,
+      opens: os,
       highs: hs,
       lows: ls,
+      volumes: vs,
       adjs: as,
       hasFactor,
     });
@@ -316,6 +324,36 @@ test("未配置 QUAN_DATA_DIR 时返回空 Map 并说明原因", async () => {
   } finally {
     if (saved !== undefined) process.env.QUAN_DATA_DIR = saved;
   }
+});
+
+// ---------- 成交量缺失值保护（P2-4） ----------
+
+test("特征：历史均量窗口内任一空 volume → vol20Avg 未知，当日量保持独立", () => {
+  // 复现 Parquet 实测：前 19 根中任一缺失被当成 0，均量被压低（94.74），
+  // 当日量 145 被误判为放量滞涨。修复后：缺值则 vol20Avg=null，不参与均值。
+  const series = F25.map((d, i) => {
+    // D5..D23（p=24 的前 19 根：k=5..23）全部 100；D10 故意空（null）
+    const v = i === 10 ? null : 100;
+    return [d, 10, 1, 11, 9, v];
+  });
+  // 当日 D25 量 145（无空值）
+  series[24] = [F25[24], 10, 1, 11, 9, 145];
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
+  const f = featuresByCode.get("600001");
+  assert.equal(f.vol20Avg, null, "窗口内任一 volume 空 → 均量未知");
+  assert.equal(f.todayVolume, 145, "当日 volume 独立读取，不被窗口污染");
+});
+
+test("特征：前 19 根 volume 全部有效 → vol20Avg 为窗口均值，当日量如实返回", () => {
+  const series = F25.map((d) => [d, 10, 1, 11, 9, 100]);
+  series[24] = [F25[24], 10, 1, 11, 9, 145];
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
+  const f = featuresByCode.get("600001");
+  // 前 19 根（D5..D23）均为 100
+  assert.equal(f.vol20Avg, 100);
+  assert.equal(f.todayVolume, 145);
 });
 
 test("数据目录存在时烟雾测试（读取真实 parquet）", async (t) => {

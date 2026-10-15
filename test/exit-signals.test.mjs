@@ -236,3 +236,42 @@ test("sectorLimitUpDrops：昨日无数据返回空Map；今日清零也算退�
   );
   assert.equal(drops.get("银行"), true);
 });
+
+test("sectorLimitUpDrops：昨日字段优先读 ylbc，回退 lbc（修复字段错位漏判）", () => {
+  // 昨日 4 家银行（ylbc=1），今日 1 家 → 降幅 75%，应触发退潮。
+  // 此前只统计 lbc 会读到 0（旧字段为空），昨日家数被误判为 0。
+  const dropsY = sectorLimitUpDrops(
+    [{ sector: "银行", height: 1 }],
+    [
+      { hybk: "银行", ylbc: 1 },
+      { hybk: "银行", ylbc: 1 },
+      { hybk: "银行", ylbc: 1 },
+      { hybk: "银行", ylbc: 1 },
+    ],
+  );
+  assert.equal(dropsY.get("银行"), true);
+  // ylbc 缺失时回退 lbc。
+  const dropsFallback = sectorLimitUpDrops(
+    [{ sector: "银行", height: 1 }],
+    [
+      { hybk: "银行", lbc: 1 },
+      { hybk: "银行", lbc: 1 },
+      { hybk: "银行", lbc: 1 },
+      { hybk: "银行", lbc: 1 },
+    ],
+  );
+  assert.equal(dropsFallback.get("银行"), true);
+  // ylbc=0（昨日无板）但 lbc=1（旧口径残留）时，按字段优先：ylbc 取到 0
+  // 后短路（0 是 falsy），立即回退 lbc=1 → 仍算退潮；这与"ylbc 优先"语义
+  // 一致（ylbc 字段存在但值为 0 时，旧口径 lbc 才有参考价值）。
+  const dropsYlbcsZero = sectorLimitUpDrops(
+    [{ sector: "银行", height: 1 }],
+    [
+      { hybk: "银行", ylbc: 0, lbc: 1 },
+      { hybk: "银行", ylbc: 0, lbc: 1 },
+      { hybk: "银行", ylbc: 0, lbc: 1 },
+      { hybk: "银行", ylbc: 0, lbc: 1 },
+    ],
+  );
+  assert.equal(dropsYlbcsZero.get("银行"), true);
+});

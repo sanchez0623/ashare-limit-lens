@@ -139,6 +139,7 @@ async function parseDataset(dailyPath, adjPath) {
   const daily = await readColumns(dailyPath, [
     "code",
     "date",
+    "open",
     "high",
     "low",
     "close",
@@ -146,17 +147,19 @@ async function parseDataset(dailyPath, adjPath) {
   ]);
   const dCode = daily.get("code"),
     dDate = daily.get("date"),
+    dOpen = daily.get("open"),
     dHigh = daily.get("high"),
     dLow = daily.get("low"),
     dClose = daily.get("close"),
     dVolume = daily.get("volume");
   const datesSet = new Set();
-  const builders = new Map(); // code -> { d: string[], c/h/l/v: number[] }
+  const builders = new Map(); // code -> { d: string[], c/o/h/l/v: number[] }
   for (let i = 0; i < dCode.length; i++) {
     const code = dCode[i],
       date = dDate[i],
       close = Number(dClose[i]);
-    const high = Number(dHigh[i]),
+    const open = Number(dOpen?.[i]),
+      high = Number(dHigh[i]),
       low = Number(dLow[i]),
       volume = Number(dVolume[i]);
     if (typeof code !== "string" || !code) continue;
@@ -166,16 +169,26 @@ async function parseDataset(dailyPath, adjPath) {
     // 以 NaN 占位，振幅计算按"窗口内存在 NaN → 未知"处理。
     const validHighLow =
       Number.isFinite(high) && high > 0 && Number.isFinite(low) && low > 0;
-    // volume 用于放量滞涨（20 日均量）；缺失以 NaN 占位（量能为非复权口径）。
-    const validVolume = Number.isFinite(volume) && volume >= 0;
+    const validOpen = Number.isFinite(open) && open > 0;
+    // volume 用于放量滞涨（20 日均量）；空值（null/undefined/NaN）保持
+    // 未知（NaN 占位），严禁把缺失当成 0，否则历史均量被压低会把当日
+    // 正常成交量误判为放量。量能为非复权口径。
+    const volumeSource = dVolume[i];
+    const volumeMissing =
+      volumeSource === null ||
+      volumeSource === undefined ||
+      volumeSource === "";
+    const validVolume =
+      !volumeMissing && Number.isFinite(volume) && volume >= 0;
     datesSet.add(date);
     let rec = builders.get(code);
     if (!rec) {
-      rec = { d: [], c: [], h: [], l: [], v: [] };
+      rec = { d: [], c: [], o: [], h: [], l: [], v: [] };
       builders.set(code, rec);
     }
     rec.d.push(date);
     rec.c.push(close);
+    rec.o.push(validOpen ? open : Number.NaN);
     rec.h.push(validHighLow ? high : Number.NaN);
     rec.l.push(validHighLow ? low : Number.NaN);
     rec.v.push(validVolume ? volume : Number.NaN);
@@ -212,6 +225,7 @@ async function parseDataset(dailyPath, adjPath) {
     const n = order.length;
     const ds = new Uint32Array(n);
     const cs = new Float64Array(n);
+    const os = new Float64Array(n).fill(Number.NaN);
     const hs = new Float64Array(n).fill(Number.NaN);
     const ls = new Float64Array(n).fill(Number.NaN);
     const vs = new Float64Array(n).fill(Number.NaN);
@@ -221,6 +235,7 @@ async function parseDataset(dailyPath, adjPath) {
       const i = order[k][1];
       ds[k] = order[k][0];
       cs[k] = rec.c[i];
+      os[k] = rec.o[i];
       hs[k] = rec.h[i];
       ls[k] = rec.l[i];
       vs[k] = rec.v[i];
@@ -230,6 +245,7 @@ async function parseDataset(dailyPath, adjPath) {
     codes.set(code, {
       dates: ds,
       closes: cs,
+      opens: os,
       highs: hs,
       lows: ls,
       volumes: vs,
@@ -477,6 +493,97 @@ export function computeStockFeaturesByCode(dataset, snapshotDate) {
     });
   }
   return { featuresByCode, asOf };
+}
+
+// ---------- 卖出信号当日 EOD 行（持仓股跌出涨停池也需要） ----------
+// 返回 Map<code, { close, open, high, change, volume, limitUpPct }>。
+// 严格口径与 featuresByCode 一致：
+//   - 仅当数据覆盖快照日才产出，否则空 Map（带 reason）；
+//   - 价格前复权到快照日（hasFactor），无因子一致未复权；
+//   - 停牌 / 无当日收盘（p<0 或 s.dates[p]!==asOf）跳过；
+//   - change 以当日收盘 / 前一交易日收盘 -1（复权口径）推算；
+//   - limitUpPct 按代码板块 10%/20% 给出，供 trading 推断 isLimitUp；
+//   - 当日 volume 直接取未复权量；open/high 同样按复权缩放。
+export function computeExitEodRowsByCode(dataset, snapshotDate) {
+  const { dates, dateIdx, codes } = dataset;
+  if (!dates.length) return { rowsByCode: new Map(), asOf: null };
+  if (snapshotDate && DATE_RE.test(snapshotDate) && !dateIdx.has(snapshotDate))
+    return {
+      rowsByCode: new Map(),
+      asOf: dates[dates.length - 1] ?? null,
+      reason: `日线数据未覆盖快照日 ${snapshotDate}（数据截止 ${
+        dates[dates.length - 1] ?? "空"
+      }），卖出 EOD 行不可用`,
+    };
+  const end =
+    snapshotDate && dateIdx.has(snapshotDate)
+      ? dateIdx.get(snapshotDate)
+      : dates.length - 1;
+  const asOf = dates[end];
+  const rowsByCode = new Map();
+  for (const [code, s] of codes) {
+    const p = lowerBound(s.dates, end);
+    if (p < 0 || s.dates[p] !== end) continue; // 停牌 / 当日无收盘
+    const hasFactor = s.hasFactor;
+    const fEnd = hasFactor ? s.adjs[p] : 1;
+    const close = hasFactor ? (s.closes[p] * s.adjs[p]) / fEnd : s.closes[p];
+    let open = null,
+      high = null,
+      change = null;
+    if (Number.isFinite(s.opens?.[p]))
+      open = hasFactor ? (s.opens[p] * s.adjs[p]) / fEnd : s.opens[p];
+    if (Number.isFinite(s.highs[p]))
+      high = hasFactor ? (s.highs[p] * s.adjs[p]) / fEnd : s.highs[p];
+    if (
+      p > 0 &&
+      Number.isFinite(s.adjs[p - 1]) &&
+      Number.isFinite(s.closes[p - 1])
+    ) {
+      const prevClose = hasFactor
+        ? (s.closes[p - 1] * s.adjs[p - 1]) / fEnd
+        : s.closes[p - 1];
+      if (prevClose > 0) change = (close / prevClose) * 100 - 100;
+    }
+    const volume = s.volumes?.[p];
+    rowsByCode.set(code, {
+      close: Math.round(close * 1000) / 1000,
+      open:
+        open !== null && Number.isFinite(open)
+          ? Math.round(open * 1000) / 1000
+          : null,
+      high:
+        high !== null && Number.isFinite(high)
+          ? Math.round(high * 1000) / 1000
+          : null,
+      change:
+        change !== null && Number.isFinite(change)
+          ? Math.round(change * 100) / 100
+          : null,
+      volume: Number.isFinite(volume) && volume >= 0 ? volume : null,
+      limitUpPct: boardLimitOf(code),
+    });
+  }
+  return { rowsByCode, asOf };
+}
+
+export async function getExitEodRowsByCode(env, snapshotDate) {
+  const dataDir = dailyDataDir(env);
+  if (!dataDir)
+    return {
+      rowsByCode: new Map(),
+      asOf: null,
+      reason: "未配置 QUAN_DATA_DIR，卖出 EOD 行不可用",
+    };
+  try {
+    const dataset = await loadDailyDataset(dataDir);
+    return computeExitEodRowsByCode(dataset, snapshotDate);
+  } catch (error) {
+    return {
+      rowsByCode: new Map(),
+      asOf: null,
+      reason: `日线数据读取失败：${safeError(error)}`,
+    };
+  }
 }
 
 export async function getStockFeaturesByCode(env, snapshotDate) {

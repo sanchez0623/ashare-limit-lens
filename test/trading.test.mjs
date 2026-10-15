@@ -915,3 +915,135 @@ test("原始分回查只读归档，最近一次有效评分胜出", async () =>
     DB.close();
   }
 });
+
+// P1-1：持仓股跌出当日涨停池时，仍要通过日线 EOD 行补齐卖出信号。
+// 复现用户验收用例：持仓收盘 10（元）、MA5=10.8，原实现只从评分池取行，
+// 跌出池后 row=null，跌破 MA5 信号被跳过，仍按做 T 走。
+test("P1-1：跌出涨停池的持仓由 EOD 行补齐，跌破 MA5 触发清仓而非做 T", () => {
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600099", // 不在 snapshot.stocks（合成池只有 600001/600002）
+      name: "跌出池样本",
+      sector: "测试行业",
+      heldDays: 0,
+      markCents: 1000, // 收盘 10 元 = 1000 分
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const eodRowsByCode = new Map([
+    [
+      "600099",
+      {
+        close: 10, // 元
+        open: 10.2,
+        high: 10.3,
+        change: -3.0,
+        volume: null,
+        limitUpPct: 10,
+      },
+    ],
+  ]);
+  const featuresByCode = new Map([
+    // ma5 > close → 跌破 5 日均线（用户复现：收盘 10、MA5=10.8）
+    [
+      "600099",
+      { ma5: 10.8, vol20Avg: null, todayVolume: null, high20Prev: null },
+    ],
+  ]);
+  const snap = snapshot(dateAt(1));
+  const plan1 = createPlan(snap, book, BASE_STRATEGY, "v", "now", {
+    exitEodRowsByCode: eodRowsByCode,
+    exitFeaturesByCode: featuresByCode,
+  });
+  const exitOrder = plan1.orders.find((o) => o.code === "600099");
+  assert.ok(exitOrder, "应生成卖出订单");
+  assert.equal(exitOrder.action, "EXIT");
+  assert.match(exitOrder.reason, /主动卖出信号/);
+  assert.match(exitOrder.reason, /5\s*日均线/);
+  // 上下文冻结写入 payload，供重算/影子/回测共用
+  assert.ok(plan1.exitContext, "计划应冻结 exitContext");
+  assert.ok(plan1.exitContext.features["600099"]);
+  assert.ok(plan1.exitContext.eodRows["600099"]);
+});
+
+// P1-2：冻结上下文复算必须得到同一决策（用户复现：仅改手续费后 EXIT 变 ADD）。
+test("P1-2：exitContextFrozen 反序列化复现同一决策；缺失上下文时不写空壳", () => {
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600099",
+      name: "跌出池样本",
+      sector: "测试行业",
+      heldDays: 0,
+      markCents: 1000,
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const eodRowsByCode = new Map([
+    [
+      "600099",
+      {
+        close: 10,
+        open: 10.2,
+        high: 10.3,
+        change: -3.0,
+        volume: null,
+        limitUpPct: 10,
+      },
+    ],
+  ]);
+  const featuresByCode = new Map([["600099", { ma5: 10.8 }]]);
+  const snap = snapshot(dateAt(1));
+  const original = createPlan(snap, book, BASE_STRATEGY, "v", "now", {
+    exitEodRowsByCode: eodRowsByCode,
+    exitFeaturesByCode: featuresByCode,
+  });
+  const originalAction = original.orders.find(
+    (o) => o.code === "600099",
+  ).action;
+  assert.equal(originalAction, "EXIT");
+  // 重算：不传原始 Map，只传从 payload 反序列化的 exitContextFrozen。
+  const recalculated = createPlan(snap, book, BASE_STRATEGY, "v", "now", {
+    exitContextFrozen: original.exitContext,
+  });
+  const recalcAction = recalculated.orders.find(
+    (o) => o.code === "600099",
+  ).action;
+  assert.equal(
+    recalcAction,
+    "EXIT",
+    "仅重放冻结上下文必须得到同一卖出决策（不得退回 ADD/REDUCE）",
+  );
+  // 无任何上下文时 exitContext 置 null，不写空壳对象。
+  const plain = createPlan(
+    snapshot(dateAt(0)),
+    newBook(100000),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  );
+  assert.equal(plain.exitContext, null);
+  // 序列化往返安全（JSON.stringify）：plan 直接入库时不能因 Map/undefined 崩。
+  assert.doesNotThrow(() => JSON.stringify(original));
+});
