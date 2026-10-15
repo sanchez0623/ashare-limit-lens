@@ -29,7 +29,14 @@ function makeDataset(dates, perCode) {
   return { dates, dateIdx, codes };
 }
 
-const DATES = ["2026-10-08", "2026-10-09", "2026-10-10", "2026-10-12", "2026-10-13", "2026-10-14"];
+const DATES = [
+  "2026-10-08",
+  "2026-10-09",
+  "2026-10-10",
+  "2026-10-12",
+  "2026-10-13",
+  "2026-10-14",
+];
 
 test("MA5：最近 5 个交易日（含 asOf）的收盘均值", () => {
   const dataset = makeDataset(DATES, [
@@ -153,7 +160,7 @@ test("analyze 注入 ma5ByCode（普通对象与 Map 皆可）", () => {
   const rows = [normalize(RAW)];
   const previous = [normalize(PREV)];
   const withObject = analyze(rows, null, previous, undefined, {
-    ma5ByCode: { "600001": 9 },
+    ma5ByCode: { 600001: 9 },
   });
   assert.equal(withObject.stocks[0].ma5, 9);
   const withMap = analyze(rows, null, previous, undefined, {
@@ -168,7 +175,7 @@ test("MA5 注入后首阴买点在真实 analyze 链路激活（3 连板后首�
   const rows = [normalize(RAW)];
   const previous = [normalize(PREV)];
   const result = analyze(rows, null, previous, undefined, {
-    ma5ByCode: { "600001": 9 },
+    ma5ByCode: { 600001: 9 },
   });
   assert.equal(result.stocks[0].buyPoint.primary?.type, "first-neg-dip");
   // MA5 未知 → 首阴拒绝（宁缺毋滥）

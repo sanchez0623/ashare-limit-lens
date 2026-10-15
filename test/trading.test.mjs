@@ -356,8 +356,8 @@ test("情绪周期闸门：冰点期禁止开新仓、退潮期压缩敞口", ()
   assert.equal(freezingPlan.orders.length, 0, "冰点期禁止开新仓");
   assert.equal(freezingPlan.cycle.phase, "freezing");
   assert.equal(freezingPlan.maxExposure, 0);
-  const skip = freezingPlan.selectionAudit.candidates.find(
-    (c) => c.reason.includes("冰点"),
+  const skip = freezingPlan.selectionAudit.candidates.find((c) =>
+    c.reason.includes("冰点"),
   );
   assert.ok(skip, "候选审计应说明冰点期原因");
 
@@ -714,7 +714,7 @@ test("API 阻止跨站写入、错误方法和未验证版本；密钥不进入�
       "POST",
       { "Content-Type": "application/json" },
       {
-        buyPointParams: { firstNegMinPrevHeight: 2, ma5ByCode: { "600001": 99 } },
+        buyPointParams: { firstNegMinPrevHeight: 2, ma5ByCode: { 600001: 99 } },
       },
     ),
     env,

@@ -75,9 +75,7 @@ function testMomentum(row) {
   return {
     type: BUY_POINT_TYPES.LIMIT_UP_MOMENTUM,
     confidence: first && first < 94500 ? 0.9 : 0.7,
-    reason: first
-      ? `首封时间 ${first}，收盘涨停，有换手`
-      : "收盘涨停，有换手",
+    reason: first ? `首封时间 ${first}，收盘涨停，有换手` : "收盘涨停，有换手",
   };
 }
 

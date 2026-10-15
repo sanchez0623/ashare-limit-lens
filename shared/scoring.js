@@ -292,7 +292,9 @@ export function analyze(
   const sectors = sectorAnalysis(clean),
     bySector = new Map(sectors.map((s) => [s.name, s.score]));
   // 昨日同代码行作为 prevRow 传入，供买点分类器计算 prevChange/prevBreaks。
-  const prevByCode = previous ? new Map(previous.map((r) => [r.code, r])) : null;
+  const prevByCode = previous
+    ? new Map(previous.map((r) => [r.code, r]))
+    : null;
   // 补齐买点分类器需要的派生字段：isLimitUp / boardLimit / openChange / ma5。
   // isLimitUp 用 boardLimit 感知判断：创业板/科创板 20% 涨停不能按 9.7% 一刀切。
   // 判定条件：change >= boardLimit - 0.3（容差），且有首封时间或连板数 >=1。

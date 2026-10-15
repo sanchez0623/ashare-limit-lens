@@ -252,9 +252,10 @@ export function computeMa5ByCode(dataset, snapshotDate) {
         dates[dates.length - 1] ?? "空"
       }），MA5 不可用`,
     };
-  const end = snapshotDate && dateIdx.has(snapshotDate)
-    ? dateIdx.get(snapshotDate)
-    : dates.length - 1;
+  const end =
+    snapshotDate && dateIdx.has(snapshotDate)
+      ? dateIdx.get(snapshotDate)
+      : dates.length - 1;
   if (end < 4) return { ma5ByCode: new Map(), asOf: dates[end] ?? null };
   const asOf = dates[end];
   const ma5ByCode = new Map();
@@ -277,8 +278,7 @@ export function computeMa5ByCode(dataset, snapshotDate) {
     let sum = 0;
     if (s.hasFactor) {
       const fEnd = s.adjs[p];
-      for (let k = p - 4; k <= p; k++)
-        sum += (s.closes[k] * s.adjs[k]) / fEnd;
+      for (let k = p - 4; k <= p; k++) sum += (s.closes[k] * s.adjs[k]) / fEnd;
     } else {
       for (let k = p - 4; k <= p; k++) sum += s.closes[k];
     }

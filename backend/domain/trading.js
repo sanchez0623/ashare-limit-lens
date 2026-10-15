@@ -256,8 +256,7 @@ export function createPlan(
     { ...strategy, exposureTiers: tiers },
     snapshot,
   );
-  if (strategyProgram)
-    targetExposure = Math.min(targetExposure, effectiveCap);
+  if (strategyProgram) targetExposure = Math.min(targetExposure, effectiveCap);
   if (strategyProgram?.regime === "unknown") targetExposure = 0;
   const componentStates = strategyProgram
     ? allocationState(strategyProgram, book, targetExposure)

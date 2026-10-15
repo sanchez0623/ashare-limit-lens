@@ -150,7 +150,14 @@ export function completeRounds(
   for (const r of roundsList) {
     const key = r.buyPoint ?? "unknown";
     if (!byBuyPoint[key])
-      byBuyPoint[key] = { count: 0, wins: 0, losses: 0, pnlCents: 0, avgWin: 0, avgLoss: 0 };
+      byBuyPoint[key] = {
+        count: 0,
+        wins: 0,
+        losses: 0,
+        pnlCents: 0,
+        avgWin: 0,
+        avgLoss: 0,
+      };
     const g = byBuyPoint[key];
     g.count += 1;
     g.pnlCents += r.realizedPnlCents;

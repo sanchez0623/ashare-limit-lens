@@ -182,9 +182,7 @@ function scoreHtml(s) {
 function recalculate() {
   const options = {
     // 服务端随 payload 下发的 MA5（daily parquet 计算），供首阴校验
-    ...(state.payload?.ma5ByCode
-      ? { ma5ByCode: state.payload.ma5ByCode }
-      : {}),
+    ...(state.payload?.ma5ByCode ? { ma5ByCode: state.payload.ma5ByCode } : {}),
     // 买点参数（首阴门槛，settings 表配置，服务端已按白名单过滤）
     // 与尾盘时点标记；显式取字段，不整体展开
     ...(state.payload?.buyPointParams

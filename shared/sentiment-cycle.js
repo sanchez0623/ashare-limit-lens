@@ -69,8 +69,7 @@ function subscores(input) {
   if (broken !== null && limitUp + broken > 0) {
     sealRate = limitUp / (limitUp + broken);
   }
-  const sealScore =
-    sealRate === null ? 0.5 : clamp01((sealRate - 0.4) / 0.4);
+  const sealScore = sealRate === null ? 0.5 : clamp01((sealRate - 0.4) / 0.4);
 
   // 高度趋势：无历史均值时按高度本身估计（>=5 板为强）。
   let heightScore;
@@ -83,8 +82,7 @@ function subscores(input) {
   }
 
   // 溢价率：-5%→0，0→0.5，+5%→1。
-  const premiumScore =
-    premium === null ? 0.5 : clamp01((premium + 5) / 10);
+  const premiumScore = premium === null ? 0.5 : clamp01((premium + 5) / 10);
 
   return { limitUpScore, sealScore, heightScore, premiumScore };
 }
@@ -143,10 +141,10 @@ export function classifySentimentCycle(input = {}) {
 
 function describe(input, subs, phase) {
   const bits = [];
-  bits.push(`涨停 ${input.limitUp ?? 0} 家（子项 ${subs.limitUpScore.toFixed(2)}）`);
   bits.push(
-    `封板率子项 ${subs.sealScore.toFixed(2)}`,
+    `涨停 ${input.limitUp ?? 0} 家（子项 ${subs.limitUpScore.toFixed(2)}）`,
   );
+  bits.push(`封板率子项 ${subs.sealScore.toFixed(2)}`);
   bits.push(`高度子项 ${subs.heightScore.toFixed(2)}`);
   if (Number.isFinite(input.premium))
     bits.push(`昨涨停溢价 ${input.premium.toFixed(2)}%`);

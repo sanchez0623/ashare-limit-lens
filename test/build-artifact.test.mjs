@@ -28,5 +28,9 @@ test("构建产物：服务端 bundle 可加载，且不依赖浏览器入口缺
     "服务端产物不得引用浏览器入口缺失的 asyncBufferFromFile（MA5 应自实现 AsyncBuffer）",
   );
   const worker = await import(pathToFileURL(`${ROOT}dist/server/index.js`));
-  assert.equal(typeof worker.default?.fetch, "function", "产物应导出 fetch 入口");
+  assert.equal(
+    typeof worker.default?.fetch,
+    "function",
+    "产物应导出 fetch 入口",
+  );
 });

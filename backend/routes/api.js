@@ -258,7 +258,9 @@ export async function api(request, env) {
         );
       if (hasParams && !validBuyPointParams(body.buyPointParams))
         return json(
-          { error: "买点参数无效：仅接受 firstNegMinPrevHeight（1–10 的整数）" },
+          {
+            error: "买点参数无效：仅接受 firstNegMinPrevHeight（1–10 的整数）",
+          },
           400,
         );
       // 两条写入放同一 batch（本地实现为 BEGIN IMMEDIATE/COMMIT 事务）：
