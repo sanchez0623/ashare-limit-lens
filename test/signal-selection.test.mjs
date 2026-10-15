@@ -107,24 +107,102 @@ test("v3 股票分类路由：按类别切换权重预设，平庸型被排除�
   // v2：无路由、无排除 → 三只全部参与，统一策略权重
   const v2 = scoreSignals(snap, strategy, selectionPolicy(SELECTION_VERSION_V2));
   assert.equal(v2.length, 3);
-  // v3：平庸被排除；龙头按 relay 权重重算（[30,20,10,10,20,10] → 93.3 分），
+  // v3：平庸股仍保留在信号列表（持仓股依赖当日信号触发风险动作），
+  // 但按策略权重评分；龙头按 relay 权重重算（[30,20,10,10,20,10] → 93.3 分），
   // 未分类的 002692 保持策略权重（balanced → 94.6 分）并反超龙头居首
   const v3 = scoreSignals(snap, strategy, selectionPolicy(DEFAULT_SELECTION_VERSION));
   assert.deepEqual(
     v3.map((s) => [s.code, s.score]),
     [
       ["002692", 95],
+      ["300001", 95],
       ["002343", 93],
     ],
   );
-  // 计划层（新账户默认 v3）：平庸股不出现在候选审计中
+  // 计划层（新账户默认 v3）：平庸股不出现在新增买入订单中
   const plan = makePlan(snap);
   assert.equal(
-    plan.selectionAudit.candidates.some((c) => c.code === "300001"),
-    false,
+    plan.selectionAudit.candidates.find((c) => c.code === "300001").reason,
+    "平庸型不进入新增候选池",
   );
+  assert.equal(plan.orders.some((o) => o.code === "300001"), false);
 });
 
+test("v3 平庸剔除不影响持仓风险信号：持仓股当日走弱仍减仓，与 v2 一致", () => {
+  const snap = tiedSnapshot();
+  // 002343：已持仓且当日被判定平庸（评分 40，旧分可能很高）
+  snap.stocks[0].stockClass = "mediocre";
+  snap.stocks[0].factors = [40, 40, 40, 40, 40, 40].map((value) => ({
+    value,
+  }));
+  snap.stocks[0].deduction = 0;
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "002343",
+      name: snap.stocks[0].name,
+      sector: snap.stocks[0].sector,
+      heldDays: 0,
+      markCents: 1_000_000,
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1_000_000,
+          priceCents: 1_000_000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1_000_000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const v2 = makePlan(snap, book, {
+    selectionPolicy: selectionPolicy(SELECTION_VERSION_V2),
+  });
+  const v3 = makePlan(snap, book); // 默认 v3
+  const v2Action = v2.orders.find((o) => o.code === "002343")?.action;
+  const v3Action = v3.orders.find((o) => o.code === "002343")?.action;
+  // 当日评分 40 < 65 → 走弱减仓；v3 不因剔除平庸而沿用旧评分做正向 T
+  assert.equal(v3Action, v2Action);
+  assert.equal(v3Action, "REDUCE");
+});
+
+test("v3 未持仓的平庸股：保留在候选审计中但标注不进入候选池", () => {
+  const snap = tiedSnapshot();
+  snap.stocks[0].stockClass = "mediocre";
+  const plan = makePlan(snap); // 无持仓 → 全部为新增候选
+  const audit = plan.selectionAudit.candidates.find(
+    (c) => c.code === "002343",
+  );
+  assert.equal(audit.stockClass, "mediocre");
+  assert.equal(audit.reason, "平庸型不进入新增候选池");
+  assert.equal(plan.orders.some((o) => o.code === "002343"), false);
+  // 未分类的另一只不受影响：排序在前，通过资格与资金检查入选
+  const other = plan.selectionAudit.candidates.find(
+    (c) => c.code === "002692",
+  );
+  assert.match(other.reason, /通过资格与资金检查/);
+});
+
+test("v2 模拟账户在窗口释放后升级到 v3，启用股票分类路由", async () =>
+  withDB(async (env, DB) => {
+    const repo = new PaperRepository(env);
+    const book = (await repo.initialize()).book;
+    book.selectionPolicyVersion = SELECTION_VERSION_V2;
+    await DB.prepare("UPDATE paper_accounts SET state=? WHERE id='primary'")
+      .bind(JSON.stringify(book))
+      .run();
+    assert.equal(
+      selectionPolicyForBook((await repo.account()).book).version,
+      SELECTION_VERSION_V2,
+    );
+    await repo.upgradeSelectionPolicy();
+    assert.equal(
+      selectionPolicyForBook((await repo.account()).book).version,
+      DEFAULT_SELECTION_VERSION,
+    );
+  }));
 test("真实同因子并列：v2 选成交额较大者；v1 保留整数分及代码顺序", () => {
   const snap = tiedSnapshot();
   const modern = makePlan(snap);

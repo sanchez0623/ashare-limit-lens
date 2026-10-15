@@ -20,6 +20,7 @@ import { preserveProgramSignal } from "./strategy-signals.js";
 import { latestPolicyBundle, verifyPolicyBundle } from "./execution-cost.js";
 import {
   DEFAULT_SELECTION_VERSION,
+  SELECTION_VERSION_V2,
   selectionPolicy,
   selectionPolicyFields,
   selectionPolicyForBook,
@@ -114,8 +115,15 @@ export class PaperRepository {
   }
   async upgradeSelectionPolicy() {
     const account = await this.account();
-    // 有显式版本的账户不自动改参；旧账户只在研究窗口释放后采用 v2。
-    if (!account || account.book.selectionPolicyVersion !== undefined) return;
+    // 升级范围：无显式版本的旧账户（→v3）与 v2 账户（→v3，启用股票分类
+    // 路由）。已在 v3 或显式登记的其他版本不自动改参。
+    // 两类升级都只在研究窗口释放后执行，留审计记录。
+    const currentVersion = account?.book?.selectionPolicyVersion;
+    if (
+      !account ||
+      (currentVersion !== undefined && currentVersion !== SELECTION_VERSION_V2)
+    )
+      return;
     const owner = await this.db
       .prepare(
         "SELECT owner_id FROM research_window_owners WHERE namespace = 'main'",

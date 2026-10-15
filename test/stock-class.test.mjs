@@ -112,3 +112,13 @@ test("历史特征缺失且非龙头 → 返回 null（数据缺失不能断言�
     null,
   );
 });
+
+test("历史特征不齐全（仅 15 根日线 → MA20/振幅为 null）→ 保持未分类", () => {
+  // 复现：15 根日线时 MA20/振幅均为 null，此前被误判平庸并剔除
+  const r = classifyStock({
+    row: { ...base, height: 0, isLimitUp: false, close: 10 },
+    sectorMaxHeight: 2,
+    history: { limitUp10d: false, ma20: null, amplitude20: null },
+  });
+  assert.equal(r, null);
+});

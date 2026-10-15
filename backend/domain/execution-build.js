@@ -14,6 +14,10 @@ const files = [
   "backend/domain/signal-selection.js",
   "backend/domain/strategy-program.js",
   "backend/domain/research-lineage.js",
+  // 评分与股票分类（方案 3）：PRESETS 权重与 CLASS_WEIGHT_PRESETS 路由
+  // 直接决定候选评分与候选池，必须纳入指纹防规则漂移。
+  "shared/scoring.js",
+  "shared/stock-class.js",
   "shared/execution-cost.js",
   "shared/fees.js",
   "shared/risk-limits.js",

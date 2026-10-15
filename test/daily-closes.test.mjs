@@ -270,6 +270,37 @@ test("特征：窗口内 high/low 缺失（NaN）时振幅未知", () => {
   assert.equal(featuresByCode.get("600001").ma20, 10);
 });
 
+test("特征：跨除权窗口按快照日前复权，MA20/振幅不受除权跳空失真", () => {
+  // D15 除权：价格 10 → 5（腰斩），因子 1 → 2。前复权到快照日（f=2）后
+  // 全窗价格连续为 5：未复权 MA20 = (10×15+5×5)/20 = 8.75（失真），
+  // 复权 MA20 = 5；未复权振幅 (11-4.5)/4.5 ≈ 144%，复权 (5.5-4.5)/4.5 ≈ 22%。
+  const series = F25.map((d, i) =>
+    i < 15
+      ? [d, 10, 1, 11, 9]
+      : [d, 5, 2, 5.5, 4.5],
+  );
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
+  const f = featuresByCode.get("600001");
+  assert.equal(f.ma20, 5);
+  assert.equal(f.amplitude20, 22.22);
+});
+
+test("特征：有因子覆盖但 MA20 窗口内因子缺失 → 特征 null（口径不明确）", () => {
+  // 同上跨除权构造，但除权日（D15）因子缺失：MA20/振幅口径不明确 → null；
+  // 涨停基因窗口（D16–D25）因子齐全 → 不受影响。
+  const series = F25.map((d, i) =>
+    i < 15
+      ? [d, 10, 1, 11, 9]
+      : [d, 5, i === 15 ? undefined : 2, 5.5, 4.5],
+  );
+  const dataset = makeDataset(F25, [["600001", series]]);
+  const { featuresByCode } = computeStockFeaturesByCode(dataset, F25[24]);
+  const f = featuresByCode.get("600001");
+  assert.equal(f.ma20, null);
+  assert.equal(f.amplitude20, null);
+});
+
 test("特征：数据未覆盖快照日 → 空 Map + reason", () => {
   const series = F25.map((d) => [d, 10, 1, 11, 10]);
   const dataset = makeDataset(F25, [["600001", series]]);

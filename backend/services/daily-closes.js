@@ -346,30 +346,55 @@ export function computeStockFeaturesByCode(dataset, snapshotDate) {
   for (const [code, s] of codes) {
     const p = lowerBound(s.dates, end);
     if (p < 0) continue; // 快照日无收盘（停牌 / 退市）
-    // 近 10 日涨停基因（收盘比口径；首根无前收跳过）
+    // 价格口径：整股有因子覆盖 → 按快照日前复权（价格×f_k/f_p，high/low
+    // 同比例缩放），跨除权窗口的 MA20/振幅/涨停基因才不因除权跳空失真；
+    // 窗口内任一因子缺失 → 对应特征为 null（口径不明确，不静默混用）；
+    // 整股完全无因子覆盖（hasFactor=false）→ 一致未复权口径。
+    const hasFactor = s.hasFactor;
+    const factorMissing = (from, to) => {
+      if (!hasFactor) return false;
+      for (let k = Math.max(0, from); k <= to; k++) {
+        const f = s.adjs[k];
+        if (!Number.isFinite(f) || f <= 0) return true;
+      }
+      return false;
+    };
+    const adjPrice = (k) =>
+      hasFactor ? s.closes[k] * s.adjs[k] : s.closes[k];
+    // 近 10 日涨停基因（前复权收盘比；首根无前收跳过；
+    // 基因窗口因子缺失时保持 false——分类器仅以 ===true 触发反包，
+    // 此时均线/振幅亦为 null，整体保持"未分类"，不会误判平庸）
     let limitUp10d = false;
-    const limit = boardLimitOf(code);
-    for (let k = Math.max(1, p - REVERSAL_LOOKBACK_DAYS + 1); k <= p; k++) {
-      const prev = s.closes[k - 1];
-      if (!Number.isFinite(prev) || prev <= 0) continue;
-      const change = (s.closes[k] / prev - 1) * 100;
-      if (change >= limit - 0.3) {
-        limitUp10d = true;
-        break;
+    const geneFrom = Math.max(1, p - REVERSAL_LOOKBACK_DAYS + 1);
+    if (!factorMissing(geneFrom - 1, p)) {
+      const limit = boardLimitOf(code);
+      for (let k = geneFrom; k <= p; k++) {
+        const prev = adjPrice(k - 1);
+        if (!Number.isFinite(prev) || prev <= 0) continue;
+        const change = (adjPrice(k) / prev - 1) * 100;
+        if (change >= limit - 0.3) {
+          limitUp10d = true;
+          break;
+        }
       }
     }
-    // MA20 与 20 日振幅：需足 20 根
+    // MA20 与 20 日振幅：需足 20 根且窗口因子齐全（前复权到快照日）
     let ma20 = null,
       amplitude20 = null;
-    if (p >= SWING_LOOKBACK_DAYS - 1) {
+    if (
+      p >= SWING_LOOKBACK_DAYS - 1 &&
+      !factorMissing(p - SWING_LOOKBACK_DAYS + 1, p)
+    ) {
+      const base = hasFactor ? s.adjs[p] : 1;
       let sum = 0,
         maxHigh = Number.NEGATIVE_INFINITY,
         minLow = Number.POSITIVE_INFINITY,
         validRange = true;
       for (let k = p - SWING_LOOKBACK_DAYS + 1; k <= p; k++) {
-        sum += s.closes[k];
-        const h = s.highs[k],
-          l = s.lows[k];
+        const ratio = hasFactor ? s.adjs[k] / base : 1;
+        sum += s.closes[k] * ratio;
+        const h = s.highs[k] * ratio,
+          l = s.lows[k] * ratio;
         if (!Number.isFinite(h) || !Number.isFinite(l)) validRange = false;
         else {
           if (h > maxHigh) maxHigh = h;

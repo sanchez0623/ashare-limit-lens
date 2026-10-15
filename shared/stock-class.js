@@ -97,7 +97,10 @@ export function classifyStock({ row, sectorMaxHeight, history }) {
       reason: `20 日振幅 ${amplitude20.toFixed(1)}% 适中，非连板股`,
     };
 
-  // 5) 特征齐全但不满足任何一类 → 平庸（选股阶段排除）
+  // 5) 平庸的断言前提：反包（MA20）与波段（振幅）两类特征都齐全。
+  // 任一特征缺失（如仅 15 根日线 → MA20/振幅为 null）时保持"未分类"，
+  // 缺失数据不能证明平庸。
+  if (ma20 === null || amplitude20 === null) return null;
   return {
     stockClass: STOCK_CLASSES.MEDIOCRE,
     reason: "不满足连板龙头 / 强势反包 / 波段震荡任一特征",
