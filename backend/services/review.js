@@ -43,32 +43,33 @@ export function validWeights(w) {
 
 // 买点分类参数（可调研究参数）：首阴低吸的昨日连板门槛。
 // 2 还是 3 更优尚未定论，先对齐 skill 默认 3，留作配置。
-export const BUY_POINT_PARAMS_DEFAULTS = Object.freeze({
-  firstNegMinPrevHeight: 3,
-});
+// 白名单制：只允许登记的字段，禁止借设置通道注入 ma5ByCode /
+// lateSession 等行情输入覆盖真实数据。
+export const BUY_POINT_PARAM_KEYS = Object.freeze(["firstNegMinPrevHeight"]);
+export const BUY_POINT_PARAMS_DEFAULT = 3;
 export function validBuyPointParams(p) {
-  return (
-    !!p &&
-    typeof p === "object" &&
-    !Array.isArray(p) &&
-    Number.isInteger(p.firstNegMinPrevHeight) &&
-    p.firstNegMinPrevHeight >= 1 &&
-    p.firstNegMinPrevHeight <= 10
-  );
+  if (!p || typeof p !== "object" || Array.isArray(p)) return false;
+  const keys = Object.keys(p);
+  if (keys.length !== BUY_POINT_PARAM_KEYS.length) return false;
+  if (!keys.every((k) => BUY_POINT_PARAM_KEYS.includes(k))) return false;
+  const value = p.firstNegMinPrevHeight;
+  return Number.isInteger(value) && value >= 1 && value <= 10;
 }
+// 读取时同样只取白名单字段（防御历史脏数据），显式构造返回对象，
+// 不整体展开存储内容。
 export async function readBuyPointParams(env) {
   try {
     const row = await database(env)
       .prepare("SELECT value FROM settings WHERE key = ?")
       .bind("buyPointParams")
       .first();
-    if (!row) return { ...BUY_POINT_PARAMS_DEFAULTS };
+    if (!row) return { firstNegMinPrevHeight: BUY_POINT_PARAMS_DEFAULT };
     const parsed = JSON.parse(row.value);
     return validBuyPointParams(parsed)
-      ? { ...BUY_POINT_PARAMS_DEFAULTS, ...parsed }
-      : { ...BUY_POINT_PARAMS_DEFAULTS };
+      ? { firstNegMinPrevHeight: parsed.firstNegMinPrevHeight }
+      : { firstNegMinPrevHeight: BUY_POINT_PARAMS_DEFAULT };
   } catch {
-    return { ...BUY_POINT_PARAMS_DEFAULTS };
+    return { firstNegMinPrevHeight: BUY_POINT_PARAMS_DEFAULT };
   }
 }
 export async function saveSnapshot(env, market, weights) {
@@ -93,15 +94,17 @@ export async function saveSnapshot(env, market, weights) {
       createdAt: old.created_at,
     };
   const { ma5ByCode } = await getMa5ByCode(env, market.date);
-  // 首阴门槛等买点参数从 settings 读取（可调研究参数，默认对齐 skill）
-  const buyPointParams = await readBuyPointParams(env);
+  // 首阴门槛等买点参数从 settings 读取（可调研究参数，默认对齐 skill）。
+  // 显式逐字段构造评分选项：配置永远无法覆盖 ma5ByCode / lateSession
+  // 等行情输入。
+  const { firstNegMinPrevHeight } = await readBuyPointParams(env);
   const a = analyze(
     market.rows.map(normalize),
     market.broken,
     market.previous?.map(normalize) ?? null,
     weights,
     // saveSnapshot 仅在收盘后（15:05+）执行，尾盘时点成立
-    { ma5ByCode, lateSession: true, ...buyPointParams },
+    { ma5ByCode, lateSession: true, firstNegMinPrevHeight },
   );
   const { stocks, sectors, ...marketSummary } = a;
   const createdAt = new Date().toISOString();

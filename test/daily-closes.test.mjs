@@ -15,12 +15,16 @@ function makeDataset(dates, perCode) {
     const ds = new Uint32Array(n);
     const cs = new Float64Array(n);
     const as = new Float64Array(n).fill(Number.NaN);
+    let hasFactor = false;
     series.forEach(([d, c, a], k) => {
       ds[k] = dateIdx.get(d);
       cs[k] = c;
-      if (a !== undefined) as[k] = a;
+      if (a !== undefined) {
+        as[k] = a;
+        hasFactor = true;
+      }
     });
-    codes.set(code, { dates: ds, closes: cs, adjs: as });
+    codes.set(code, { dates: ds, closes: cs, adjs: as, hasFactor });
   }
   return { dates, dateIdx, codes };
 }
@@ -69,6 +73,19 @@ test("MA5：窗口内复权因子部分缺失时不产出（口径不明确，�
     d,
     i < 3 ? 10 : 5,
     i === 5 ? 2 : undefined,
+  ]);
+  const dataset = makeDataset(DATES, [["600001", series]]);
+  const { ma5ByCode } = computeMa5ByCode(dataset, "2026-10-14");
+  assert.equal(ma5ByCode.size, 0);
+});
+
+test("MA5：整股有因子但窗口内全部缺失（因子滞后于日线）时不产出", () => {
+  // 复现：D1 有因子、窗口 D2–D6 全缺。若回退未复权，跨除权窗口会得到
+  // (10+10+5+5+5)/5 = 7（应答 10），口径不明 → 排除。
+  const series = DATES.map((d, i) => [
+    d,
+    i < 3 ? 10 : 5,
+    i === 0 ? 1 : undefined,
   ]);
   const dataset = makeDataset(DATES, [["600001", series]]);
   const { ma5ByCode } = computeMa5ByCode(dataset, "2026-10-14");

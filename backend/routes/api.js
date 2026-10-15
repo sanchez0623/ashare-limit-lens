@@ -242,35 +242,39 @@ export async function api(request, env) {
           ai: aiConfig(env),
         });
       const body = await readJson(request);
-      // weights 与 buyPointParams 均可单独更新（部分保存）
-      if (body.weights !== undefined) {
-        if (!validWeights(body.weights))
-          return json(
-            { error: "权重必须为六个 0–50 的整数，且至少一项大于零" },
-            400,
-          );
+      // 先完整校验所有提交段，再统一落库：任何一段非法都整体 400，
+      // 不出现"权重已改、买点参数被拒"的半提交状态。
+      const hasWeights = body.weights !== undefined;
+      const hasParams = body.buyPointParams !== undefined;
+      if (!hasWeights && !hasParams)
+        return json(
+          { error: "缺少可保存的设置（weights 或 buyPointParams）" },
+          400,
+        );
+      if (hasWeights && !validWeights(body.weights))
+        return json(
+          { error: "权重必须为六个 0–50 的整数，且至少一项大于零" },
+          400,
+        );
+      if (hasParams && !validBuyPointParams(body.buyPointParams))
+        return json(
+          { error: "买点参数无效：仅接受 firstNegMinPrevHeight（1–10 的整数）" },
+          400,
+        );
+      if (hasWeights)
         await database(env)
           .prepare(
             "INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
           )
           .bind("weights", JSON.stringify(body.weights))
           .run();
-      }
-      if (body.buyPointParams !== undefined) {
-        if (!validBuyPointParams(body.buyPointParams))
-          return json(
-            { error: "买点参数无效：firstNegMinPrevHeight 必须为 1–10 的整数" },
-            400,
-          );
+      if (hasParams)
         await database(env)
           .prepare(
             "INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
           )
           .bind("buyPointParams", JSON.stringify(body.buyPointParams))
           .run();
-      }
-      if (body.weights === undefined && body.buyPointParams === undefined)
-        return json({ error: "缺少可保存的设置（weights 或 buyPointParams）" }, 400);
       return json({ saved: true });
     }
     if (path === "/api/history") return json(await historyList(env));

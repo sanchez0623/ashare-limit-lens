@@ -404,7 +404,12 @@ async function runHistoryImportInner(
         entry.broken ?? null,
         previousEntry ? previousEntry.normalized : null,
         weights,
-        { ma5ByCode, lateSession: true, ...buyPointParams },
+        // 显式逐字段构造：配置不得覆盖 ma5ByCode / lateSession 行情输入
+        {
+          ma5ByCode,
+          lateSession: true,
+          firstNegMinPrevHeight: buyPointParams.firstNegMinPrevHeight,
+        },
       );
       entry.scoresByCode = new Map(
         a.stocks.map((stock) => [stock.code, stock.score]),

@@ -271,6 +271,24 @@ test("annotateBuyPoint：调用方声明 lateSession 后尾盘跳水才触发", 
   assert.equal(row.buyPoint.primary?.type, BUY_POINT_TYPES.LATE_DIP);
 });
 
+test("annotateBuyPoint：昨日快照仅有 price（历史重构形态）也能推导竞价涨跌幅", () => {
+  // 历史重构行只保存 price 无 close：prevClose 回退 price，
+  // 否则竞价低吸在历史链路永远无法触发（复现：实时低开 6% 命中、历史为空）。
+  const row = annotateBuyPoint(
+    {
+      code: "600001",
+      open: 8.9,
+      close: 9.2,
+      high: 9.6,
+      change: -3.16,
+      isLimitUp: false,
+    },
+    { code: "600001", change: 10, breaks: 0, height: 1, price: 9.5 },
+  );
+  assert.ok(Math.abs(row.openChange + 6.3158) < 1e-3);
+  assert.equal(row.buyPoint.primary?.type, BUY_POINT_TYPES.AUCTION_DIP);
+});
+
 test("annotateBuyPoint：昨日涨停 + 今日竞价低开 6% 推导出竞价低吸", () => {
   const row = annotateBuyPoint(
     {

@@ -243,7 +243,9 @@ export function annotateBuyPoint(row, prevRow = null, options = {}) {
     merged.prevBreaks = prevRow.breaks;
     merged.prevHeight = prevRow.height;
     merged.prevOpen = prevRow.open;
-    merged.prevClose = prevRow.close;
+    // 历史重构行只保存 price（无 close 字段），回退取 price 作为昨收，
+    // 否则历史链路无法推导竞价涨跌幅（openChange）。
+    merged.prevClose = prevRow.close ?? prevRow.price ?? null;
   }
   // 数据链路缺字段时从价量数据推导，保证竞价买点在真实链路可用：
   //  - openChange：今日开盘相对昨收的涨跌幅（竞价低开幅度）

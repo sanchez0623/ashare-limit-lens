@@ -194,7 +194,13 @@ async function parseDataset(dailyPath, adjPath) {
       const f = fm?.get(rec.d[i]);
       if (f !== undefined) as[k] = f;
     }
-    codes.set(code, { dates: ds, closes: cs, adjs: as });
+    codes.set(code, {
+      dates: ds,
+      closes: cs,
+      adjs: as,
+      // 该股在因子文件中是否有任何覆盖：完全没有 → 才允许未复权口径
+      hasFactor: (fm?.size ?? 0) > 0,
+    });
   }
   return { dates, dateIdx, codes };
 }
@@ -256,21 +262,25 @@ export function computeMa5ByCode(dataset, snapshotDate) {
     // 快照日必须有收盘（停牌 / 退市股不产出 MA5）
     const p = lowerBound(s.dates, end);
     if (p < 0 || p < 4) continue;
-    // 复权口径判定（三选一，不静默混用）：
+    // 复权口径判定（严格，不静默混用）：
     //   - 窗口 5 根因子齐全 → 前复权到 asOf；
-    //   - 窗口完全没有因子（数据源未覆盖该股复权信息）→ 未复权口径；
-    //   - 因子部分缺失 → 口径不明确，该股不产出 MA5。
+    //   - 整股在因子文件中完全无覆盖（hasFactor=false）→ 未复权口径
+    //     （一致基准：该股所有日期都无因子，不存在跨除权混算）；
+    //   - 该股有因子但窗口内任一根缺失（典型：因子更新滞后于日线，
+    //     恰逢除权窗口）→ 口径不明确，不产出 MA5。
     let missing = 0;
     for (let k = p - 4; k <= p; k++) {
       const f = s.adjs[k];
       if (!Number.isFinite(f) || f <= 0) missing++;
     }
-    if (missing > 0 && missing < 5) continue; // 口径不明确，标记不可用
+    if (s.hasFactor && missing > 0) continue; // 口径不明确，标记不可用
     let sum = 0;
-    const fEnd = s.adjs[p];
-    for (let k = p - 4; k <= p; k++) {
-      sum +=
-        missing === 5 ? s.closes[k] : (s.closes[k] * s.adjs[k]) / fEnd;
+    if (s.hasFactor) {
+      const fEnd = s.adjs[p];
+      for (let k = p - 4; k <= p; k++)
+        sum += (s.closes[k] * s.adjs[k]) / fEnd;
+    } else {
+      for (let k = p - 4; k <= p; k++) sum += s.closes[k];
     }
     ma5ByCode.set(code, Math.round((sum / 5) * 1000) / 1000);
   }

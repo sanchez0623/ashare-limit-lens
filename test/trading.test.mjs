@@ -682,6 +682,46 @@ test("API 阻止跨站写入、错误方法和未验证版本；密钥不进入�
     env,
   );
   assert.equal(partial.status, 200);
+  // 原子保存：合法权重 + 非法买点参数 → 整体 400，权重不得被半提交改动
+  await api(
+    make(
+      "/api/settings",
+      "POST",
+      { "Content-Type": "application/json" },
+      { weights: [1, 1, 1, 1, 1, 1] },
+    ),
+    env,
+  );
+  const atomic = await api(
+    make(
+      "/api/settings",
+      "POST",
+      { "Content-Type": "application/json" },
+      {
+        weights: [9, 9, 9, 9, 9, 9],
+        buyPointParams: { firstNegMinPrevHeight: 11 },
+      },
+    ),
+    env,
+  );
+  assert.equal(atomic.status, 400);
+  const afterAtomic = await (await api(make("/api/settings"), env)).json();
+  assert.deepEqual(afterAtomic.weights, [1, 1, 1, 1, 1, 1]);
+  // 白名单：禁止借 buyPointParams 注入 ma5ByCode 等行情输入
+  const extraField = await api(
+    make(
+      "/api/settings",
+      "POST",
+      { "Content-Type": "application/json" },
+      {
+        buyPointParams: { firstNegMinPrevHeight: 2, ma5ByCode: { "600001": 99 } },
+      },
+    ),
+    env,
+  );
+  assert.equal(extraField.status, 400);
+  const afterExtra = await (await api(make("/api/settings"), env)).json();
+  assert.equal(afterExtra.buyPointParams.ma5ByCode, undefined);
   const bad = await api(
     make("/api/paper/activate", "POST", {}, { id: "ai-2026-01-30" }),
     env,
