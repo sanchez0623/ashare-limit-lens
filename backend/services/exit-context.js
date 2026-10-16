@@ -193,6 +193,13 @@ export async function loadOrBuildExitContext({
   if (persisted)
     return { ...deserializeExitInputs(persisted), persisted: true };
   const built = await buildExitContext({ env, db, snapshot, date });
-  if (persist) await persistExitInputs(db, date, built);
+  if (persist) {
+    await persistExitInputs(db, date, built);
+    // 回读实际落盘版本：并发首写时本链路的 INSERT OR IGNORE 可能败给
+    // 先到者，各链路必须收敛到同一条已固化输入——直接返回本地计算结果
+    // 会出现主账户与影子各用各的版本（ADD vs EXIT）的分裂。
+    const stored = await loadPersistedExitInputs(db, date);
+    if (stored) return { ...deserializeExitInputs(stored), persisted: true };
+  }
   return { ...built, persisted: false };
 }

@@ -13,6 +13,7 @@ import {
   proposeImprovement,
   promoteCandidate,
   researchStatus,
+  buildSamples,
 } from "../backend/services/research.js";
 import { beijingMonth } from "../backend/domain/research-windows.js";
 import {
@@ -1060,4 +1061,45 @@ test("新鲜度触发器在数据库层面拦截过期测试日期直接写入",
     .bind(RESEARCH_NAMESPACE, dateAt(200), "direct-ok", "now")
     .run();
   DB.close();
+});
+
+// P1（第四轮）：冻结样本摘要绑定卖出上下文——退出输入变化 → 样本摘要
+// 变化 → 恢复检查判失效重算，不再出现"样本摘要不变、重放收益已变"的
+// 静默漂移；无固化上下文的旧样本摘要保持兼容。
+test("冻结样本摘要绑定卖出上下文：退出输入变化可被恢复检查识别", async () => {
+  const [pair] = pairs(1);
+  const contextA = {
+    features: { 600001: { ma5: 10.8 } },
+    eodRows: { 600001: { close: 10, change: -3.0, limitUpPct: 10 } },
+  };
+  const contextB = {
+    features: { 600001: { ma5: 9.9 } },
+    eodRows: { 600001: { close: 10, change: -3.0, limitUpPct: 10 } },
+  };
+  const withA = await buildSamples({
+    training: [{ ...pair, exitContext: contextA }],
+    holdout: [],
+  });
+  const withB = await buildSamples({
+    training: [{ ...pair, exitContext: contextB }],
+    holdout: [],
+  });
+  const without = await buildSamples({ training: [pair], holdout: [] });
+  assert.equal(withA[0].digest, await digestOf(withA[0].payload));
+  assert.ok(withA[0].payload.exitContextDigest, "样本摘要包含退出输入摘要");
+  assert.notEqual(
+    withA[0].digest,
+    withB[0].digest,
+    "退出输入变化 → 样本摘要变化（恢复判失效重算）",
+  );
+  assert.notEqual(
+    withA[0].digest,
+    without[0].digest,
+    "有无固化上下文也改变样本摘要",
+  );
+  assert.equal(
+    without[0].payload.exitContextDigest,
+    undefined,
+    "无上下文的旧样本摘要保持兼容",
+  );
 });

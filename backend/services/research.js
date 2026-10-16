@@ -65,6 +65,12 @@ export async function collectPairs(repository) {
 }
 async function buildSample(pair, role) {
   const observations = pair.observations ?? [];
+  // 卖出上下文纳入冻结样本：退出输入变化 → 样本摘要变化 → 恢复检查
+  // 判失效重算，不出现"样本摘要不变、重放收益已变"的静默漂移。
+  // 无固化上下文的 pair 不写该字段（旧样本摘要保持兼容）。
+  const exitContextDigest = pair.exitContext
+    ? await digestOf(pair.exitContext)
+    : null;
   const payload = {
     decisionDate: pair.snapshot.date,
     tradeDate: pair.dataset.date,
@@ -73,6 +79,7 @@ async function buildSample(pair, role) {
     role,
     snapshotDigest: await digestOf(pair.snapshot),
     marketDigest: await digestOf(pair.dataset),
+    ...(pair.exitContext ? { exitContextDigest } : {}),
     quoteManifestDigest: await digestOf({
       date: pair.dataset.date,
       count: observations.length,
@@ -321,13 +328,13 @@ async function recoverExperiment(repository, env, research, active) {
           await research.recordInvalidated(
             experiment.id,
             versionId,
-            `日期 ${date} 的快照、行情或报价内容与冻结样本摘要不一致`,
+            `日期 ${date} 的快照、行情、报价或退出输入与冻结样本摘要不一致`,
             experiment.revision,
           );
           return {
             outcome: "INVALIDATED",
             experimentId: experiment.id,
-            reason: `日期 ${date} 的快照、行情或报价内容与冻结样本摘要不一致`,
+            reason: `日期 ${date} 的快照、行情、报价或退出输入与冻结样本摘要不一致`,
           };
         }
         target.push(pair);

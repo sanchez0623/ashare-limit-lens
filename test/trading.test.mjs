@@ -1272,7 +1272,7 @@ test("P2：卖出上下文输入按日期固化并绑定摘要，重读不随输
       snapshot: snapA,
       date: dateAt(1),
     });
-    assert.equal(first.persisted, false, "首次计算并落盘");
+    assert.equal(first.persisted, true, "落盘后回读固化版本");
     assert.equal(first.exitBreaksByCode.get("600099"), 3);
     const persisted = await loadPersistedExitInputs(DB, dateAt(1));
     assert.ok(persisted?.breaks?.["600099"] === 3, "输入已持久化");
@@ -1305,6 +1305,32 @@ test("P2：卖出上下文输入按日期固化并绑定摘要，重读不随输
     });
     assert.equal(third.persisted, false);
     assert.equal(third.exitBreaksByCode.get("600099"), 9);
+  } finally {
+    DB.close();
+  }
+});
+
+// P2（第四轮）：并发首写收敛——两条链路在空表上交错执行时都不得各自
+// 采用本地计算结果，必须回读并采用实际落盘的固化版本。
+test("P2：并发首写收敛，两条链路都采用实际落盘的固化版本", async () => {
+  const DB = localDatabase();
+  try {
+    const date = dateAt(2);
+    const snapA = snapshot(date);
+    snapA.market = { brokenRows: [{ c: "600099", n: "炸板样本", zbc: 3 }] };
+    const snapB = snapshot(date);
+    snapB.market = { brokenRows: [{ c: "600099", n: "炸板样本", zbc: 9 }] };
+    const [a, b] = await Promise.all([
+      loadOrBuildExitContext({ env: {}, db: DB, snapshot: snapA, date }),
+      loadOrBuildExitContext({ env: {}, db: DB, snapshot: snapB, date }),
+    ]);
+    assert.equal(a.persisted, true, "链路 A 采用落盘版本");
+    assert.equal(b.persisted, true, "链路 B 采用落盘版本");
+    assert.deepEqual(
+      Object.fromEntries(a.exitBreaksByCode),
+      Object.fromEntries(b.exitBreaksByCode),
+      "并发链路收敛到同一条固化输入（不允许 ADD vs EXIT 分裂）",
+    );
   } finally {
     DB.close();
   }
