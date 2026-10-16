@@ -24,6 +24,7 @@ import {
   STRATEGY_DEFAULTS,
   PYRAMID_MILESTONES,
 } from "../../shared/strategy-params.js";
+import { CLASS_MANAGEMENT } from "../../shared/downgrade.js";
 import { checkExitSignals } from "../../shared/exit-signals.js";
 import {
   classifySentimentCycle,
@@ -506,11 +507,19 @@ export function createPlan(
       sectorLimitDrop: sectorLimitDrops.get(position.sector) === true,
       phaseShift,
     });
+    // 方案 6：降级后类别管理（仓位降档 / 收益目标上限 / 快进快出）。
+    // position.stockClass 由买入时分类（方案 3）与结算期降级检测写入。
+    const classManagement = CLASS_MANAGEMENT[position.stockClass] ?? null;
+    const maxHoldDays = classManagement?.maxHoldDays ?? strategy.maxHoldDays;
+    const takeProfitCap = classManagement?.takeProfitCap ?? strategy.takeProfit;
     const base = {
       code: position.code,
       name: position.name,
       sector: position.sector,
       score,
+      // 方案 6：持仓的管理类别随订单携带，成交回填保持账本一致
+      // （买入时取分类器类别，降级后取降级类别）。
+      stockClass: position.stockClass ?? signal?.stockClass ?? null,
       ...(modernSelection ? { scoreValue: signal?.scoreValue ?? null } : {}),
       originalScore:
         signal?.originalScore ?? originalScoreLookup?.(position.code) ?? null,
@@ -519,13 +528,14 @@ export function createPlan(
         (costBasis(position) / quantity) * (1 - strategy.stopLoss),
       ),
       takeProfitCents: Math.round(
-        (costBasis(position) / quantity) * (1 + strategy.takeProfit),
+        (costBasis(position) / quantity) *
+          (1 + Math.min(strategy.takeProfit, takeProfitCap)),
       ),
     };
     if (
       drawdown >= riskLimits.maxDrawdown ||
       pnl <= -strategy.stopLoss ||
-      position.heldDays >= strategy.maxHoldDays
+      position.heldDays >= maxHoldDays
     ) {
       addOrder({
         ...base,
@@ -537,7 +547,9 @@ export function createPlan(
             ? "账户回撤触及风险上限"
             : pnl <= -strategy.stopLoss
               ? "收盘亏损达到止损阈值"
-              : "持仓达到最长观察期",
+              : position.heldDays >= strategy.maxHoldDays
+                ? "持仓达到最长观察期"
+                : "降级后快进快出：持有达到降级类别持有上限",
       });
       plannedExposure -= quantity * referenceCents;
       continue;
@@ -599,8 +611,11 @@ export function createPlan(
       plannedExposure -= reduceQuantity * referenceCents;
       continue;
     }
+    // 方案 6：目标仓位乘降级档位系数（仓位降 1 档 / 再降 1 档）。
     const target = Math.round(
-      equity * Math.min(0.175, targetExposure / strategy.maxPositions),
+      equity *
+        Math.min(0.175, targetExposure / strategy.maxPositions) *
+        (classManagement?.targetScale ?? 1),
     );
     const addBudget = target - quantity * referenceCents;
     let addQuantity = roundLot(addBudget / referenceCents);
@@ -780,6 +795,8 @@ export function createPlan(
       name: signal.name,
       sector: signal.sector,
       score: signal.score,
+      // 方案 6：建仓订单携带分类类别，成交回填为持仓的管理类别起点。
+      stockClass: signal.stockClass ?? null,
       ...(signal.buyPoint ? { buyPoint: signal.buyPoint } : {}),
       ...(modernSelection
         ? {
@@ -1708,6 +1725,8 @@ function executeFillWithCostModel(
       };
       book.positions.push(position);
     }
+    // 方案 6：管理类别随建仓/加仓订单回填（降级后类别保持不升级）。
+    if (order.stockClass) position.stockClass = order.stockClass;
     position.lots.push({
       acquiredDate: date,
       quantity,
@@ -1898,6 +1917,8 @@ function executeFillLegacy(
       };
       book.positions.push(position);
     }
+    // 方案 6：管理类别随建仓/加仓订单回填（降级后类别保持不升级）。
+    if (order.stockClass) position.stockClass = order.stockClass;
     position.lots.push({
       acquiredDate: date,
       quantity,

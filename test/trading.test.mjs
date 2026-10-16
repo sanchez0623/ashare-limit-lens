@@ -1640,6 +1640,145 @@ test("金字塔减仓：跨日续单保留档位，成交后不重复减仓", as
   );
 });
 
+// ---------- 方案 6：判断失误降级检测器 ----------
+
+test("降级后管理：波段震荡型快进快出（持有 2 日清仓）", () => {
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600099",
+      name: "降级样本",
+      sector: "测试行业",
+      heldDays: 2,
+      markCents: 1000,
+      stockClass: "swing-range",
+      downgradedAt: dateAt(1),
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const order = createPlan(
+    snapshot(dateAt(1)),
+    book,
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(order.action, "EXIT");
+  assert.match(order.reason, /降级后快进快出/);
+});
+
+test("降级后管理：收益目标上限 10% 与订单类别携带", () => {
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600099",
+      name: "降级样本",
+      sector: "测试行业",
+      heldDays: 0,
+      markCents: 1000,
+      stockClass: "strong-reversal",
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const order = createPlan(
+    snapshot(dateAt(1)),
+    book,
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  // 收益目标从默认 12% 收紧到降级类别的 10%
+  assert.equal(order.takeProfitCents, 1100);
+  // 持仓的管理类别优先于当日信号分类（降级状态不被当日分类覆盖）
+  assert.equal(order.stockClass, "strong-reversal");
+});
+
+test("降级后管理：目标仓位乘降级档位系数", () => {
+  const small = (stockClass) => {
+    const book = newBook(100000);
+    book.positions = [
+      {
+        code: "600001",
+        name: "合成样本",
+        sector: "测试行业",
+        heldDays: 0,
+        markCents: 1000,
+        ...(stockClass ? { stockClass } : {}),
+        lots: [
+          {
+            acquiredDate: dateAt(0),
+            quantity: 400,
+            costCents: 400000,
+            priceCents: 1000,
+          },
+        ],
+      },
+    ];
+    book.cashCents = book.initialCashCents - 400000;
+    book.equityCents = book.initialCashCents;
+    book.peakEquityCents = book.equityCents;
+    return book;
+  };
+  const plain = createPlan(
+    snapshot(dateAt(1)),
+    small(),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.find((o) => o.action === "ADD");
+  assert.equal(plain.quantity, 900, "未降级：目标仓位不受降级系数影响");
+  const demoted = createPlan(
+    snapshot(dateAt(1)),
+    small("swing-range"),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.find((o) => o.action === "ADD");
+  assert.equal(
+    demoted.quantity,
+    200,
+    "波段震荡型目标仓位 ×0.5（快进快出降档）",
+  );
+  assert.equal(demoted.stockClass, "swing-range");
+});
+
+test("建仓订单携带分类类别并在成交后写入持仓管理类别", () => {
+  const snap = snapshot(dateAt(0));
+  snap.stocks[0].stockClass = "relay-leader";
+  const buyPlan = createPlan(
+    snap,
+    newBook(100000),
+    BASE_STRATEGY,
+    "v",
+    `${dateAt(0)}T07:10:00.000Z`,
+  );
+  const openOrder = buyPlan.orders.find((o) => o.action === "OPEN");
+  assert.equal(openOrder.stockClass, "relay-leader");
+  const result = executePlan(newBook(100000), buyPlan, dataset(dateAt(1)));
+  const position = result.book.positions.find((p) => p.code === "600001");
+  assert.equal(position.stockClass, "relay-leader", "成交回填管理类别");
+});
+
 test("金字塔减仓：保护止盈不取消未完成跨日减仓，续单完成后继续下一档", () => {
   const strategy = { ...BASE_STRATEGY, pyramidReduce: [0.3, 0.2, 0.1] };
   // 首档目标 300 股、昨日仅成交 100 股（stage 已推进到 1），剩余 200 股跨日
