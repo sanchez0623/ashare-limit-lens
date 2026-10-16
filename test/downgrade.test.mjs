@@ -7,7 +7,8 @@ import {
   DOWNGRADE_CHAIN,
   CLASS_MANAGEMENT,
   FOLLOWER_LAG_RATIO,
-  SECTOR_MEDIAN_MIN_PEERS,
+  DOWNGRADE_RULES_VERSION,
+  downgradeEnabledForPlan,
   STALL_TURNOVER,
   STALL_MAX_CHANGE,
 } from "../shared/downgrade.js";
@@ -92,69 +93,102 @@ test("触发 1：板块内另一只股票连板数更高（失去龙头地位）
   assert.match(withPeer.reason, /失去龙头地位/);
 });
 
-test("触发 2：今日涨幅不足板块中位涨幅的一半（跟涨不领涨）", () => {
-  // 板块对照取同板块其他涨停股（不含自身）的中位数，至少 2 家：
-  // 对照 [10.01, 8] → 中位 9.005，自身 4% < 一半 → 触发
-  const lagging = detectDowngradeForPosition({
+const sectorPerformance = (averageChange) => ({
+  date: TODAY,
+  complete: true,
+  source: "synthetic-full-sector-fixture",
+  sectors: [
+    { name: "测试行业", memberCount: 101, observedCount: 101, averageChange },
+  ],
+});
+
+test("触发 2：只使用当日完整板块平均涨幅，支持出池持仓的日线涨幅", () => {
+  const args = {
     position: { code: "600099", stockClass: REVERSAL, sector: "测试行业" },
-    stocks: [
-      { code: "600099", sector: "测试行业", height: 1, change: 4 },
-      { code: "600100", sector: "测试行业", height: 2, change: 10.01 },
-      { code: "600101", sector: "测试行业", height: 1, change: 8 },
-    ],
+    stocks: [],
     eodChange: 4,
+    sectorPerformance: sectorPerformance(9),
     today: TODAY,
-  });
-  assert.ok(lagging.triggers.some((t) => t.includes("跟涨不领涨")));
-  // 自身就是板块最高板且涨幅达标 → 不触发
+  };
+  const lagging = detectDowngradeForPosition(args);
+  assert.deepEqual(lagging.triggers, [
+    "今日涨幅 4.00% 不足完整板块平均涨幅 9.00% 的一半，跟涨不领涨",
+  ]);
   assert.equal(
-    detectDowngradeForPosition({
-      position: { code: "600099", stockClass: REVERSAL, sector: "测试行业" },
-      stocks: [
-        { code: "600099", sector: "测试行业", height: 3, change: 9.8 },
-        { code: "600100", sector: "测试行业", height: 2, change: 10.01 },
-      ],
-      today: TODAY,
-    }),
+    detectDowngradeForPosition({ ...args, eodChange: 4.5 }),
     null,
+    "边界值不触发",
+  );
+  assert.equal(
+    detectDowngradeForPosition({ ...args, eodChange: null }),
+    null,
+    "自身涨幅未知不猜",
   );
 });
 
-test("触发 2 对照下限：单一极端对照不得判定跟风（中位数 + ≥2 家）", () => {
-  assert.equal(SECTOR_MEDIAN_MIN_PEERS, 2);
-  // 用户复现场景：同板块仅一只 20cm 涨停对照，自身 9.9%——
-  // 旧均值口径（对照即 20%）会误判跟风；中位数口径只有 1 家对照，
-  // 直接跳过触发 2，不猜。
-  const singlePeer = detectDowngradeForPosition({
-    position: { code: "600099", stockClass: REVERSAL, sector: "测试行业" },
-    stocks: [
-      { code: "600099", sector: "测试行业", height: 1, change: 9.9 },
-      { code: "300300", sector: "测试行业", height: 1, change: 20 },
-    ],
-    today: TODAY,
-  });
-  assert.equal(singlePeer, null);
-  // 两家对照取中位数：[20, 0.1] → 中位 10.05，自身 9.9% 未跌破一半线
-  const medianPair = detectDowngradeForPosition({
-    position: { code: "600099", stockClass: REVERSAL, sector: "测试行业" },
-    stocks: [
-      { code: "600099", sector: "测试行业", height: 1, change: 9.9 },
-      { code: "300300", sector: "测试行业", height: 1, change: 20 },
-      { code: "600100", sector: "测试行业", height: 1, change: 0.1 },
-    ],
-    today: TODAY,
-  });
-  assert.equal(medianPair, null);
-  // 触发 1 不受对照下限影响：同板块他股连板更高仍降级
-  const higherBoard = detectDowngradeForPosition({
+test("涨停池含两只 20cm 股仍不能替代完整板块均值", () => {
+  const args = {
     position: { code: "600099", stockClass: RELAY, sector: "测试行业" },
     stocks: [
-      { code: "600099", sector: "测试行业", height: 2, change: 9.9 },
-      { code: "300300", sector: "测试行业", height: 3, change: 20 },
+      { code: "600099", sector: "测试行业", height: 4, change: 9.9 },
+      { code: "300300", sector: "测试行业", height: 1, change: 20 },
+      { code: "300301", sector: "测试行业", height: 1, change: 20 },
     ],
     today: TODAY,
+  };
+  assert.equal(
+    detectDowngradeForPosition(args),
+    null,
+    "缺完整板块数据时跳过条件 2",
+  );
+  const fullMean = (9.9 + 20 + 20 + 98 * 0) / 101;
+  assert.equal(
+    detectDowngradeForPosition({
+      ...args,
+      sectorPerformance: sectorPerformance(fullMean),
+    }),
+    null,
+  );
+  const higherBoard = detectDowngradeForPosition({
+    ...args,
+    stocks: args.stocks.map((row) =>
+      row.code === "300300" ? { ...row, height: 5 } : row,
+    ),
   });
-  assert.match(higherBoard.reason, /失去龙头地位/);
+  assert.match(higherBoard.reason, /失去龙头地位/, "缺板块均值不影响条件 1");
+});
+
+test("板块统计缺失、跨日、覆盖不全或均值无效均不触发条件 2", () => {
+  const full = sectorPerformance(9);
+  const incomplete = [
+    null,
+    {},
+    { ...full, date: "2026-10-14" },
+    { ...full, complete: false },
+    { ...full, source: "" },
+    ...[
+      { observedCount: 100 },
+      { memberCount: 0, observedCount: 0 },
+      { averageChange: null },
+      { averageChange: "9" },
+      { name: "其他板块" },
+    ].map((patch) => ({
+      ...full,
+      sectors: [{ ...full.sectors[0], ...patch }],
+    })),
+    { ...full, sectors: [full.sectors[0], full.sectors[0]] },
+  ];
+  for (const performance of incomplete)
+    assert.equal(
+      detectDowngradeForPosition({
+        position: { code: "600099", stockClass: RELAY, sector: "测试行业" },
+        stocks: [],
+        eodChange: 1,
+        sectorPerformance: performance,
+        today: TODAY,
+      }),
+      null,
+    );
 });
 
 test("触发 3：炸板 ≥2 次且未回封（炸板池记录；池内回封不触发）", () => {
@@ -284,19 +318,37 @@ test("阈值常量与 skill 对齐", () => {
   assert.equal(STALL_MAX_CHANGE, 3);
 });
 
-test("快照版本门控：炸板池字段存在才启用降级检测（旧快照保持旧语义）", () => {
+test("快照版本显式冻结：炸板池字段不能启用新规则，未知版本拒绝", () => {
   assert.equal(downgradeEnabledForSnapshot(null), false);
   assert.equal(downgradeEnabledForSnapshot({}), false);
   assert.equal(downgradeEnabledForSnapshot({ market: {} }), false);
   assert.equal(
     downgradeEnabledForSnapshot({ market: { brokenRows: [] } }),
-    true,
-    "空炸板池也是新快照（字段存在）",
+    false,
   );
   assert.equal(
     downgradeEnabledForSnapshot({
       market: { brokenRows: [{ c: "600099", zbc: 1 }] },
     }),
+    false,
+  );
+  assert.equal(
+    downgradeEnabledForSnapshot({
+      downgradeRulesVersion: DOWNGRADE_RULES_VERSION,
+    }),
     true,
+  );
+  for (const version of [0, 2, null, "1"])
+    assert.throws(
+      () => downgradeEnabledForSnapshot({ downgradeRulesVersion: version }),
+      /不支持的降级规则版本/,
+    );
+  assert.throws(
+    () => downgradeEnabledForPlan({ downgrades: [] }),
+    /版本与声明不一致/,
+  );
+  assert.throws(
+    () => downgradeEnabledForPlan({ downgradeRulesVersion: 1 }),
+    /版本与声明不一致/,
   );
 });

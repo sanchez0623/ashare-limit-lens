@@ -123,6 +123,7 @@ export async function settlePortfolioDay(
       accountId,
       reason: "当日无实时会话记录，不补造开盘或盘中成交",
     };
+  await assertStoredProgramPlan(env, session.plan, session.initialBook);
   const result = closeSession(account.book, session, dataset);
   const runId = `shadow-settle-${accountId}-${date}-${crypto.randomUUID()}`;
   const commit = await shadows.commitSettlement({

@@ -1647,6 +1647,7 @@ test("金字塔减仓：跨日续单保留档位，成交后不重复减仓", as
 // 降级时显式传入带板块高度的自定义池行。
 const downgradeSnapshot = (date, stocks) => {
   const snap = snapshot(date);
+  snap.downgradeRulesVersion = 1;
   snap.market = { brokenRows: [] };
   snap.stocks = stocks ?? snap.stocks.map(({ height, ...rest }) => rest);
   return snap;
@@ -1865,8 +1866,8 @@ test("降级收益目标即清仓线：盈利触达 10% 上限全额退出，优
   assert.match(order.reason, /降级后收益目标兑现/);
 });
 
-test("旧快照门控：无炸板池字段的快照不启用降级检测与类别字段", () => {
-  // 旧快照（无 market.brokenRows）重建的计划保持旧字段形状：不检测、
+test("旧快照门控：即使有炸板池字段，未标记版本仍保持旧语义", () => {
+  // 旧快照重建的计划保持旧字段形状：不检测、
   // 不声明、订单不携带 stockClass——旧版本代码生成的合法程序计划重算
   // 保持一致（含 pnl ≥ takeProfit 的旧减半语义）。
   const book = newBook(100000);
@@ -1891,13 +1892,9 @@ test("旧快照门控：无炸板池字段的快照不启用降级检测与类�
   book.cashCents = book.initialCashCents - 1000000;
   book.equityCents = book.initialCashCents;
   book.peakEquityCents = book.equityCents;
-  const result = createPlan(
-    snapshot(dateAt(1)),
-    book,
-    BASE_STRATEGY,
-    "v",
-    "now",
-  );
+  const oldSnapshot = snapshot(dateAt(1));
+  oldSnapshot.market = { brokenRows: [] };
+  const result = createPlan(oldSnapshot, book, BASE_STRATEGY, "v", "now");
   assert.equal(result.downgrades, undefined, "旧快照不携带降级声明");
   for (const order of result.orders)
     assert.equal(order.stockClass, undefined, "旧快照订单不携带类别字段");
@@ -2010,6 +2007,7 @@ test("降级保护单：日内触达降级收益上限全额退出，不等金�
   book.peakEquityCents = book.equityCents;
   const tPlan = {
     ...plan([order("T_FORWARD", 200, { takeProfitCents: 1100 })], dateAt(0)),
+    downgradeRulesVersion: 1,
     strategy: { ...BASE_STRATEGY, pyramidReduce: [0.3, 0.2, 0.1] },
     downgrades: [
       {
@@ -2039,7 +2037,9 @@ test("降级保护单：日内触达降级收益上限全额退出，不等金�
   );
   // 旧计划（无 downgrades 字段）同一场景保持金字塔档位语义：
   // 未声明降级 → 类别仍为连板龙头型，首档（+10%，减 3 成）执行
-  const legacyPlan = { ...tPlan, downgrades: undefined };
+  const legacyPlan = { ...tPlan };
+  delete legacyPlan.downgrades;
+  delete legacyPlan.downgradeRulesVersion;
   const legacy = executePlan(structuredClone(book), legacyPlan, day);
   assert.ok(
     legacy.ledger.find((fill) => fill.side === "SELL" && fill.quantity === 300),

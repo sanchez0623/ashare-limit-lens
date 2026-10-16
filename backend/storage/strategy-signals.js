@@ -1,11 +1,16 @@
 import { selectionSnapshotDigest } from "../domain/signal-selection.js";
+import { downgradeEnabledForPlan } from "../../shared/downgrade.js";
 
 export async function preserveProgramSignal(db, plan, snapshot = null) {
-  if (!plan.strategyProgram || plan.sourceSnapshotMissing) return;
-  if (!snapshot && plan.strategyProgram.snapshotDigest) {
+  const downgradeEnabled = downgradeEnabledForPlan(plan);
+  const requiresSnapshot = Boolean(plan.strategyProgram) || downgradeEnabled;
+  if (!requiresSnapshot || plan.sourceSnapshotMissing) return;
+  const reference =
+    plan.strategyProgram?.snapshotDigest ?? plan.selectionAudit?.snapshotDigest;
+  if (!snapshot && reference) {
     const existing = await db
       .prepare("SELECT digest FROM strategy_signal_snapshots WHERE digest=?")
-      .bind(plan.strategyProgram.snapshotDigest)
+      .bind(reference)
       .first();
     if (existing) {
       await frozenProgramSignal(db, plan);
@@ -33,7 +38,7 @@ export async function preserveProgramSignal(db, plan, snapshot = null) {
   )
     throw new Error("策略信号快照与计划摘要不一致");
   plan.selectionAudit.snapshotDigest = digest;
-  plan.strategyProgram.snapshotDigest = digest;
+  if (plan.strategyProgram) plan.strategyProgram.snapshotDigest = digest;
   await db
     .prepare(
       "INSERT OR IGNORE INTO strategy_signal_snapshots(digest,signal_date,payload) VALUES(?,?,?)",
@@ -44,11 +49,13 @@ export async function preserveProgramSignal(db, plan, snapshot = null) {
 }
 export async function frozenProgramSignal(db, plan) {
   if (!plan || plan.sourceSnapshotMissing) return null;
+  const downgradeEnabled = downgradeEnabledForPlan(plan);
+  const requiresSnapshot = Boolean(plan.strategyProgram) || downgradeEnabled;
   const reference =
     plan.strategyProgram?.snapshotDigest ?? plan.selectionAudit?.snapshotDigest;
-  if (!reference && !plan.strategyProgram) return null;
+  if (!reference && !requiresSnapshot) return null;
   if (
-    plan.strategyProgram &&
+    requiresSnapshot &&
     (!reference || reference !== plan.selectionAudit?.snapshotDigest)
   )
     throw new Error("策略程序缺少原信号快照引用");
@@ -58,7 +65,7 @@ export async function frozenProgramSignal(db, plan) {
     )
     .bind(reference)
     .first();
-  if (!row && !plan.strategyProgram) return null;
+  if (!row && !requiresSnapshot) return null;
   const snapshot = row && JSON.parse(row.payload);
   if (
     !snapshot ||

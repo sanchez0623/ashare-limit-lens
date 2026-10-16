@@ -7,11 +7,9 @@ import {
   normalizeLimitFeatureRow,
 } from "../domain/historical-input.js";
 import { analyze, PRESETS } from "../../shared/scoring.js";
-import {
-  getMa5ByCode,
-  getStockFeaturesByCode,
-} from "./daily-closes.js";
+import { getMa5ByCode, getStockFeaturesByCode } from "./daily-closes.js";
 import { readBuyPointParams } from "./review.js";
+import { DOWNGRADE_RULES_VERSION } from "../../shared/downgrade.js";
 import { digestOf } from "../domain/research-lineage.js";
 import {
   HistoryDatasetStore,
@@ -431,6 +429,7 @@ async function runHistoryImportInner(
           weights,
           source: `历史重构（${job.provider}）`,
           modelVersion: SCORING_VERSION,
+          downgradeRulesVersion: DOWNGRADE_RULES_VERSION,
           judgment:
             "历史重构评分：由供应商档案重建当日涨停特征后按同一规则模型计算；非事前采集，不构成事前判断；createdAt 采用评分日盘前虚拟时间以保证可重放性",
           stocks: a.stocks,

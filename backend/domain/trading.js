@@ -26,7 +26,10 @@ import {
 } from "../../shared/strategy-params.js";
 import {
   CLASS_MANAGEMENT,
+  DOWNGRADE_CHAIN,
+  DOWNGRADE_RULES_VERSION,
   downgradeEnabledForSnapshot,
+  downgradeEnabledForPlan,
   detectDowngradeForPosition,
 } from "../../shared/downgrade.js";
 import { checkExitSignals } from "../../shared/exit-signals.js";
@@ -527,6 +530,7 @@ export function createPlan(
           stocks: snapshot.stocks ?? [],
           brokenRows: snapshot.market?.brokenRows ?? [],
           eodChange: exitEodRowsByCode?.get(position.code)?.change ?? null,
+          sectorPerformance: snapshot.sectorPerformance ?? null,
           today: snapshot.date,
         })
       : null;
@@ -953,9 +957,10 @@ export function createPlan(
       codes: holdings,
     }),
     // 方案 6：降级声明随计划冻结（门控开启时始终携带，空数组表示当日
-    // 无降级；字段存在同时是执行侧启用类别管理的版本标记——旧计划无
-    // 字段，保护单与执行语义保持原样）。
-    ...(downgradeEnabled ? { downgrades } : {}),
+    // 无降级），版本与源快照绑定；历史快照不补标记。
+    ...(downgradeEnabled
+      ? { downgradeRulesVersion: DOWNGRADE_RULES_VERSION, downgrades }
+      : {}),
     orders: carriedPlanOrders(
       orders,
       book,
@@ -969,7 +974,13 @@ export function createPlan(
 }
 
 export function assertProgramSnapshot(plan, snapshot, initialBook) {
-  if (!plan?.strategy?.program) return;
+  if (!plan) return;
+  const downgradeEnabled = downgradeEnabledForPlan(plan);
+  const sourceDowngradeEnabled = downgradeEnabledForSnapshot(snapshot);
+  if (!plan.strategy?.program && !downgradeEnabled && !sourceDowngradeEnabled)
+    return;
+  if (downgradeEnabled !== sourceDowngradeEnabled)
+    throw new Error("计划降级规则版本与原始信号快照不一致");
   assertProgramPlan(plan, initialBook);
   if (
     !plan.sourceSnapshotMissing &&
@@ -1018,7 +1029,14 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
         plan.createdAt,
         options,
       );
-  for (const key of ["strategyProgram", "orders", "targetExposure", "emotion"])
+  for (const key of [
+    "strategyProgram",
+    "orders",
+    "targetExposure",
+    "emotion",
+    "downgradeRulesVersion",
+    "downgrades",
+  ])
     if (canonicalJson(plan[key]) !== canonicalJson(expected[key]))
       throw new Error("策略计划与信号日原始快照、情绪选择或资金分配重算不一致");
 }
@@ -1224,9 +1242,29 @@ export function defensivePlan(
 
 // 方案 6：计划冻结的降级声明开盘套用（executePlan 与实时会话共用）。
 // 声明以信号日为口径（downgradedAt = signalDate），幂等：已按同一信号
-// 日降级的持仓跳过。旧计划无 downgrades 字段，保持原语义。
+// 日降级的持仓跳过。只有显式版本计划启用；旧计划保持原语义。
 export function applyPlanDowngrades(book, plan, notices = []) {
-  if (!Array.isArray(plan?.downgrades)) return;
+  if (!downgradeEnabledForPlan(plan)) return;
+  const seen = new Set();
+  for (const item of plan.downgrades) {
+    if (
+      !item?.code ||
+      seen.has(item.code) ||
+      DOWNGRADE_CHAIN[item.from] !== item.to ||
+      typeof item.reason !== "string" ||
+      !item.reason
+    )
+      throw new Error("计划降级声明无效");
+    seen.add(item.code);
+    const position = book.positions.find((p) => p.code === item.code);
+    if (
+      !position ||
+      (position.downgradedAt === plan.signalDate
+        ? position.stockClass !== item.to
+        : (position.stockClass ?? STOCK_CLASSES.RELAY_LEADER) !== item.from)
+    )
+      throw new Error("计划降级声明与持仓类别不一致");
+  }
   for (const item of plan.downgrades) {
     const position = book.positions.find((p) => p.code === item.code);
     if (!position || position.downgradedAt === plan.signalDate) continue;
@@ -1424,9 +1462,9 @@ export function executePlan(inputBook, plan, dataset) {
         );
         // 方案 6：降级持仓的收益目标即清仓线——保护触达直接全退，
         // 不走金字塔档位（收益目标上限已收紧保护触发位）。仅对冻结了
-        // 降级声明的新计划启用（字段存在 = 类别管理版本标记），旧计划
+        // 显式降级规则版本的新计划启用，旧计划
         // 保持原减半语义。
-        const classCap = Array.isArray(plan?.downgrades)
+        const classCap = downgradeEnabledForPlan(plan)
           ? (CLASS_MANAGEMENT[heldPosition?.stockClass]?.takeProfitCap ?? null)
           : null;
         const capExit = !stopHit && classCap != null;

@@ -11,6 +11,10 @@ import {
 } from "../../shared/strategy-program.js";
 import { frozenProgramSignal } from "../storage/strategy-signals.js";
 import { withExposureTiers } from "../../shared/strategy-params.js";
+import {
+  downgradeEnabledForPlan,
+  downgradeEnabledForSnapshot,
+} from "../../shared/downgrade.js";
 
 export async function assertStoredProgramPlan(env, plan, book) {
   if (!plan) return;
@@ -20,18 +24,48 @@ export async function assertStoredProgramPlan(env, plan, book) {
         .first()
     : null;
   const params = version && JSON.parse(version.params);
-  if (!plan.strategy?.program && !params?.program) return;
+  const program = Boolean(plan.strategy?.program || params?.program);
+  const downgradeEnabled = downgradeEnabledForPlan(plan);
   // 摘要比较不得对 pyramidReduce 补齐默认值：字段缺席 = 旧减半规则，
   // 显式向量 = 金字塔阶梯，两者执行语义不同——计划删除该字段属于规则
   // 漂移，必须在此拦截（与 exposureTiers 的默认档位语义不同）。
   if (
-    !params ||
-    !plan.strategy?.program ||
-    (await digestOf(withExposureTiers(params))) !==
-      (await digestOf(withExposureTiers(plan.strategy)))
+    program &&
+    (!params ||
+      !plan.strategy?.program ||
+      (await digestOf(withExposureTiers(params))) !==
+        (await digestOf(withExposureTiers(plan.strategy))))
   )
     throw new Error("冻结计划程序与登记策略版本不一致");
-  const snapshot = await frozenProgramSignal(env.DB, plan);
+  let snapshot = await frozenProgramSignal(env.DB, plan);
+  // 普通策略也必须绑定降级声明的原始输入。未标记计划回查信号日归档，
+  // 防止删掉版本和全部声明后伪装成历史计划绕过重算。
+  if (!snapshot && !program) {
+    const frozen = await env.DB.prepare(
+      "SELECT payload FROM strategy_signal_snapshots WHERE signal_date=?",
+    )
+      .bind(plan.signalDate)
+      .all();
+    snapshot = (frozen.results ?? [])
+      .map((row) => JSON.parse(row.payload))
+      .find(
+        (source) =>
+          downgradeEnabledForSnapshot(source) &&
+          source.createdAt <= plan.createdAt,
+      );
+  }
+  if (!snapshot && !program) {
+    const row = await env.DB.prepare(
+      "SELECT payload FROM snapshots WHERE trade_date=?",
+    )
+      .bind(plan.signalDate)
+      .first();
+    snapshot = row && JSON.parse(row.payload);
+  }
+  const sourceDowngradeEnabled = downgradeEnabledForSnapshot(snapshot);
+  if (!program && !downgradeEnabled && !sourceDowngradeEnabled) return;
+  if (sourceDowngradeEnabled && !plan.selectionAudit?.snapshotDigest)
+    throw new Error("降级计划缺少原始信号快照引用");
   if (
     snapshot &&
     plan.selectionAudit?.snapshotDigest &&

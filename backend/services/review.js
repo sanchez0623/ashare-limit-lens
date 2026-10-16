@@ -1,5 +1,6 @@
 import { database } from "../storage/database.js";
 import { getMa5ByCode, getStockFeaturesByCode } from "./daily-closes.js";
+import { DOWNGRADE_RULES_VERSION } from "../../shared/downgrade.js";
 export { database } from "../storage/database.js";
 export function beijingDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -121,6 +122,10 @@ export async function saveSnapshot(env, market, weights) {
     weights,
     source: market.source,
     modelVersion: "rules-v1",
+    downgradeRulesVersion: DOWNGRADE_RULES_VERSION,
+    ...(market.sectorPerformance
+      ? { sectorPerformance: market.sectorPerformance }
+      : {}),
     judgment:
       "以评分前 20% 个股作为优先观察组，下一交易日检验其相对当日完整涨停样本的表现。",
     stocks,

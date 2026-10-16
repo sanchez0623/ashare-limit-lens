@@ -21,11 +21,12 @@
 //
 // 数据口径：
 //   stocks：当日评分快照行（normalize 后：sector / height / change /
-//     turnover / breaks），板块统计（最高板 / 平均涨幅）只来自涨停池
-//     ——池外股没有板块归属数据，宁缺毋滥；
+//     turnover / breaks），仅用于板块最高板，不能代表完整板块涨幅；
 //   brokenRows：炸板池原始行（出池持仓的 breaks / change / turnover
 //     来源，normalize 复用同一字段族）；
-//   eodChange：日线涨幅补充（出池且不在炸板池时触发条件 2 的唯一来源）。
+//   eodChange：日线涨幅补充；
+//   sectorPerformance：冻结的完整板块均值（含日期、来源和覆盖数量），
+//     缺失或不完整时仅跳过条件 2，禁止用涨停池的均值/中位数替代。
 import { STOCK_CLASSES } from "./stock-class.js";
 import { BROKEN_MIN_COUNT } from "./exit-signals.js";
 import { normalize } from "./scoring.js";
@@ -58,20 +59,52 @@ export const CLASS_MANAGEMENT = Object.freeze({
 export const FOLLOWER_LAG_RATIO = 0.5; // 触发 2：涨幅不足板块均值的一半
 export const STALL_TURNOVER = 15; // 触发 4：换手率下限（%）
 export const STALL_MAX_CHANGE = 3; // 触发 4：涨幅上限（%）
-// 触发 2 的对照下限：板块均值取同板块涨停池中位数，至少 2 家对照才
-// 采信——单一极端对照（如唯一一只 20cm 涨停）不足以判定跟风。
-export const SECTOR_MEDIAN_MIN_PEERS = 2;
+export const DOWNGRADE_RULES_VERSION = 1;
 
 const num = (v) =>
   v === null || v === undefined || v === "" || !Number.isFinite(Number(v))
     ? null
     : Number(v);
 
-// 快照版本门控：炸板池字段（方案 5 第二轮）随本检测器同期接入归档，
-// 据此区分新旧快照——旧快照（无该字段）重建的计划保持旧语义（不启用
-// 降级检测与类别管理），新快照启用。旧计划重算因此与冻结版本一致。
+// 规则版本必须在信号生成时显式冻结；brokenRows 在旧版本就已存在，
+// 不能作为启用标记。未标记的历史快照始终保持旧语义，不补写版本。
 export function downgradeEnabledForSnapshot(snapshot) {
-  return Boolean(snapshot?.market && "brokenRows" in (snapshot.market ?? {}));
+  if (!Object.hasOwn(snapshot ?? {}, "downgradeRulesVersion")) return false;
+  if (snapshot.downgradeRulesVersion !== DOWNGRADE_RULES_VERSION)
+    throw new Error("不支持的降级规则版本");
+  return true;
+}
+
+export function downgradeEnabledForPlan(plan) {
+  const enabled = downgradeEnabledForSnapshot(plan);
+  if (
+    enabled
+      ? !Array.isArray(plan.downgrades)
+      : Object.hasOwn(plan ?? {}, "downgrades")
+  )
+    throw new Error("降级规则版本与声明不一致，请重新冻结计划");
+  return enabled;
+}
+
+function completeSectorMean(performance, sector, date) {
+  if (
+    !sector ||
+    performance?.date !== date ||
+    performance.complete !== true ||
+    typeof performance.source !== "string" ||
+    !performance.source.trim() ||
+    !Array.isArray(performance.sectors)
+  )
+    return null;
+  const rows = performance.sectors.filter((row) => row?.name === sector);
+  if (rows.length !== 1) return null;
+  const row = rows[0];
+  return Number.isInteger(row.memberCount) &&
+    row.memberCount > 1 &&
+    row.observedCount === row.memberCount &&
+    Number.isFinite(row.averageChange)
+    ? row.averageChange
+    : null;
 }
 
 // 单条持仓的降级检测。returns { to, triggers, reason } 或 null。
@@ -81,6 +114,7 @@ export function detectDowngradeForPosition({
   stocks,
   brokenRows,
   eodChange = null,
+  sectorPerformance = null,
   today,
 }) {
   const from = position?.stockClass ?? STOCK_CLASSES.RELAY_LEADER;
@@ -95,26 +129,14 @@ export function detectDowngradeForPosition({
       .find((row) => row.code === position.code) ?? null;
   const sector = position.sector ?? own?.sector ?? null;
   const sectorRows = sector ? pool.filter((row) => row.sector === sector) : [];
-  // 板块统计以"同板块其他涨停股"为对照（不含自身）；均值用中位数并
-  // 要求至少 2 家对照——单一极端对照（唯一 20cm 涨停）不得判定跟风。
+  // 涨停池可证明同板块存在更高板，但不能证明完整板块的平均涨幅。
   const peerRows = sectorRows.filter((row) => row.code !== position.code);
   const ownHeight = num(own?.height) ?? 0; // 池外 = 今日未涨停，连板归零
   const peerMaxHeight = peerRows.reduce(
     (max, row) => Math.max(max, num(row.height) ?? 0),
     0,
   );
-  const peerChanges = peerRows
-    .map((row) => num(row.change))
-    .filter((v) => v !== null)
-    .sort((a, b) => a - b);
-  const sectorMedianChange =
-    peerChanges.length >= SECTOR_MEDIAN_MIN_PEERS
-      ? peerChanges.length % 2
-        ? peerChanges[(peerChanges.length - 1) / 2]
-        : (peerChanges[peerChanges.length / 2 - 1] +
-            peerChanges[peerChanges.length / 2]) /
-          2
-      : null;
+  const sectorMeanChange = completeSectorMean(sectorPerformance, sector, today);
   const ownChange = num(own?.change) ?? num(broken?.change) ?? num(eodChange);
   const ownTurnover = num(own?.turnover) ?? num(broken?.turnover);
   const ownBreaks = num(own?.breaks) ?? num(broken?.breaks);
@@ -126,11 +148,11 @@ export function detectDowngradeForPosition({
     );
   if (
     ownChange !== null &&
-    sectorMedianChange !== null &&
-    ownChange < sectorMedianChange * FOLLOWER_LAG_RATIO
+    sectorMeanChange !== null &&
+    ownChange < sectorMeanChange * FOLLOWER_LAG_RATIO
   )
     triggers.push(
-      `今日涨幅 ${ownChange.toFixed(2)}% 不足板块中位涨幅 ${sectorMedianChange.toFixed(2)}% 的一半，跟涨不领涨`,
+      `今日涨幅 ${ownChange.toFixed(2)}% 不足完整板块平均涨幅 ${sectorMeanChange.toFixed(2)}% 的一半，跟涨不领涨`,
     );
   if (ownBreaks !== null && ownBreaks >= BROKEN_MIN_COUNT && !sealed)
     triggers.push(`今日炸板 ${ownBreaks} 次且收盘未回封`);
@@ -153,6 +175,7 @@ export function detectPositionDowngrades({
   stocks,
   brokenRows,
   eodChangeByCode = null,
+  sectorPerformance = null,
   today,
 }) {
   const demotions = new Map();
@@ -162,6 +185,7 @@ export function detectPositionDowngrades({
       stocks,
       brokenRows,
       eodChange: eodChangeByCode?.get(position.code) ?? null,
+      sectorPerformance,
       today,
     });
     if (demotion) demotions.set(position.code, demotion);

@@ -213,6 +213,11 @@ test("新盘后快照同时归档原始行情与统计，重复保存不改写�
     assert.equal(archive.broken, 2);
     assert.equal(archive.analysis.promotion, 100);
     const before = await DB.prepare("SELECT payload FROM snapshots").first();
+    assert.equal(
+      JSON.parse(before.payload).downgradeRulesVersion,
+      1,
+      "新信号显式冻结降级规则版本",
+    );
     const repeated = await saveSnapshot(
       { DB },
       { ...market, rows: [] },

@@ -311,6 +311,13 @@ test("历史导入生命周期：READY、断点幂等、评分与观察反馈、
     const info = await historyImportDetail(env, job.id);
     assert.equal(info.dates.length, 5);
     assert.equal(info.scoreCount, 5);
+    const scores = await openHistoryStore(env).listScores(
+      done.statusPayload.datasetId,
+    );
+    assert.ok(
+      scores.every((score) => score.payload.downgradeRulesVersion === 1),
+      "新重构评分显式冻结降级规则版本",
+    );
     assert.equal(info.reviewCount, 4);
     const review = info.reviews.at(0).payload;
     assert.ok(review.continuationRate !== null);

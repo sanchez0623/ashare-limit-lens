@@ -39,6 +39,7 @@ import {
   closeSession,
 } from "../domain/realtime.js";
 import { realtimeStatus } from "./realtime.js";
+import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
 export async function runPaperDay(env, date) {
   try {
     return await settlePaperDay(env, date);
@@ -134,6 +135,7 @@ async function settlePaperDay(env, date) {
         const session =
           (await repository.session(date)) ||
           openSession(account.book, plan, date);
+        await assertStoredProgramPlan(env, session.plan, session.initialBook);
         dataset.executionMode = "realtime";
         settlement = closeSession(account.book, session, dataset);
         if (!session.sequence)
@@ -365,6 +367,15 @@ export async function verifyExport(bundle) {
     replay = true;
   let book = newBook(bundle.initialCashCents / 100);
   let fillIndex = 0;
+  const sourceFor = (plan) =>
+    plan &&
+    (bundle.signalSnapshots?.find(
+      (entry) =>
+        entry.digest ===
+        (plan.strategyProgram?.snapshotDigest ??
+          plan.selectionAudit?.snapshotDigest),
+    )?.payload ??
+      bundle.snapshots?.find((s) => s.date === plan.signalDate));
   try {
     for (const row of [
       ...bundle.plans,
@@ -409,14 +420,7 @@ export async function verifyExport(bundle) {
     for (let index = 0; index < bundle.datasets.length; index++) {
       const dataset = bundle.datasets[index].payload;
       const plan = index ? plans.get(dataset.previousTradingDate) : null;
-      if (plan?.strategy?.program)
-        assertProgramSnapshot(
-          plan,
-          bundle.signalSnapshots?.find(
-            (entry) => entry.digest === plan.strategyProgram.snapshotDigest,
-          )?.payload,
-          book,
-        );
+      assertProgramSnapshot(plan, sourceFor(plan), book);
       if (index && (!plan || book.lastDate !== dataset.previousTradingDate)) {
         replay = false;
         break;
@@ -462,14 +466,7 @@ export async function verifyExport(bundle) {
     )) {
       if (date <= (book.lastDate || "")) continue;
       const plan = plans.get(book.lastDate);
-      if (plan?.strategy?.program)
-        assertProgramSnapshot(
-          plan,
-          bundle.signalSnapshots?.find(
-            (entry) => entry.digest === plan.strategyProgram.snapshotDigest,
-          )?.payload,
-          book,
-        );
+      assertProgramSnapshot(plan, sourceFor(plan), book);
       let session = openSession(book, plan, date),
         fills = [];
       for (const tick of liveTicks.get(date) || []) {

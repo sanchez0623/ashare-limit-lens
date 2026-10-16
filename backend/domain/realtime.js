@@ -9,7 +9,10 @@ import {
   applyPlanDowngrades,
   BASE_STRATEGY,
 } from "./trading.js";
-import { CLASS_MANAGEMENT } from "../../shared/downgrade.js";
+import {
+  CLASS_MANAGEMENT,
+  downgradeEnabledForPlan,
+} from "../../shared/downgrade.js";
 import { planRiskLimits } from "../../shared/risk-limits.js";
 import { frozenSelectionPolicy } from "./signal-selection.js";
 import { assertProgramPlan } from "./strategy-program.js";
@@ -370,8 +373,8 @@ export function advanceSession(inputBook, inputSession, observation) {
           const heldPosition = book.positions.find((p) => p.code === code);
           // 方案 6：降级持仓的收益目标即清仓线——保护触达直接全退，
           // 不走金字塔档位（收益目标上限已收紧保护触发位）。仅对冻结
-          // 了降级声明的新计划启用（字段存在 = 类别管理版本标记）。
-          const classCap = Array.isArray(session.plan?.downgrades)
+          // 了显式降级规则版本的新计划启用。
+          const classCap = downgradeEnabledForPlan(session.plan)
             ? (CLASS_MANAGEMENT[heldPosition?.stockClass]?.takeProfitCap ??
               null)
             : null;
