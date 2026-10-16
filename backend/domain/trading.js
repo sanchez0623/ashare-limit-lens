@@ -429,29 +429,35 @@ export function createPlan(
     // 持仓股不在当日涨停评分池时，用日线 EOD 行补齐 row（开/收/高/涨幅/
     // 是否封板/炸板次数），避免漏检个股卖出信号。
     //   - 已在池：以评分 normalize 行（含真实 breaks / isLimitUp）为准；
-    //   - 不在池：用 exitEodRowsByCode 推算 close/open/high/change；
-    //     isLimitUp 由 change 距 limitUpPct 阈值推断（容差 0.3%）；
-    //     breaks 取当日炸板池归档记录，不在池内也保持未知（null，不猜）。
+    //   - 不在池且在炸板池：炸板池记录是"盘中触板且收盘未封"的权威事实，
+    //     isLimitUp 明确为 false、breaks 取池内记录——不按涨幅推断
+    //     （收涨 9.8% 会被误判为封板而漏检），日线缺失也可触发；
+    //   - 不在池且不在炸板池：用 exitEodRowsByCode 推算 close/open/high/
+    //     change，isLimitUp 由 change 距 limitUpPct 阈值推断（容差 0.3%），
+    //     breaks 保持未知（null，不猜 0）。
     let exitRow = signal ?? null;
     if (!exitRow) {
       const eod = exitEodRowsByCode?.get(position.code);
-      if (eod) {
-        const limitPct = eod.limitUpPct ?? 10;
-        const change = Number.isFinite(eod.change) ? eod.change : null;
+      const breaks = exitBreaksByCode?.get(position.code) ?? null;
+      if (eod || breaks !== null) {
+        const limitPct = eod?.limitUpPct ?? 10;
+        const change = Number.isFinite(eod?.change) ? eod.change : null;
         const isLimitUp =
-          change !== null && change >= limitPct - 0.3
-            ? true
-            : change !== null
-              ? false
-              : null;
+          breaks !== null
+            ? false
+            : change !== null && change >= limitPct - 0.3
+              ? true
+              : change !== null
+                ? false
+                : null;
         exitRow = {
           code: position.code,
-          close: eod.close,
-          price: eod.close,
-          open: eod.open,
-          high: eod.high,
+          close: eod?.close ?? null,
+          price: eod?.close ?? null,
+          open: eod?.open ?? null,
+          high: eod?.high ?? null,
           change,
-          breaks: exitBreaksByCode?.get(position.code) ?? null,
+          breaks,
           isLimitUp,
         };
       }

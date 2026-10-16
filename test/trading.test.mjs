@@ -12,9 +12,14 @@ import {
   transactionFees,
 } from "../backend/domain/trading.js";
 import {
+  replayStrategy,
   validateProposal,
   validateCandidate,
 } from "../backend/domain/validation.js";
+import {
+  loadOrBuildExitContext,
+  loadPersistedExitInputs,
+} from "../backend/services/exit-context.js";
 import {
   EXPOSURE_TIERS_DEFAULTS,
   STRATEGY_DEFAULTS,
@@ -1116,4 +1121,191 @@ test("P1-1：出池持仓接入炸板池记录，炸板 3 次未回封触发清�
   const holdOrder = noBreaks.orders.find((o) => o.code === "600099");
   assert.notEqual(holdOrder?.action, "EXIT");
   assert.equal(noBreaks.exitContext?.breaks, undefined);
+});
+
+// 出池持仓测试夹具：1000 股、成本 10 元，可按 markCents 调整现价。
+function outOfPoolBook(markCents = 1000) {
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600099", // 不在 snapshot.stocks（合成池只有 600001/600002）
+      name: "跌出池样本",
+      sector: "测试行业",
+      heldDays: 0,
+      markCents,
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  return book;
+}
+
+// P1-1（第三轮）：日线缺失时炸板池记录单独触发炸板不回封清仓。
+test("P1-1：日线缺失时炸板池记录单独触发炸板不回封清仓", () => {
+  const plan = createPlan(
+    snapshot(dateAt(1)),
+    outOfPoolBook(),
+    BASE_STRATEGY,
+    "v",
+    "now",
+    {
+      // 无 exitEodRowsByCode：当日日线缺失
+      exitBreaksByCode: new Map([["600099", 3]]),
+    },
+  );
+  const order = plan.orders.find((o) => o.code === "600099");
+  assert.equal(order?.action, "EXIT");
+  assert.match(order.reason, /炸板 3 次/);
+  assert.equal(plan.exitContext?.breaks?.["600099"], 3);
+});
+
+// P1-1（第三轮）：炸板池明确的未封板状态优先于涨幅推断——收涨 9.8%
+// 会被阈值推断误判为封板而漏检，炸板池记录是权威事实。
+test("P1-1：炸板池明确未封板优先于涨幅推断（收涨 9.8% 不误判为封板）", () => {
+  const plan = createPlan(
+    snapshot(dateAt(1)),
+    outOfPoolBook(1098),
+    BASE_STRATEGY,
+    "v",
+    "now",
+    {
+      exitEodRowsByCode: new Map([
+        [
+          "600099",
+          {
+            close: 10.98,
+            open: 10.0,
+            high: 11.0,
+            change: 9.8, // ≥ 10-0.3，按涨幅推断会误判为封板
+            volume: null,
+            limitUpPct: 10,
+          },
+        ],
+      ]),
+      exitBreaksByCode: new Map([["600099", 3]]),
+    },
+  );
+  const order = plan.orders.find((o) => o.code === "600099");
+  assert.equal(order?.action, "EXIT");
+  assert.match(order.reason, /炸板/);
+});
+
+// P1（第三轮）：研究重放读取 pair 携带的固化卖出上下文，与主账户同日
+// 决策一致。复现用户验收用例：同一策略/快照/初始持仓，主账户清仓 1000
+// 股，重放缺上下文却生成买入。
+test("P1：研究重放读取 pair 固化卖出上下文，与主账户同日决策一致", () => {
+  const day = dataset(dateAt(1), "600099");
+  day.previousTradingDate = dateAt(0);
+  // 池内候选同样给足行情：缺少行情会被判为"缺少日期"破坏覆盖声明。
+  for (const code of ["600001", "600002"]) {
+    day.quotes[code] = {
+      date: dateAt(1),
+      previousCloseCents: 1000,
+      openCents: 1000,
+      closeCents: 1000,
+      limitUpCents: 1100,
+      limitDownCents: 900,
+    };
+    day.minutes[code] = bars(1000);
+  }
+  const context = {
+    features: { 600099: { ma5: 10.8 } },
+    eodRows: {
+      600099: {
+        close: 10,
+        open: 10.2,
+        high: 10.3,
+        change: -3.0,
+        volume: null,
+        limitUpPct: 10,
+      },
+    },
+  };
+  const withContext = replayStrategy(
+    [{ snapshot: snapshot(dateAt(0)), dataset: day, exitContext: context }],
+    BASE_STRATEGY,
+    100000,
+    undefined,
+    outOfPoolBook(),
+    null,
+    {},
+  );
+  assert.ok(
+    withContext.fills.some((f) => f.side === "SELL" && f.quantity === 1000),
+    "重放应按固化上下文清仓全部 1000 股",
+  );
+  assert.equal(withContext.covered, true);
+  // 对照：无上下文时同一持仓不得触发清仓（做 T 腿或 HOLD，量 < 1000）。
+  const without = replayStrategy(
+    [{ snapshot: snapshot(dateAt(0)), dataset: day }],
+    BASE_STRATEGY,
+    100000,
+    undefined,
+    outOfPoolBook(),
+    null,
+    {},
+  );
+  assert.ok(
+    !without.fills.some((f) => f.side === "SELL" && f.quantity === 1000),
+  );
+});
+
+// P2（第三轮）：卖出上下文输入按日期固化并绑定摘要——主账户冻结后日线
+// Parquet 补齐，影子/研究重放重读仍得到首写版本，决策不漂移。
+test("P2：卖出上下文输入按日期固化并绑定摘要，重读不随输入漂移", async () => {
+  const DB = localDatabase();
+  try {
+    const snapA = snapshot(dateAt(1));
+    snapA.market = { brokenRows: [{ c: "600099", n: "炸板样本", zbc: 3 }] };
+    const first = await loadOrBuildExitContext({
+      env: {},
+      db: DB,
+      snapshot: snapA,
+      date: dateAt(1),
+    });
+    assert.equal(first.persisted, false, "首次计算并落盘");
+    assert.equal(first.exitBreaksByCode.get("600099"), 3);
+    const persisted = await loadPersistedExitInputs(DB, dateAt(1));
+    assert.ok(persisted?.breaks?.["600099"] === 3, "输入已持久化");
+    const snapB = snapshot(dateAt(1));
+    snapB.market = { brokenRows: [{ c: "600099", n: "炸板样本", zbc: 9 }] };
+    const second = await loadOrBuildExitContext({
+      env: {},
+      db: DB,
+      snapshot: snapB,
+      date: dateAt(1),
+    });
+    assert.equal(second.persisted, true, "重读引用固化版本");
+    assert.equal(
+      second.exitBreaksByCode.get("600099"),
+      3,
+      "固化后不随输入漂移",
+    );
+    // 摘要损坏 → 视为缺失，按当前输入重新计算（不静默使用损坏数据）。
+    await DB.prepare(
+      "UPDATE exit_context_inputs SET digest='deadbeef' WHERE trade_date=?",
+    )
+      .bind(dateAt(1))
+      .run();
+    assert.equal(await loadPersistedExitInputs(DB, dateAt(1)), null);
+    const third = await loadOrBuildExitContext({
+      env: {},
+      db: DB,
+      snapshot: snapB,
+      date: dateAt(1),
+    });
+    assert.equal(third.persisted, false);
+    assert.equal(third.exitBreaksByCode.get("600099"), 9);
+  } finally {
+    DB.close();
+  }
 });

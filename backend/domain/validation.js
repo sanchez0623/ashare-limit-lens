@@ -113,6 +113,9 @@ function* replayStrategySteps(
     }
     // 情景重放（§6.2）：每个情景冻结自己的成本政策，重新生成因果计划与成交；
     // 未显式传入时使用默认政策，新研究不再默认全时段 10bps。
+    // 卖出上下文（方案 5）：pair 携带该日固化输入（主账户冻结时的同一
+    // 版本），重放的卖出决策与实盘同源，不因重放环境按当前日线重推而
+    // 偏离（缺失时信号跳过，与无上下文的旧计划口径一致）。
     const plan = createPlan(
       pair.snapshot,
       book,
@@ -123,6 +126,7 @@ function* replayStrategySteps(
         executionCostPolicy: executionCostPolicy ?? undefined,
         originalScoreLookup: (code) => scoreHistory.get(code) ?? null,
         selectionPolicy: policy,
+        ...(pair.exitContext ? { exitContextFrozen: pair.exitContext } : {}),
       },
     );
     try {

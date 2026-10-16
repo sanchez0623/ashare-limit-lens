@@ -18,7 +18,7 @@ import {
 } from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
-import { buildExitContext } from "./exit-context.js";
+import { loadOrBuildExitContext } from "./exit-context.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { calibrationForPolicy } from "./execution-calibration.js";
@@ -185,12 +185,11 @@ async function settlePaperDay(env, date) {
   const snapshot = await repository.snapshot(date);
   let nextPlan = await repository.plan(date);
   // 方案 5 卖出上下文（仅生成新计划时计算；已有冻结计划不重写）：
-  // 与影子组合/回测共用 buildExitContext 构建口径（日线历史特征、当日
-  // EOD 行、炸板池记录、板块退潮、情绪切换），同一快照在任一链路得到
-  // 同一上下文，卖出决策可跨链路复现。
+  // 与影子组合/研究重放引用同一固化版本（exit_context_inputs，首写固化），
+  // 日线 Parquet 补齐后不漂移；同一快照在任一链路得到同一上下文。
   let exitContext = null;
   if (snapshot && !nextPlan) {
-    exitContext = await buildExitContext({
+    exitContext = await loadOrBuildExitContext({
       env,
       db: repository.db,
       snapshot,

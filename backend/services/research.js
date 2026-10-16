@@ -18,6 +18,7 @@ import {
   SCORING_VERSION,
 } from "../domain/research-lineage.js";
 import { ResearchRepository } from "../storage/research.js";
+import { loadPersistedExitInputs } from "./exit-context.js";
 import { safeError } from "../http.js";
 import {
   selectionPolicyForBook,
@@ -41,6 +42,14 @@ export async function collectPairs(repository) {
     const snapshot = snapshots.get(day.previousTradingDate);
     if (!snapshot) continue;
     const pair = { dataset: day, snapshot };
+    // 卖出上下文与研究重放引用同一固化版本（方案 5）：主账户当日冻结
+    // 的决策输入，不按当前 Parquet 重推——训练/验证/成本压力的卖出决策
+    // 与实盘同源（缺失时为 null，对应信号跳过，与旧计划口径一致）。
+    const exitInputs = await loadPersistedExitInputs(
+      repository.db,
+      day.previousTradingDate,
+    );
+    if (exitInputs) pair.exitContext = exitInputs;
     if (day.executionMode === "realtime") {
       const ticks = await repository.db
         .prepare(

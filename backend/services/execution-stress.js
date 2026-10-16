@@ -11,6 +11,7 @@ import {
 import { calibrationForPolicy } from "./execution-calibration.js";
 import { ShadowAccountRepository } from "../storage/shadow.js";
 import { frozenProgramSignal } from "../storage/strategy-signals.js";
+import { loadPersistedExitInputs } from "./exit-context.js";
 
 export async function cohortStressInput(env, cohort, windowDates) {
   const frozen = cohort.reservationManifest?.executionStress;
@@ -56,6 +57,13 @@ export async function cohortStressInput(env, cohort, windowDates) {
       (await papers.snapshot(dataset.previousTradingDate));
     if (!snapshot) throw new Error("压力测试缺少事前评分快照");
     const pair = { dataset, snapshot };
+    // 卖出上下文与实盘引用同一固化版本（方案 5）：压力重放的卖出决策
+    // 与主账户同源，不按当前 Parquet 重推。
+    const exitInputs = await loadPersistedExitInputs(
+      env.DB,
+      dataset.previousTradingDate,
+    );
+    if (exitInputs) pair.exitContext = exitInputs;
     if (dataset.executionMode === "realtime") {
       const frames = (
         await env.DB.prepare(

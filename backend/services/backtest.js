@@ -35,10 +35,7 @@ import {
 } from "../domain/historical-input.js";
 import { openHistoryStore } from "../storage/history.js";
 import {
-  getStockFeaturesByCode,
-  getExitEodRowsByCode,
-} from "./daily-closes.js";
-import {
+  loadOrBuildExitContext,
   phaseShiftOf,
   sectorDropsOf,
   exitBreaksFromBrokenRows,
@@ -293,35 +290,39 @@ async function runBacktestInner(
     }
     let plan;
     try {
-      // 方案 5 卖出上下文：回测与主账户/影子共用同一构建口径。历史重构
-      // payload 无昨日涨停池原始行 → 用上一评分日规范化 stocks 转换为
-      // 昨日池形状；无炸板池归档 → 出池持仓炸板信号保持未知（不猜）。
-      // QUAN_DATA_DIR 未配置或未覆盖信号日时特征/EOD 为空，信号跳过。
+      // 方案 5 卖出上下文：回测与主账户/影子/研究重放引用同一固化版本
+      // （该日在实盘归档中已固化时直接复用，persisted 为 true 不覆盖）。
+      // 历史重构 payload 无昨日涨停池原始行 → 用上一评分日规范化 stocks
+      // 转换为昨日池形状；无炸板池归档 → 出池持仓炸板信号保持未知（不
+      // 猜）。persist:false 只读不写：回测日期多且数据集已自身归档，避免
+      // 研究库膨胀。
       const previousPayload = index > 0 ? scores[index - 1].payload : null;
-      const [featuresResult, eodResult] = await Promise.all([
-        getStockFeaturesByCode(env, signalDate),
-        getExitEodRowsByCode(env, signalDate),
-      ]);
-      const exitContext = {
-        exitFeaturesByCode: featuresResult.featuresByCode,
-        exitEodRowsByCode: eodResult.rowsByCode,
-        exitBreaksByCode: exitBreaksFromBrokenRows(
-          snapshot?.market?.brokenRows,
-        ),
-        sectorLimitDrops: sectorDropsOf(
+      const exitContext = await loadOrBuildExitContext({
+        env,
+        // 无 DB 的最小环境（纯数据集回测）降级为按当前数据计算。
+        db: env?.DB ?? null,
+        snapshot,
+        date: signalDate,
+        persist: false,
+      });
+      if (!exitContext.persisted) {
+        exitContext.sectorLimitDrops = sectorDropsOf(
           snapshot?.stocks,
           previousPayload?.stocks?.map((stock) => ({
             hybk: stock.sector,
             ylbc: stock.height,
           })) ?? [],
-        ),
-        phaseShift: phaseShiftOf(
+        );
+        exitContext.phaseShift = phaseShiftOf(
           snapshot?.cycle ?? snapshot?.marketSummary?.cycle?.phase ?? null,
           previousPayload?.cycle ??
             previousPayload?.marketSummary?.cycle?.phase ??
             null,
-        ),
-      };
+        );
+        exitContext.exitBreaksByCode = exitBreaksFromBrokenRows(
+          snapshot?.market?.brokenRows,
+        );
+      }
       plan = createPlan(
         snapshot,
         book,
