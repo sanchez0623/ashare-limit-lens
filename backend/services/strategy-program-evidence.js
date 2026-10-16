@@ -10,10 +10,7 @@ import {
   normalizeStrategyProgram,
 } from "../../shared/strategy-program.js";
 import { frozenProgramSignal } from "../storage/strategy-signals.js";
-import {
-  withExposureTiers,
-  withPyramidReduce,
-} from "../../shared/strategy-params.js";
+import { withExposureTiers } from "../../shared/strategy-params.js";
 
 export async function assertStoredProgramPlan(env, plan, book) {
   if (!plan) return;
@@ -24,11 +21,14 @@ export async function assertStoredProgramPlan(env, plan, book) {
     : null;
   const params = version && JSON.parse(version.params);
   if (!plan.strategy?.program && !params?.program) return;
+  // 摘要比较不得对 pyramidReduce 补齐默认值：字段缺席 = 旧减半规则，
+  // 显式向量 = 金字塔阶梯，两者执行语义不同——计划删除该字段属于规则
+  // 漂移，必须在此拦截（与 exposureTiers 的默认档位语义不同）。
   if (
     !params ||
     !plan.strategy?.program ||
-    (await digestOf(withPyramidReduce(withExposureTiers(params)))) !==
-      (await digestOf(withPyramidReduce(withExposureTiers(plan.strategy))))
+    (await digestOf(withExposureTiers(params))) !==
+      (await digestOf(withExposureTiers(plan.strategy)))
   )
     throw new Error("冻结计划程序与登记策略版本不一致");
   const snapshot = await frozenProgramSignal(env.DB, plan);

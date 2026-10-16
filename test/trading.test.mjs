@@ -1640,6 +1640,89 @@ test("金字塔减仓：跨日续单保留档位，成交后不重复减仓", as
   );
 });
 
+test("金字塔减仓：保护止盈不取消未完成跨日减仓，续单完成后继续下一档", () => {
+  const strategy = { ...BASE_STRATEGY, pyramidReduce: [0.3, 0.2, 0.1] };
+  // 首档目标 300 股、昨日仅成交 100 股（stage 已推进到 1），剩余 200 股跨日
+  const book = outOfPoolBook(1150, 1);
+  book.lastDate = dateAt(1);
+  book.pendingOrders = [
+    {
+      code: "600099",
+      name: "跌出池样本",
+      sector: "测试行业",
+      quantity: 200,
+      pyramidRung: 1,
+    },
+  ];
+  const plan2 = createPlan(
+    snapshot(dateAt(1)),
+    book,
+    strategy,
+    "v",
+    `${dateAt(1)}T07:10:00.000Z`,
+  );
+  const carriedOrders = plan2.orders.filter((o) => o.code === "600099");
+  assert.equal(carriedOrders.length, 1);
+  assert.equal(carriedOrders[0].pyramidRung, 1);
+  assert.equal(carriedOrders[0].quantity, 200);
+  // 次日盘中触达第二档里程碑（+20%）：保护止盈不得取消续单，由续单
+  // 先完成首档剩余量，随后保护单按第二档继续执行。
+  let session = openSession(book, plan2, dateAt(2));
+  let lastStep;
+  let currentBook = structuredClone(book);
+  const frameFills = [];
+  for (const [zTime, zVolume] of [
+    ["01:31:00", 100000],
+    ["01:31:05", 5000000],
+    ["01:31:10", 5100000],
+  ]) {
+    lastStep = advanceSession(currentBook, session, {
+      observedAt: `${dateAt(2)}T${zTime}.000Z`,
+      pollIntervalSeconds: 60,
+      quotes: {
+        600099: {
+          date: dateAt(2),
+          timestamp: `${dateAt(2)}T09:31:${zTime.slice(-2)}+08:00`,
+          closeCents: 1200,
+          openCents: 1150,
+          previousCloseCents: 1150,
+          volumeShares: zVolume,
+          limitUpCents: 1265,
+          limitDownCents: 1035,
+        },
+      },
+    });
+    session = lastStep.session;
+    currentBook = lastStep.book;
+    frameFills.push(...lastStep.ledger);
+    if (zTime === "01:31:00")
+      assert.notEqual(
+        session.orders.find(
+          (o) => o.code === "600099" && o.pyramidRung === 1 && !o.protective,
+        ).status,
+        "CANCELLED",
+        "保护止盈不得取消未完成的跨日减仓",
+      );
+  }
+  const result = closeSession(lastStep.book, lastStep.session, {
+    ...dataset(dateAt(2), "600099", {
+      previous: 1150,
+      close: 1200,
+      previousDate: dateAt(1),
+    }),
+    executionMode: "realtime",
+  });
+  const sells = frameFills.filter((f) => f.side === "SELL");
+  assert.deepEqual(
+    sells.map((f) => f.quantity),
+    [200, 100],
+    "先完成首档剩余 200 股，再按第二档比例（20%×800→整手 100 股）继续减仓",
+  );
+  const position = result.book.positions.find((p) => p.code === "600099");
+  assert.equal(position.pyramidStage, 2);
+  assert.equal(result.book.pendingOrders.length, 0);
+});
+
 test("金字塔减仓：成交推进档位，后续计划不重复减仓", () => {
   const snap = snapshot(dateAt(1));
   const book = outOfPoolBook(1100);

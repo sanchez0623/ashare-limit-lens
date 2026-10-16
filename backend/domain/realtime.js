@@ -377,11 +377,29 @@ export function advanceSession(inputBook, inputSession, observation) {
           const pyramidActive = Array.isArray(
             session.plan.strategy?.pyramidReduce,
           );
+          // 方案 4：同档减仓尚有未完成跨日剩余量时，保护止盈不得取消它
+          // 也不得跳到下一档——保持武装，由续单完成未竟档位后再评估。
+          const unfinishedRung =
+            pyramidActive &&
+            list.some(
+              (other) =>
+                other !== order &&
+                !other.protective &&
+                !TERMINAL.has(other.status) &&
+                other.side === "SELL" &&
+                other.action === "REDUCE" &&
+                Number.isInteger(other.pyramidRung) &&
+                other.filledQuantity < other.quantity,
+            );
           const reduceQuantity = rung
             ? roundLot(held * rung.ratio)
             : roundLot(held / 2) || held;
-          if (!stopHit && pyramidActive && (!rung || reduceQuantity <= 0))
-            continue; // 未到档位里程碑，等待价格继续上行
+          if (
+            !stopHit &&
+            pyramidActive &&
+            (!rung || reduceQuantity <= 0 || unfinishedRung)
+          )
+            continue; // 未到档位里程碑或档位未完成，等待价格/续单
           order.triggered = true;
           order.action = stopHit ? "EXIT" : "REDUCE";
           order.reason = stopHit

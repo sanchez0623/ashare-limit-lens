@@ -85,6 +85,14 @@ test("冻结信号独立于展示归档；同日重算后可继续原计划，�
       () => assertStoredProgramPlan({ DB }, mutated, book),
       /登记策略版本/,
     );
+    // 方案 4：删除 pyramidReduce 属规则漂移（金字塔阶梯 → 旧减半规则，
+    // REDUCE 会漂移为 T_FORWARD）——摘要比较不得补齐默认值抹平差异。
+    const noPyramid = structuredClone(saved);
+    delete noPyramid.strategy.pyramidReduce;
+    await assert.rejects(
+      () => assertStoredProgramPlan({ DB }, noPyramid, book),
+      /冻结计划程序与登记策略版本不一致/,
+    );
   } finally {
     DB.close();
   }
