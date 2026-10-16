@@ -6,8 +6,10 @@ import {
   costBasis,
   roundLot,
   protectivePyramidReduce,
+  applyPlanDowngrades,
   BASE_STRATEGY,
 } from "./trading.js";
+import { CLASS_MANAGEMENT } from "../../shared/downgrade.js";
 import { planRiskLimits } from "../../shared/risk-limits.js";
 import { frozenSelectionPolicy } from "./signal-selection.js";
 import { assertProgramPlan } from "./strategy-program.js";
@@ -200,6 +202,9 @@ export function advanceSession(inputBook, inputSession, observation) {
     throw new Error("不在本交易日连续竞价时段");
   session.sequence++;
   session.lastObservedAt = observation.observedAt;
+  // 方案 6：首帧开盘套用计划冻结的降级声明（与 executePlan 同一口径），
+  // 当日保护单的降级收益上限随即生效；零帧会话由 closeSession 套用。
+  if (session.sequence === 1) applyPlanDowngrades(book, session.plan);
   const accepted = [];
   for (const [code, quote] of Object.entries(observation.quotes)) {
     const quoteTime = new Date(quote.timestamp).getTime(),
@@ -362,17 +367,27 @@ export function advanceSession(inputBook, inputSession, observation) {
             continue;
           const stopHit =
             quote.closeCents <= order.stopCents || dd >= riskLimits.maxDrawdown;
+          const heldPosition = book.positions.find((p) => p.code === code);
+          // 方案 6：降级持仓的收益目标即清仓线——保护触达直接全退，
+          // 不走金字塔档位（收益目标上限已收紧保护触发位）。仅对冻结
+          // 了降级声明的新计划启用（字段存在 = 类别管理版本标记）。
+          const classCap = Array.isArray(session.plan?.downgrades)
+            ? (CLASS_MANAGEMENT[heldPosition?.stockClass]?.takeProfitCap ??
+              null)
+            : null;
+          const capExit = !stopHit && classCap != null;
           // 方案 4：止盈触发按金字塔下一未执行档减仓（价格须触达该档
           // 里程碑），未触达时保护单保持武装、不取消原计划——不再固定
           // 减半覆盖计划的比例；旧计划无 pyramidReduce 向量 → 保持原
           // 减半语义。
-          const rung = stopHit
-            ? null
-            : protectivePyramidReduce(
-                book.positions.find((p) => p.code === code),
-                quote.closeCents,
-                session.plan.strategy?.pyramidReduce,
-              );
+          const rung =
+            stopHit || capExit
+              ? null
+              : protectivePyramidReduce(
+                  heldPosition,
+                  quote.closeCents,
+                  session.plan.strategy?.pyramidReduce,
+                );
           const held = quantityOf(book, code);
           const pyramidActive = Array.isArray(
             session.plan.strategy?.pyramidReduce,
@@ -396,19 +411,28 @@ export function advanceSession(inputBook, inputSession, observation) {
             : roundLot(held / 2) || held;
           if (
             !stopHit &&
+            !capExit &&
             pyramidActive &&
             (!rung || reduceQuantity <= 0 || unfinishedRung)
           )
             continue; // 未到档位里程碑或档位未完成，等待价格/续单
           order.triggered = true;
-          order.action = stopHit ? "EXIT" : "REDUCE";
-          order.reason = stopHit
-            ? "保护退出触发"
-            : rung
-              ? `保护止盈按金字塔减仓：第 ${rung.rung} 档减 ${Math.round(rung.ratio * 10)} 成`
-              : "分批止盈触发";
-          order.quantity = stopHit ? held : reduceQuantity;
-          if (rung) order.pyramidRung = rung.rung;
+          if (stopHit || capExit) {
+            order.action = "EXIT";
+            order.quantity = held;
+            order.reason = stopHit
+              ? "保护退出触发"
+              : "降级后收益目标兑现（保护触发）";
+          } else if (rung) {
+            order.action = "REDUCE";
+            order.quantity = reduceQuantity;
+            order.pyramidRung = rung.rung;
+            order.reason = `保护止盈按金字塔减仓：第 ${rung.rung} 档减 ${Math.round(rung.ratio * 10)} 成`;
+          } else {
+            order.action = "REDUCE";
+            order.quantity = reduceQuantity;
+            order.reason = "分批止盈触发";
+          }
           for (const other of list)
             if (other !== order && !TERMINAL.has(other.status)) {
               other.status = "CANCELLED";
@@ -535,6 +559,9 @@ export function closeSession(inputBook, inputSession, dataset) {
     notices = [];
   if (session.status !== "OPEN" || dataset.date !== session.date)
     throw new Error("实时交易日状态无效");
+  // 方案 6：零帧会话（开盘后没有任何轮询推进）没有首帧套用时机，在
+  // 收盘结算前套用计划冻结的降级声明，账本与有帧路径一致。
+  if (session.sequence === 0) applyPlanDowngrades(book, session.plan, notices);
   for (const p of book.positions) {
     const q = dataset.quotes[p.code];
     if (

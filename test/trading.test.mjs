@@ -1642,6 +1642,16 @@ test("金字塔减仓：跨日续单保留档位，成交后不重复减仓", as
 
 // ---------- 方案 6：判断失误降级检测器 ----------
 
+// 门控开启的快照：池行剥离 height/change/turnover/breaks——检测器对
+// 数据缺失的触发项跳过不猜，测试只施加持仓既有的管理类别；需要触发
+// 降级时显式传入带板块高度的自定义池行。
+const downgradeSnapshot = (date, stocks) => {
+  const snap = snapshot(date);
+  snap.market = { brokenRows: [] };
+  snap.stocks = stocks ?? snap.stocks.map(({ height, ...rest }) => rest);
+  return snap;
+};
+
 test("降级后管理：波段震荡型快进快出（持有 2 日清仓）", () => {
   const book = newBook(100000);
   book.positions = [
@@ -1667,7 +1677,7 @@ test("降级后管理：波段震荡型快进快出（持有 2 日清仓）", ()
   book.equityCents = book.initialCashCents;
   book.peakEquityCents = book.equityCents;
   const order = createPlan(
-    snapshot(dateAt(1)),
+    downgradeSnapshot(dateAt(1)),
     book,
     BASE_STRATEGY,
     "v",
@@ -1701,7 +1711,7 @@ test("降级后管理：收益目标上限 10% 与订单类别携带", () => {
   book.equityCents = book.initialCashCents;
   book.peakEquityCents = book.equityCents;
   const order = createPlan(
-    snapshot(dateAt(1)),
+    downgradeSnapshot(dateAt(1)),
     book,
     BASE_STRATEGY,
     "v",
@@ -1740,7 +1750,7 @@ test("降级后管理：目标仓位乘降级档位系数", () => {
     return book;
   };
   const plain = createPlan(
-    snapshot(dateAt(1)),
+    downgradeSnapshot(dateAt(1)),
     small(),
     BASE_STRATEGY,
     "v",
@@ -1748,7 +1758,7 @@ test("降级后管理：目标仓位乘降级档位系数", () => {
   ).orders.find((o) => o.action === "ADD");
   assert.equal(plain.quantity, 900, "未降级：目标仓位不受降级系数影响");
   const demoted = createPlan(
-    snapshot(dateAt(1)),
+    downgradeSnapshot(dateAt(1)),
     small("swing-range"),
     BASE_STRATEGY,
     "v",
@@ -1763,7 +1773,7 @@ test("降级后管理：目标仓位乘降级档位系数", () => {
 });
 
 test("建仓订单携带分类类别并在成交后写入持仓管理类别", () => {
-  const snap = snapshot(dateAt(0));
+  const snap = downgradeSnapshot(dateAt(0));
   snap.stocks[0].stockClass = "relay-leader";
   const buyPlan = createPlan(
     snap,
@@ -1777,6 +1787,264 @@ test("建仓订单携带分类类别并在成交后写入持仓管理类别", ()
   const result = executePlan(newBook(100000), buyPlan, dataset(dateAt(1)));
   const position = result.book.positions.find((p) => p.code === "600001");
   assert.equal(position.stockClass, "relay-leader", "成交回填管理类别");
+});
+
+test("仓位降一档：超出降级目标仓位的现有持仓生成减仓订单", () => {
+  // 用户复现数字：equity 100,000 元、持仓 1,400 股 × 10 元（14,000 元）。
+  // 每仓目标 13,000 元 × 强势反包型 0.7 = 9,100 元 → 超额 4,900 元
+  // → 490 股 → 整手 400 股减仓；不再只收紧加仓额度、继续按原市值做 T。
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600099",
+      name: "超额持仓样本",
+      sector: "测试行业",
+      heldDays: 0,
+      markCents: 1000,
+      stockClass: "strong-reversal",
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1400,
+          costCents: 1400000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1400000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const orders = createPlan(
+    downgradeSnapshot(dateAt(1)),
+    book,
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.filter((o) => o.code === "600099");
+  assert.equal(orders.length, 1, "超额持仓当日只做降档减仓，不做 T / 加仓");
+  assert.equal(orders[0].action, "REDUCE");
+  assert.equal(orders[0].quantity, 400);
+  assert.match(orders[0].reason, /仓位降一档/);
+  assert.equal(orders[0].stockClass, "strong-reversal");
+});
+
+test("降级收益目标即清仓线：盈利触达 10% 上限全额退出，优先于金字塔档位", () => {
+  // 用户复现：首档已执行、盈利 15%、降级目标 10%——不再等待 20% 档位。
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600099",
+      name: "盈利降级样本",
+      sector: "测试行业",
+      heldDays: 1,
+      markCents: 1150,
+      stockClass: "strong-reversal",
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents + 150000;
+  book.peakEquityCents = book.equityCents;
+  const order = createPlan(
+    downgradeSnapshot(dateAt(1)),
+    book,
+    { ...BASE_STRATEGY, pyramidReduce: [0.3, 0.2, 0.1] },
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(order.action, "EXIT", "盈利 15% 触达降级上限 10% 全额退出");
+  assert.equal(order.quantity, 1000);
+  assert.match(order.reason, /降级后收益目标兑现/);
+});
+
+test("旧快照门控：无炸板池字段的快照不启用降级检测与类别字段", () => {
+  // 旧快照（无 market.brokenRows）重建的计划保持旧字段形状：不检测、
+  // 不声明、订单不携带 stockClass——旧版本代码生成的合法程序计划重算
+  // 保持一致（含 pnl ≥ takeProfit 的旧减半语义）。
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600001",
+      name: "旧计划样本",
+      sector: "测试行业",
+      heldDays: 0,
+      markCents: 1000,
+      stockClass: "strong-reversal",
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const result = createPlan(
+    snapshot(dateAt(1)),
+    book,
+    BASE_STRATEGY,
+    "v",
+    "now",
+  );
+  assert.equal(result.downgrades, undefined, "旧快照不携带降级声明");
+  for (const order of result.orders)
+    assert.equal(order.stockClass, undefined, "旧快照订单不携带类别字段");
+  const order = result.orders.find((o) => o.code === "600001");
+  assert.equal(
+    order.takeProfitCents,
+    1120,
+    "旧快照保持策略原始收益目标（10% 上限不生效）",
+  );
+  assert.equal(order.action, "ADD", "旧快照不做降级清仓或超额减仓");
+});
+
+test("派生降级：downgrades 声明随计划冻结，执行日开盘套用入账本", () => {
+  // 触发 1：同板块他股连板更高 → 计划冻结时派生降级声明；
+  // 影子 / 研究重放对同一快照与持仓得到同一声明，执行侧同一入口套用。
+  const base = snapshot(dateAt(1));
+  const snap = downgradeSnapshot(dateAt(1), [
+    { ...base.stocks[1], code: "600100", name: "更高板样本", height: 3 },
+    base.stocks[1],
+  ]);
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600099",
+      name: "龙头降级样本",
+      sector: "测试行业",
+      heldDays: 1,
+      markCents: 1000,
+      stockClass: "relay-leader",
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const frozen = createPlan(
+    snap,
+    book,
+    BASE_STRATEGY,
+    "v",
+    `${dateAt(1)}T07:10:00.000Z`,
+  );
+  assert.equal(frozen.downgrades.length, 1);
+  assert.equal(frozen.downgrades[0].code, "600099");
+  assert.equal(frozen.downgrades[0].from, "relay-leader");
+  assert.equal(frozen.downgrades[0].to, "strong-reversal");
+  assert.match(frozen.downgrades[0].reason, /失去龙头地位/);
+  // 执行日开盘套用：管理类别与降级日落账本，notice 同步披露
+  const day = dataset(dateAt(2), "600099", { previousDate: dateAt(1) });
+  const result = executePlan(structuredClone(book), frozen, day);
+  const position = result.book.positions.find((p) => p.code === "600099");
+  assert.equal(position.stockClass, "strong-reversal");
+  assert.equal(position.downgradedAt, frozen.signalDate);
+  assert.ok(
+    result.notices.some((n) => n.includes("降级声明生效")),
+    "降级声明套用进入结算 notice",
+  );
+  // 次日计划：主账户（声明已套用）与同起点影子（同一执行路径）收敛——
+  // 再次派生检测受一日一档约束（downgradedAt = 信号日 ≠ 次日），但
+  // 管理从已降类别起算，两边订单一致。
+  const mainNext = createPlan(
+    downgradeSnapshot(dateAt(2)),
+    result.book,
+    BASE_STRATEGY,
+    "v",
+    `${dateAt(2)}T07:10:00.000Z`,
+  );
+  const shadowResult = executePlan(structuredClone(book), frozen, day);
+  const shadowNext = createPlan(
+    downgradeSnapshot(dateAt(2)),
+    shadowResult.book,
+    BASE_STRATEGY,
+    "v",
+    `${dateAt(2)}T07:10:00.000Z`,
+  );
+  assert.deepEqual(shadowNext.orders, mainNext.orders);
+});
+
+test("降级保护单：日内触达降级收益上限全额退出，不等金字塔档位", () => {
+  // 计划携带 downgrades 声明（字段存在 = 类别管理版本标记）：开盘套用
+  // 后持仓类别为强势反包型，日内冲高触达 +10% 保护触发位直接全退。
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600001",
+      name: "合成样本",
+      sector: "测试行业",
+      heldDays: 1,
+      markCents: 1000,
+      stockClass: "relay-leader",
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  const tPlan = {
+    ...plan([order("T_FORWARD", 200, { takeProfitCents: 1100 })], dateAt(0)),
+    strategy: { ...BASE_STRATEGY, pyramidReduce: [0.3, 0.2, 0.1] },
+    downgrades: [
+      {
+        code: "600001",
+        from: "relay-leader",
+        to: "strong-reversal",
+        reason: "测试声明：失去龙头地位",
+      },
+    ],
+  };
+  const day = dataset(dateAt(1), "600001", {
+    minutes: bars(1000, { "10:00": 1150, "10:01": 1150 }),
+  });
+  const result = executePlan(book, tPlan, day);
+  assert.ok(
+    result.ledger.find(
+      (fill) => fill.side === "SELL" && fill.quantity === 1000,
+    ),
+    "降级保护触发应全额退出（而非按 20% 档减 200 股）",
+  );
+  assert.ok(
+    result.outcomes.some(
+      (outcome) =>
+        outcome.action === "EXIT" &&
+        /降级后收益目标兑现/.test(outcome.reason || ""),
+    ),
+  );
+  // 旧计划（无 downgrades 字段）同一场景保持金字塔档位语义：
+  // 未声明降级 → 类别仍为连板龙头型，首档（+10%，减 3 成）执行
+  const legacyPlan = { ...tPlan, downgrades: undefined };
+  const legacy = executePlan(structuredClone(book), legacyPlan, day);
+  assert.ok(
+    legacy.ledger.find((fill) => fill.side === "SELL" && fill.quantity === 300),
+    "旧计划保护止盈按金字塔档位执行",
+  );
 });
 
 test("金字塔减仓：保护止盈不取消未完成跨日减仓，续单完成后继续下一档", () => {

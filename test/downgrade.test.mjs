@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import {
   detectDowngradeForPosition,
   detectPositionDowngrades,
+  downgradeEnabledForSnapshot,
   DOWNGRADE_CHAIN,
   CLASS_MANAGEMENT,
   FOLLOWER_LAG_RATIO,
+  SECTOR_MEDIAN_MIN_PEERS,
   STALL_TURNOVER,
   STALL_MAX_CHANGE,
 } from "../shared/downgrade.js";
@@ -90,13 +92,15 @@ test("触发 1：板块内另一只股票连板数更高（失去龙头地位）
   assert.match(withPeer.reason, /失去龙头地位/);
 });
 
-test("触发 2：今日涨幅不足板块平均涨幅的一半（跟涨不领涨）", () => {
-  // 板块均值取同板块其他涨停股（不含自身）：自身 4% < 同板块 10.01% 的一半
+test("触发 2：今日涨幅不足板块中位涨幅的一半（跟涨不领涨）", () => {
+  // 板块对照取同板块其他涨停股（不含自身）的中位数，至少 2 家：
+  // 对照 [10.01, 8] → 中位 9.005，自身 4% < 一半 → 触发
   const lagging = detectDowngradeForPosition({
     position: { code: "600099", stockClass: REVERSAL, sector: "测试行业" },
     stocks: [
       { code: "600099", sector: "测试行业", height: 1, change: 4 },
       { code: "600100", sector: "测试行业", height: 2, change: 10.01 },
+      { code: "600101", sector: "测试行业", height: 1, change: 8 },
     ],
     eodChange: 4,
     today: TODAY,
@@ -114,6 +118,43 @@ test("触发 2：今日涨幅不足板块平均涨幅的一半（跟涨不领涨
     }),
     null,
   );
+});
+
+test("触发 2 对照下限：单一极端对照不得判定跟风（中位数 + ≥2 家）", () => {
+  assert.equal(SECTOR_MEDIAN_MIN_PEERS, 2);
+  // 用户复现场景：同板块仅一只 20cm 涨停对照，自身 9.9%——
+  // 旧均值口径（对照即 20%）会误判跟风；中位数口径只有 1 家对照，
+  // 直接跳过触发 2，不猜。
+  const singlePeer = detectDowngradeForPosition({
+    position: { code: "600099", stockClass: REVERSAL, sector: "测试行业" },
+    stocks: [
+      { code: "600099", sector: "测试行业", height: 1, change: 9.9 },
+      { code: "300300", sector: "测试行业", height: 1, change: 20 },
+    ],
+    today: TODAY,
+  });
+  assert.equal(singlePeer, null);
+  // 两家对照取中位数：[20, 0.1] → 中位 10.05，自身 9.9% 未跌破一半线
+  const medianPair = detectDowngradeForPosition({
+    position: { code: "600099", stockClass: REVERSAL, sector: "测试行业" },
+    stocks: [
+      { code: "600099", sector: "测试行业", height: 1, change: 9.9 },
+      { code: "300300", sector: "测试行业", height: 1, change: 20 },
+      { code: "600100", sector: "测试行业", height: 1, change: 0.1 },
+    ],
+    today: TODAY,
+  });
+  assert.equal(medianPair, null);
+  // 触发 1 不受对照下限影响：同板块他股连板更高仍降级
+  const higherBoard = detectDowngradeForPosition({
+    position: { code: "600099", stockClass: RELAY, sector: "测试行业" },
+    stocks: [
+      { code: "600099", sector: "测试行业", height: 2, change: 9.9 },
+      { code: "300300", sector: "测试行业", height: 3, change: 20 },
+    ],
+    today: TODAY,
+  });
+  assert.match(higherBoard.reason, /失去龙头地位/);
 });
 
 test("触发 3：炸板 ≥2 次且未回封（炸板池记录；池内回封不触发）", () => {
@@ -166,8 +207,9 @@ test("触发 4：换手率超限且涨幅不足（放量滞涨）", () => {
   );
 });
 
-test("降级链终点与一日一档：波段震荡型/平庸型/当日已降级不再检测", () => {
-  for (const stockClass of [SWING, STOCK_CLASSES.MEDIOCRE, undefined, null]) {
+test("降级链终点与一日一档：波段震荡型/平庸型为终点，未分类按龙头检测", () => {
+  // 链终点（波段震荡型）与无降级语义（平庸型）不检测
+  for (const stockClass of [SWING, STOCK_CLASSES.MEDIOCRE]) {
     assert.equal(
       detectDowngradeForPosition({
         position: { code: "600099", stockClass, sector: "测试行业" },
@@ -175,9 +217,17 @@ test("降级链终点与一日一档：波段震荡型/平庸型/当日已降级
         today: TODAY,
       }),
       null,
-      `${stockClass ?? "未分类"} 无降级目标或语义`,
+      `${stockClass} 无降级目标`,
     );
   }
+  // 未分类持仓默认按连板龙头型检测（策略默认买入动量龙头）：
+  // 600100 两板、同板块 600099 三板 → 失去龙头地位
+  const unclassified = detectDowngradeForPosition({
+    position: { code: "600100", sector: "测试行业" },
+    stocks: poolRows,
+    today: TODAY,
+  });
+  assert.equal(unclassified.to, REVERSAL);
   assert.equal(
     detectDowngradeForPosition({
       position: {
@@ -232,4 +282,21 @@ test("阈值常量与 skill 对齐", () => {
   assert.equal(FOLLOWER_LAG_RATIO, 0.5);
   assert.equal(STALL_TURNOVER, 15);
   assert.equal(STALL_MAX_CHANGE, 3);
+});
+
+test("快照版本门控：炸板池字段存在才启用降级检测（旧快照保持旧语义）", () => {
+  assert.equal(downgradeEnabledForSnapshot(null), false);
+  assert.equal(downgradeEnabledForSnapshot({}), false);
+  assert.equal(downgradeEnabledForSnapshot({ market: {} }), false);
+  assert.equal(
+    downgradeEnabledForSnapshot({ market: { brokenRows: [] } }),
+    true,
+    "空炸板池也是新快照（字段存在）",
+  );
+  assert.equal(
+    downgradeEnabledForSnapshot({
+      market: { brokenRows: [{ c: "600099", zbc: 1 }] },
+    }),
+    true,
+  );
 });

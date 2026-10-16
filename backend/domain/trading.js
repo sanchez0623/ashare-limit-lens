@@ -24,7 +24,11 @@ import {
   STRATEGY_DEFAULTS,
   PYRAMID_MILESTONES,
 } from "../../shared/strategy-params.js";
-import { CLASS_MANAGEMENT } from "../../shared/downgrade.js";
+import {
+  CLASS_MANAGEMENT,
+  downgradeEnabledForSnapshot,
+  detectDowngradeForPosition,
+} from "../../shared/downgrade.js";
 import { checkExitSignals } from "../../shared/exit-signals.js";
 import {
   classifySentimentCycle,
@@ -364,6 +368,11 @@ export function createPlan(
   const pyramidReduce = Array.isArray(strategy.pyramidReduce)
     ? strategy.pyramidReduce
     : null;
+  // 方案 6：降级检测的快照版本门控——炸板池字段随本检测器同期归档，
+  // 旧快照（无该字段）重建的计划保持旧语义（不检测、不声明、订单不
+  // 携带类别字段），旧计划重算与核验不受新规则影响。
+  const downgradeEnabled = downgradeEnabledForSnapshot(snapshot);
+  const downgrades = [];
   let targetExposure =
     drawdown >= riskLimits.maxDrawdown
       ? 0
@@ -507,9 +516,36 @@ export function createPlan(
       sectorLimitDrop: sectorLimitDrops.get(position.sector) === true,
       phaseShift,
     });
-    // 方案 6：降级后类别管理（仓位降档 / 收益目标上限 / 快进快出）。
-    // position.stockClass 由买入时分类（方案 3）与结算期降级检测写入。
-    const classManagement = CLASS_MANAGEMENT[position.stockClass] ?? null;
+    // 方案 6：降级检测在计划冻结时派生（确定性：同一信号日快照 + 持仓
+    // 状态 → 同一结论），结论以 downgrades 声明随计划携带，执行日开盘
+    // 套用入账本——主账户、影子、研究重放与旧计划重算对同一输入收敛；
+    // 检测不落在结算期（避免出现第二条与计划不一致的判定路径）。
+    // 未携带类别的持仓按连板龙头型检测（策略默认买入动量龙头）。
+    const demotion = downgradeEnabled
+      ? detectDowngradeForPosition({
+          position,
+          stocks: snapshot.stocks ?? [],
+          brokenRows: snapshot.market?.brokenRows ?? [],
+          eodChange: exitEodRowsByCode?.get(position.code)?.change ?? null,
+          today: snapshot.date,
+        })
+      : null;
+    if (demotion)
+      downgrades.push({
+        code: position.code,
+        from: demotion.from,
+        to: demotion.to,
+        reason: demotion.reason,
+      });
+    // 管理类别取降级结论，其次持仓既有类别；订单类别再回退当日分类
+    // （仅作成交回填的类别起点，不参与管理决策）。旧快照门控关闭时
+    // 一律不启用类别管理，保持旧计划语义。
+    const effectiveClass = demotion?.to ?? position.stockClass ?? null;
+    const classManagement = downgradeEnabled
+      ? (CLASS_MANAGEMENT[effectiveClass] ?? null)
+      : null;
+    const orderClass =
+      demotion?.to ?? position.stockClass ?? signal?.stockClass ?? null;
     const maxHoldDays = classManagement?.maxHoldDays ?? strategy.maxHoldDays;
     const takeProfitCap = classManagement?.takeProfitCap ?? strategy.takeProfit;
     const base = {
@@ -517,9 +553,9 @@ export function createPlan(
       name: position.name,
       sector: position.sector,
       score,
-      // 方案 6：持仓的管理类别随订单携带，成交回填保持账本一致
-      // （买入时取分类器类别，降级后取降级类别）。
-      stockClass: position.stockClass ?? signal?.stockClass ?? null,
+      // 方案 6：管理类别随订单携带，成交回填保持账本一致。仅新快照
+      // 启用——旧快照重建的计划保持旧字段形状，重算一致。
+      ...(downgradeEnabled && orderClass ? { stockClass: orderClass } : {}),
       ...(modernSelection ? { scoreValue: signal?.scoreValue ?? null } : {}),
       originalScore:
         signal?.originalScore ?? originalScoreLookup?.(position.code) ?? null,
@@ -566,6 +602,51 @@ export function createPlan(
       plannedExposure -= quantity * referenceCents;
       continue;
     }
+    // 目标仓位 = 每仓敞口 × 降级档位系数（仓位降 1 档 / 再降 1 档）；
+    // 超额减仓与补仓目标共用同一口径，避免两条路径各算各的。
+    const target = Math.round(
+      equity *
+        Math.min(0.175, targetExposure / strategy.maxPositions) *
+        (classManagement?.targetScale ?? 1),
+    );
+    // 方案 6：降级后收益目标即清仓线——盈利触达降级类别收益上限时
+    // 全额退出，优先于金字塔阶梯（收益目标收紧不是展示字段：计划与
+    // 保护单两条路径都按上限执行，不再等待 20%/30% 档位）。
+    if (
+      classManagement?.takeProfitCap != null &&
+      pnl >= classManagement.takeProfitCap
+    ) {
+      addOrder({
+        ...base,
+        action: "EXIT",
+        side: "SELL",
+        quantity,
+        reason: `降级后收益目标兑现：盈利 ${(pnl * 100).toFixed(1)}% 触达降级类别上限 ${(
+          classManagement.takeProfitCap * 100
+        ).toFixed(0)}%`,
+      });
+      plannedExposure -= quantity * referenceCents;
+      continue;
+    }
+    // 方案 6：仓位降一档的实际执行——目标仓位乘降级系数后，现有持仓
+    // 超出目标的部分直接减掉（只收紧加仓额度无法处置超额持仓，超额
+    // 仓位会继续按原市值做 T）。
+    if (classManagement && classManagement.targetScale < 1) {
+      const excessQuantity = roundLot(
+        (quantity * referenceCents - target) / referenceCents,
+      );
+      if (excessQuantity > 0) {
+        addOrder({
+          ...base,
+          action: "REDUCE",
+          side: "SELL",
+          quantity: excessQuantity,
+          reason: `仓位降一档：持仓超出降级目标仓位，减仓 ${excessQuantity} 股`,
+        });
+        plannedExposure -= excessQuantity * referenceCents;
+        continue;
+      }
+    }
     // 方案 4：金字塔减仓（比例参数化）。里程碑固定为成本价 +10%/+20%/+30%
     // （skill：第一个涨停减 3 成、第二个再减 2 成、第三个再减 1 成），
     // 各档只执行一次——position.pyramidStage 由成交推进（订单携带
@@ -611,12 +692,6 @@ export function createPlan(
       plannedExposure -= reduceQuantity * referenceCents;
       continue;
     }
-    // 方案 6：目标仓位乘降级档位系数（仓位降 1 档 / 再降 1 档）。
-    const target = Math.round(
-      equity *
-        Math.min(0.175, targetExposure / strategy.maxPositions) *
-        (classManagement?.targetScale ?? 1),
-    );
     const addBudget = target - quantity * referenceCents;
     let addQuantity = roundLot(addBudget / referenceCents);
     const addAllocation =
@@ -796,7 +871,10 @@ export function createPlan(
       sector: signal.sector,
       score: signal.score,
       // 方案 6：建仓订单携带分类类别，成交回填为持仓的管理类别起点。
-      stockClass: signal.stockClass ?? null,
+      // 仅新快照启用——旧快照重建的计划保持旧字段形状，重算一致。
+      ...(downgradeEnabled && signal.stockClass
+        ? { stockClass: signal.stockClass }
+        : {}),
       ...(signal.buyPoint ? { buyPoint: signal.buyPoint } : {}),
       ...(modernSelection
         ? {
@@ -874,6 +952,10 @@ export function createPlan(
       phaseShift,
       codes: holdings,
     }),
+    // 方案 6：降级声明随计划冻结（门控开启时始终携带，空数组表示当日
+    // 无降级；字段存在同时是执行侧启用类别管理的版本标记——旧计划无
+    // 字段，保护单与执行语义保持原样）。
+    ...(downgradeEnabled ? { downgrades } : {}),
     orders: carriedPlanOrders(
       orders,
       book,
@@ -1140,6 +1222,22 @@ export function defensivePlan(
   };
 }
 
+// 方案 6：计划冻结的降级声明开盘套用（executePlan 与实时会话共用）。
+// 声明以信号日为口径（downgradedAt = signalDate），幂等：已按同一信号
+// 日降级的持仓跳过。旧计划无 downgrades 字段，保持原语义。
+export function applyPlanDowngrades(book, plan, notices = []) {
+  if (!Array.isArray(plan?.downgrades)) return;
+  for (const item of plan.downgrades) {
+    const position = book.positions.find((p) => p.code === item.code);
+    if (!position || position.downgradedAt === plan.signalDate) continue;
+    position.stockClass = item.to;
+    position.downgradedAt = plan.signalDate;
+    notices.push(
+      `降级声明生效：${item.code} 管理类别降为 ${item.to}（${item.reason}）`,
+    );
+  }
+}
+
 export function executePlan(inputBook, plan, dataset) {
   if (plan) frozenSelectionPolicy(plan);
   if (plan) assertProgramPlan(plan, inputBook);
@@ -1191,6 +1289,10 @@ export function executePlan(inputBook, plan, dataset) {
   const prices = new Map(
     book.positions.map((position) => [position.code, position.markCents]),
   );
+  // 方案 6：执行日开盘套用计划冻结的降级声明（主账户 / 影子 / 研究重放
+  // / 核验重放同一入口）：管理类别与降级日落账本，当日保护单的降级
+  // 收益上限随即生效。
+  applyPlanDowngrades(book, plan, notices);
   const events = [];
   let missingMinuteOrders = 0;
 
@@ -1317,31 +1419,55 @@ export function executePlan(inputBook, plan, dataset) {
         continue;
       if (!running.triggered) {
         const stopHit = event.priceCents <= order.stopCents;
+        const heldPosition = book.positions.find(
+          (item) => item.code === order.code,
+        );
+        // 方案 6：降级持仓的收益目标即清仓线——保护触达直接全退，
+        // 不走金字塔档位（收益目标上限已收紧保护触发位）。仅对冻结了
+        // 降级声明的新计划启用（字段存在 = 类别管理版本标记），旧计划
+        // 保持原减半语义。
+        const classCap = Array.isArray(plan?.downgrades)
+          ? (CLASS_MANAGEMENT[heldPosition?.stockClass]?.takeProfitCap ?? null)
+          : null;
+        const capExit = !stopHit && classCap != null;
         // 方案 4：止盈触发按金字塔下一未执行档减仓（价格须触达该档
         // 里程碑），未触达时保护单保持武装、不取消原计划；旧计划无
         // pyramidReduce 向量 → 保持原减半语义。
-        const rung = stopHit
-          ? null
-          : protectivePyramidReduce(
-              book.positions.find((item) => item.code === order.code),
-              event.priceCents,
-              plan.strategy?.pyramidReduce,
-            );
+        const rung =
+          stopHit || capExit
+            ? null
+            : protectivePyramidReduce(
+                heldPosition,
+                event.priceCents,
+                plan.strategy?.pyramidReduce,
+              );
         const pyramidActive = Array.isArray(plan.strategy?.pyramidReduce);
         const reduceQuantity = rung
           ? roundLot(order.quantity * rung.ratio)
           : roundLot(order.quantity / 2) || order.quantity;
-        if (!stopHit && pyramidActive && (!rung || reduceQuantity <= 0))
+        if (
+          !stopHit &&
+          !capExit &&
+          pyramidActive &&
+          (!rung || reduceQuantity <= 0)
+        )
           continue; // 未到档位里程碑，等待价格继续上行
         running.triggered = true;
-        order.action = stopHit ? "EXIT" : "REDUCE";
-        order.reason = stopHit
-          ? "事前保护止损触发"
-          : rung
-            ? `事前金字塔止盈触发：第 ${rung.rung} 档减 ${Math.round(rung.ratio * 10)} 成`
-            : "事前分批止盈触发";
-        order.quantity = stopHit ? order.quantity : reduceQuantity;
-        if (rung) order.pyramidRung = rung.rung;
+        if (stopHit || capExit) {
+          order.action = "EXIT";
+          order.reason = stopHit
+            ? "事前保护止损触发"
+            : "降级后收益目标兑现（保护触发）";
+        } else if (rung) {
+          order.action = "REDUCE";
+          order.reason = `事前金字塔止盈触发：第 ${rung.rung} 档减 ${Math.round(rung.ratio * 10)} 成`;
+          order.quantity = reduceQuantity;
+          order.pyramidRung = rung.rung;
+        } else {
+          order.action = "REDUCE";
+          order.reason = "事前分批止盈触发";
+          order.quantity = reduceQuantity;
+        }
         for (const [id, other] of runtime) {
           if (
             id !== order.id &&

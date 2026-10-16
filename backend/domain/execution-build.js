@@ -20,6 +20,9 @@ const files = [
   "shared/stock-class.js",
   "shared/execution-cost.js",
   "shared/exit-signals.js",
+  // 降级检测器（方案 6）：降级链与 CLASS_MANAGEMENT 系数直接改变计划
+  // 与保护单的执行语义，必须纳入指纹防研究期间规则漂移。
+  "shared/downgrade.js",
   "shared/fees.js",
   "shared/risk-limits.js",
   "shared/strategy-params.js",

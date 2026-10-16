@@ -19,8 +19,6 @@ import {
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
 import { loadOrBuildExitContext } from "./exit-context.js";
-import { getExitEodRowsByCode } from "./daily-closes.js";
-import { detectPositionDowngrades } from "../../shared/downgrade.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { calibrationForPolicy } from "./execution-calibration.js";
@@ -157,34 +155,6 @@ async function settlePaperDay(env, date) {
       benchmark?.closeCents && settlement.book.benchmarkBaseCents
         ? benchmark.closeCents / settlement.book.benchmarkBaseCents - 1
         : null;
-    // 方案 6：判断失误降级检测（每日结算）。触发任一跟风股条件的持仓
-    // 管理类别降一档（连板龙头型 → 强势反包型 → 波段震荡型），随结算
-    // 账本一次 CAS 落库；评分快照缺失时跳过当日检测，次日仍按当日数据
-    // 检查（每日至多降一档）。
-    if (snapshot && settlement) {
-      const { rowsByCode: settleEodRows } = await getExitEodRowsByCode(
-        env,
-        date,
-      );
-      const eodChangeByCode = new Map(
-        [...settleEodRows].map(([code, row]) => [code, row.change]),
-      );
-      const demotions = detectPositionDowngrades({
-        positions: settlement.book.positions,
-        stocks: snapshot.stocks ?? [],
-        brokenRows: snapshot.market?.brokenRows ?? [],
-        eodChangeByCode,
-        today: date,
-      });
-      for (const [code, demotion] of demotions) {
-        const position = settlement.book.positions.find((p) => p.code === code);
-        position.stockClass = demotion.to;
-        position.downgradedAt = date;
-        settlement.notices.push(
-          `降级检测：${code} 判定为跟风股，管理类别降级（${demotion.reason}）`,
-        );
-      }
-    }
     const saved = await repository.settle(
       account.revision,
       settlement,
