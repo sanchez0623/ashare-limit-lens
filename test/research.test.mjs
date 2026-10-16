@@ -1103,3 +1103,39 @@ test("冻结样本摘要绑定卖出上下文：退出输入变化可被恢复�
     "无上下文的旧样本摘要保持兼容",
   );
 });
+
+// 方案 4：金字塔减仓比例向量作为赛马候选参数组（旧父策略缺字段按
+// skill 默认档位比较；无差异不占用提案次数；越界拒绝）。
+test("赛马候选：pyramidReduce 向量校验与默认档位兼容", () => {
+  const candidate = validateCandidatePatch({
+    proposal: { rationale: "r", patch: { pyramidReduce: [0.4, 0.3, 0.2] } },
+    parentParams: { ...BASE_STRATEGY, pyramidReduce: [0.3, 0.2, 0.1] },
+    frozenPolicy: DEFAULT_RESEARCH_POLICY,
+  });
+  assert.deepEqual(candidate.params.pyramidReduce, [0.4, 0.3, 0.2]);
+  assert.equal(candidate.changedGroups, 1);
+  const legacy = validateCandidatePatch({
+    proposal: { rationale: "r", patch: { pyramidReduce: [0.2, 0.2, 0.1] } },
+    parentParams: { ...BASE_STRATEGY, pyramidReduce: undefined },
+    frozenPolicy: DEFAULT_RESEARCH_POLICY,
+  });
+  assert.deepEqual(legacy.params.pyramidReduce, [0.2, 0.2, 0.1]);
+  assert.throws(
+    () =>
+      validateCandidatePatch({
+        proposal: { rationale: "r", patch: { pyramidReduce: [0.3, 0.2, 0.1] } },
+        parentParams: { ...BASE_STRATEGY },
+        frozenPolicy: DEFAULT_RESEARCH_POLICY,
+      }),
+    /无实际差异/,
+  );
+  assert.throws(
+    () =>
+      validateCandidatePatch({
+        proposal: { rationale: "r", patch: { pyramidReduce: [0.3, 0.2, 0.6] } },
+        parentParams: { ...BASE_STRATEGY },
+        frozenPolicy: DEFAULT_RESEARCH_POLICY,
+      }),
+    /不符合约束/,
+  );
+});

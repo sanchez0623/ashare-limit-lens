@@ -139,12 +139,18 @@ function riskSummary(config) {
 const strategyDisplay = (field, value) =>
   field.percent ? Number((value * 100).toFixed(2)) : value;
 let inheritedStrategyProgram;
+let inheritedPyramidReduce;
 function fillStrategyInputs(config, { preserveProgram = false } = {}) {
   // 重置数值参数仍沿用已验证程序，不能经设置表单绕过家族研究。
   if (!preserveProgram)
     inheritedStrategyProgram = config.program
       ? structuredClone(config.program)
       : undefined;
+  // 方案 4：金字塔减仓比例向量不经设置表单编辑，原样回传避免
+  // 手动保存时被静默重置为默认档位（该向量由策略赛马优化）。
+  inheritedPyramidReduce = Array.isArray(config.pyramidReduce)
+    ? [...config.pyramidReduce]
+    : undefined;
   const tiers = { ...EXPOSURE_TIERS_DEFAULTS, ...config.exposureTiers };
   WEIGHT_FIELDS.forEach(
     ({ key }, index) =>
@@ -179,6 +185,9 @@ function collectStrategyParams() {
           : Number($(`strat-tier-${key}`).value),
       ]),
     ),
+    ...(Array.isArray(inheritedPyramidReduce)
+      ? { pyramidReduce: [...inheritedPyramidReduce] }
+      : {}),
     ...(inheritedStrategyProgram
       ? { program: structuredClone(inheritedStrategyProgram) }
       : {}),

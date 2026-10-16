@@ -1,4 +1,5 @@
 import { RANGES } from "./validation.js";
+import { PYRAMID_REDUCE_DEFAULTS } from "../../shared/strategy-params.js";
 
 export const STEP_LIMITS = Object.freeze({
   minScore: 2,
@@ -112,6 +113,22 @@ export function validateCandidatePatch({
     if (FORBIDDEN_KEYS.has(key)) throw new Error("候选包含未授权字段");
   const effective = {};
   for (const [key, value] of Object.entries(patch)) {
+    if (key === "pyramidReduce") {
+      // 方案 4：金字塔减仓比例向量，整体算一个逻辑参数组；父策略缺字段
+      // （旧版本）时按 skill 默认档位比较，单档 0–0.5。
+      const parentVector = Array.isArray(parentParams[key])
+        ? parentParams[key]
+        : PYRAMID_REDUCE_DEFAULTS;
+      if (
+        !Array.isArray(value) ||
+        value.length !== 3 ||
+        value.some((v) => !Number.isFinite(v) || v < 0 || v > 0.5)
+      )
+        throw new Error("金字塔减仓向量不符合约束");
+      if (value.every((v, index) => v === parentVector[index])) continue;
+      effective.pyramidReduce = value.map((v) => Math.round(v * 1e6) / 1e6);
+      continue;
+    }
     const parent = parentParams[key];
     if (parent === undefined) throw new Error("候选包含父策略不存在的参数");
     if (key === "weights") {

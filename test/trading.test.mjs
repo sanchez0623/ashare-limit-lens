@@ -1123,8 +1123,9 @@ test("P1-1：出池持仓接入炸板池记录，炸板 3 次未回封触发清�
   assert.equal(noBreaks.exitContext?.breaks, undefined);
 });
 
-// 出池持仓测试夹具：1000 股、成本 10 元，可按 markCents 调整现价。
-function outOfPoolBook(markCents = 1000) {
+// 出池持仓测试夹具：1000 股、成本 10 元，可按 markCents 调整现价、
+// pyramidStage 指定已执行的金字塔档位。
+function outOfPoolBook(markCents = 1000, pyramidStage = 0) {
   const book = newBook(100000);
   book.positions = [
     {
@@ -1133,6 +1134,7 @@ function outOfPoolBook(markCents = 1000) {
       sector: "测试行业",
       heldDays: 0,
       markCents,
+      ...(pyramidStage ? { pyramidStage } : {}),
       lots: [
         {
           acquiredDate: dateAt(0),
@@ -1334,4 +1336,175 @@ test("P2：并发首写收敛，两条链路都采用实际落盘的固化版本
   } finally {
     DB.close();
   }
+});
+
+// ---------- 方案 4：金字塔减仓参数化 ----------
+
+test("金字塔减仓：里程碑按序触发、档位只执行一次、比例向量可配置", () => {
+  const snap = snapshot(dateAt(1));
+  // 第 1 档：+10% 减 3 成（skill 默认 [0.3, 0.2, 0.1]）
+  const first = createPlan(
+    snap,
+    outOfPoolBook(1100),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(first.action, "REDUCE");
+  assert.equal(first.quantity, 300);
+  assert.equal(first.pyramidRung, 1);
+  assert.match(first.reason, /金字塔减仓第 1 档/);
+  assert.match(first.reason, /3 成/);
+  // 档位已执行且未到下一里程碑：不再减仓（回落到持有）
+  const holdAfterFirst = createPlan(
+    snap,
+    outOfPoolBook(1100, 1),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(holdAfterFirst.action, "HOLD");
+  // 第 2 档：+20% 减 2 成（stage=1）
+  const second = createPlan(
+    snap,
+    outOfPoolBook(1200, 1),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(second.action, "REDUCE");
+  assert.equal(second.quantity, 200);
+  assert.equal(second.pyramidRung, 2);
+  // 第 3 档：+30% 减 1 成（stage=2）；档位用尽后不再触发
+  const third = createPlan(
+    snap,
+    outOfPoolBook(1300, 2),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(third.pyramidRung, 3);
+  assert.equal(third.quantity, 100);
+  const exhausted = createPlan(
+    snap,
+    outOfPoolBook(1300, 3),
+    BASE_STRATEGY,
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(exhausted.action, "HOLD");
+  // 自定义向量生效：第一档改减 5 成
+  const custom = createPlan(
+    snap,
+    outOfPoolBook(1100),
+    { ...BASE_STRATEGY, pyramidReduce: [0.5, 0.2, 0.1] },
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(custom.quantity, 500);
+  // 比例为 0 的档位跳过（不产生减仓订单，档位不消费）
+  const zero = createPlan(
+    snap,
+    outOfPoolBook(1100),
+    { ...BASE_STRATEGY, pyramidReduce: [0, 0.2, 0.1] },
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(zero.action, "HOLD");
+  // 旧版本策略缺向量字段：回退 skill 默认档位
+  const legacy = { ...structuredClone(BASE_STRATEGY) };
+  delete legacy.pyramidReduce;
+  const fallback = createPlan(
+    snap,
+    outOfPoolBook(1100),
+    legacy,
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(fallback.quantity, 300);
+});
+
+test("金字塔减仓：成交推进档位，后续计划不重复减仓", () => {
+  const snap = snapshot(dateAt(1));
+  const book = outOfPoolBook(1100);
+  const pyramidPlan = createPlan(
+    snap,
+    book,
+    BASE_STRATEGY,
+    "v",
+    `${dateAt(1)}T07:10:00.000Z`,
+  );
+  const reduceOrder = pyramidPlan.orders.find((o) => o.code === "600099");
+  assert.equal(reduceOrder.pyramidRung, 1);
+  // 执行日行情：昨收与账面价一致，收盘仍为 +10%
+  const day = dataset(dateAt(2), "600099", {
+    previous: 1100,
+    open: 1100,
+    close: 1100,
+    limitUp: 1210,
+    limitDown: 990,
+  });
+  const result = executePlan(book, pyramidPlan, day);
+  const position = result.book.positions.find((p) => p.code === "600099");
+  assert.equal(position.pyramidStage, 1, "金字塔档位随成交推进");
+  assert.ok(
+    result.ledger.some(
+      (fill) => fill.code === "600099" && fill.quantity === 300,
+    ),
+    "应成交 300 股的第 1 档减仓",
+  );
+  // 次日计划：同一盈利水平不再重复触发第 1 档
+  const nextPlan = createPlan(
+    { ...snap, date: dateAt(2) },
+    result.book,
+    BASE_STRATEGY,
+    "v",
+    "now",
+  );
+  const nextOrder = nextPlan.orders.find((o) => o.code === "600099");
+  assert.equal(nextOrder.action, "HOLD");
+});
+
+test("AI 赛马候选：pyramidReduce 向量校验", () => {
+  const ok = validateProposal({
+    rationale: "r",
+    patch: { pyramidReduce: [0.4, 0.3, 0.2] },
+  });
+  assert.deepEqual(ok.params.pyramidReduce, [0.4, 0.3, 0.2]);
+  for (const bad of [
+    [0.4, 0.3],
+    [0.4, 0.3, 0.2, 0.1],
+    [0.4, 0.3, 0.6],
+    [0.4, 0.3, "x"],
+  ])
+    assert.throws(
+      () => validateProposal({ rationale: "r", patch: { pyramidReduce: bad } }),
+      /金字塔/,
+    );
+});
+
+test("手动策略参数：pyramidReduce 可选默认、越界拒绝", () => {
+  const legacyParams = structuredClone(STRATEGY_DEFAULTS);
+  delete legacyParams.pyramidReduce;
+  assert.deepEqual(
+    normalizeStrategyParams(legacyParams).pyramidReduce,
+    [0.3, 0.2, 0.1],
+    "旧版本缺字段按 skill 默认档位补齐",
+  );
+  assert.throws(
+    () =>
+      normalizeStrategyParams({
+        ...STRATEGY_DEFAULTS,
+        pyramidReduce: [0.3, 0.2],
+      }),
+    /策略参数/,
+  );
+  assert.throws(
+    () =>
+      normalizeStrategyParams({
+        ...STRATEGY_DEFAULTS,
+        pyramidReduce: [0.3, 0.2, 0.6],
+      }),
+    /策略参数/,
+  );
 });

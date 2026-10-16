@@ -10,7 +10,10 @@ import {
   normalizeStrategyProgram,
 } from "../../shared/strategy-program.js";
 import { frozenProgramSignal } from "../storage/strategy-signals.js";
-import { withExposureTiers } from "../../shared/strategy-params.js";
+import {
+  withExposureTiers,
+  withPyramidReduce,
+} from "../../shared/strategy-params.js";
 
 export async function assertStoredProgramPlan(env, plan, book) {
   if (!plan) return;
@@ -24,8 +27,8 @@ export async function assertStoredProgramPlan(env, plan, book) {
   if (
     !params ||
     !plan.strategy?.program ||
-    (await digestOf(withExposureTiers(params))) !==
-      (await digestOf(withExposureTiers(plan.strategy)))
+    (await digestOf(withPyramidReduce(withExposureTiers(params)))) !==
+      (await digestOf(withPyramidReduce(withExposureTiers(plan.strategy))))
   )
     throw new Error("冻结计划程序与登记策略版本不一致");
   const snapshot = await frozenProgramSignal(env.DB, plan);

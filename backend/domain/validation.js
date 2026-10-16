@@ -47,6 +47,15 @@ export function validateProposal(output, base = BASE_STRATEGY) {
         !value.some((v) => v > 0)
       )
         throw new Error("AI 权重不符合约束");
+    } else if (key === "pyramidReduce") {
+      // 方案 4：金字塔减仓比例向量 [p1, p2, p3]，与 skill 里程碑对齐，
+      // 单档 0–0.5（保留至少五成底仓）。
+      if (
+        !Array.isArray(value) ||
+        value.length !== 3 ||
+        value.some((v) => !Number.isFinite(v) || v < 0 || v > 0.5)
+      )
+        throw new Error("AI 金字塔减仓向量不符合约束");
     } else {
       const range = RANGES[key];
       if (

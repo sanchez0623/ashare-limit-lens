@@ -13,6 +13,7 @@ import {
 import {
   normalizeStrategyParams,
   withExposureTiers,
+  withPyramidReduce,
 } from "../../shared/strategy-params.js";
 import { BENCHMARK_CODES, DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
 import { programIdentity } from "../../shared/strategy-program.js";
@@ -390,8 +391,8 @@ export class PaperRepository {
     // 手动策略参数：校验后登记为新策略版本（evidence.type = "manual"）
     // 并切换 activeStrategy；与费用/风控同一生效纪律——只在下一个尚未
     // 冻结的计划生效，已冻结计划与历史成交保持原参数。
-    const currentStrategy = withExposureTiers(
-      await this.strategy(account.book),
+    const currentStrategy = withPyramidReduce(
+      withExposureTiers(await this.strategy(account.book)),
     );
     let strategyChange = null;
     if (settings.strategyParams !== undefined) {
@@ -399,8 +400,9 @@ export class PaperRepository {
       if (programIdentity(params) !== programIdentity(currentStrategy))
         throw new Error("家族、情绪选择器与资金分配变化需通过研究批次启用");
       const changed =
-        JSON.stringify(canonical(withExposureTiers(currentStrategy))) !==
-        JSON.stringify(canonical(params));
+        JSON.stringify(
+          canonical(withPyramidReduce(withExposureTiers(currentStrategy))),
+        ) !== JSON.stringify(canonical(params));
       if (changed) {
         const changedKeys = Object.keys(params).filter(
           (key) =>

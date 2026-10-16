@@ -32,6 +32,15 @@ export const STRATEGY_RANGES = Object.freeze({
   tSellRise: [0.01, 0.04],
 });
 
+// 方案 4：金字塔减仓（比例向量参数化）。
+// skill 规则：第一个涨停（+10%）减 3 成、第二个涨停再减 2 成、第三个
+// 涨停再减 1 成。里程碑固定为成本价 +10%/+20%/+30%，各档只执行一次；
+// 减仓比例为可优化向量 [p1, p2, p3]，默认对齐 skill（3/2/1 成），
+// 赛马候选如 [0.2,0.2,0.1] / [0.4,0.3,0.2] / [0.5,0.2,0.1]。
+export const PYRAMID_MILESTONES = Object.freeze([0.1, 0.2, 0.3]);
+export const PYRAMID_REDUCE_DEFAULTS = Object.freeze([0.3, 0.2, 0.1]);
+export const PYRAMID_REDUCE_MAX = 0.5; // 单档比例上限（保留至少五成底仓）
+
 export const STRATEGY_INTEGER_KEYS = Object.freeze([
   "minScore",
   "minSectorScore",
@@ -219,6 +228,7 @@ export const STRATEGY_DEFAULTS = Object.freeze({
   tFraction: 0.2,
   tBuyDip: 0.02,
   tSellRise: 0.02,
+  pyramidReduce: Object.freeze([...PYRAMID_REDUCE_DEFAULTS]),
   exposureTiers: EXPOSURE_TIERS_DEFAULTS,
 });
 
@@ -243,13 +253,18 @@ export function normalizeStrategyParams(value) {
     ...Object.keys(STRATEGY_RANGES),
     "weights",
     "exposureTiers",
+    // 方案 4 起可省略：旧版本 payload 缺失时按 skill 默认档位补齐，
+    // 保证历史策略版本的合法性与计划重放兼容。
+    ...(Object.hasOwn(value, "pyramidReduce") ? ["pyramidReduce"] : []),
     ...(Object.hasOwn(value, "program") ? ["program"] : []),
   ];
   if (
     keys.length !== expected.length ||
     expected.some((key) => !keys.includes(key))
   )
-    invalid("字段必须为 weights、10 项策略参数与 exposureTiers");
+    invalid(
+      "字段必须为 weights、10 项策略参数、pyramidReduce 与 exposureTiers",
+    );
   const weights = value.weights;
   if (
     !Array.isArray(weights) ||
@@ -272,6 +287,20 @@ export function normalizeStrategyParams(value) {
       params[key] = Math.round(number * 1e6) / 1e6;
     }
   }
+  // 方案 4：金字塔减仓比例向量 [p1, p2, p3]。可省略（默认对齐 skill）；
+  // 提供时必须为与里程碑等长的 0–0.5 数值数组，单档上限保留至少五成底仓。
+  const pyramid = Object.hasOwn(value, "pyramidReduce")
+    ? value.pyramidReduce
+    : PYRAMID_REDUCE_DEFAULTS;
+  if (
+    !Array.isArray(pyramid) ||
+    pyramid.length !== PYRAMID_MILESTONES.length ||
+    pyramid.some((v) => !Number.isFinite(v) || v < 0 || v > PYRAMID_REDUCE_MAX)
+  )
+    invalid(
+      `pyramidReduce 必须为 ${PYRAMID_MILESTONES.length} 个 0–${PYRAMID_REDUCE_MAX} 的数值`,
+    );
+  params.pyramidReduce = pyramid.map((v) => Math.round(v * 1e6) / 1e6);
   const tiers = value.exposureTiers;
   if (!tiers || typeof tiers !== "object" || Array.isArray(tiers))
     invalid("exposureTiers 结构无效");
@@ -314,5 +343,14 @@ export function withExposureTiers(params) {
   return {
     ...params,
     exposureTiers: params?.exposureTiers ?? EXPOSURE_TIERS_DEFAULTS,
+  };
+}
+
+// 兼容历史版本：旧策略版本缺少 pyramidReduce 时按 skill 默认档位补齐
+// （方案 4）。摘要比较两侧必须对称使用，避免新旧版本误判参数变化。
+export function withPyramidReduce(params) {
+  return {
+    ...params,
+    pyramidReduce: params?.pyramidReduce ?? PYRAMID_REDUCE_DEFAULTS,
   };
 }

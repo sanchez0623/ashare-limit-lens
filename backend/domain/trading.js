@@ -20,7 +20,10 @@ import {
   riskLimitsForBook,
   planRiskLimits,
 } from "../../shared/risk-limits.js";
-import { STRATEGY_DEFAULTS } from "../../shared/strategy-params.js";
+import {
+  STRATEGY_DEFAULTS,
+  PYRAMID_MILESTONES,
+} from "../../shared/strategy-params.js";
 import { checkExitSignals } from "../../shared/exit-signals.js";
 import {
   classifySentimentCycle,
@@ -230,6 +233,21 @@ function freezeExitContext({
   };
 }
 
+// 方案 4：金字塔减仓的下一档。position.pyramidStage 记录已执行的最高
+// 档（成交时在 consumeLots 推进）；未到该档里程碑、比例非正或档位用尽
+// 时返回 null。里程碑按序触达——价格跳空越过中间档时仍按最低未执行档
+// 先减（skill 的依次减仓语义）。
+function nextPyramidRung(position, pnl, pyramidReduce) {
+  const stage = position.pyramidStage ?? 0;
+  const milestone = PYRAMID_MILESTONES[stage];
+  const ratio = pyramidReduce?.[stage];
+  if (milestone === undefined || !Number.isFinite(ratio) || ratio <= 0)
+    return null;
+  // 1e-9 容差：盈亏比恰落在里程碑（如 +20%）时不受浮点表示误差拖延。
+  if (!(pnl >= milestone - 1e-9)) return null;
+  return { rung: stage + 1, milestone, ratio };
+}
+
 export function createPlan(
   snapshot,
   book,
@@ -325,6 +343,10 @@ export function createPlan(
   // 情绪档位（可配置，随计划冻结）：两档阈值同时驱动目标敞口与
   // 加仓 / 做 T / 开新仓 / 减仓闸门，旧版本缺字段时回退默认档位。
   const tiers = strategy.exposureTiers ?? BASE_STRATEGY.exposureTiers;
+  // 方案 4：金字塔减仓比例向量，旧版本参数缺失时按 skill 默认档位。
+  const pyramidReduce = Array.isArray(strategy.pyramidReduce)
+    ? strategy.pyramidReduce
+    : BASE_STRATEGY.pyramidReduce;
   let targetExposure =
     drawdown >= riskLimits.maxDrawdown
       ? 0
@@ -516,11 +538,28 @@ export function createPlan(
       plannedExposure -= quantity * referenceCents;
       continue;
     }
-    if (
-      pnl >= strategy.takeProfit ||
-      (signal && score < 65) ||
-      emotion < tiers.midEmotion
-    ) {
+    // 方案 4：金字塔减仓（比例参数化）。里程碑固定为成本价 +10%/+20%/+30%
+    // （skill：第一个涨停减 3 成、第二个再减 2 成、第三个再减 1 成），
+    // 各档只执行一次——position.pyramidStage 由成交推进（订单携带
+    // pyramidRung），比例向量 strategy.pyramidReduce = [p1, p2, p3] 为
+    // 赛马可优化参数；评分走弱与情绪防守的减半减仓保持不变。
+    const pyramidRung = nextPyramidRung(position, pnl, pyramidReduce);
+    if (pyramidRung && roundLot(quantity * pyramidRung.ratio) > 0) {
+      const reduceQuantity = roundLot(quantity * pyramidRung.ratio);
+      addOrder({
+        ...base,
+        action: "REDUCE",
+        side: "SELL",
+        quantity: reduceQuantity,
+        pyramidRung: pyramidRung.rung,
+        reason: `金字塔减仓第 ${pyramidRung.rung} 档：累计盈利达 ${(
+          pyramidRung.milestone * 100
+        ).toFixed(0)}% 减 ${Math.round(pyramidRung.ratio * 10)} 成`,
+      });
+      plannedExposure -= reduceQuantity * referenceCents;
+      continue;
+    }
+    if ((signal && score < 65) || emotion < tiers.midEmotion) {
       const reduceQuantity = roundLot(quantity / 2) || quantity;
       addOrder({
         ...base,
@@ -528,11 +567,9 @@ export function createPlan(
         side: "SELL",
         quantity: reduceQuantity,
         reason:
-          pnl >= strategy.takeProfit
-            ? "分批兑现达到止盈阈值的仓位"
-            : emotion < tiers.midEmotion
-              ? "市场情绪较弱，降低敞口"
-              : "个股评分走弱，降低仓位",
+          emotion < tiers.midEmotion
+            ? "市场情绪较弱，降低敞口"
+            : "个股评分走弱，降低仓位",
       });
       plannedExposure -= reduceQuantity * referenceCents;
       continue;
@@ -862,7 +899,13 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
       throw new Error("策略计划与信号日原始快照、情绪选择或资金分配重算不一致");
 }
 
-function consumeLots(position, quantity, date, allocations = null) {
+function consumeLots(
+  position,
+  quantity,
+  date,
+  allocations = null,
+  pyramidRung = null,
+) {
   let remaining = quantity;
   let basis = 0;
   for (const lot of position.lots) {
@@ -896,6 +939,10 @@ function consumeLots(position, quantity, date, allocations = null) {
   }
   position.lots = position.lots.filter((lot) => lot.quantity > 0);
   if (remaining) throw new Error("成交数量超过 T+1 可卖数量");
+  // 方案 4：金字塔减仓档位在成交时推进（任何一条卖出链路都经
+  // consumeLots）；只前进不回退，按订单声明的档位取最大值。
+  if (Number.isInteger(pyramidRung) && pyramidRung > 0)
+    position.pyramidStage = Math.max(position.pyramidStage ?? 0, pyramidRung);
   return basis;
 }
 function carriedPlanOrders(orders, book, date, strategy, originalScoreLookup) {
@@ -917,6 +964,10 @@ function carriedPlanOrders(orders, book, date, strategy, originalScoreLookup) {
       action,
       side,
       quantity,
+      // 方案 4：跨日续执行的减仓保留档位声明，成交推进 stage 不丢档。
+      ...(Number.isInteger(item.pyramidRung)
+        ? { pyramidRung: item.pyramidRung }
+        : {}),
       allDay: true,
       carried: true,
       recovery: !!item.side,
@@ -1624,7 +1675,13 @@ function executeFillWithCostModel(
         : {}),
     });
   } else {
-    basisCents = consumeLots(position, quantity, date, strategyAllocations);
+    basisCents = consumeLots(
+      position,
+      quantity,
+      date,
+      strategyAllocations,
+      order.pyramidRung ?? null,
+    );
     realizedPnlCents = cashDeltaCents - basisCents;
     book.realizedPnlCents += realizedPnlCents;
   }
@@ -1805,7 +1862,13 @@ function executeFillLegacy(
       priceCents,
     });
   } else {
-    basisCents = consumeLots(position, quantity, date);
+    basisCents = consumeLots(
+      position,
+      quantity,
+      date,
+      null,
+      order.pyramidRung ?? null,
+    );
     realizedPnlCents = cashDeltaCents - basisCents;
     book.realizedPnlCents += realizedPnlCents;
   }
