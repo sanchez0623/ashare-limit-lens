@@ -5,6 +5,7 @@ import {
   availableQuantity,
   costBasis,
   roundLot,
+  protectivePyramidReduce,
   BASE_STRATEGY,
 } from "./trading.js";
 import { planRiskLimits } from "../../shared/risk-limits.js";
@@ -359,16 +360,37 @@ export function advanceSession(inputBook, inputSession, observation) {
             dd < riskLimits.maxDrawdown
           )
             continue;
-          order.triggered = true;
-          order.action =
-            quote.closeCents <= order.stopCents || dd >= riskLimits.maxDrawdown
-              ? "EXIT"
-              : "REDUCE";
+          const stopHit =
+            quote.closeCents <= order.stopCents || dd >= riskLimits.maxDrawdown;
+          // 方案 4：止盈触发按金字塔下一未执行档减仓（价格须触达该档
+          // 里程碑），未触达时保护单保持武装、不取消原计划——不再固定
+          // 减半覆盖计划的比例；旧计划无 pyramidReduce 向量 → 保持原
+          // 减半语义。
+          const rung = stopHit
+            ? null
+            : protectivePyramidReduce(
+                book.positions.find((p) => p.code === code),
+                quote.closeCents,
+                session.plan.strategy?.pyramidReduce,
+              );
           const held = quantityOf(book, code);
-          order.quantity =
-            order.action === "EXIT" ? held : roundLot(held / 2) || held;
-          order.reason =
-            order.action === "EXIT" ? "保护退出触发" : "分批止盈触发";
+          const pyramidActive = Array.isArray(
+            session.plan.strategy?.pyramidReduce,
+          );
+          const reduceQuantity = rung
+            ? roundLot(held * rung.ratio)
+            : roundLot(held / 2) || held;
+          if (!stopHit && pyramidActive && (!rung || reduceQuantity <= 0))
+            continue; // 未到档位里程碑，等待价格继续上行
+          order.triggered = true;
+          order.action = stopHit ? "EXIT" : "REDUCE";
+          order.reason = stopHit
+            ? "保护退出触发"
+            : rung
+              ? `保护止盈按金字塔减仓：第 ${rung.rung} 档减 ${Math.round(rung.ratio * 10)} 成`
+              : "分批止盈触发";
+          order.quantity = stopHit ? held : reduceQuantity;
+          if (rung) order.pyramidRung = rung.rung;
           for (const other of list)
             if (other !== order && !TERMINAL.has(other.status)) {
               other.status = "CANCELLED";
@@ -572,6 +594,11 @@ export function closeSession(inputBook, inputSession, dataset) {
             order.quantity - order.filledQuantity,
             quantityOf(book, order.code),
           ),
+          // 方案 4：保留档位声明——跨日续单成交仍推进 pyramidStage，
+          // 否则次日计划会重复生成同档减仓。
+          ...(Number.isInteger(order.pyramidRung)
+            ? { pyramidRung: order.pyramidRung }
+            : {}),
         });
       order.status = order.filledQuantity ? "EXPIRED_PARTIAL" : "EXPIRED";
       if (!order.protective || order.triggered)

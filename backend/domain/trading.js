@@ -234,18 +234,32 @@ function freezeExitContext({
 }
 
 // 方案 4：金字塔减仓的下一档。position.pyramidStage 记录已执行的最高
-// 档（成交时在 consumeLots 推进）；未到该档里程碑、比例非正或档位用尽
-// 时返回 null。里程碑按序触达——价格跳空越过中间档时仍按最低未执行档
-// 先减（skill 的依次减仓语义）。
+// 档（成交时在 consumeLots 推进）；零比例档透明跳过（不产生减仓也不
+// 阻断后续档位）；里程碑按序触达——价格跳空越过中间档时仍按最低未执
+// 行档先减（skill 的依次减仓语义）。pyramidReduce 非数组（旧版本计划）
+// 返回 null，调用方保持旧语义。
 function nextPyramidRung(position, pnl, pyramidReduce) {
+  if (!Array.isArray(pyramidReduce)) return null;
   const stage = position.pyramidStage ?? 0;
-  const milestone = PYRAMID_MILESTONES[stage];
-  const ratio = pyramidReduce?.[stage];
-  if (milestone === undefined || !Number.isFinite(ratio) || ratio <= 0)
-    return null;
-  // 1e-9 容差：盈亏比恰落在里程碑（如 +20%）时不受浮点表示误差拖延。
-  if (!(pnl >= milestone - 1e-9)) return null;
-  return { rung: stage + 1, milestone, ratio };
+  for (let k = stage; k < PYRAMID_MILESTONES.length; k++) {
+    const ratio = pyramidReduce[k];
+    if (!Number.isFinite(ratio) || ratio <= 0) continue;
+    const milestone = PYRAMID_MILESTONES[k];
+    // 1e-9 容差：盈亏比恰落在里程碑（如 +20%）时不受浮点表示误差拖延。
+    if (!(pnl >= milestone - 1e-9)) return null; // 里程碑递增，后面更远
+    return { rung: k + 1, milestone, ratio };
+  }
+  return null;
+}
+
+// 方案 4：保护单止盈触发时的金字塔减仓（日内执行与计划同一阶梯）。
+// 价格相对成本触达下一未执行档里程碑才返回该档；否则返回 null，调用
+// 方保持武装等待价格上行（旧计划无向量时由调用方走旧减半语义）。
+export function protectivePyramidReduce(position, priceCents, pyramidReduce) {
+  if (!position || !Number.isFinite(priceCents)) return null;
+  const avgCost = costBasis(position) / totalQuantity(position);
+  if (!(avgCost > 0)) return null;
+  return nextPyramidRung(position, priceCents / avgCost - 1, pyramidReduce);
 }
 
 export function createPlan(
@@ -343,10 +357,12 @@ export function createPlan(
   // 情绪档位（可配置，随计划冻结）：两档阈值同时驱动目标敞口与
   // 加仓 / 做 T / 开新仓 / 减仓闸门，旧版本缺字段时回退默认档位。
   const tiers = strategy.exposureTiers ?? BASE_STRATEGY.exposureTiers;
-  // 方案 4：金字塔减仓比例向量，旧版本参数缺失时按 skill 默认档位。
+  // 方案 4：金字塔减仓比例向量。仅当计划冻结的策略版本声明了该字段才
+  // 启用——旧版本计划保持原语义（含 pnl ≥ takeProfit 减半），重算与
+  // 核验不因新规则漂移；新参数随新策略版本生效。
   const pyramidReduce = Array.isArray(strategy.pyramidReduce)
     ? strategy.pyramidReduce
-    : BASE_STRATEGY.pyramidReduce;
+    : null;
   let targetExposure =
     drawdown >= riskLimits.maxDrawdown
       ? 0
@@ -542,7 +558,7 @@ export function createPlan(
     // （skill：第一个涨停减 3 成、第二个再减 2 成、第三个再减 1 成），
     // 各档只执行一次——position.pyramidStage 由成交推进（订单携带
     // pyramidRung），比例向量 strategy.pyramidReduce = [p1, p2, p3] 为
-    // 赛马可优化参数；评分走弱与情绪防守的减半减仓保持不变。
+    // 赛马可优化参数。
     const pyramidRung = nextPyramidRung(position, pnl, pyramidReduce);
     if (pyramidRung && roundLot(quantity * pyramidRung.ratio) > 0) {
       const reduceQuantity = roundLot(quantity * pyramidRung.ratio);
@@ -559,15 +575,24 @@ export function createPlan(
       plannedExposure -= reduceQuantity * referenceCents;
       continue;
     }
-    if ((signal && score < 65) || emotion < tiers.midEmotion) {
+    // 旧版本计划（未声明 pyramidReduce）保持原语义：pnl ≥ takeProfit
+    // 与风险减半共用固定减半规则，reason 原样复现保证重算一致。
+    const legacyProfitReduce =
+      !Array.isArray(pyramidReduce) && pnl >= strategy.takeProfit;
+    if (
+      legacyProfitReduce ||
+      (signal && score < 65) ||
+      emotion < tiers.midEmotion
+    ) {
       const reduceQuantity = roundLot(quantity / 2) || quantity;
       addOrder({
         ...base,
         action: "REDUCE",
         side: "SELL",
         quantity: reduceQuantity,
-        reason:
-          emotion < tiers.midEmotion
+        reason: legacyProfitReduce
+          ? "分批兑现达到止盈阈值的仓位"
+          : emotion < tiers.midEmotion
             ? "市场情绪较弱，降低敞口"
             : "个股评分走弱，降低仓位",
       });
@@ -1274,14 +1299,32 @@ export function executePlan(inputBook, plan, dataset) {
       )
         continue;
       if (!running.triggered) {
+        const stopHit = event.priceCents <= order.stopCents;
+        // 方案 4：止盈触发按金字塔下一未执行档减仓（价格须触达该档
+        // 里程碑），未触达时保护单保持武装、不取消原计划；旧计划无
+        // pyramidReduce 向量 → 保持原减半语义。
+        const rung = stopHit
+          ? null
+          : protectivePyramidReduce(
+              book.positions.find((item) => item.code === order.code),
+              event.priceCents,
+              plan.strategy?.pyramidReduce,
+            );
+        const pyramidActive = Array.isArray(plan.strategy?.pyramidReduce);
+        const reduceQuantity = rung
+          ? roundLot(order.quantity * rung.ratio)
+          : roundLot(order.quantity / 2) || order.quantity;
+        if (!stopHit && pyramidActive && (!rung || reduceQuantity <= 0))
+          continue; // 未到档位里程碑，等待价格继续上行
         running.triggered = true;
-        order.action = event.priceCents <= order.stopCents ? "EXIT" : "REDUCE";
-        order.reason =
-          order.action === "EXIT" ? "事前保护止损触发" : "事前分批止盈触发";
-        order.quantity =
-          order.action === "EXIT"
-            ? order.quantity
-            : roundLot(order.quantity / 2) || order.quantity;
+        order.action = stopHit ? "EXIT" : "REDUCE";
+        order.reason = stopHit
+          ? "事前保护止损触发"
+          : rung
+            ? `事前金字塔止盈触发：第 ${rung.rung} 档减 ${Math.round(rung.ratio * 10)} 成`
+            : "事前分批止盈触发";
+        order.quantity = stopHit ? order.quantity : reduceQuantity;
+        if (rung) order.pyramidRung = rung.rung;
         for (const [id, other] of runtime) {
           if (
             id !== order.id &&

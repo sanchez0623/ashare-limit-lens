@@ -8,6 +8,7 @@ import {
   auditLedger,
   availableQuantity,
   totalQuantity,
+  protectivePyramidReduce,
   BASE_STRATEGY,
   transactionFees,
 } from "../backend/domain/trading.js";
@@ -20,6 +21,11 @@ import {
   loadOrBuildExitContext,
   loadPersistedExitInputs,
 } from "../backend/services/exit-context.js";
+import {
+  openSession,
+  advanceSession,
+  closeSession,
+} from "../backend/domain/realtime.js";
 import {
   EXPOSURE_TIERS_DEFAULTS,
   STRATEGY_DEFAULTS,
@@ -1411,17 +1417,227 @@ test("金字塔减仓：里程碑按序触发、档位只执行一次、比例�
     "now",
   ).orders.find((o) => o.code === "600099");
   assert.equal(zero.action, "HOLD");
-  // 旧版本策略缺向量字段：回退 skill 默认档位
+  // 盈利 25% 直接落到第 2 档（第 1 档为零比例，透明跳过不阻断）
+  const zeroSkip = createPlan(
+    snap,
+    outOfPoolBook(1250),
+    { ...BASE_STRATEGY, pyramidReduce: [0, 0.2, 0.1] },
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(zeroSkip.action, "REDUCE");
+  assert.equal(zeroSkip.quantity, 200);
+  assert.equal(zeroSkip.pyramidRung, 2);
+  // 旧版本策略缺向量字段：不启用金字塔（+10% 未到旧止盈阈值 12%），
+  // 且旧止盈减半语义原样保留——重算与核验不因新规则漂移。
   const legacy = { ...structuredClone(BASE_STRATEGY) };
   delete legacy.pyramidReduce;
-  const fallback = createPlan(
+  const legacyHold = createPlan(
     snap,
     outOfPoolBook(1100),
     legacy,
     "v",
     "now",
   ).orders.find((o) => o.code === "600099");
-  assert.equal(fallback.quantity, 300);
+  assert.equal(legacyHold.action, "HOLD");
+  const legacyReduce = createPlan(
+    snap,
+    outOfPoolBook(1150),
+    legacy,
+    "v",
+    "now",
+  ).orders.find((o) => o.code === "600099");
+  assert.equal(legacyReduce.action, "REDUCE");
+  assert.equal(legacyReduce.quantity, 500);
+  assert.equal(legacyReduce.pyramidRung, undefined);
+  assert.match(legacyReduce.reason, /分批兑现达到止盈阈值的仓位/);
+});
+
+test("金字塔减仓：保护止盈 helper 按价格触达的下一未执行档执行", () => {
+  const position = {
+    code: "600099",
+    lots: [{ acquiredDate: "2026-01-01", quantity: 1000, costCents: 1000000 }],
+  };
+  // 价格 +13%、stage 0：触达第 1 档里程碑（+10%）→ 按比例减仓
+  const first = protectivePyramidReduce(position, 1130, [0.3, 0.2, 0.1]);
+  assert.deepEqual(
+    { rung: first.rung, ratio: first.ratio },
+    { rung: 1, ratio: 0.3 },
+  );
+  // 价格 +13%、stage 1：未触达第 2 档里程碑（+20%）→ 待命
+  assert.equal(
+    protectivePyramidReduce(
+      { ...position, pyramidStage: 1 },
+      1130,
+      [0.3, 0.2, 0.1],
+    ),
+    null,
+  );
+  // 价格 +21%、stage 1：第 2 档触发
+  const second = protectivePyramidReduce(
+    { ...position, pyramidStage: 1 },
+    1210,
+    [0.3, 0.2, 0.1],
+  );
+  assert.equal(second.rung, 2);
+  // 档位用尽 → null
+  assert.equal(
+    protectivePyramidReduce(
+      { ...position, pyramidStage: 3 },
+      1400,
+      [0.3, 0.2, 0.1],
+    ),
+    null,
+  );
+  // 旧计划无向量 → null（调用方走旧减半语义）
+  assert.equal(protectivePyramidReduce(position, 1130, undefined), null);
+});
+
+test("保护止盈按金字塔档位减仓：日内冲高按档比例执行而非减半", () => {
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "600001",
+      name: "合成样本",
+      sector: "测试行业",
+      heldDays: 1,
+      markCents: 1000, // 与执行日昨收一致（首档已执行，价格回落到成本）
+      pyramidStage: 1, // 首档已在昨日执行，当前待执行第 2 档（20%）
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1000000,
+          priceCents: 1000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1000000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  // 计划只含做 T（无减仓）→ 持仓存在保护单；stage 1、第二档配置 20%
+  // 时冲高触达 +20% 里程碑按 200 股执行（复现用户验收：不再卖 500）。
+  const tPlan = plan(
+    [order("T_FORWARD", 200, { takeProfitCents: 1120 })],
+    dateAt(0),
+  );
+  const day = dataset(dateAt(1), "600001", {
+    minutes: bars(1000, { "10:00": 1210, "10:01": 1210 }),
+  });
+  const result = executePlan(
+    book,
+    {
+      ...tPlan,
+      strategy: { ...BASE_STRATEGY, pyramidReduce: [0.3, 0.2, 0.1] },
+    },
+    day,
+  );
+  assert.ok(
+    result.ledger.find((fill) => fill.side === "SELL" && fill.quantity === 200),
+    "保护止盈应按第 2 档比例卖出 200 股（而非减半 500）",
+  );
+  const position = result.book.positions.find((p) => p.code === "600001");
+  assert.equal(position.pyramidStage, 2, "保护止盈成交推进档位");
+  // 旧计划（无向量）同一场景保持旧减半语义
+  const legacy = executePlan(book, tPlan, day);
+  assert.ok(
+    legacy.ledger.find((f) => f.side === "SELL" && f.quantity === 500),
+    "旧计划保护止盈保持减半",
+  );
+});
+
+test("金字塔减仓：跨日续单保留档位，成交后不重复减仓", async () => {
+  const strategy = { ...BASE_STRATEGY, pyramidReduce: [0.3, 0.2, 0.1] };
+  const book = outOfPoolBook(1100);
+  book.lastDate = dateAt(0);
+  const pyramidPlan = createPlan(
+    snapshot(dateAt(0)),
+    book,
+    strategy,
+    "v",
+    `${dateAt(0)}T07:10:00.000Z`,
+  );
+  // 首日无实时观测：减仓未成交 → 跨日续单必须保留档位声明
+  let session = openSession(book, pyramidPlan, dateAt(1));
+  const day1 = {
+    ...dataset(dateAt(1), "600099", {
+      previous: 1100,
+      close: 1100,
+      previousDate: dateAt(0),
+    }),
+    executionMode: "realtime",
+  };
+  const closed = closeSession(book, session, day1);
+  assert.equal(closed.book.pendingOrders.length, 1);
+  assert.equal(
+    closed.book.pendingOrders[0].pyramidRung,
+    1,
+    "跨日续单保留档位（否则次日重复减仓）",
+  );
+  // 次日计划：续单替换新生成的同档减仓（不重复），成交推进档位
+  const carried = closed.book;
+  const nextPlan = createPlan(
+    snapshot(dateAt(1)),
+    carried,
+    strategy,
+    "v",
+    `${dateAt(1)}T07:10:00.000Z`,
+  );
+  const carriedOrders = nextPlan.orders.filter((o) => o.code === "600099");
+  assert.equal(carriedOrders.length, 1);
+  assert.equal(carriedOrders[0].pyramidRung, 1);
+  assert.equal(carriedOrders[0].quantity, 300);
+  // 次日实时会话：续单成交推进档位（真实流转由实时会话消费续单；
+  // 首帧为累计量基线，第二帧才供给区间成交量）。
+  let session2 = openSession(carried, nextPlan, dateAt(2));
+  let step;
+  for (const [zTime, zVolume] of [
+    ["01:31:00", 100000],
+    ["01:31:05", 5000000],
+  ]) {
+    step = advanceSession(structuredClone(carried), session2, {
+      observedAt: `${dateAt(2)}T${zTime}.000Z`,
+      pollIntervalSeconds: 60,
+      quotes: {
+        600099: {
+          date: dateAt(2),
+          timestamp: `${dateAt(2)}T09:31:${zTime.slice(-2)}+08:00`,
+          closeCents: 1100,
+          openCents: 1100,
+          previousCloseCents: 1100,
+          volumeShares: zVolume,
+          limitUpCents: 1210,
+          limitDownCents: 990,
+        },
+      },
+    });
+    session2 = step.session;
+  }
+  const day2 = {
+    ...dataset(dateAt(2), "600099", {
+      previous: 1100,
+      close: 1100,
+      previousDate: dateAt(1),
+    }),
+    executionMode: "realtime",
+  };
+  const result = closeSession(step.book, step.session, day2);
+  const position = result.book.positions.find((p) => p.code === "600099");
+  assert.equal(position.pyramidStage, 1, "续单成交推进档位");
+  assert.equal(result.book.pendingOrders.length, 0, "已完成的续单不再跨日");
+  // 第三日计划：同一盈利水平不再重复第 1 档
+  const finalPlan = createPlan(
+    snapshot(dateAt(2)),
+    result.book,
+    strategy,
+    "v",
+    "now",
+  );
+  assert.equal(
+    finalPlan.orders.find((o) => o.code === "600099").action,
+    "HOLD",
+  );
 });
 
 test("金字塔减仓：成交推进档位，后续计划不重复减仓", () => {
