@@ -4,6 +4,7 @@ import {
   newBook,
   totalQuantity,
 } from "../domain/trading.js";
+import { extractTTrades, summarizeTQuality } from "../domain/t-quality.js";
 import {
   openSession,
   advanceSession,
@@ -261,6 +262,10 @@ async function runBacktestInner(
     );
   // 原始分跨日回查：逐日累积已见评分，持仓掉出当日评分池时取最近一次入池评分。
   const scoreHistory = new Map();
+  // 做T质量追踪（方案 7）：逐日累积成交与交易日，计划冻结前汇总质量
+  // 摘要——回测的做T闸门与主账户同一规则、同一口径。
+  const tFills = [];
+  const tDates = [];
   for (let index = 0; index + 1 < scores.length; index++) {
     const signal = scores[index];
     const signalDate = signal.tradeDate;
@@ -335,6 +340,11 @@ async function runBacktestInner(
           selectionPolicy,
           snapshotDigest: await selectionSnapshotDigest(snapshot),
           ...exitContext,
+          // 方案 7：截至上一执行日的做T质量摘要（与主账户同一口径）。
+          tQuality: summarizeTQuality(extractTTrades(tFills).records, {
+            signalDate,
+            tradingDates: tDates,
+          }),
         },
       );
     } catch (error) {
@@ -397,6 +407,8 @@ async function runBacktestInner(
     });
     book = closed.book;
     coverage.executedPairs++;
+    tFills.push(...dayLedger);
+    tDates.push(tradeDate);
     if (dayLedger.length)
       await store.appendBacktestLedger(runId, tradeDate, dayLedger);
     const drawdown = book.peakEquityCents

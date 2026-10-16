@@ -12,6 +12,8 @@ import {
   closeSession,
 } from "../domain/realtime.js";
 import { createPlan, defensivePlan } from "../domain/trading.js";
+import { extractTTrades, summarizeTQuality } from "../domain/t-quality.js";
+import { tradingCalendar } from "./market.js";
 import { loadOrBuildExitContext } from "./exit-context.js";
 import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
 import {
@@ -184,6 +186,29 @@ export async function freezePortfolioPlan(
       exitContext = null;
     }
   }
+  // 方案 7：做T质量摘要——影子账户从自己的成交流水派生做T记录并汇总
+  // （与主账户同一规则口径）。日历不可用时 tradingDates 为空，停手窗口
+  // 判定退化为保守阻止（连续亏损即停）；派生失败退化为无闸门。
+  const shadowSignalDate = snapshot?.date ?? account.book.lastDate;
+  let tQuality = null;
+  if (shadowSignalDate) {
+    try {
+      const tFrom = new Date(
+        new Date(`${shadowSignalDate}T00:00:00Z`).getTime() - 20 * 86400000,
+      )
+        .toISOString()
+        .slice(0, 10);
+      tQuality = summarizeTQuality(
+        extractTTrades(await shadows.ledger(accountId)).records,
+        {
+          signalDate: shadowSignalDate,
+          tradingDates: (await tradingCalendar(tFrom, shadowSignalDate)).dates,
+        },
+      );
+    } catch {
+      tQuality = null;
+    }
+  }
   const plan = snapshot
     ? createPlan(snapshot, account.book, strategy, strategyVersion, now, {
         executionCostPolicy,
@@ -191,6 +216,7 @@ export async function freezePortfolioPlan(
         selectionPolicy,
         snapshotDigest: await selectionSnapshotDigest(snapshot),
         ...(exitContext ?? {}),
+        ...(tQuality ? { tQuality } : {}),
       })
     : defensivePlan(
         account.book.lastDate,

@@ -50,6 +50,23 @@ export async function digest(value) {
   ).join("");
 }
 const parse = (row) => (row ? JSON.parse(row.payload) : null);
+// 做T记录（方案 7）：DB 行 → 记录对象（与成交流水提取器同一形状）。
+function tTradeRowToRecord(row) {
+  return {
+    id: row.id,
+    trade_date: row.trade_date,
+    code: row.code,
+    action: row.action,
+    buy_price_cents: row.buy_price_cents,
+    sell_price_cents: row.sell_price_cents,
+    buy_quantity: row.buy_quantity ?? 0,
+    sell_quantity: row.sell_quantity ?? 0,
+    day_pnl_cents: row.day_pnl_cents ?? 0,
+    total_pnl_cents: row.total_pnl_cents,
+    completed_same_day: row.completed_same_day ? 1 : 0,
+    completed_date: row.completed_date,
+  };
+}
 // 原始分跨日回查：从 snapshots 归档按日期倒序扫描，取每只股票最近一次
 // 入池的有效评分；评分缺失的快照跳过，继续向前找，直到找齐或扫完窗口。
 export async function buildOriginalScoreLookup(db, date, codes, lookback = 15) {
@@ -266,7 +283,7 @@ export class PaperRepository {
       .bind(date, new Date().toISOString(), status, JSON.stringify(payload))
       .run();
   }
-  async settle(expectedRevision, result, dataset) {
+  async settle(expectedRevision, result, dataset, { tTradeRecords = [] } = {}) {
     const runId = crypto.randomUUID();
     const nextRevision = expectedRevision + 1;
     const guard =
@@ -323,12 +340,78 @@ export class PaperRepository {
             runId,
           ),
       );
+    // 做T记录（方案 7）：派生投影与结算同批写入（同一 guard），任一
+    // 失败整体回滚，记录不领先/滞后于账本；幂等覆盖（INSERT OR REPLACE）。
+    for (const record of tTradeRecords)
+      statements.push(
+        guarded(
+          "INSERT OR REPLACE INTO paper_t_trades (id,trade_date,code,action,buy_price_cents,sell_price_cents,buy_quantity,sell_quantity,day_pnl_cents,total_pnl_cents,completed_same_day,completed_date,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?",
+          [
+            record.id,
+            record.trade_date,
+            record.code,
+            record.action,
+            record.buy_price_cents ?? null,
+            record.sell_price_cents ?? null,
+            record.buy_quantity ?? 0,
+            record.sell_quantity ?? 0,
+            record.day_pnl_cents ?? 0,
+            record.total_pnl_cents ?? null,
+            record.completed_same_day ? 1 : 0,
+            record.completed_date ?? null,
+            record.created_at ?? stamp,
+            stamp,
+          ],
+        ),
+      );
     await this.db.batch(statements);
     const row = await this.db
       .prepare("SELECT last_run_id FROM paper_accounts WHERE id=?")
       .bind("primary")
       .first();
     return row.last_run_id === runId;
+  }
+  // 某交易日的全部成交行（实时路径逐帧已落库；盘后路径 settlement.ledger
+  // 在内存中，不需要此查询）。payload 内含 sequence，顺序由提取器排序。
+  async ledgerRowsForDate(date) {
+    const result = await this.db
+      .prepare("SELECT payload FROM paper_ledger WHERE trade_date = ?")
+      .bind(date)
+      .all();
+    return (result.results ?? []).map((row) => JSON.parse(row.payload));
+  }
+  // 做T记录：按了结日期倒序取最近若干条（质量汇总样本窗口）。
+  async recentTTrades(limit = 200) {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM paper_t_trades WHERE completed_date IS NOT NULL ORDER BY completed_date DESC, id DESC LIMIT ?",
+      )
+      .bind(limit)
+      .all();
+    return (result.results ?? []).map(tTradeRowToRecord);
+  }
+  // 未了结做T记录（等待恢复腿）：按代码过滤，供恢复腿并入。
+  async openTTradesByCodes(codes) {
+    const wanted = [...new Set(codes)].filter(Boolean);
+    if (!wanted.length) return [];
+    const placeholders = wanted.map(() => "?").join(",");
+    const result = await this.db
+      .prepare(
+        `SELECT * FROM paper_t_trades WHERE completed_date IS NULL AND code IN (${placeholders})`,
+      )
+      .bind(...wanted)
+      .all();
+    return (result.results ?? []).map(tTradeRowToRecord);
+  }
+  // 全部做T记录（展示用，按尝试日倒序）。
+  async tTrades(limit = 50) {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM paper_t_trades ORDER BY trade_date DESC, id DESC LIMIT ?",
+      )
+      .bind(limit)
+      .all();
+    return (result.results ?? []).map(tTradeRowToRecord);
   }
   async canEditCapital(book) {
     const live = await this.db

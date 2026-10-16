@@ -19,6 +19,12 @@ import {
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
 import { loadOrBuildExitContext } from "./exit-context.js";
+import {
+  extractTTrades,
+  applyRecoveryFill,
+  isRecoveryFill,
+  summarizeTQuality,
+} from "../domain/t-quality.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { calibrationForPolicy } from "./execution-calibration.js";
@@ -40,6 +46,41 @@ import {
 } from "../domain/realtime.js";
 import { realtimeStatus } from "./realtime.js";
 import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
+
+// 做T记录提取（方案 7）：当日成交 → paper_t_trades 的 upsert 记录集。
+//   - 当日做T腿（T_FORWARD/T_REVERSE）：同日两腿齐 → 当日了结；单腿 →
+//     未了结 open 记录（等待跨日恢复腿）；
+//   - 当日恢复腿（实时恢复单，orderId 以 :recovery 结尾）：并入匹配的
+//     open 记录，补齐尝试腿数量即了结（created_at 保留首次落库值）。
+// 记录随 settle 同一 CAS 批落库：结算回滚时记录一并回滚，不领先账本。
+export function buildTTradeRecords({ fills, openRecords, now }) {
+  const { records: dayRecords, open: openToday } = extractTTrades(fills);
+  const upserts = [...dayRecords, ...openToday].map((record) => ({
+    ...record,
+    created_at: now,
+  }));
+  // 当日已有新做T尝试的代码不会再有恢复腿（计划对存在待恢复腿的持仓
+  // 不生成做T），恢复腿只匹配更早日未了结的 open 记录。
+  const attemptedCodes = new Set(upserts.map((record) => record.code));
+  const openByCode = new Map(
+    (openRecords ?? [])
+      .filter((record) => !attemptedCodes.has(record.code))
+      .map((record) => [record.code, { ...record }]),
+  );
+  const recoveredCodes = new Set();
+  for (const fill of fills) {
+    if (!isRecoveryFill(fill)) continue;
+    const record = openByCode.get(fill.code);
+    if (!record) continue;
+    openByCode.set(fill.code, {
+      ...applyRecoveryFill(record, fill),
+      created_at: record.created_at ?? now,
+    });
+    recoveredCodes.add(fill.code);
+  }
+  for (const code of recoveredCodes) upserts.push(openByCode.get(code));
+  return upserts;
+}
 export async function runPaperDay(env, date) {
   try {
     return await settlePaperDay(env, date);
@@ -157,10 +198,31 @@ async function settlePaperDay(env, date) {
       benchmark?.closeCents && settlement.book.benchmarkBaseCents
         ? benchmark.closeCents / settlement.book.benchmarkBaseCents - 1
         : null;
+    // 方案 7：做T记录提取——派生投影随结算同一 CAS 批落库。盘后路径
+    // 当日成交在 settlement.ledger；实时路径逐帧已落库，从账本读回。
+    let tTradeRecords = [];
+    try {
+      const dayFills = settlement.ledger?.length
+        ? settlement.ledger
+        : await repository.ledgerRowsForDate(date);
+      const recoveryCodes = dayFills
+        .filter((fill) => isRecoveryFill(fill))
+        .map((fill) => fill.code);
+      tTradeRecords = buildTTradeRecords({
+        fills: dayFills,
+        openRecords: await repository.openTTradesByCodes(recoveryCodes),
+        now: new Date().toISOString(),
+      });
+    } catch (error) {
+      // 做T记录是账本的派生投影：提取失败不阻断结算（下次结算同日
+      // 重放可自愈），只留 notice 提示。
+      settlement.notices.push(`做T记录提取失败：${error.message}`);
+    }
     const saved = await repository.settle(
       account.revision,
       settlement,
       dataset,
+      { tTradeRecords },
     );
     if (!saved) settlement = null;
     account = await repository.account();
@@ -200,6 +262,21 @@ async function settlePaperDay(env, date) {
       date,
     });
   }
+  // 方案 7：做T质量冻结摘要（仅生成新计划时汇总；已有冻结计划不重写）。
+  // 从做T记录表汇总并随计划冻结——此后新增记录不改变已冻结计划（重算
+  // 引用计划内副本）。tradingDates 取结算日历（近 20 个交易日）+ 未来
+  // 日历：停手判定只需覆盖第 2 笔亏损了结日到信号日的窗口。
+  let tQuality = null;
+  if (snapshot && !nextPlan) {
+    try {
+      tQuality = summarizeTQuality(await repository.recentTTrades(), {
+        signalDate: snapshot.date,
+        tradingDates: [...(calendar?.dates ?? []), ...calendarDates],
+      });
+    } catch {
+      tQuality = null; // 汇总失败退化为无闸门（旧语义），不阻断计划冻结
+    }
+  }
   if (!nextPlan) {
     // 新政策从下一个尚未冻结的计划生效（§3.2）：计划冻结完整政策 bundle。
     const executionCostPolicy = await effectiveExecutionCostPolicy(env);
@@ -223,6 +300,7 @@ async function settlePaperDay(env, date) {
               originalScoreLookup,
               snapshotDigest: await selectionSnapshotDigest(snapshot),
               ...(exitContext ?? {}),
+              ...(tQuality ? { tQuality } : {}),
             },
           )
         : defensivePlan(
@@ -616,6 +694,31 @@ export async function paperOverview(env, attempt = 0) {
       source: "盘中实时盯市",
     };
   }
+  // 做T质量追踪（方案 7）：最近做T记录 + 质量汇总（按最近结算日为
+  // 信号日口径）。日历不可用时退化为记录展示（summary 为 null）。
+  let tQuality = null;
+  let tTrades = [];
+  try {
+    tTrades = await repository.tTrades(50);
+    if (book.lastDate) {
+      const tFrom = new Date(
+        new Date(`${book.lastDate}T00:00:00Z`).getTime() - 30 * 86400000,
+      )
+        .toISOString()
+        .slice(0, 10);
+      const tCalendar = await tradingCalendar(
+        tFrom,
+        book.lastDate,
+        benchmarkCode,
+      );
+      tQuality = summarizeTQuality(await repository.recentTTrades(), {
+        signalDate: book.lastDate,
+        tradingDates: tCalendar.dates,
+      });
+    }
+  } catch {
+    tQuality = null;
+  }
   return {
     book,
     equity,
@@ -634,5 +737,7 @@ export async function paperOverview(env, attempt = 0) {
     versions,
     ai: aiConfig(env),
     realtime,
+    tTrades,
+    tQuality,
   };
 }

@@ -33,6 +33,7 @@ import {
   detectDowngradeForPosition,
 } from "../../shared/downgrade.js";
 import { checkExitSignals } from "../../shared/exit-signals.js";
+import { T_QUALITY_RULES_VERSION } from "./t-quality.js";
 import {
   classifySentimentCycle,
   resolveExposureCap,
@@ -315,6 +316,13 @@ export function createPlan(
     );
     phaseShift = exitContextFrozen.phaseShift === true;
   }
+  // 做T质量冻结摘要（方案 7）：调用方从做T记录汇总（主账户查表、
+  // 重放/回测/影子从各自成交流水派生），计划冻结时原样携带；重算时
+  // 由 assertProgramSnapshot 回传计划内副本，不按当前记录重推。
+  // 缺失 = 旧语义（tFraction 原样，无闸门）；版本不匹配拒绝生成。
+  const tQuality = options.tQuality ?? null;
+  if (tQuality && tQuality.rulesVersion !== T_QUALITY_RULES_VERSION)
+    throw new Error(`不支持的做T质量规则版本 ${tQuality.rulesVersion}`);
   const policy = options.selectionPolicy ?? selectionPolicyForBook(book);
   const policyFields = selectionPolicyFields(policy);
   const modernSelection = policy.version !== LEGACY_SELECTION_VERSION;
@@ -740,10 +748,26 @@ export function createPlan(
         chargeEntry(componentStates, addAllocation.allocations, referenceCents);
       continue;
     }
-    const tQuantity = roundLot(quantity * strategy.tFraction);
+    // 做T质量闸门（方案 7）：停手期内禁止做T；胜率档位收紧做T仓位
+    // （>60% 允许 2 成、40%~60% 限 1 成、<40% 禁止）。capTraction 为
+    // null（无已了结历史）时不设上限，保持策略原 tFraction 语义。
+    const tCap = tQuality ? tQuality.capTraction : null;
+    const effectiveTFraction =
+      tCap == null ? strategy.tFraction : Math.min(strategy.tFraction, tCap);
+    const tQuantity = roundLot(quantity * effectiveTFraction);
     // 冰点期禁止正向 T（第一腿是买入），只允许反向 T（先卖后买）或 HOLD。
     const freezingBlockForwardT = cycle?.phase === CYCLE_PHASES.FREEZING;
-    if (
+    if (tQuality?.blocked === true) {
+      addOrder({
+        ...base,
+        action: "HOLD",
+        side: "NONE",
+        quantity: 0,
+        reason: tQuality.blockedUntil
+          ? `连续 2 笔做T亏损，停手观察（至 ${tQuality.blockedUntil}）`
+          : "连续 2 笔做T亏损，停手观察",
+      });
+    } else if (
       tQuantity >= 100 &&
       score >= 65 &&
       emotion >= tiers.midEmotion &&
@@ -755,6 +779,12 @@ export function createPlan(
     ) {
       const tAction =
         score >= 82 && !freezingBlockForwardT ? "T_FORWARD" : "T_REVERSE";
+      const tReason =
+        tAction === "T_FORWARD"
+          ? "保留底仓，低吸后在预设价差上兑现旧仓"
+          : freezingBlockForwardT
+            ? "冰点期禁止正T：先减旧仓，回落价再买回"
+            : "先减旧仓，在预设回落价上买回";
       addOrder({
         ...base,
         action: tAction,
@@ -763,11 +793,9 @@ export function createPlan(
         buyTriggerCents: Math.round(referenceCents * (1 - strategy.tBuyDip)),
         sellTriggerCents: Math.round(referenceCents * (1 + strategy.tSellRise)),
         reason:
-          tAction === "T_FORWARD"
-            ? "保留底仓，低吸后在预设价差上兑现旧仓"
-            : freezingBlockForwardT
-              ? "冰点期禁止正T：先减旧仓，回落价再买回"
-              : "先减旧仓，在预设回落价上买回",
+          tCap != null && tCap < strategy.tFraction
+            ? `${tReason}；做T仓位按胜率档位限 ${Math.round(tCap * 10)} 成`
+            : tReason,
       });
     } else {
       addOrder({
@@ -775,7 +803,10 @@ export function createPlan(
         action: "HOLD",
         side: "NONE",
         quantity: 0,
-        reason: "保持底仓，条件不足时不强行交易",
+        reason:
+          tQuality && tQuality.capTraction === 0
+            ? `做T胜率 ${((tQuality.winRate ?? 0) * 100).toFixed(0)}% 低于 40%，暂停做T`
+            : "保持底仓，条件不足时不强行交易",
       });
     }
   }
@@ -961,6 +992,9 @@ export function createPlan(
     ...(downgradeEnabled
       ? { downgradeRulesVersion: DOWNGRADE_RULES_VERSION, downgrades }
       : {}),
+    // 方案 7：做T质量冻结摘要随计划携带（调用方传入时始终携带——含
+    // 空历史摘要；旧计划无字段保持旧语义），重算复用计划内副本。
+    ...(tQuality ? { tQuality: structuredClone(tQuality) } : {}),
     orders: carriedPlanOrders(
       orders,
       book,
@@ -1003,6 +1037,9 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
     // 重算复用计划冻结的卖出上下文（方案 5）：EXIT 决策由冻结输入复现，
     // 不按当前环境重推（缺失时出池持仓回退做 T，会误报"重算不一致"）。
     ...(plan.exitContext ? { exitContextFrozen: plan.exitContext } : {}),
+    // 重算复用计划冻结的做T质量摘要（方案 7）：T 闸门由冻结摘要复现，
+    // 不按当前做T记录重推（冻结后新增记录会误报"重算不一致"）。
+    ...(plan.tQuality ? { tQuality: plan.tQuality } : {}),
   };
   const referenceBook = {
     ...initialBook,

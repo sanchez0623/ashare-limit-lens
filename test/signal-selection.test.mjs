@@ -22,6 +22,7 @@ import {
   DEFAULT_SELECTION_VERSION,
 } from "../backend/domain/signal-selection.js";
 import { digestOf } from "../backend/domain/research-lineage.js";
+import { summarizeTQuality } from "../backend/domain/t-quality.js";
 import { PaperRepository, digest } from "../backend/storage/paper.js";
 import { ShadowAccountRepository } from "../backend/storage/shadow.js";
 import {
@@ -61,7 +62,12 @@ function tiedSnapshot(date = dateAt(0)) {
   return snap;
 }
 const makePlan = (snap = tiedSnapshot(), book = newBook(), opts = {}) =>
-  createPlan(snap, book, strategy, "fixture-v", snap.createdAt, opts);
+  createPlan(snap, book, strategy, "fixture-v", snap.createdAt, {
+    // 方案 7：影子冻结路径始终携带做T质量摘要（空历史为无闸门口径），
+    // 期望计划同口径保持字段一致。
+    tQuality: summarizeTQuality([], { signalDate: snap.date, tradingDates: [] }),
+    ...opts,
+  });
 async function withDB(fn) {
   const DB = localDatabase();
   try {
