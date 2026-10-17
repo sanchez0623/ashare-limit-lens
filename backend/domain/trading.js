@@ -66,6 +66,8 @@ import {
   frozenSelectionPolicy,
   liquidityAmountCents,
   rankSignals,
+  annotateObservationGrades,
+  OBSERVATION_GRADE_RULES_VERSION,
 } from "./signal-selection.js";
 
 export const ACTIONS = Object.freeze({
@@ -207,7 +209,7 @@ export function scoreSignals(snapshot, strategy, policy = selectionPolicy()) {
       sectorScore: sectorScores.get(stock.sector) ?? null,
     };
   });
-  return rankSignals(signals, policy);
+  return annotateObservationGrades(rankSignals(signals, policy));
 }
 
 // 卖出上下文序列化：Map → 纯对象（JSON.stringify 安全）。无任何上下文
@@ -435,6 +437,7 @@ export function createPlan(
     signalDate: snapshot.date,
     snapshotCreatedAt: snapshot.createdAt ?? null,
     snapshotDigest: options.snapshotDigest ?? null,
+    gradeRulesVersion: OBSERVATION_GRADE_RULES_VERSION,
     candidates: signals.map((s, index) => ({
       rank: index + 1,
       code: s.code,
@@ -453,6 +456,9 @@ export function createPlan(
       height: s.height ?? null,
       // v3 股票分类结果随审计透出（平庸型在新增买入阶段被跳过）
       stockClass: s.stockClass ?? null,
+      // 观察池分级（方案 8）：仅展示，不参与排序与交易决策
+      grade: s.grade ?? null,
+      gradeReason: s.gradeReason ?? null,
       ...(strategyProgram
         ? {
             consecutiveBoards: Object.hasOwn(s, "consecutiveBoards")

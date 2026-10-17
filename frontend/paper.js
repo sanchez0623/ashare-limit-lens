@@ -388,10 +388,26 @@ function render() {
         .join("")
     : `<tr><td colspan="6"><div class="empty compact">${plan ? "当前没有满足建仓条件的个股，保持空仓。" : "等待有效盘后评分。"}</div></td></tr>`;
   const candidates = plan?.selectionAudit?.candidates ?? [];
+  const graded = candidates.filter((c) => c.grade !== undefined);
+  const gradeSummary = graded.length
+    ? ` · A ${candidates.filter((c) => c.grade === "A").length} / B ${candidates.filter((c) => c.grade === "B").length} / C ${candidates.filter((c) => c.grade === "C").length}`
+    : "";
+  const gradeCell = (candidate) => {
+    if (candidate.grade === undefined) return "未分级";
+    if (candidate.grade === null)
+      return `剔除<span class="stock-code">${escape(candidate.gradeReason)}</span>`;
+    const label =
+      candidate.grade === "A"
+        ? "重点关注"
+        : candidate.grade === "B"
+          ? "一般关注"
+          : "备选观察";
+    return `${candidate.grade} 级<span class="stock-code">${label} · ${escape(candidate.gradeReason)}</span>`;
+  };
   const selectionExpanded =
     $("paper-selection-audit").querySelector("details")?.open ?? false;
   $("paper-selection-audit").innerHTML = candidates.length
-    ? `<details><summary>选股依据 · ${candidates.filter((c) => c.status === "SELECTED").length} 只入选 / ${candidates.length} 只候选</summary><div class="table-scroll"><table><thead><tr><th>顺序</th><th>个股</th><th>精确评分</th><th>信号日成交额</th><th>选择结果</th></tr></thead><tbody>${candidates.map((c) => `<tr><td>${c.rank}</td><td>${escape(c.name)}<span class="stock-code">${escape(c.code)}</span></td><td>${Number.isFinite(c.scoreValue) ? Number(c.scoreValue.toFixed(6)) : "—"}</td><td>${Number.isFinite(c.liquidityAmountCents) ? `¥ ${metricMoney(c.liquidityAmountCents)}` : "未知"}</td><td>${c.status === "SELECTED" ? "已入选" : "未入选"}<span class="stock-code">${escape(c.reason)}</span></td></tr>`).join("")}</tbody></table></div><p class="small-muted">成交额取自信号日冻结数据，仅作同分决胜；实际成交仍受下一交易日行情、资金及容量限制。</p></details>`
+    ? `<details><summary>选股依据 · ${candidates.filter((c) => c.status === "SELECTED").length} 只入选 / ${candidates.length} 只候选${gradeSummary}</summary><div class="table-scroll"><table><thead><tr><th>顺序</th><th>个股</th><th>分级</th><th>精确评分</th><th>信号日成交额</th><th>选择结果</th></tr></thead><tbody>${candidates.map((c) => `<tr><td>${c.rank}</td><td>${escape(c.name)}<span class="stock-code">${escape(c.code)}</span></td><td>${gradeCell(c)}</td><td>${Number.isFinite(c.scoreValue) ? Number(c.scoreValue.toFixed(6)) : "—"}</td><td>${Number.isFinite(c.liquidityAmountCents) ? `¥ ${metricMoney(c.liquidityAmountCents)}` : "未知"}</td><td>${c.status === "SELECTED" ? "已入选" : "未入选"}<span class="stock-code">${escape(c.reason)}</span></td></tr>`).join("")}</tbody></table></div><p class="small-muted">成交额取自信号日冻结数据，仅作同分决胜；实际成交仍受下一交易日行情、资金及容量限制。</p></details>`
     : "";
   const selectionDetails = $("paper-selection-audit").querySelector("details");
   if (selectionDetails) selectionDetails.open = selectionExpanded;

@@ -15,7 +15,10 @@ import { localDatabase } from "../scripts/local-db.mjs";
 import { PaperRepository, digest } from "../backend/storage/paper.js";
 import { exportPaper, verifyExport } from "../backend/services/paper.js";
 import { assertStoredProgramPlan } from "../backend/services/strategy-program-evidence.js";
-import { selectionSnapshotDigest } from "../backend/domain/signal-selection.js";
+import {
+  OBSERVATION_GRADE_RULES_VERSION,
+  selectionSnapshotDigest,
+} from "../backend/domain/signal-selection.js";
 import {
   frozenProgramSignal,
   exportProgramSignals,
@@ -29,6 +32,21 @@ const legacy = () =>
       "utf8",
     ),
   );
+
+// 观察池分级是纯附加展示字段（方案 8）：旧版冻结计划不含这些字段，
+// 重放时只允许新增分级注解，其余字段仍须逐字段一致。
+function withoutObservationGrades(plan) {
+  const { gradeRulesVersion, ...audit } = plan.selectionAudit;
+  return {
+    ...plan,
+    selectionAudit: {
+      ...audit,
+      candidates: audit.candidates.map(
+        ({ grade, gradeReason, ...candidate }) => candidate,
+      ),
+    },
+  };
+}
 
 async function fixture(program = true) {
   const { book, source, strategy } = legacy();
@@ -91,9 +109,13 @@ test("main 5044416 冻结的程序计划：原快照已有 brokenRows，升级�
     { snapshotDigest: await selectionSnapshotDigest(f.source) },
   );
   assert.deepEqual(
-    replay,
+    withoutObservationGrades(replay),
     f.plan,
     "逐字段保持旧版冻结计划（而非用新版重新生成期望值）",
+  );
+  assert.equal(
+    replay.selectionAudit.gradeRulesVersion,
+    OBSERVATION_GRADE_RULES_VERSION,
   );
   const DB = localDatabase();
   try {

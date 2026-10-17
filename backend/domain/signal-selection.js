@@ -1,4 +1,6 @@
 import { digestOf } from "./research-lineage.js";
+import { BUY_POINT_TYPES } from "../../shared/buy-point-type.js";
+import { STOCK_CLASSES } from "../../shared/stock-class.js";
 // 选股政策与纯排序内核。每个版本的完整内容固定，禁止同编号改规则。
 // 缺少版本的历史账户/清单按 v1 解释；新账户显式采用最新版本。
 export const LEGACY_SELECTION_VERSION = "signal-ranking-v1";
@@ -103,6 +105,63 @@ export function selectionSnapshotDigest(snapshot) {
     ),
   });
 }
+// 观察池分级（方案 8）：独立规则版本，不进入选股政策与摘要。
+// 评分决定下限、股票分类决定上限；grade 仅展示，不参与排序与交易决策。
+export const OBSERVATION_GRADE_RULES_VERSION = 1;
+export const OBSERVATION_GRADES = Object.freeze({ A: "A", B: "B", C: "C" });
+
+const GRADE_ORDER = Object.freeze({ A: 0, B: 1, C: 2 });
+const CLASS_LABELS = Object.freeze({
+  [STOCK_CLASSES.RELAY_LEADER]: "连板龙头型",
+  [STOCK_CLASSES.STRONG_REVERSAL]: "强势反包型",
+  [STOCK_CLASSES.SWING_RANGE]: "波段震荡型",
+});
+// 类别封顶：连板龙头最高 A、强势反包最高 B、波段震荡最高 C、
+// 未分类（null/未知）最高 B。
+const CLASS_CEILING = Object.freeze({
+  [STOCK_CLASSES.RELAY_LEADER]: "A",
+  [STOCK_CLASSES.STRONG_REVERSAL]: "B",
+  [STOCK_CLASSES.SWING_RANGE]: "C",
+});
+const A_GRADE_BUY_POINTS = new Set([
+  BUY_POINT_TYPES.LIMIT_UP_MOMENTUM,
+  BUY_POINT_TYPES.BROKEN_BOARD_DIP,
+]);
+const buyPointTypes = (buyPoint) =>
+  buyPoint?.labels ?? (buyPoint?.primary?.type ? [buyPoint.primary.type] : []);
+
+// 判定顺序：硬排除 → 评分下限 → 类别上限 → A 级买点校验。
+// grade 为 null 只表示"剔除观察池"，不删除信号、不改变交易动作。
+export function observationGrade(signal = {}) {
+  const score = signal.score;
+  if (!Number.isFinite(score))
+    return { grade: null, gradeReason: "缺少有效评分" };
+  if (score < 40) return { grade: null, gradeReason: "评分低于 40" };
+  if (signal.stockClass === STOCK_CLASSES.MEDIOCRE)
+    return { grade: null, gradeReason: "平庸型" };
+
+  const floor = score >= 80 ? "A" : score >= 60 ? "B" : "C";
+  const ceiling = CLASS_CEILING[signal.stockClass] ?? "B";
+  let grade = GRADE_ORDER[floor] >= GRADE_ORDER[ceiling] ? floor : ceiling;
+
+  const qualifiedBuyPoint = buyPointTypes(signal.buyPoint).some((type) =>
+    A_GRADE_BUY_POINTS.has(type),
+  );
+  if (grade === "A" && !qualifiedBuyPoint) grade = "B";
+
+  const classLabel = CLASS_LABELS[signal.stockClass] ?? "未分类（最高 B）";
+  const reasonParts = [`评分 ${score}`, classLabel];
+  if (floor === "A" && !qualifiedBuyPoint)
+    reasonParts.push("买点未命中打板/炸板低吸，降为 B");
+  else if (GRADE_ORDER[ceiling] > GRADE_ORDER[floor])
+    reasonParts.push(`按类别封顶为 ${ceiling}`);
+  return { grade, gradeReason: reasonParts.join(" · ") };
+}
+
+export function annotateObservationGrades(signals) {
+  return signals.map((signal) => ({ ...signal, ...observationGrade(signal) }));
+}
+
 export function rankSignals(signals, policy) {
   selectionPolicyDigest(policy);
   return [...signals].sort((a, b) => {
