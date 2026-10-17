@@ -14,6 +14,9 @@ const files = [
   "backend/domain/signal-selection.js",
   "backend/domain/strategy-program.js",
   "backend/domain/research-lineage.js",
+  // 做T质量追踪（方案 7）：停手与胜率档位规则直接收紧计划的做T闸门，
+  // 必须纳入指纹防研究期间规则漂移。
+  "backend/domain/t-quality.js",
   // 评分与股票分类（方案 3）：PRESETS 权重与 CLASS_WEIGHT_PRESETS 路由
   // 直接决定候选评分与候选池，必须纳入指纹防规则漂移。
   "shared/scoring.js",

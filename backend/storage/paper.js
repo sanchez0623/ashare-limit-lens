@@ -65,6 +65,7 @@ function tTradeRowToRecord(row) {
     total_pnl_cents: row.total_pnl_cents,
     completed_same_day: row.completed_same_day ? 1 : 0,
     completed_date: row.completed_date,
+    completed_sequence: row.completed_sequence ?? 0,
   };
 }
 // 原始分跨日回查：从 snapshots 归档按日期倒序扫描，取每只股票最近一次
@@ -345,7 +346,7 @@ export class PaperRepository {
     for (const record of tTradeRecords)
       statements.push(
         guarded(
-          "INSERT OR REPLACE INTO paper_t_trades (id,trade_date,code,action,buy_price_cents,sell_price_cents,buy_quantity,sell_quantity,day_pnl_cents,total_pnl_cents,completed_same_day,completed_date,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?",
+          "INSERT OR REPLACE INTO paper_t_trades (id,trade_date,code,action,buy_price_cents,sell_price_cents,buy_quantity,sell_quantity,day_pnl_cents,total_pnl_cents,completed_same_day,completed_date,completed_sequence,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?",
           [
             record.id,
             record.trade_date,
@@ -359,6 +360,7 @@ export class PaperRepository {
             record.total_pnl_cents ?? null,
             record.completed_same_day ? 1 : 0,
             record.completed_date ?? null,
+            record.completed_sequence ?? 0,
             record.created_at ?? stamp,
             stamp,
           ],
@@ -593,9 +595,12 @@ export class PaperRepository {
       );
       // 卖出上下文沿用被替换计划的冻结快照：仅调费用/资金时，决策输入
       // 不变（行情当日快照、特征/EOD 行/板块退潮/情绪切换全部复用原值）。
-      const frozenExitContext = previousPlan
-        ? (JSON.parse(previousPlan.payload).exitContext ?? null)
+      const previousPayload = previousPlan
+        ? JSON.parse(previousPlan.payload)
         : null;
+      const frozenExitContext = previousPayload?.exitContext ?? null;
+      // 方案 7：做T质量摘要与证据同样沿用被替换计划的冻结版本——同日
+      // 重冻时质量状态未变，正常修改费用不得解除停手/档位闸门。
       replacement = snapshot
         ? createPlan(snapshot, book, strategy, book.activeStrategy, stamp, {
             executionCostPolicy,
@@ -604,6 +609,12 @@ export class PaperRepository {
             snapshotDigest: await selectionSnapshotDigest(snapshot),
             ...(frozenExitContext
               ? { exitContextFrozen: frozenExitContext }
+              : {}),
+            ...(previousPayload?.tQuality
+              ? { tQuality: previousPayload.tQuality }
+              : {}),
+            ...(previousPayload?.tQualityEvidence
+              ? { tQualityEvidence: previousPayload.tQualityEvidence }
               : {}),
           })
         : defensivePlan(day, book, strategy, book.activeStrategy, stamp, {

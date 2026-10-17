@@ -1,5 +1,9 @@
 import { createPlan, executePlan, newBook, BASE_STRATEGY } from "./trading.js";
-import { extractTTrades, summarizeTQuality } from "./t-quality.js";
+import {
+  extractTTrades,
+  summarizeTQuality,
+  buildTQualityEvidence,
+} from "./t-quality.js";
 import { STRATEGY_RANGES } from "../../shared/strategy-params.js";
 
 // 与 shared/strategy-params.js 共用一套范围，手动编辑与 AI 提案同界。
@@ -130,13 +134,15 @@ function* replayStrategySteps(
     // 卖出上下文（方案 5）：pair 携带该日固化输入（主账户冻结时的同一
     // 版本），重放的卖出决策与实盘同源，不因重放环境按当前日线重推而
     // 偏离（缺失时信号跳过，与无上下文的旧计划口径一致）。
-    // 做T质量摘要（方案 7）：截至上一执行日的做T记录 → 冻结摘要随
-    // 计划生成；与主账户同一 summarize 口径（tradingDates 为重放自身
-    // 的相邻交易日序列）。
-    const tQuality = summarizeTQuality(extractTTrades(tFills).records, {
+    // 做T质量摘要（方案 7）：截至上一执行日的做T记录 → 冻结摘要与
+    // 证据随计划生成；与主账户同一 summarize 口径（tradingDates 为
+    // 重放自身的相邻交易日序列，截至信号日）。
+    const tRecords = extractTTrades(tFills).records;
+    const tQuality = summarizeTQuality(tRecords, {
       signalDate: pair.snapshot.date,
       tradingDates: tDates,
     });
+    const tQualityEvidence = buildTQualityEvidence(tRecords, tDates);
     const plan = createPlan(
       pair.snapshot,
       book,
@@ -148,6 +154,7 @@ function* replayStrategySteps(
         originalScoreLookup: (code) => scoreHistory.get(code) ?? null,
         selectionPolicy: policy,
         tQuality,
+        tQualityEvidence,
         ...(pair.exitContext ? { exitContextFrozen: pair.exitContext } : {}),
       },
     );

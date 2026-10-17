@@ -22,7 +22,10 @@ import {
   DEFAULT_SELECTION_VERSION,
 } from "../backend/domain/signal-selection.js";
 import { digestOf } from "../backend/domain/research-lineage.js";
-import { summarizeTQuality } from "../backend/domain/t-quality.js";
+import {
+  buildTQualityEvidence,
+  summarizeTQuality,
+} from "../backend/domain/t-quality.js";
 import { PaperRepository, digest } from "../backend/storage/paper.js";
 import { ShadowAccountRepository } from "../backend/storage/shadow.js";
 import {
@@ -61,13 +64,19 @@ function tiedSnapshot(date = dateAt(0)) {
   }));
   return snap;
 }
-const makePlan = (snap = tiedSnapshot(), book = newBook(), opts = {}) =>
-  createPlan(snap, book, strategy, "fixture-v", snap.createdAt, {
-    // 方案 7：影子冻结路径始终携带做T质量摘要（空历史为无闸门口径），
-    // 期望计划同口径保持字段一致。
-    tQuality: summarizeTQuality([], { signalDate: snap.date, tradingDates: [] }),
+const makePlan = (snap = tiedSnapshot(), book = newBook(), opts = {}) => {
+  // 方案 7：影子冻结路径始终携带做T质量摘要与证据（空历史为无闸门
+  // 口径），期望计划同口径保持字段一致。
+  const tQuality = summarizeTQuality([], {
+    signalDate: snap.date,
+    tradingDates: [],
+  });
+  return createPlan(snap, book, strategy, "fixture-v", snap.createdAt, {
+    tQuality,
+    tQualityEvidence: buildTQualityEvidence([], []),
     ...opts,
   });
+};
 async function withDB(fn) {
   const DB = localDatabase();
   try {
@@ -111,12 +120,20 @@ test("v3 股票分类路由：按类别切换权重预设，平庸型被排除�
     stockClass: "mediocre",
   });
   // v2：无路由、无排除 → 三只全部参与，统一策略权重
-  const v2 = scoreSignals(snap, strategy, selectionPolicy(SELECTION_VERSION_V2));
+  const v2 = scoreSignals(
+    snap,
+    strategy,
+    selectionPolicy(SELECTION_VERSION_V2),
+  );
   assert.equal(v2.length, 3);
   // v3：平庸股仍保留在信号列表（持仓股依赖当日信号触发风险动作），
   // 但按策略权重评分；龙头按 relay 权重重算（[30,20,10,10,20,10] → 93.3 分），
   // 未分类的 002692 保持策略权重（balanced → 94.6 分）并反超龙头居首
-  const v3 = scoreSignals(snap, strategy, selectionPolicy(DEFAULT_SELECTION_VERSION));
+  const v3 = scoreSignals(
+    snap,
+    strategy,
+    selectionPolicy(DEFAULT_SELECTION_VERSION),
+  );
   assert.deepEqual(
     v3.map((s) => [s.code, s.score]),
     [
@@ -131,7 +148,10 @@ test("v3 股票分类路由：按类别切换权重预设，平庸型被排除�
     plan.selectionAudit.candidates.find((c) => c.code === "300001").reason,
     "平庸型不进入新增候选池",
   );
-  assert.equal(plan.orders.some((o) => o.code === "300001"), false);
+  assert.equal(
+    plan.orders.some((o) => o.code === "300001"),
+    false,
+  );
 });
 
 test("v3 平庸剔除不影响持仓风险信号：持仓股当日走弱仍减仓，与 v2 一致", () => {
@@ -178,16 +198,15 @@ test("v3 未持仓的平庸股：保留在候选审计中但标注不进入候�
   const snap = tiedSnapshot();
   snap.stocks[0].stockClass = "mediocre";
   const plan = makePlan(snap); // 无持仓 → 全部为新增候选
-  const audit = plan.selectionAudit.candidates.find(
-    (c) => c.code === "002343",
-  );
+  const audit = plan.selectionAudit.candidates.find((c) => c.code === "002343");
   assert.equal(audit.stockClass, "mediocre");
   assert.equal(audit.reason, "平庸型不进入新增候选池");
-  assert.equal(plan.orders.some((o) => o.code === "002343"), false);
-  // 未分类的另一只不受影响：排序在前，通过资格与资金检查入选
-  const other = plan.selectionAudit.candidates.find(
-    (c) => c.code === "002692",
+  assert.equal(
+    plan.orders.some((o) => o.code === "002343"),
+    false,
   );
+  // 未分类的另一只不受影响：排序在前，通过资格与资金检查入选
+  const other = plan.selectionAudit.candidates.find((c) => c.code === "002692");
   assert.match(other.reason, /通过资格与资金检查/);
 });
 

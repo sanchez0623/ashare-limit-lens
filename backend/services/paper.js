@@ -24,6 +24,7 @@ import {
   applyRecoveryFill,
   isRecoveryFill,
   summarizeTQuality,
+  buildTQualityEvidence,
 } from "../domain/t-quality.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
@@ -262,19 +263,24 @@ async function settlePaperDay(env, date) {
       date,
     });
   }
-  // 方案 7：做T质量冻结摘要（仅生成新计划时汇总；已有冻结计划不重写）。
-  // 从做T记录表汇总并随计划冻结——此后新增记录不改变已冻结计划（重算
-  // 引用计划内副本）。tradingDates 取结算日历（近 20 个交易日）+ 未来
-  // 日历：停手判定只需覆盖第 2 笔亏损了结日到信号日的窗口。
+  // 方案 7：做T质量冻结摘要与证据（仅生成新计划时汇总；已有冻结计划
+  // 不重写）。tradingDates 取截至信号日的结算日历——同一信号日在任一
+  // 链路（影子/重放/回测）得到同一列表，停手判定只依赖过去窗口；证据
+  // 随计划冻结，核验方用证据独立重算摘要，摘要不可直接声明。
   let tQuality = null;
+  let tQualityEvidence = null;
   if (snapshot && !nextPlan) {
     try {
-      tQuality = summarizeTQuality(await repository.recentTTrades(), {
+      const tRecords = await repository.recentTTrades();
+      const tradingDates = calendar?.dates ?? [];
+      tQuality = summarizeTQuality(tRecords, {
         signalDate: snapshot.date,
-        tradingDates: [...(calendar?.dates ?? []), ...calendarDates],
+        tradingDates,
       });
+      tQualityEvidence = buildTQualityEvidence(tRecords, tradingDates);
     } catch {
       tQuality = null; // 汇总失败退化为无闸门（旧语义），不阻断计划冻结
+      tQualityEvidence = null;
     }
   }
   if (!nextPlan) {
@@ -300,7 +306,12 @@ async function settlePaperDay(env, date) {
               originalScoreLookup,
               snapshotDigest: await selectionSnapshotDigest(snapshot),
               ...(exitContext ?? {}),
-              ...(tQuality ? { tQuality } : {}),
+              ...(tQuality
+                ? {
+                    tQuality,
+                    ...(tQualityEvidence ? { tQualityEvidence } : {}),
+                  }
+                : {}),
             },
           )
         : defensivePlan(
@@ -445,6 +456,10 @@ export async function verifyExport(bundle) {
     replay = true;
   let book = newBook(bundle.initialCashCents / 100);
   let fillIndex = 0;
+  // 方案 7：重放成交与交易日累积——做T质量摘要的独立锚点输入（重放
+  // 成交与导出账本逐条比对绑定，不可篡改；数据集日期即交易日序列）。
+  const replayedFills = [];
+  const replayedDates = [];
   const sourceFor = (plan) =>
     plan &&
     (bundle.signalSnapshots?.find(
@@ -498,6 +513,17 @@ export async function verifyExport(bundle) {
     for (let index = 0; index < bundle.datasets.length; index++) {
       const dataset = bundle.datasets[index].payload;
       const plan = index ? plans.get(dataset.previousTradingDate) : null;
+      // 方案 7：做T质量摘要的独立锚点——用重放成交（截至信号日）与
+      // 数据集交易日独立重算摘要，与计划声明比对：改写摘要或其证据
+      // 都无法通过核验。
+      if (plan?.tQuality) {
+        const recomputed = summarizeTQuality(
+          extractTTrades(replayedFills).records,
+          { signalDate: plan.signalDate, tradingDates: replayedDates },
+        );
+        if (JSON.stringify(recomputed) !== JSON.stringify(plan.tQuality))
+          hashes = false;
+      }
       assertProgramSnapshot(plan, sourceFor(plan), book);
       if (index && (!plan || book.lastDate !== dataset.previousTradingDate)) {
         replay = false;
@@ -538,12 +564,23 @@ export async function verifyExport(bundle) {
         replay = false;
       fillIndex += result.ledger.length;
       book = result.book;
+      replayedFills.push(...result.ledger);
+      replayedDates.push(dataset.date);
     }
     for (const [date, savedSession] of [...liveSessions].sort((a, b) =>
       a[0].localeCompare(b[0]),
     )) {
       if (date <= (book.lastDate || "")) continue;
       const plan = plans.get(book.lastDate);
+      // 方案 7：未结算日的已冻结计划同样用账本锚点复核质量摘要。
+      if (plan?.tQuality) {
+        const recomputed = summarizeTQuality(
+          extractTTrades(replayedFills).records,
+          { signalDate: plan.signalDate, tradingDates: replayedDates },
+        );
+        if (JSON.stringify(recomputed) !== JSON.stringify(plan.tQuality))
+          hashes = false;
+      }
       assertProgramSnapshot(plan, sourceFor(plan), book);
       let session = openSession(book, plan, date),
         fills = [];

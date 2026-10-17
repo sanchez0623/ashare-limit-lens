@@ -4,7 +4,11 @@ import {
   newBook,
   totalQuantity,
 } from "../domain/trading.js";
-import { extractTTrades, summarizeTQuality } from "../domain/t-quality.js";
+import {
+  extractTTrades,
+  summarizeTQuality,
+  buildTQualityEvidence,
+} from "../domain/t-quality.js";
 import {
   openSession,
   advanceSession,
@@ -328,6 +332,14 @@ async function runBacktestInner(
           snapshot?.market?.brokenRows,
         );
       }
+      // 方案 7：截至上一执行日的做T质量摘要与证据（与主账户同一口径，
+      // tradingDates 为回测自身的相邻交易日序列，截至信号日）。
+      const tRecords = extractTTrades(tFills).records;
+      const tQuality = summarizeTQuality(tRecords, {
+        signalDate,
+        tradingDates: tDates,
+      });
+      const tQualityEvidence = buildTQualityEvidence(tRecords, tDates);
       plan = createPlan(
         snapshot,
         book,
@@ -340,11 +352,8 @@ async function runBacktestInner(
           selectionPolicy,
           snapshotDigest: await selectionSnapshotDigest(snapshot),
           ...exitContext,
-          // 方案 7：截至上一执行日的做T质量摘要（与主账户同一口径）。
-          tQuality: summarizeTQuality(extractTTrades(tFills).records, {
-            signalDate,
-            tradingDates: tDates,
-          }),
+          tQuality,
+          tQualityEvidence,
         },
       );
     } catch (error) {

@@ -33,7 +33,7 @@ import {
   detectDowngradeForPosition,
 } from "../../shared/downgrade.js";
 import { checkExitSignals } from "../../shared/exit-signals.js";
-import { T_QUALITY_RULES_VERSION } from "./t-quality.js";
+import { T_QUALITY_RULES_VERSION, summarizeTQuality } from "./t-quality.js";
 import {
   classifySentimentCycle,
   resolveExposureCap,
@@ -318,11 +318,17 @@ export function createPlan(
   }
   // 做T质量冻结摘要（方案 7）：调用方从做T记录汇总（主账户查表、
   // 重放/回测/影子从各自成交流水派生），计划冻结时原样携带；重算时
-  // 由 assertProgramSnapshot 回传计划内副本，不按当前记录重推。
+  // 由 assertProgramSnapshot 用冻结证据独立重算，不信任计划内声明。
   // 缺失 = 旧语义（tFraction 原样，无闸门）；版本不匹配拒绝生成。
   const tQuality = options.tQuality ?? null;
+  const tQualityEvidence = options.tQualityEvidence ?? null;
   if (tQuality && tQuality.rulesVersion !== T_QUALITY_RULES_VERSION)
     throw new Error(`不支持的做T质量规则版本 ${tQuality.rulesVersion}`);
+  // 摘要与证据成对冻结：缺一的计划无法通过核验，冻结时就拒绝。
+  if (tQuality && !tQualityEvidence)
+    throw new Error("做T质量摘要缺少冻结证据，拒绝生成计划");
+  if (tQualityEvidence && !tQuality)
+    throw new Error("做T质量证据缺少摘要，拒绝生成计划");
   const policy = options.selectionPolicy ?? selectionPolicyForBook(book);
   const policyFields = selectionPolicyFields(policy);
   const modernSelection = policy.version !== LEGACY_SELECTION_VERSION;
@@ -763,8 +769,8 @@ export function createPlan(
         action: "HOLD",
         side: "NONE",
         quantity: 0,
-        reason: tQuality.blockedUntil
-          ? `连续 2 笔做T亏损，停手观察（至 ${tQuality.blockedUntil}）`
+        reason: tQuality.stopTriggerDate
+          ? `连续 2 笔做T亏损，停手观察（自 ${tQuality.stopTriggerDate} 起 3 个交易日）`
           : "连续 2 笔做T亏损，停手观察",
       });
     } else if (
@@ -993,8 +999,17 @@ export function createPlan(
       ? { downgradeRulesVersion: DOWNGRADE_RULES_VERSION, downgrades }
       : {}),
     // 方案 7：做T质量冻结摘要随计划携带（调用方传入时始终携带——含
-    // 空历史摘要；旧计划无字段保持旧语义），重算复用计划内副本。
-    ...(tQuality ? { tQuality: structuredClone(tQuality) } : {}),
+    // 空历史摘要），支撑证据（做T记录 + 交易日）独立冻结在计划顶层，
+    // 核验方用证据独立重算摘要——摘要不可直接声明。旧计划两者皆无，
+    // 保持旧语义。
+    ...(tQuality
+      ? {
+          tQuality: structuredClone(tQuality),
+          ...(tQualityEvidence
+            ? { tQualityEvidence: structuredClone(tQualityEvidence) }
+            : {}),
+        }
+      : {}),
     orders: carriedPlanOrders(
       orders,
       book,
@@ -1011,10 +1026,31 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
   if (!plan) return;
   const downgradeEnabled = downgradeEnabledForPlan(plan);
   const sourceDowngradeEnabled = downgradeEnabledForSnapshot(snapshot);
-  if (!plan.strategy?.program && !downgradeEnabled && !sourceDowngradeEnabled)
+  const hasTQuality = plan.tQuality != null || plan.tQualityEvidence != null;
+  if (
+    !plan.strategy?.program &&
+    !downgradeEnabled &&
+    !sourceDowngradeEnabled &&
+    !hasTQuality
+  )
     return;
   if (downgradeEnabled !== sourceDowngradeEnabled)
     throw new Error("计划降级规则版本与原始信号快照不一致");
+  // 方案 7：做T质量摘要不可直接声明——用计划冻结的证据（做T记录 +
+  // 交易日）独立重算并比对。改写摘要、改写证据、两者缺失其一都无法
+  // 通过核验；证据的成交来源由导出核验用账本独立复核。
+  let effectiveTQuality = plan.tQuality ?? null;
+  if (hasTQuality) {
+    if (!plan.tQuality || !plan.tQualityEvidence)
+      throw new Error("做T质量摘要与冻结证据必须同时随计划冻结");
+    const recomputed = summarizeTQuality(plan.tQualityEvidence.records, {
+      signalDate: plan.signalDate,
+      tradingDates: plan.tQualityEvidence.tradingDates,
+    });
+    if (canonicalJson(recomputed) !== canonicalJson(plan.tQuality))
+      throw new Error("做T质量摘要与冻结证据重算不一致");
+    effectiveTQuality = recomputed;
+  }
   assertProgramPlan(plan, initialBook);
   if (
     !plan.sourceSnapshotMissing &&
@@ -1037,9 +1073,12 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
     // 重算复用计划冻结的卖出上下文（方案 5）：EXIT 决策由冻结输入复现，
     // 不按当前环境重推（缺失时出池持仓回退做 T，会误报"重算不一致"）。
     ...(plan.exitContext ? { exitContextFrozen: plan.exitContext } : {}),
-    // 重算复用计划冻结的做T质量摘要（方案 7）：T 闸门由冻结摘要复现，
-    // 不按当前做T记录重推（冻结后新增记录会误报"重算不一致"）。
-    ...(plan.tQuality ? { tQuality: plan.tQuality } : {}),
+    // 重算复用计划冻结的做T质量摘要（方案 7）：T 闸门由冻结证据独立
+    // 重算出的摘要驱动（已核验与声明一致），不按当前做T记录重推。
+    // 摘要与证据成对传入（重算的 createPlan 同样执行成对校验）。
+    ...(effectiveTQuality
+      ? { tQuality: effectiveTQuality, tQualityEvidence: plan.tQualityEvidence }
+      : {}),
   };
   const referenceBook = {
     ...initialBook,
