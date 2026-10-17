@@ -113,9 +113,12 @@ export async function saveSnapshot(env, market, weights) {
       historyByCode: featuresByCode,
       lateSession: true,
       firstNegMinPrevHeight,
+      // 炸板池行（与 rows 同为原始行，需各自归一化）：炸板低吸 /
+      // 尾盘跳水低吸 的候选来源。缺失时为空候选，不影响涨停池链路。
+      brokenRows: market.brokenRows?.map(normalize) ?? null,
     },
   );
-  const { stocks, sectors, ...marketSummary } = a;
+  const { stocks, sectors, brokenStocks, ...marketSummary } = a;
   const createdAt = new Date().toISOString();
   const payload = {
     date: market.date,
@@ -133,6 +136,11 @@ export async function saveSnapshot(env, market, weights) {
     judgment:
       "以评分前 20% 个股作为优先观察组，下一交易日检验其相对当日完整涨停样本的表现。",
     stocks,
+    // 炸板池候选行（已打分、已做买点标注）：炸板低吸 / 尾盘跳水低吸
+    // 的候选宇宙。旧快照无此字段 → 摘要输入不变，自动保持旧语义。
+    // 注意与 market.brokenRows 分工：brokenStocks 是评分/买点产物，
+    // market.brokenRows 保留原始行供出池持仓炸板次数（exit-context）读取。
+    brokenStocks,
     sectors,
     emotion: a.emotion,
     marketSummary,

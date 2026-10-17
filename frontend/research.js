@@ -196,6 +196,11 @@ function recalculate() {
         }
       : {}),
     ...(state.payload?.lateSession === true ? { lateSession: true } : {}),
+    // 炸板池原始行（payload 已下发）：炸板低吸 / 尾盘跳水低吸 候选来源，
+    // 与服务端 saveSnapshot 的 analyze 输入保持同口径
+    ...(state.payload?.brokenRows?.length
+      ? { brokenRows: state.payload.brokenRows.map(normalize) }
+      : {}),
   };
   state.analysis = state.payload?.archived
     ? structuredClone(state.payload.analysis)

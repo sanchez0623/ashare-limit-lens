@@ -290,6 +290,17 @@ export function analyze(
   options = {},
 ) {
   const clean = rows.filter((r) => r.code && !/ST|退/.test(r.name));
+  // 炸板池候选行：炸板低吸 / 尾盘跳水低吸 的候选来源（analyze 之前只对
+  // 涨停池打分，这两类买点的目标股不在候选行里，结构性无法触发）。
+  // 池成员资格是"盘中触板、收盘未封"的权威来源，isLimitUp 据此强制
+  // false，不能用涨幅反推：尾盘炸板仍收在涨停价 -0.3 以内（主板 +9.8%）
+  // 时涨幅判定会算出 isLimitUp=true，导致 testMomentum 误标"打板"、
+  // testBrokenBoard 被 isLimitUp 守卫屏蔽——恰是要救的买点。
+  // 口径隔离：炸板行只补充候选，绝不进入 sectorAnalysis / promotion /
+  // emotion / count / cycle 的输入（这些仍只由涨停池派生）。
+  const brokenClean = (options.brokenRows ?? []).filter(
+    (r) => r.code && !/ST|退/.test(r.name),
+  );
   const sectors = sectorAnalysis(clean),
     bySector = new Map(sectors.map((s) => [s.name, s.score]));
   // 昨日同代码行作为 prevRow 传入，供买点分类器计算 prevChange/prevBreaks。
@@ -317,13 +328,19 @@ export function analyze(
     options.historyByCode instanceof Map
       ? (options.historyByCode.get(code) ?? null)
       : (options.historyByCode?.[code] ?? null);
-  const enriched = clean.map((r) => {
+  // 两池共用同一套派生与分类逻辑（sectorScore / ma5 / stockClass /
+  // buyPoint 口径完全一致），唯一差别是 isLimitUp 判定来源：涨停池按
+  // 涨幅判定，炸板池按池成员资格强制 false。sectorMaxHeight 仍取自
+  // 涨停池（板块领涨口径不把炸板股算作板块最高板）。
+  const enrichRow = (r, source) => {
     const change = num(r.change);
     const boardLimit = r.boardLimit ?? (r.code?.startsWith("30") ? 20 : 10);
     const isLimitUp =
-      change !== null &&
-      change >= boardLimit - 0.3 &&
-      (r.first !== null || (r.height ?? 0) >= 1);
+      source === "broken"
+        ? false
+        : change !== null &&
+          change >= boardLimit - 0.3 &&
+          (r.first !== null || (r.height ?? 0) >= 1);
     const openChange = num(r.openChange);
     const ma5 = ma5Of(options.ma5ByCode, r.code);
     const classification =
@@ -338,6 +355,9 @@ export function analyze(
       ...r,
       isLimitUp,
       boardLimit,
+      // 溯源标记只在炸板行写：涨停池行保持既有形状不变（摘要变更最小）；
+      // 下游按 candidateSource 存在与否区分来源，缺失即涨停池。
+      ...(source === "broken" ? { candidateSource: source } : {}),
       ...(openChange !== null ? { openChange } : {}),
       ...(ma5 !== null ? { ma5 } : {}),
       ...(options.lateSession === true ? { lateSession: true } : {}),
@@ -348,18 +368,23 @@ export function analyze(
           }
         : {}),
     };
-  });
-  const stocks = enriched
-    .map((r) =>
-      analyzeStock(
-        r,
-        bySector.get(r.sector),
-        weights,
-        prevByCode?.get(r.code) ?? null,
-        options,
-      ),
-    )
-    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  };
+  const enriched = clean.map((r) => enrichRow(r, "limit-up"));
+  const brokenEnriched = brokenClean.map((r) => enrichRow(r, "broken"));
+  const scoreAndSort = (enrichedRows) =>
+    enrichedRows
+      .map((r) =>
+        analyzeStock(
+          r,
+          bySector.get(r.sector),
+          weights,
+          prevByCode?.get(r.code) ?? null,
+          options,
+        ),
+      )
+      .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  const stocks = scoreAndSort(enriched);
+  const brokenStocks = scoreAndSort(brokenEnriched);
   const sealRate =
     broken === null
       ? null
@@ -391,6 +416,7 @@ export function analyze(
   });
   return {
     stocks,
+    brokenStocks,
     sectors,
     count: clean.length,
     excluded: rows.length - clean.length,

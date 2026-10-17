@@ -368,6 +368,62 @@ test("打乱股票和板块输入不改变排序、规范化快照摘要及计�
   reversed.stocks[0] = { ...reversed.stocks[0], amount: 2 };
   assert.notEqual(await selectionSnapshotDigest(reversed), sourceDigest);
 });
+test("炸板候选纳入选择摘要且乱序不敏感；旧快照无字段时摘要不变", async () => {
+  const snap = tiedSnapshot();
+  const legacyDigest = await selectionSnapshotDigest(snap);
+  // 旧快照形状（无 brokenStocks）：新逻辑不补空数组，摘要逐字节不变
+  assert.equal(await selectionSnapshotDigest(snap), legacyDigest);
+  assert.equal(
+    await digest(makePlan(snap, newBook(), { snapshotDigest: legacyDigest })),
+    await digest(
+      makePlan({ ...snap }, newBook(), { snapshotDigest: legacyDigest }),
+    ),
+  );
+  snap.brokenStocks = [
+    { code: "600999", name: "炸板乙", score: 70, coverage: 100 },
+    { code: "600003", name: "炸板甲", score: 60, coverage: 100 },
+  ];
+  const newDigest = await selectionSnapshotDigest(snap);
+  assert.notEqual(newDigest, legacyDigest);
+  const reversed = {
+    ...snap,
+    brokenStocks: [...snap.brokenStocks].reverse(),
+  };
+  assert.equal(await selectionSnapshotDigest(reversed), newDigest);
+  assert.equal(
+    await digest(makePlan(reversed, newBook(), { snapshotDigest: newDigest })),
+    await digest(makePlan(snap, newBook(), { snapshotDigest: newDigest })),
+  );
+});
+test("炸板候选不进入候选池与建仓：即使分数达标也不产生订单", () => {
+  const snap = tiedSnapshot();
+  const codes = snap.stocks.map((s, i) => `6000${90 + i}`);
+  snap.brokenStocks = codes.map((code, i) => ({
+    ...snap.stocks[0],
+    code,
+    name: `炸板样本${i + 1}`,
+    score: 100,
+    coverage: 100,
+    candidateSource: "broken",
+  }));
+  const plan = makePlan(snap);
+  assert.ok(plan.orders.length > 0, "涨停池照常建仓");
+  assert.ok(
+    plan.orders.every((order) => !codes.includes(order.code)),
+    "不产生任何炸板来源订单",
+  );
+  assert.equal(
+    plan.selectionAudit.candidates.some((c) => codes.includes(c.code)),
+    false,
+    "炸板候选不进入选股审计",
+  );
+  const signals = scoreSignals(snap, { ...BASE_STRATEGY, maxPositions: 1 });
+  assert.equal(signals.length, snap.stocks.length);
+  assert.ok(
+    signals.every((s) => !codes.includes(s.code)),
+    "评分信号只来自涨停池",
+  );
+});
 test("政策摘要独立 SHA-256 重算一致；未知版本与同版本改内容拒绝", async () => {
   for (const version of [
     LEGACY_SELECTION_VERSION,

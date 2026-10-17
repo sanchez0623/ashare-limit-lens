@@ -97,13 +97,19 @@ export function liquidityAmountCents(amount) {
 const codeOrder = (a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
 // 股票/板块列表在选股输入中是集合；因子数组仍有权重位置含义，不能重排。
 export function selectionSnapshotDigest(snapshot) {
-  return digestOf({
+  const digestSource = {
     ...snapshot,
     stocks: [...snapshot.stocks].sort(codeOrder),
     sectors: [...snapshot.sectors].sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     ),
-  });
+  };
+  // 旧快照无炸板候选字段：不补空数组，否则摘要输入多出键，旧计划重算 /
+  // 核验会因摘要失配而拒绝（不追溯改规则）。仅在新快照上按 code 排序
+  // 纳入，保证选择摘要确定性与新字段冻结。
+  if (snapshot.brokenStocks !== undefined)
+    digestSource.brokenStocks = [...snapshot.brokenStocks].sort(codeOrder);
+  return digestOf(digestSource);
 }
 // 观察池分级（方案 8）：独立规则版本，不进入选股政策与摘要。
 // 评分决定下限、股票分类决定上限；grade 仅展示，不参与排序与交易决策。
