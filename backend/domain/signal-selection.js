@@ -147,12 +147,12 @@ export function observationGrade(signal = {}) {
   const qualifiedBuyPoint = buyPointTypes(signal.buyPoint).some((type) =>
     A_GRADE_BUY_POINTS.has(type),
   );
-  if (grade === "A" && !qualifiedBuyPoint) grade = "B";
+  const buyPointDowngraded = grade === "A" && !qualifiedBuyPoint;
+  if (buyPointDowngraded) grade = "B";
 
   const classLabel = CLASS_LABELS[signal.stockClass] ?? "未分类（最高 B）";
   const reasonParts = [`评分 ${score}`, classLabel];
-  if (floor === "A" && !qualifiedBuyPoint)
-    reasonParts.push("买点未命中打板/炸板低吸，降为 B");
+  if (buyPointDowngraded) reasonParts.push("买点未命中打板/炸板低吸，降为 B");
   else if (GRADE_ORDER[ceiling] > GRADE_ORDER[floor])
     reasonParts.push(`按类别封顶为 ${ceiling}`);
   return { grade, gradeReason: reasonParts.join(" · ") };

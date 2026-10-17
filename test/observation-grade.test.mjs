@@ -79,6 +79,24 @@ test("类别封顶：强势反包最高 B、波段震荡最高 C、未分类最�
   );
 });
 
+test("类别已封顶时，缺少 A 级买点不能把原因误写为降至 B", () => {
+  for (const [stockClass, expectedGrade] of [
+    [STOCK_CLASSES.SWING_RANGE, "C"],
+    [STOCK_CLASSES.STRONG_REVERSAL, "B"],
+    [null, "B"],
+  ]) {
+    for (const labels of [undefined, [], [BUY_POINT_TYPES.FIRST_NEG_DIP]]) {
+      const result = gradeOf(90, stockClass, labels);
+      assert.equal(result.grade, expectedGrade);
+      assert.match(
+        result.gradeReason,
+        new RegExp(`按类别封顶为 ${expectedGrade}`),
+      );
+      assert.doesNotMatch(result.gradeReason, /买点未命中|降为 B/);
+    }
+  }
+});
+
 test("评分边界：80/79、60/59、40/39", () => {
   assert.equal(
     gradeOf(79, STOCK_CLASSES.RELAY_LEADER, ["limit-up-momentum"]).grade,
