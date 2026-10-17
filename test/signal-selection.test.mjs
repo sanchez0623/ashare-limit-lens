@@ -44,6 +44,9 @@ import { snapshot, dateAt, dataset, bars } from "./fixtures/trading.mjs";
 const strategy = { ...BASE_STRATEGY, maxPositions: 1 };
 function tiedSnapshot(date = dateAt(0)) {
   const snap = snapshot(date);
+  // 方案 7：评分管线在新快照上写做T质量规则标记，影子冻结路径据此
+  // 携带质量摘要与证据。
+  snap.tQualityRulesVersion = 1;
   snap.stocks = [
     {
       ...snap.stocks[0],
@@ -64,16 +67,16 @@ function tiedSnapshot(date = dateAt(0)) {
   }));
   return snap;
 }
+// 方案 7：快照带规则标记的计划必须携带质量摘要与证据（空历史口径）
+const emptyTQualityInputs = (date) => ({
+  tQuality: summarizeTQuality([], { signalDate: date, tradingDates: [] }),
+  tQualityEvidence: buildTQualityEvidence([], []),
+});
 const makePlan = (snap = tiedSnapshot(), book = newBook(), opts = {}) => {
   // 方案 7：影子冻结路径始终携带做T质量摘要与证据（空历史为无闸门
   // 口径），期望计划同口径保持字段一致。
-  const tQuality = summarizeTQuality([], {
-    signalDate: snap.date,
-    tradingDates: [],
-  });
   return createPlan(snap, book, strategy, "fixture-v", snap.createdAt, {
-    tQuality,
-    tQualityEvidence: buildTQualityEvidence([], []),
+    ...emptyTQualityInputs(snap.date),
     ...opts,
   });
 };
@@ -407,6 +410,7 @@ test("现金、单股及总仓位约束逐笔应用，不预支尚未成交的�
     { ...strategy, maxPositions: 4 },
     "v",
     dateAt(0),
+    emptyTQualityInputs(dateAt(0)),
   );
   const total = plan.orders.reduce(
     (sum, o) => sum + o.quantity * o.referenceCents,
@@ -426,6 +430,7 @@ test("现金、单股及总仓位约束逐笔应用，不预支尚未成交的�
     { ...strategy, maxPositions: 4 },
     "v",
     dateAt(0),
+    emptyTQualityInputs(dateAt(0)),
   );
   const cost = limited.orders.reduce(
     (sum, o) =>
@@ -631,7 +636,11 @@ test("模拟三轮完整建仓清仓，保存订单独立回放收益一致", as
       { ...strategy, maxHoldDays: 1 },
       "round-fixture",
       snap.createdAt,
-      { snapshotDigest: await selectionSnapshotDigest(snap) },
+      {
+        snapshotDigest: await selectionSnapshotDigest(snap),
+        // 方案 7：快照已启用做T质量规则，计划必须携带摘要与证据
+        ...emptyTQualityInputs(snap.date),
+      },
     );
     const d = dataset(dateAt(index), "002692", {
       previousDate: dateAt(index - 1),

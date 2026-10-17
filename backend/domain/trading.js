@@ -33,7 +33,12 @@ import {
   detectDowngradeForPosition,
 } from "../../shared/downgrade.js";
 import { checkExitSignals } from "../../shared/exit-signals.js";
-import { T_QUALITY_RULES_VERSION, summarizeTQuality } from "./t-quality.js";
+import {
+  T_QUALITY_RULES_VERSION,
+  summarizeTQuality,
+  tQualityEnabledForSnapshot,
+  tQualityEnabledForPlan,
+} from "./t-quality.js";
 import {
   classifySentimentCycle,
   resolveExposureCap,
@@ -329,6 +334,14 @@ export function createPlan(
     throw new Error("做T质量摘要缺少冻结证据，拒绝生成计划");
   if (tQualityEvidence && !tQuality)
     throw new Error("做T质量证据缺少摘要，拒绝生成计划");
+  // 快照启用标记与计划摘要的一致性（对齐降级规则模式）：新快照（评分
+  // 管线已写 tQualityRulesVersion）的计划必须携带质量摘要与证据——同时
+  // 删除两者伪装成旧计划的路径被快照标记拦截；旧快照的计划不得携带。
+  const sourceTQualityEnabled = tQualityEnabledForSnapshot(snapshot);
+  if (sourceTQualityEnabled && !tQuality)
+    throw new Error("信号快照已启用做T质量规则，计划缺少质量摘要");
+  if (!sourceTQualityEnabled && (tQuality || tQualityEvidence))
+    throw new Error("信号快照未启用做T质量规则，计划不得携带质量摘要");
   const policy = options.selectionPolicy ?? selectionPolicyForBook(book);
   const policyFields = selectionPolicyFields(policy);
   const modernSelection = policy.version !== LEGACY_SELECTION_VERSION;
@@ -1004,6 +1017,9 @@ export function createPlan(
     // 保持旧语义。
     ...(tQuality
       ? {
+          // 规则启用标记独立于摘要：核验据此要求新快照的计划必须携带
+          // 质量摘要与证据，删除两者伪装成旧计划会被快照标记拦截。
+          tQualityRulesVersion: T_QUALITY_RULES_VERSION,
           tQuality: structuredClone(tQuality),
           ...(tQualityEvidence
             ? { tQualityEvidence: structuredClone(tQualityEvidence) }
@@ -1027,15 +1043,23 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
   const downgradeEnabled = downgradeEnabledForPlan(plan);
   const sourceDowngradeEnabled = downgradeEnabledForSnapshot(snapshot);
   const hasTQuality = plan.tQuality != null || plan.tQualityEvidence != null;
+  const planTQualityEnabled = tQualityEnabledForPlan(plan);
+  const sourceTQualityEnabled = tQualityEnabledForSnapshot(snapshot);
   if (
     !plan.strategy?.program &&
     !downgradeEnabled &&
     !sourceDowngradeEnabled &&
-    !hasTQuality
+    !hasTQuality &&
+    !planTQualityEnabled
   )
     return;
   if (downgradeEnabled !== sourceDowngradeEnabled)
     throw new Error("计划降级规则版本与原始信号快照不一致");
+  // 方案 7：做T质量规则标记的一致性——快照已启用（评分管线写入标记）
+  // 的计划必须携带质量摘要与证据，同时删除两者伪装成旧计划被拦截；
+  // 旧快照的计划不得凭空携带。
+  if (planTQualityEnabled !== sourceTQualityEnabled)
+    throw new Error("计划做T质量规则版本与原始信号快照不一致");
   // 方案 7：做T质量摘要不可直接声明——用计划冻结的证据（做T记录 +
   // 交易日）独立重算并比对。改写摘要、改写证据、两者缺失其一都无法
   // 通过核验；证据的成交来源由导出核验用账本独立复核。

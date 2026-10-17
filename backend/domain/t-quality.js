@@ -57,6 +57,26 @@ export function tCapForWinRate(winRate) {
   return 0; // < 40%：禁止做T
 }
 
+// 规则启用标记（对齐降级规则的快照版本模式）：评分管线在新快照上写
+// tQualityRulesVersion，表示"该快照产生的计划运行在启用做T质量规则
+// 的引擎下"。核验据此拦截"同时删除摘要与证据伪装成旧计划"——快照
+// 有标记而计划没有，直接判定不一致，无输入可猜。
+export function tQualityEnabledForSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") return false;
+  if (!Object.hasOwn(snapshot, "tQualityRulesVersion")) return false;
+  if (snapshot.tQualityRulesVersion !== T_QUALITY_RULES_VERSION)
+    throw new Error(`不支持的做T质量规则版本 ${snapshot.tQualityRulesVersion}`);
+  return true;
+}
+
+export function tQualityEnabledForPlan(plan) {
+  if (!plan || typeof plan !== "object") return false;
+  if (!Object.hasOwn(plan, "tQualityRulesVersion")) return false;
+  if (plan.tQualityRulesVersion !== T_QUALITY_RULES_VERSION)
+    throw new Error(`不支持的做T质量规则版本 ${plan.tQualityRulesVersion}`);
+  return true;
+}
+
 // 实时恢复单识别：恢复腿订单 id 以 ":recovery" 结尾（openSession），
 // 成交行携带 orderId 字段。盘后旧执行器从不写 pendingRecovery，无
 // 恢复腿；":carry" 结尾的盘后续单是未完成减仓，不属于做T恢复。
@@ -126,8 +146,8 @@ function applyLeg(record, fill) {
 }
 
 // 恢复腿并入 open 记录：T_FORWARD 补卖出腿，T_REVERSE 补买入腿。
-// 恢复腿现金流只累计进 total（当日口径停留在尝试日）；补齐尝试腿
-// 数量即了结。
+// 恢复腿现金流（含补买回的负现金流）一律累计进 total——反向 T 高价
+// 买回的亏损必须如实入账；补齐尝试腿数量即了结。
 export function applyRecoveryFill(record, fill) {
   const updated = { ...record };
   if (fill.side === "SELL") {
@@ -144,8 +164,7 @@ export function applyRecoveryFill(record, fill) {
       (fill.priceCents ?? 0) * (fill.quantity ?? 0);
   }
   const cash = legCashDelta(fill);
-  if (fill.side === "SELL")
-    updated.total_pnl_cents = (record.total_pnl_cents ?? 0) + cash;
+  updated.total_pnl_cents = (record.total_pnl_cents ?? 0) + cash;
   updated.completed_sequence = fill.sequence ?? record.completed_sequence ?? 0;
   const target =
     updated.action === "T_FORWARD"
@@ -159,15 +178,18 @@ export function applyRecoveryFill(record, fill) {
   return updated;
 }
 
-// 落库/汇总前的记录整形：均价折算（去内部名义额累计字段）。
+// 落库/汇总前的记录整形：均价折算（去内部名义额累计字段）。幂等：
+// 已整形记录（名义额字段已删）保留现有均价，不再除零归零。
 function settleRecord(record) {
   const shaped = { ...record };
-  shaped.buy_price_cents = shaped.buy_quantity
-    ? Math.round((shaped._buy_notional ?? 0) / shaped.buy_quantity)
-    : null;
-  shaped.sell_price_cents = shaped.sell_quantity
-    ? Math.round((shaped._sell_notional ?? 0) / shaped.sell_quantity)
-    : null;
+  if (shaped._buy_notional !== undefined)
+    shaped.buy_price_cents = shaped.buy_quantity
+      ? Math.round(shaped._buy_notional / shaped.buy_quantity)
+      : null;
+  if (shaped._sell_notional !== undefined)
+    shaped.sell_price_cents = shaped.sell_quantity
+      ? Math.round(shaped._sell_notional / shaped.sell_quantity)
+      : null;
   delete shaped._buy_notional;
   delete shaped._sell_notional;
   return shaped;
@@ -192,11 +214,16 @@ export function extractTTrades(fills) {
   };
   const closeDay = () => {
     for (const record of dayByCode.values()) {
-      if (record.buy_quantity > 0 && record.sell_quantity > 0) {
+      // 当日了结 = 买卖两腿数量配平（T+1 下两腿都是本笔 T 的量）；
+      // 只要求"都大于零"会把第二腿未成交完的尝试误判为已了结。
+      if (
+        record.buy_quantity > 0 &&
+        record.buy_quantity === record.sell_quantity
+      ) {
         record.completed_date = record.trade_date;
         finalize(record);
       } else {
-        openByCode.set(record.code, record); // 单腿尝试，等待恢复腿
+        openByCode.set(record.code, record); // 未配平，等待恢复腿
       }
     }
     dayByCode.clear();

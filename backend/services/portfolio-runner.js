@@ -16,6 +16,7 @@ import {
   extractTTrades,
   summarizeTQuality,
   buildTQualityEvidence,
+  tQualityEnabledForSnapshot,
 } from "../domain/t-quality.js";
 import { tradingCalendar } from "./market.js";
 import { loadOrBuildExitContext } from "./exit-context.js";
@@ -197,7 +198,7 @@ export async function freezePortfolioPlan(
   const shadowSignalDate = snapshot?.date ?? account.book.lastDate;
   let tQuality = null;
   let tQualityEvidence = null;
-  if (shadowSignalDate) {
+  if (shadowSignalDate && snapshot && tQualityEnabledForSnapshot(snapshot)) {
     let tradingDates = [];
     try {
       const tFrom = new Date(

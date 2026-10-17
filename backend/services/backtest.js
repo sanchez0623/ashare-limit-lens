@@ -8,6 +8,7 @@ import {
   extractTTrades,
   summarizeTQuality,
   buildTQualityEvidence,
+  tQualityEnabledForSnapshot,
 } from "../domain/t-quality.js";
 import {
   openSession,
@@ -333,13 +334,21 @@ async function runBacktestInner(
         );
       }
       // 方案 7：截至上一执行日的做T质量摘要与证据（与主账户同一口径，
-      // tradingDates 为回测自身的相邻交易日序列，截至信号日）。
-      const tRecords = extractTTrades(tFills).records;
-      const tQuality = summarizeTQuality(tRecords, {
-        signalDate,
-        tradingDates: tDates,
-      });
-      const tQualityEvidence = buildTQualityEvidence(tRecords, tDates);
+      // tradingDates 为回测自身的相邻交易日序列，截至信号日）。快照未
+      // 启用规则（旧归档）时不携带，保持旧语义。
+      const sourceTQualityEnabled = tQualityEnabledForSnapshot(snapshot);
+      const tRecords = sourceTQualityEnabled
+        ? extractTTrades(tFills).records
+        : [];
+      const tQuality = sourceTQualityEnabled
+        ? summarizeTQuality(tRecords, {
+            signalDate,
+            tradingDates: tDates,
+          })
+        : null;
+      const tQualityEvidence = sourceTQualityEnabled
+        ? buildTQualityEvidence(tRecords, tDates)
+        : null;
       plan = createPlan(
         snapshot,
         book,

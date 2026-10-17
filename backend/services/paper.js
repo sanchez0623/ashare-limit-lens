@@ -25,6 +25,7 @@ import {
   isRecoveryFill,
   summarizeTQuality,
   buildTQualityEvidence,
+  tQualityEnabledForSnapshot,
 } from "../domain/t-quality.js";
 import { effectiveExecutionCostPolicy } from "./execution-cost.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
@@ -264,12 +265,13 @@ async function settlePaperDay(env, date) {
     });
   }
   // 方案 7：做T质量冻结摘要与证据（仅生成新计划时汇总；已有冻结计划
-  // 不重写）。tradingDates 取截至信号日的结算日历——同一信号日在任一
-  // 链路（影子/重放/回测）得到同一列表，停手判定只依赖过去窗口；证据
-  // 随计划冻结，核验方用证据独立重算摘要，摘要不可直接声明。
+  // 不重写；快照未启用规则时不携带）。tradingDates 取截至信号日的结算
+  // 日历——同一信号日在任一链路（影子/重放/回测）得到同一列表，停手
+  // 判定只依赖过去窗口；证据随计划冻结，核验方用证据独立重算摘要，
+  // 摘要不可直接声明。
   let tQuality = null;
   let tQualityEvidence = null;
-  if (snapshot && !nextPlan) {
+  if (snapshot && !nextPlan && tQualityEnabledForSnapshot(snapshot)) {
     try {
       const tRecords = await repository.recentTTrades();
       const tradingDates = calendar?.dates ?? [];

@@ -1,6 +1,7 @@
 import { database } from "../storage/database.js";
 import { getMa5ByCode, getStockFeaturesByCode } from "./daily-closes.js";
 import { DOWNGRADE_RULES_VERSION } from "../../shared/downgrade.js";
+import { T_QUALITY_RULES_VERSION } from "../domain/t-quality.js";
 export { database } from "../storage/database.js";
 export function beijingDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -123,6 +124,9 @@ export async function saveSnapshot(env, market, weights) {
     source: market.source,
     modelVersion: "rules-v1",
     downgradeRulesVersion: DOWNGRADE_RULES_VERSION,
+    // 做T质量规则启用标记（方案 7）：核验据此拦截"删除质量摘要伪装成
+    // 旧计划"——快照有标记的计划必须携带质量摘要与证据。
+    tQualityRulesVersion: T_QUALITY_RULES_VERSION,
     ...(market.sectorPerformance
       ? { sectorPerformance: market.sectorPerformance }
       : {}),

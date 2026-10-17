@@ -274,6 +274,88 @@ test("做T记录提取：恢复腿数量不足保持 open；部分恢复累计�
   assert.equal(both.records[0].completed_date, dateAt(3));
 });
 
+test("做T记录提取：第二腿未成交完日终不判了结，恢复腿补齐才了结", () => {
+  // 用户复现：买入 200 股、卖出 100 股——买卖都大于零但未配平，
+  // 账户明确还有 100 股待恢复；不得标记已了结，未配平的现金支出
+  // 也不得计为已实现亏损。
+  const fills = [
+    fill({
+      date: dateAt(1),
+      sequence: 0,
+      action: "T_FORWARD",
+      side: "BUY",
+      priceCents: 980,
+      quantity: 200,
+      cashDeltaCents: -196010,
+    }),
+    fill({
+      date: dateAt(1),
+      sequence: 1,
+      action: "T_FORWARD",
+      side: "SELL",
+      priceCents: 1000,
+      quantity: 100,
+      cashDeltaCents: 99900,
+    }),
+  ];
+  const partial = extractTTrades(fills);
+  assert.equal(partial.records.length, 0, "未配平不当日了结");
+  assert.equal(partial.open.length, 1);
+  assert.equal(partial.open[0].buy_quantity, 200);
+  assert.equal(partial.open[0].sell_quantity, 100);
+  // 次日恢复腿补齐剩余 100 股 → 了结
+  const recovery = fill({
+    date: dateAt(2),
+    sequence: 4,
+    action: "REDUCE",
+    side: "SELL",
+    priceCents: 1010,
+    quantity: 100,
+    cashDeltaCents: 100900,
+    orderId: `${dateAt(2)}:600001:recovery`,
+  });
+  const done = extractTTrades([...fills, recovery]);
+  assert.equal(done.records.length, 1);
+  assert.equal(done.records[0].completed_date, dateAt(2));
+  assert.equal(done.records[0].completed_same_day, 0);
+  assert.equal(done.records[0].total_pnl_cents, 99900 + 100900 - 196010);
+});
+
+test("做T记录提取：反向 T 跨日高价买回，补买支出计入总盈亏", () => {
+  // 用户复现：先卖、次日高价买回，实际亏 211 元——买入恢复腿的
+  // 负现金流必须与卖出腿一起累计。
+  const fills = [
+    fill({
+      date: dateAt(1),
+      sequence: 0,
+      action: "T_REVERSE",
+      side: "SELL",
+      priceCents: 1000,
+      quantity: 200,
+      cashDeltaCents: 199940,
+    }),
+    fill({
+      date: dateAt(2),
+      sequence: 3,
+      action: "ADD",
+      side: "BUY",
+      priceCents: 1020,
+      quantity: 200,
+      cashDeltaCents: -202154,
+      orderId: `${dateAt(2)}:600001:recovery`,
+    }),
+  ];
+  const { records } = extractTTrades(fills);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].completed_date, dateAt(2));
+  assert.equal(records[0].day_pnl_cents, 199940, "当日口径停留在尝试日");
+  assert.equal(
+    records[0].total_pnl_cents,
+    199940 - 202154,
+    "实际亏损 211.4 元",
+  );
+});
+
 test("做T记录提取：盘后 :carry 续单不是恢复腿；旧执行器无恢复语义", () => {
   const fills = [
     fill({
@@ -458,6 +540,46 @@ test("质量证据：与摘要共用同一窗口截断，重算一致", () => {
   const evidence = buildTQualityEvidence(records, dates);
   assert.equal(evidence.records.length, T_QUALITY_EVIDENCE_WINDOW);
   assert.equal(evidence.tradingDates.length, T_QUALITY_EVIDENCE_WINDOW);
+  // 证据整形幂等：已整形记录再进证据，均价不被二次折算归零
+  const batched = extractTTrades([
+    fill({
+      date: dateAt(1),
+      sequence: 0,
+      action: "T_FORWARD",
+      side: "BUY",
+      priceCents: 980,
+      quantity: 100,
+    }),
+    fill({
+      date: dateAt(1),
+      sequence: 1,
+      action: "T_FORWARD",
+      side: "BUY",
+      priceCents: 985,
+      quantity: 100,
+    }),
+    fill({
+      date: dateAt(1),
+      sequence: 2,
+      action: "T_FORWARD",
+      side: "SELL",
+      priceCents: 1000,
+      quantity: 100,
+    }),
+    fill({
+      date: dateAt(1),
+      sequence: 3,
+      action: "T_FORWARD",
+      side: "SELL",
+      priceCents: 1020,
+      quantity: 100,
+    }),
+  ]).records;
+  assert.equal(batched[0].buy_price_cents, 983);
+  assert.equal(batched[0].sell_price_cents, 1010);
+  const reshaped = buildTQualityEvidence(batched, [dateAt(1)]);
+  assert.equal(reshaped.records[0].buy_price_cents, 983, "均价不被归零");
+  assert.equal(reshaped.records[0].sell_price_cents, 1010);
   // 证据是摘要的实际输入：全量汇总与证据重算结果一致
   const fromAll = summarizeTQuality(records, {
     signalDate: dates[49],
@@ -470,10 +592,12 @@ test("质量证据：与摘要共用同一窗口截断，重算一致", () => {
   assert.deepEqual(fromEvidence, fromAll);
 });
 
-// 门控测试用快照：带降级版本标记（触发 assertProgramSnapshot 的重算路径）
+// 门控测试用快照：带降级与做T质量两个版本标记（触发 assertProgramSnapshot
+// 的重算路径与规则一致性核验）
 const gatedSnapshot = (date) => {
   const snap = snapshot(date);
   snap.downgradeRulesVersion = 1;
+  snap.tQualityRulesVersion = 1;
   snap.market = { brokenRows: [] };
   snap.stocks = snap.stocks.map(({ height, ...rest }) => rest);
   return snap;
@@ -571,20 +695,35 @@ test("做T闸门：胜率不足 40% 禁止做T，停手期 HOLD 理由披露触�
   assert.match(stoppedOrder.reason, /连续 2 笔做T亏损，停手观察（自 /);
 });
 
-test("做T闸门：旧计划无 tQuality 字段保持原语义；版本不匹配拒绝生成", () => {
+test("做T闸门：旧快照无规则标记保持原语义；版本不匹配拒绝生成", () => {
+  // 旧快照（评分管线未写 tQualityRulesVersion）：计划不得携带质量摘要，
+  // 做T保持 tFraction 原语义。
   const legacy = createPlan(
-    gatedSnapshot(dateAt(1)),
+    snapshot(dateAt(1)),
     tBook(),
     BASE_STRATEGY,
     "v",
     `${dateAt(1)}T07:10:00.000Z`,
   );
   assert.equal(legacy.tQuality, undefined, "旧语义计划不携带 tQuality");
+  assert.equal(legacy.tQualityRulesVersion, undefined);
   const legacyOrder = legacy.orders.find(
     (o) => o.action === "T_FORWARD" || o.action === "T_REVERSE",
   );
   assert.equal(legacyOrder.quantity, 200);
 
+  // 新快照（评分管线已写标记）的计划必须携带质量摘要
+  assert.throws(
+    () =>
+      createPlan(
+        gatedSnapshot(dateAt(1)),
+        tBook(),
+        BASE_STRATEGY,
+        "v",
+        `${dateAt(1)}T07:10:00.000Z`,
+      ),
+    /信号快照已启用做T质量规则，计划缺少质量摘要/,
+  );
   assert.throws(
     () => freezeGated(tSummary({ rulesVersion: 99 })),
     /不支持的做T质量规则版本/,
@@ -675,6 +814,16 @@ test("核验器：摘要不可直接声明——改写、缺证据、删除都�
   assert.throws(
     () => assertProgramSnapshot(noEvidence, snap, structuredClone(book)),
     /做T质量摘要与冻结证据必须同时随计划冻结/,
+  );
+  // 攻击 3：摘要、证据、规则标记一起删除，伪装成旧计划——快照上的
+  // 启用标记与计划不一致，直接拦截。
+  const disguised = JSON.parse(JSON.stringify(frozen));
+  delete disguised.tQualityRulesVersion;
+  delete disguised.tQuality;
+  delete disguised.tQualityEvidence;
+  assert.throws(
+    () => assertProgramSnapshot(disguised, snap, structuredClone(book)),
+    /计划做T质量规则版本与原始信号快照不一致/,
   );
   // 冻结入口即拒绝孤儿字段
   assert.throws(

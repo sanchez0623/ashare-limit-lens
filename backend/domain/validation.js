@@ -3,6 +3,7 @@ import {
   extractTTrades,
   summarizeTQuality,
   buildTQualityEvidence,
+  tQualityEnabledForSnapshot,
 } from "./t-quality.js";
 import { STRATEGY_RANGES } from "../../shared/strategy-params.js";
 
@@ -136,13 +137,21 @@ function* replayStrategySteps(
     // 偏离（缺失时信号跳过，与无上下文的旧计划口径一致）。
     // 做T质量摘要（方案 7）：截至上一执行日的做T记录 → 冻结摘要与
     // 证据随计划生成；与主账户同一 summarize 口径（tradingDates 为
-    // 重放自身的相邻交易日序列，截至信号日）。
-    const tRecords = extractTTrades(tFills).records;
-    const tQuality = summarizeTQuality(tRecords, {
-      signalDate: pair.snapshot.date,
-      tradingDates: tDates,
-    });
-    const tQualityEvidence = buildTQualityEvidence(tRecords, tDates);
+    // 重放自身的相邻交易日序列，截至信号日）。快照未启用规则（旧归档）
+    // 时不携带，保持旧语义。
+    const sourceTQualityEnabled = tQualityEnabledForSnapshot(pair.snapshot);
+    const tRecords = sourceTQualityEnabled
+      ? extractTTrades(tFills).records
+      : [];
+    const tQuality = sourceTQualityEnabled
+      ? summarizeTQuality(tRecords, {
+          signalDate: pair.snapshot.date,
+          tradingDates: tDates,
+        })
+      : null;
+    const tQualityEvidence = sourceTQualityEnabled
+      ? buildTQualityEvidence(tRecords, tDates)
+      : null;
     const plan = createPlan(
       pair.snapshot,
       book,
