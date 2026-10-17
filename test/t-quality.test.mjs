@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import {
   extractTTrades,
   summarizeTQuality,
@@ -10,6 +15,9 @@ import {
   T_QUALITY_EVIDENCE_WINDOW,
 } from "../backend/domain/t-quality.js";
 import { buildTTradeRecords } from "../backend/services/paper.js";
+import { assertFrozenTQuality } from "../backend/services/strategy-program-evidence.js";
+import { digestOf } from "../backend/domain/research-lineage.js";
+import { localDatabase } from "../scripts/local-db.mjs";
 import {
   createPlan,
   assertProgramSnapshot,
@@ -918,5 +926,172 @@ test("结算提取：当日做T尝试与跨日恢复腿并入同一 upsert 集�
     recovered.created_at,
     openRecord.created_at,
     "更新保留首次落库时间",
+  );
+});
+
+test("做T记录落库：未了结记录初次落库前整形，尝试腿均价固化", () => {
+  const now = "2026-01-05T00:00:00.000Z";
+  const attempt = buildTTradeRecords({
+    fills: [
+      fill({
+        date: dateAt(1),
+        sequence: 0,
+        code: "600001",
+        action: "T_FORWARD",
+        side: "BUY",
+        priceCents: 981,
+        quantity: 200,
+      }),
+    ],
+    openRecords: [],
+    now,
+  });
+  assert.equal(attempt.length, 1);
+  assert.equal(attempt[0].buy_price_cents, 981, "尝试腿均价随整形固化落库");
+  assert.equal(attempt[0].sell_price_cents, null);
+  assert.equal(attempt[0].created_at, now);
+  // 恢复腿读回补齐后，均价与完整重放一致（买 9.81 / 卖恢复腿价）
+  const recovered = buildTTradeRecords({
+    fills: [
+      fill({
+        date: dateAt(2),
+        sequence: 0,
+        code: "600001",
+        action: "REDUCE",
+        side: "SELL",
+        priceCents: 1029,
+        quantity: 200,
+        cashDeltaCents: 205800,
+        orderId: `${dateAt(2)}:600001:recovery`,
+      }),
+    ],
+    openRecords: attempt,
+    now,
+  });
+  assert.equal(recovered[0].completed_date, dateAt(2));
+  assert.equal(recovered[0].buy_price_cents, 981, "买均价保留尝试腿值");
+  assert.equal(recovered[0].sell_price_cents, 1029);
+  assert.equal(recovered[0].total_pnl_cents, 205800 - 196200);
+});
+
+test("执行前锚点：质量摘要必须与账户冻结副本一致", async () => {
+  const DB = localDatabase();
+  const records = [
+    completedRecord(1, dateAt(1), -800),
+    completedRecord(2, dateAt(2), -600),
+  ];
+  const evidence = buildTQualityEvidence(records, [
+    dateAt(0),
+    dateAt(1),
+    dateAt(2),
+  ]);
+  const summary = summarizeTQuality(records, {
+    signalDate: dateAt(2),
+    tradingDates: [dateAt(0), dateAt(1), dateAt(2)],
+  });
+  assert.equal(summary.blocked, true);
+  const frozen = freezeGated(summary, evidence);
+  const payload = {
+    tQuality: frozen.tQuality,
+    tQualityEvidence: frozen.tQualityEvidence,
+  };
+  await DB.prepare(
+    "INSERT INTO frozen_t_quality (scope,signal_date,payload,digest,created_at) VALUES (?,?,?,?,?)",
+  )
+    .bind(
+      "main",
+      frozen.signalDate,
+      JSON.stringify(payload),
+      await digestOf(payload),
+      frozen.createdAt,
+    )
+    .run();
+
+  // 一致 → 通过
+  await assertFrozenTQuality(DB, frozen, "main");
+  // 无标记计划 → 跳过核验（旧语义）
+  const legacy = createPlan(
+    snapshot(dateAt(1)),
+    tBook(),
+    BASE_STRATEGY,
+    "v",
+    `${dateAt(1)}T07:10:00.000Z`,
+  );
+  await assertFrozenTQuality(DB, legacy, "main");
+  // 副本缺失 → 拒绝执行（带标记的计划必有副本）
+  await assert.rejects(
+    () => assertFrozenTQuality(DB, frozen, "shadow:x"),
+    /冻结副本缺失/,
+  );
+  // 攻击：改写计划（保留标记，记录与摘要一起改成空历史重算）→ 与副本不一致
+  const disguised = JSON.parse(JSON.stringify(frozen));
+  disguised.tQuality = summarizeTQuality([], {
+    signalDate: frozen.signalDate,
+    tradingDates: [],
+  });
+  disguised.tQualityEvidence = { records: [], tradingDates: [] };
+  await assert.rejects(
+    () => assertFrozenTQuality(DB, disguised, "main"),
+    /与账户冻结副本不一致/,
+  );
+  // 副本被改 → digest 拦截
+  await DB.prepare("UPDATE frozen_t_quality SET payload=? WHERE scope='main'")
+    .bind(
+      JSON.stringify({
+        tQuality: disguised.tQuality,
+        tQualityEvidence: disguised.tQualityEvidence,
+      }),
+    )
+    .run();
+  await assert.rejects(
+    () => assertFrozenTQuality(DB, frozen, "main"),
+    /与账户冻结副本不一致/,
+  );
+});
+
+test("迁移守卫：兼容初版与中间版两种旧库结构", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "local-db-"));
+  const initialSql = readFileSync(
+    join("drizzle", "0023_paper_t_trades.sql"),
+    "utf8",
+  );
+  const hasColumn = async (path) => {
+    const db = localDatabase(path);
+    try {
+      return (
+        await db.prepare("PRAGMA table_info(paper_t_trades)").all()
+      ).results
+        .map((row) => row.name)
+        .includes("completed_sequence");
+    } finally {
+      db.close();
+    }
+  };
+  // 初版库：0023 无 completed_sequence → 0024 正常加列
+  const legacyPath = join(dir, "legacy.db");
+  const legacy = new DatabaseSync(legacyPath);
+  legacy.exec("CREATE TABLE local_migrations (name TEXT PRIMARY KEY)");
+  legacy.exec(initialSql);
+  legacy
+    .prepare("INSERT INTO local_migrations (name) VALUES (?)")
+    .run("0023_paper_t_trades.sql");
+  legacy.close();
+  assert.equal(await hasColumn(legacyPath), true, "初版库升级后补上序列列");
+  // 中间版库：0023 初版 + 已手动加列（112ccdf 期间新建）→ 0024 守卫跳过不报错
+  const midPath = join(dir, "mid.db");
+  const mid = new DatabaseSync(midPath);
+  mid.exec("CREATE TABLE local_migrations (name TEXT PRIMARY KEY)");
+  mid.exec(initialSql);
+  mid.exec(
+    "ALTER TABLE paper_t_trades ADD COLUMN completed_sequence INTEGER NOT NULL DEFAULT 0",
+  );
+  mid
+    .prepare("INSERT INTO local_migrations (name) VALUES (?)")
+    .run("0023_paper_t_trades.sql");
+  mid.close();
+  assert.equal(
+    await hasColumn(midPath),
+    true,
+    "中间版库升级不重复加列、不阻断启动",
   );
 });

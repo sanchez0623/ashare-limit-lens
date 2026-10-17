@@ -70,7 +70,9 @@ export async function promoteCohortChampion(
     for (const date of report.windowDates ?? []) {
       const session = await shadows.session(accountId, date);
       if (!session) throw new Error("策略程序前瞻会话缺失，无法核验信号选择");
-      await assertStoredProgramPlan(env, session.plan, session.initialBook);
+      await assertStoredProgramPlan(env, session.plan, session.initialBook, {
+        tQualityScope: `shadow:${accountId}`,
+      });
     }
   }
   // 报告完整性（§8.3）：重算报告摘要，防篡改的报告输入才可晋级。

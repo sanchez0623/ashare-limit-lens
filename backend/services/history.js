@@ -10,6 +10,7 @@ import { analyze, PRESETS } from "../../shared/scoring.js";
 import { getMa5ByCode, getStockFeaturesByCode } from "./daily-closes.js";
 import { readBuyPointParams } from "./review.js";
 import { DOWNGRADE_RULES_VERSION } from "../../shared/downgrade.js";
+import { T_QUALITY_RULES_VERSION } from "../domain/t-quality.js";
 import { digestOf } from "../domain/research-lineage.js";
 import {
   HistoryDatasetStore,
@@ -430,6 +431,10 @@ async function runHistoryImportInner(
           source: `历史重构（${job.provider}）`,
           modelVersion: SCORING_VERSION,
           downgradeRulesVersion: DOWNGRADE_RULES_VERSION,
+          // 新建历史评分同样携带做T质量规则标记（方案 7）：回测按该
+          // 标记决定是否启用闸门，缺失会让新回测窗口整体跳过质量闸门；
+          // 旧档案无标记，保持旧语义。
+          tQualityRulesVersion: T_QUALITY_RULES_VERSION,
           judgment:
             "历史重构评分：由供应商档案重建当日涨停特征后按同一规则模型计算；非事前采集，不构成事前判断；createdAt 采用评分日盘前虚拟时间以保证可重放性",
           stocks: a.stocks,

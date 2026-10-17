@@ -13,9 +13,28 @@ export function localDatabase(path = ":memory:") {
       sqlite.prepare("SELECT name FROM local_migrations WHERE name=?").get(name)
     )
       continue;
+    let sqlText = readFileSync(`drizzle/${name}`, "utf8");
+    // 列存在守卫：开发期同表两次演进（旧版迁移已带列的库再次升级）会
+    // 报 duplicate column。迁移首行 `-- guard-if-column: table.column`
+    // 声明"该列已存在则整个迁移按已应用记账跳过"；无守卫的迁移照常
+    // 执行。生产 D1 按初版库执行，守卫行是普通注释不受影响。
+    const guard = sqlText.match(/^--\s*guard-if-column:\s*([\w.]+)/);
+    if (guard) {
+      const [table, column] = guard[1].split(".");
+      const columns = sqlite
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .map((row) => row.name);
+      if (columns.includes(column)) {
+        sqlite
+          .prepare("INSERT INTO local_migrations (name) VALUES (?)")
+          .run(name);
+        continue;
+      }
+    }
     sqlite.exec("BEGIN");
     try {
-      sqlite.exec(readFileSync(`drizzle/${name}`, "utf8"));
+      sqlite.exec(sqlText);
       sqlite
         .prepare("INSERT INTO local_migrations (name) VALUES (?)")
         .run(name);

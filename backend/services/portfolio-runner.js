@@ -1,5 +1,6 @@
 import { ShadowAccountRepository } from "../storage/shadow.js";
 import { buildOriginalScoreLookup, digest } from "../storage/paper.js";
+import { digestOf } from "../domain/research-lineage.js";
 import {
   selectionPolicyForBook,
   frozenSelectionPolicy,
@@ -72,7 +73,9 @@ export async function consumePortfolioFrame(
         stalled: true,
         reason: "计划成本政策与摘要不一致，账户暂停消费；请重新冻结计划",
       };
-    await assertStoredProgramPlan(env, plan, account.book);
+    await assertStoredProgramPlan(env, plan, account.book, {
+      tQualityScope: `shadow:${accountId}`,
+    });
     working = openSession(account.book, plan, frame.tradeDate);
   } else if (
     // 已有会话同样逐帧核验：政策被篡改的会话不得继续成交（§5.4）。
@@ -90,7 +93,9 @@ export async function consumePortfolioFrame(
       frame.payload?.pollIntervalSeconds ?? frame.pollIntervalSeconds,
   };
   if (session)
-    await assertStoredProgramPlan(env, working.plan, working.initialBook);
+    await assertStoredProgramPlan(env, working.plan, working.initialBook, {
+      tQualityScope: `shadow:${accountId}`,
+    });
   const result = advanceSession(account.book, working, observation);
   const runId = `shadow-${accountId}-${frame.tradeDate}-${frame.sequence}-${crypto.randomUUID()}`;
   const commit = await shadows.commitFrame({
@@ -130,7 +135,9 @@ export async function settlePortfolioDay(
       accountId,
       reason: "当日无实时会话记录，不补造开盘或盘中成交",
     };
-  await assertStoredProgramPlan(env, session.plan, session.initialBook);
+  await assertStoredProgramPlan(env, session.plan, session.initialBook, {
+    tQualityScope: `shadow:${accountId}`,
+  });
   const result = closeSession(account.book, session, dataset);
   const runId = `shadow-settle-${accountId}-${date}-${crypto.randomUUID()}`;
   const commit = await shadows.commitSettlement({
@@ -244,6 +251,28 @@ export async function freezePortfolioPlan(
         now,
         { executionCostPolicy, originalScoreLookup, selectionPolicy },
       );
+  // 方案 7 第三轮：影子质量摘要与证据固化到账户作用域冻结副本（首写
+  // 固化）——执行前核验回读副本独立比对，改写计划的空历史伪装在开盘
+  // 前即被拦截。
+  if (plan.tQuality)
+    await shadows.db
+      .prepare(
+        "INSERT INTO frozen_t_quality (scope,signal_date,payload,digest,created_at) VALUES (?,?,?,?,?) ON CONFLICT(scope,signal_date) DO NOTHING",
+      )
+      .bind(
+        `shadow:${accountId}`,
+        plan.signalDate,
+        JSON.stringify({
+          tQuality: plan.tQuality,
+          tQualityEvidence: plan.tQualityEvidence,
+        }),
+        await digestOf({
+          tQuality: plan.tQuality,
+          tQualityEvidence: plan.tQualityEvidence,
+        }),
+        plan.createdAt,
+      )
+      .run();
   return shadows.savePlan(accountId, plan);
 }
 

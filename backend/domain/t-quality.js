@@ -179,8 +179,10 @@ export function applyRecoveryFill(record, fill) {
 }
 
 // 落库/汇总前的记录整形：均价折算（去内部名义额累计字段）。幂等：
-// 已整形记录（名义额字段已删）保留现有均价，不再除零归零。
-function settleRecord(record) {
+// 已整形记录（名义额字段已删）保留现有均价，不再除零归零。导出给
+// 结算链路：未了结记录初次落库前同样整形——恢复腿读回补齐后与完整
+// 重放的均价一致（尝试腿名义额不落库，均价随尝试日整形固化）。
+export function settleRecord(record) {
   const shaped = { ...record };
   if (shaped._buy_notional !== undefined)
     shaped.buy_price_cents = shaped.buy_quantity

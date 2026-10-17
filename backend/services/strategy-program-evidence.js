@@ -1,5 +1,5 @@
 import { assertProgramSnapshot } from "../domain/trading.js";
-import { digestOf } from "../domain/research-lineage.js";
+import { digestOf, canonicalJson } from "../domain/research-lineage.js";
 import { selectionSnapshotDigest } from "../domain/signal-selection.js";
 import {
   strategySpaceManifest,
@@ -15,8 +15,38 @@ import {
   downgradeEnabledForPlan,
   downgradeEnabledForSnapshot,
 } from "../../shared/downgrade.js";
+import { tQualityEnabledForPlan } from "../domain/t-quality.js";
 
-export async function assertStoredProgramPlan(env, plan, book) {
+// 方案 7 第三轮：做T质量摘要的执行前独立锚点。计划冻结时把摘要与证据
+// 固化到账户作用域副本表（frozen_t_quality，首写固化，同日重冻不覆盖）；
+// 执行前核验回读副本与计划比对。只改计划（保留规则标记、把记录与证据
+// 一起改成空历史并重算订单）无法通过——副本里保存的是冻结时的真实
+// 输入，且不在计划 JSON 内，无法随计划一起改写。
+export async function assertFrozenTQuality(db, plan, scope) {
+  if (!tQualityEnabledForPlan(plan)) return;
+  const row = await db
+    .prepare(
+      "SELECT payload,digest FROM frozen_t_quality WHERE scope=? AND signal_date=?",
+    )
+    .bind(scope, plan.signalDate)
+    .first();
+  if (!row) throw new Error("做T质量摘要冻结副本缺失，拒绝执行");
+  const payload = JSON.parse(row.payload);
+  if (
+    (await digestOf(payload)) !== row.digest ||
+    canonicalJson(payload.tQuality) !== canonicalJson(plan.tQuality) ||
+    canonicalJson(payload.tQualityEvidence) !==
+      canonicalJson(plan.tQualityEvidence)
+  )
+    throw new Error("做T质量摘要与账户冻结副本不一致");
+}
+
+export async function assertStoredProgramPlan(
+  env,
+  plan,
+  book,
+  { tQualityScope = "main" } = {},
+) {
   if (!plan) return;
   const version = plan.strategyVersion
     ? await env.DB.prepare("SELECT params FROM strategy_versions WHERE id=?")
@@ -63,7 +93,14 @@ export async function assertStoredProgramPlan(env, plan, book) {
     snapshot = row && JSON.parse(row.payload);
   }
   const sourceDowngradeEnabled = downgradeEnabledForSnapshot(snapshot);
-  if (!program && !downgradeEnabled && !sourceDowngradeEnabled) return;
+  const planTQualityEnabled = tQualityEnabledForPlan(plan);
+  if (
+    !program &&
+    !downgradeEnabled &&
+    !sourceDowngradeEnabled &&
+    !planTQualityEnabled
+  )
+    return;
   if (sourceDowngradeEnabled && !plan.selectionAudit?.snapshotDigest)
     throw new Error("降级计划缺少原始信号快照引用");
   if (
@@ -73,6 +110,9 @@ export async function assertStoredProgramPlan(env, plan, book) {
       plan.selectionAudit.snapshotDigest
   )
     throw new Error("策略程序原始快照与冻结摘要不一致");
+  // 方案 7 第三轮：执行前用账户冻结副本独立核对做T质量摘要——伪造
+  // 的"空历史"计划（保留规则标记）在此处即被拦截，不必等导出核验。
+  await assertFrozenTQuality(env.DB, plan, tQualityScope);
   assertProgramSnapshot(plan, snapshot, book);
 }
 

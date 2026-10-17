@@ -18,11 +18,13 @@ import {
 } from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
+import { digestOf } from "../domain/research-lineage.js";
 import { loadOrBuildExitContext } from "./exit-context.js";
 import {
   extractTTrades,
   applyRecoveryFill,
   isRecoveryFill,
+  settleRecord,
   summarizeTQuality,
   buildTQualityEvidence,
   tQualityEnabledForSnapshot,
@@ -57,10 +59,15 @@ import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
 // 记录随 settle 同一 CAS 批落库：结算回滚时记录一并回滚，不领先账本。
 export function buildTTradeRecords({ fills, openRecords, now }) {
   const { records: dayRecords, open: openToday } = extractTTrades(fills);
-  const upserts = [...dayRecords, ...openToday].map((record) => ({
-    ...record,
-    created_at: now,
-  }));
+  // 未了结记录初次落库前同样整形（settleRecord）：尝试腿均价固化进
+  // 落库行——恢复腿读回补齐后，均价与完整重放一致；否则内部名义额
+  // 字段不落库，恢复后的记录只剩恢复腿价，均价缺失或漂移。
+  const upserts = [...dayRecords, ...openToday]
+    .map(settleRecord)
+    .map((record) => ({
+      ...record,
+      created_at: now,
+    }));
   // 当日已有新做T尝试的代码不会再有恢复腿（计划对存在待恢复腿的持仓
   // 不生成做T），恢复腿只匹配更早日未了结的 open 记录。
   const attemptedCodes = new Set(upserts.map((record) => record.code));
@@ -75,7 +82,7 @@ export function buildTTradeRecords({ fills, openRecords, now }) {
     const record = openByCode.get(fill.code);
     if (!record) continue;
     openByCode.set(fill.code, {
-      ...applyRecoveryFill(record, fill),
+      ...settleRecord(applyRecoveryFill(record, fill)),
       created_at: record.created_at ?? now,
     });
     recoveredCodes.add(fill.code);
@@ -295,36 +302,57 @@ async function settlePaperDay(env, date) {
       date,
       account.book.positions.map((position) => position.code),
     );
-    nextPlan = await repository.savePlan(
-      snapshot
-        ? createPlan(
-            snapshot,
-            account.book,
-            strategy,
-            account.book.activeStrategy,
-            new Date().toISOString(),
-            {
-              executionCostPolicy,
-              originalScoreLookup,
-              snapshotDigest: await selectionSnapshotDigest(snapshot),
-              ...(exitContext ?? {}),
-              ...(tQuality
-                ? {
-                    tQuality,
-                    ...(tQualityEvidence ? { tQualityEvidence } : {}),
-                  }
-                : {}),
-            },
-          )
-        : defensivePlan(
-            date,
-            account.book,
-            strategy,
-            account.book.activeStrategy,
-            new Date().toISOString(),
-            { executionCostPolicy, originalScoreLookup },
-          ),
-    );
+    const planInput = snapshot
+      ? createPlan(
+          snapshot,
+          account.book,
+          strategy,
+          account.book.activeStrategy,
+          new Date().toISOString(),
+          {
+            executionCostPolicy,
+            originalScoreLookup,
+            snapshotDigest: await selectionSnapshotDigest(snapshot),
+            ...(exitContext ?? {}),
+            ...(tQuality
+              ? {
+                  tQuality,
+                  ...(tQualityEvidence ? { tQualityEvidence } : {}),
+                }
+              : {}),
+          },
+        )
+      : defensivePlan(
+          date,
+          account.book,
+          strategy,
+          account.book.activeStrategy,
+          new Date().toISOString(),
+          { executionCostPolicy, originalScoreLookup },
+        );
+    nextPlan = await repository.savePlan(planInput);
+    // 方案 7 第三轮：质量摘要与证据固化到主账户冻结副本（首写固化，
+    // 同日重冻不覆盖）——执行前核验据此独立比对，改写计划的空历史
+    // 伪装在开盘前即被拦截。
+    if (planInput.tQuality)
+      await repository.db
+        .prepare(
+          "INSERT INTO frozen_t_quality (scope,signal_date,payload,digest,created_at) VALUES (?,?,?,?,?) ON CONFLICT(scope,signal_date) DO NOTHING",
+        )
+        .bind(
+          "main",
+          planInput.signalDate,
+          JSON.stringify({
+            tQuality: planInput.tQuality,
+            tQualityEvidence: planInput.tQualityEvidence,
+          }),
+          await digestOf({
+            tQuality: planInput.tQuality,
+            tQualityEvidence: planInput.tQualityEvidence,
+          }),
+          planInput.createdAt,
+        )
+        .run();
   }
   const response = {
     status: nextPlan ? "SETTLED" : "WAITING_SNAPSHOT",
