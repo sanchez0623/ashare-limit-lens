@@ -230,6 +230,19 @@ export function analyzeStock(
   const active = factors.filter((f) => f.value !== null),
     available = active.reduce((s, f) => s + f.weight, 0),
     total = weights.reduce((a, b) => a + b, 0);
+  // 覆盖率分母排除"对该来源结构性不适用"的因子。封单强度（capital）对收盘
+  // 未封的股票必然缺失——这是模型不适用，不是数据缺口；计入分母会让炸板
+  // 候选覆盖率上限卡在 80% 以下（实测质量 30 + 换手 15 + 首封 15 + 板块 15
+  // = 75%），永远过不了 coverage >= 80 的建仓门槛，炸板低吸无法建仓。
+  // 连板数（ladder）在该来源同样缺失，但那是真实的数据缺口，保留在分母里
+  // 反映信息不足。评分本体（raw）不受影响，仍只按已覆盖因子加权。
+  const inapplicable =
+    row.candidateSource === "broken"
+      ? factors
+          .filter((f) => f.key === "capital" && f.value === null)
+          .reduce((s, f) => s + f.weight, 0)
+      : 0;
+  const coverageBase = total - inapplicable;
   const raw = available
     ? active.reduce((s, f) => s + f.value * f.weight, 0) / available
     : null;
@@ -244,7 +257,7 @@ export function analyzeStock(
     deduction,
     factors,
     risks,
-    coverage: total ? Math.round((available / total) * 100) : 0,
+    coverage: coverageBase ? Math.round((available / coverageBase) * 100) : 0,
     sealRatio:
       row.seal !== null && row.amount > 0 ? row.seal / row.amount : null,
   };

@@ -5,7 +5,14 @@ import { STOCK_CLASSES } from "../../shared/stock-class.js";
 // 缺少版本的历史账户/清单按 v1 解释；新账户显式采用最新版本。
 export const LEGACY_SELECTION_VERSION = "signal-ranking-v1";
 export const SELECTION_VERSION_V2 = "signal-ranking-v2";
-export const DEFAULT_SELECTION_VERSION = "signal-ranking-v3";
+export const SELECTION_VERSION_V3 = "signal-ranking-v3";
+export const SELECTION_VERSION_V4 = "signal-ranking-v4";
+// v4 是显式选择的策略，不是全局默认：买点闸门是龙头低吸特有语义，把它
+// 设成默认会波及所有账户与所有策略家族（现金防守、首板、连板、低换手、
+// 板块共振都不以打板/炸板低吸为入场条件）。缺省仍是 v3；需要闸门与炸板
+// 候选的调用方显式传 SELECTION_VERSION_V4（回测经 selectionPolicyVersion
+// 入口选择）。
+export const DEFAULT_SELECTION_VERSION = SELECTION_VERSION_V3;
 const policies = Object.freeze({
   [LEGACY_SELECTION_VERSION]: Object.freeze({
     version: LEGACY_SELECTION_VERSION,
@@ -21,12 +28,22 @@ const policies = Object.freeze({
   }),
   // v3：股票分类路由。scoreSignals 按股票类别（连板龙头/强势反包/波段震荡）
   // 路由评分权重，并把明确判定为平庸型的股票排除出候选池（方案 3）。
-  [DEFAULT_SELECTION_VERSION]: Object.freeze({
-    version: DEFAULT_SELECTION_VERSION,
+  [SELECTION_VERSION_V3]: Object.freeze({
+    version: SELECTION_VERSION_V3,
     scorePrecision: 6,
     liquiditySource: "signal-day-turnover-cny",
     tieBreak: "code-asc",
     stockClassRouting: true,
+  }),
+  // v4：买点驱动建仓（方案 9）。炸板池候选并入信号，新增建仓位按买点硬闸门
+  // 过滤——只有命中已验证龙头低吸买点的候选才进入建仓候选池。
+  [SELECTION_VERSION_V4]: Object.freeze({
+    version: SELECTION_VERSION_V4,
+    scorePrecision: 6,
+    liquiditySource: "signal-day-turnover-cny",
+    tieBreak: "code-asc",
+    stockClassRouting: true,
+    brokenCandidateSource: true,
   }),
 });
 // SHA-256(canonicalJson(policy))。常量使同步纯内核也能冻结完整摘要；
@@ -36,8 +53,10 @@ const digests = Object.freeze({
     "7b340abd928a57f1d401351952ad40219e29a81ee74a33f44747b128209f883a",
   [SELECTION_VERSION_V2]:
     "250aed8e31828b808180950a096ecf489c9fef150896d2495ba0708c3ef1cd32",
-  [DEFAULT_SELECTION_VERSION]:
+  [SELECTION_VERSION_V3]:
     "508cd643a3e2ef3842b55a89ec761a0a39851e7fd327c14fae96f39c5a828aa7",
+  [SELECTION_VERSION_V4]:
+    "2fbf957ad0be7c4bb1cbb9b09cf066f3187c8bc984df3db2d799e387908f0b02",
 });
 export function selectionPolicy(version = DEFAULT_SELECTION_VERSION) {
   if (!Object.hasOwn(policies, version))
@@ -89,6 +108,12 @@ export function selectionPolicyMatches(record, book) {
     return false;
   }
 }
+// v4 建仓闸门：返回允许建仓的买点集合，旧版本返回 null 表示不设闸门。
+// 闸门集合不进 policy 对象——selectionPolicyDigest 逐字段用 !== 比较，
+// Set 会被判为"内容与声明版本不一致"；版本即闸门开关，集合在模块内定义。
+export function buyPointGateForPolicy(policy) {
+  return policy.version === SELECTION_VERSION_V4 ? A_GRADE_BUY_POINTS : null;
+}
 export function liquidityAmountCents(amount) {
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const cents = Math.round(amount * 100);
@@ -129,6 +154,11 @@ const CLASS_CEILING = Object.freeze({
   [STOCK_CLASSES.STRONG_REVERSAL]: "B",
   [STOCK_CLASSES.SWING_RANGE]: "C",
 });
+// A 级买点：语义上是"已验证可交易的龙头低吸买点"。这一集合同时定义两件
+// 事情：① 观察池分级的 A 级校验（observationGrade，仅展示）；② v4 建仓
+// 硬闸门（buyPointGateForPolicy，影响交易）。刻意共用一个定义而不是维护
+// 两份集合——两者漂移会让展示等级与建仓资格自相矛盾。新增买点必须先在其
+// 所属策略上积累样本验证，再进这个集合，两处同时生效。
 const A_GRADE_BUY_POINTS = new Set([
   BUY_POINT_TYPES.LIMIT_UP_MOMENTUM,
   BUY_POINT_TYPES.BROKEN_BOARD_DIP,

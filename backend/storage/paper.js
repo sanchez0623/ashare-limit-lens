@@ -136,9 +136,11 @@ export class PaperRepository {
   }
   async upgradeSelectionPolicy() {
     const account = await this.account();
-    // 升级范围：无显式版本的旧账户（→v3）与 v2 账户（→v3，启用股票分类
-    // 路由）。已在 v3 或显式登记的其他版本不自动改参。
-    // 两类升级都只在研究窗口释放后执行，留审计记录。
+    // 升级范围：无显式版本的旧账户与 v2 账户，一律升到最新版本（当前 v3，
+    // 启用股票分类路由）。显式登记的其他版本（含 v1）不自动改参——显式
+    // 版本表示用户主动选择，不覆盖。v4 是显式选择的策略，不自动升级存量
+    // 账户（见 signal-selection.js 中 DEFAULT_SELECTION_VERSION 的说明）。
+    // 升级只在研究窗口释放后执行，留审计记录。
     const currentVersion = account?.book?.selectionPolicyVersion;
     if (
       !account ||

@@ -92,6 +92,36 @@ test("炸板池候选独立产出，涨停池口径与板块/情绪统计完全�
     [],
   );
 });
+test("覆盖率分母排除未封板股票的封单强度：炸板候选不因结构性缺字段被门槛挡住", () => {
+  const missingSeal = normalize({ ...base, fund: null });
+  // 封单缺失的涨停池行：按数据缺口计入分母，覆盖率 80%（既有口径不变）
+  assert.equal(analyzeStock(missingSeal, 70).coverage, 80);
+  // 同一行标上炸板来源后，封单强度属模型不适用，从分母排除
+  const broken = analyzeStock(
+    { ...missingSeal, candidateSource: "broken" },
+    70,
+  );
+  assert.equal(broken.coverage, 100);
+  assert.equal(broken.factors.find((f) => f.key === "capital").value, null);
+  // 评分本体不受影响：仍只按已覆盖因子加权
+  assert.equal(analyzeStock(missingSeal, 70).score, broken.score);
+  // 真实炸板池形态（连板数缺失）：涨停池口径下覆盖率 75%，卡在建仓门槛
+  // 80% 之下、炸板低吸永远无法建仓；排除封单强度后 94%，过线
+  const realBroken = analyzeStock(
+    { ...missingSeal, candidateSource: "broken", height: null },
+    70,
+  );
+  assert.equal(realBroken.coverage, 94);
+  assert.equal(analyzeStock({ ...missingSeal, height: null }, 70).coverage, 75);
+  // 连板数作为真实数据缺口保留在分母里反映信息不足
+  assert.equal(realBroken.factors.find((f) => f.key === "ladder").value, null);
+  // 显式携带 candidateSource 但封单实际存在时，不触发排除
+  assert.equal(
+    analyzeStock({ ...normalize(base), candidateSource: "broken" }, 70)
+      .coverage,
+    100,
+  );
+});
 test("炸板池行触发炸板低吸：回落安全垫落在 3%~7% 区间", () => {
   const row = normalize({
     ...base,

@@ -19,8 +19,12 @@ import {
   liquidityAmountCents,
   LEGACY_SELECTION_VERSION,
   SELECTION_VERSION_V2,
+  SELECTION_VERSION_V3,
+  SELECTION_VERSION_V4,
+  buyPointGateForPolicy,
   DEFAULT_SELECTION_VERSION,
 } from "../backend/domain/signal-selection.js";
+import { BUY_POINT_TYPES } from "../shared/buy-point-type.js";
 import { digestOf } from "../backend/domain/research-lineage.js";
 import {
   buildTQualityEvidence,
@@ -213,7 +217,156 @@ test("v3 未持仓的平庸股：保留在候选审计中但标注不进入候�
   assert.match(other.reason, /通过资格与资金检查/);
 });
 
-test("v2 模拟账户在窗口释放后升级到 v3，启用股票分类路由", async () =>
+test("v4 政策摘要独立重算一致；字段缺失、改值或跨版本冒充均拒绝", async () => {
+  const v4 = selectionPolicy(SELECTION_VERSION_V4);
+  assert.equal(v4.brokenCandidateSource, true, "v4 启用炸板候选来源");
+  assert.equal(v4.stockClassRouting, true, "v4 继承 v3 的股票分类路由");
+  assert.equal(v4.scorePrecision, 6);
+  assert.equal(v4.liquiditySource, "signal-day-turnover-cny");
+  assert.equal(selectionPolicyDigest(v4), await digestOf(v4));
+  assert.deepEqual(frozenSelectionPolicy(selectionPolicyFields(v4)), v4);
+  assert.throws(
+    () => selectionPolicyDigest({ ...v4, brokenCandidateSource: undefined }),
+    /内容与声明版本不一致/,
+  );
+  assert.throws(
+    () => selectionPolicyDigest({ ...v4, brokenCandidateSource: false }),
+    /内容与声明版本不一致/,
+  );
+  // v3 内容改挂 v4 版本：字段集合不同，必须拒绝
+  assert.throws(
+    () =>
+      selectionPolicyDigest({
+        ...selectionPolicy(SELECTION_VERSION_V3),
+        version: SELECTION_VERSION_V4,
+      }),
+    /内容与声明版本不一致/,
+  );
+});
+
+test("买点闸门只属于 v4；v1/v2/v3 一律不设闸门", () => {
+  const gate = buyPointGateForPolicy(selectionPolicy(SELECTION_VERSION_V4));
+  assert.ok(gate instanceof Set);
+  assert.ok(gate.has(BUY_POINT_TYPES.LIMIT_UP_MOMENTUM));
+  assert.ok(gate.has(BUY_POINT_TYPES.BROKEN_BOARD_DIP));
+  for (const version of [
+    LEGACY_SELECTION_VERSION,
+    SELECTION_VERSION_V2,
+    SELECTION_VERSION_V3,
+  ])
+    assert.equal(
+      buyPointGateForPolicy(selectionPolicy(version)),
+      null,
+      `${version} 不设买点闸门`,
+    );
+  assert.equal(buyPointGateForPolicy(selectionPolicy()), null, "默认仍是 v3");
+});
+
+test("v4 把炸板候选并入信号；v3 与旧快照逐字节不变", () => {
+  const v4Policy = selectionPolicy(SELECTION_VERSION_V4);
+  const v3Policy = selectionPolicy(SELECTION_VERSION_V3);
+  const snap = tiedSnapshot();
+  snap.brokenStocks = [
+    {
+      ...snap.stocks[1],
+      code: "300999",
+      name: "合成炸板样本",
+      amount: 52_000_000,
+      candidateSource: "broken",
+    },
+  ];
+  const v4 = scoreSignals(snap, strategy, v4Policy);
+  const v3 = scoreSignals(snap, strategy, v3Policy);
+  assert.equal(v4.length, snap.stocks.length + 1);
+  assert.equal(v4.at(-1).code, "300999");
+  assert.equal(v4.at(-1).candidateSource, "broken");
+  assert.equal(v3.length, snap.stocks.length);
+  assert.ok(
+    v3.every((s) => !Object.hasOwn(s, "candidateSource")),
+    "v3 信号不携带炸板候选",
+  );
+  // 旧快照无 brokenStocks 字段：v4 兜底空数组，行为与 v3 一致
+  const legacySnap = tiedSnapshot();
+  assert.deepEqual(
+    scoreSignals(legacySnap, strategy, v4Policy).map((s) => s.code),
+    scoreSignals(legacySnap, strategy, v3Policy).map((s) => s.code),
+  );
+});
+
+test("v4 建仓闸门：无合格买点被拒并记因，炸板低吸候选放行", () => {
+  const snap = tiedSnapshot();
+  // 涨停池候选无买点（一字板低换手被排除、或涨停但无打板形态）
+  for (const stock of snap.stocks)
+    stock.buyPoint = { primary: null, all: [], labels: [] };
+  // 炸板候选命中炸板低吸（回落 3–7% 安全垫）
+  snap.brokenStocks = [
+    {
+      ...snap.stocks[1],
+      code: "300999",
+      name: "合成炸板样本",
+      amount: 52_000_000,
+      coverage: 94,
+      height: 1,
+      risks: [],
+      candidateSource: "broken",
+      buyPoint: {
+        primary: { type: BUY_POINT_TYPES.BROKEN_BOARD_DIP, confidence: 0.75 },
+        all: [{ type: BUY_POINT_TYPES.BROKEN_BOARD_DIP, confidence: 0.75 }],
+        labels: [BUY_POINT_TYPES.BROKEN_BOARD_DIP],
+      },
+    },
+  ];
+  const v4Policy = selectionPolicy(SELECTION_VERSION_V4);
+  const plan = makePlan(snap, newBook(), { selectionPolicy: v4Policy });
+  assert.equal(plan.orders.length, 1);
+  assert.equal(plan.orders[0].code, "300999");
+  assert.equal(
+    plan.selectionAudit.candidates.find((c) => c.code === "002343").reason,
+    "买点未命中建仓闸门（仅放行打板 / 炸板低吸）",
+  );
+  assert.match(
+    plan.selectionAudit.candidates.find((c) => c.code === "300999").reason,
+    /通过资格与资金检查/,
+  );
+  // 同一快照在 v3 下不设闸门：流动性决胜者照常建仓，行为逐字节不变
+  const v3Plan = makePlan(snap, newBook());
+  assert.ok(v3Plan.orders.some((o) => o.code === "002692"));
+  // 闸门只约束新增建仓：持仓的风险保护动作不被闸门拦下
+  const book = newBook(100000);
+  book.positions = [
+    {
+      code: "002343",
+      name: snap.stocks[0].name,
+      sector: snap.stocks[0].sector,
+      heldDays: 0,
+      markCents: 1_000_000,
+      lots: [
+        {
+          acquiredDate: dateAt(0),
+          quantity: 1000,
+          costCents: 1_000_000,
+          priceCents: 1_000_000,
+        },
+      ],
+    },
+  ];
+  book.cashCents = book.initialCashCents - 1_000_000;
+  book.equityCents = book.initialCashCents;
+  book.peakEquityCents = book.equityCents;
+  // 002343 当日走弱（评分 40 < 65）：v4 闸门不得拦下走弱减仓
+  snap.stocks[0].factors = [40, 40, 40, 40, 40, 40].map((value) => ({
+    value,
+  }));
+  snap.stocks[0].deduction = 0;
+  const gated = makePlan(snap, book, { selectionPolicy: v4Policy });
+  assert.equal(
+    gated.orders.find((o) => o.code === "002343")?.action,
+    "REDUCE",
+    "v4 闸门不改变持仓的走弱减仓",
+  );
+});
+
+test("v2 模拟账户在窗口释放后升级到最新版本，启用股票分类路由", async () =>
   withDB(async (env, DB) => {
     const repo = new PaperRepository(env);
     const book = (await repo.initialize()).book;
@@ -428,7 +581,8 @@ test("政策摘要独立 SHA-256 重算一致；未知版本与同版本改内�
   for (const version of [
     LEGACY_SELECTION_VERSION,
     SELECTION_VERSION_V2,
-    DEFAULT_SELECTION_VERSION,
+    SELECTION_VERSION_V3,
+    SELECTION_VERSION_V4,
   ]) {
     const p = selectionPolicy(version);
     assert.equal(selectionPolicyDigest(p), await digestOf(p));
