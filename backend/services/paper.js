@@ -49,7 +49,10 @@ import {
   closeSession,
 } from "../domain/realtime.js";
 import { realtimeStatus } from "./realtime.js";
-import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
+import {
+  assertStoredProgramPlan,
+  ensureFrozenTQuality,
+} from "./strategy-program-evidence.js";
 
 // 做T记录提取（方案 7）：当日成交 → paper_t_trades 的 upsert 记录集。
 //   - 当日做T腿（T_FORWARD/T_REVERSE）：同日两腿齐 → 当日了结；单腿 →
@@ -59,9 +62,7 @@ import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
 // 记录随 settle 同一 CAS 批落库：结算回滚时记录一并回滚，不领先账本。
 export function buildTTradeRecords({ fills, openRecords, now }) {
   const { records: dayRecords, open: openToday } = extractTTrades(fills);
-  // 未了结记录初次落库前同样整形（settleRecord）：尝试腿均价固化进
-  // 落库行——恢复腿读回补齐后，均价与完整重放一致；否则内部名义额
-  // 字段不落库，恢复后的记录只剩恢复腿价，均价缺失或漂移。
+  // 未了结记录同样保存均价；跨日恢复的精确名义额由存储层从账本重建。
   const upserts = [...dayRecords, ...openToday]
     .map(settleRecord)
     .map((record) => ({
@@ -82,12 +83,13 @@ export function buildTTradeRecords({ fills, openRecords, now }) {
     const record = openByCode.get(fill.code);
     if (!record) continue;
     openByCode.set(fill.code, {
-      ...settleRecord(applyRecoveryFill(record, fill)),
+      ...applyRecoveryFill(record, fill),
       created_at: record.created_at ?? now,
     });
     recoveredCodes.add(fill.code);
   }
-  for (const code of recoveredCodes) upserts.push(openByCode.get(code));
+  for (const code of recoveredCodes)
+    upserts.push(settleRecord(openByCode.get(code)));
   return upserts;
 }
 export async function runPaperDay(env, date) {
@@ -219,7 +221,7 @@ async function settlePaperDay(env, date) {
         .map((fill) => fill.code);
       tTradeRecords = buildTTradeRecords({
         fills: dayFills,
-        openRecords: await repository.openTTradesByCodes(recoveryCodes),
+        openRecords: await repository.openTTradesByCodes(recoveryCodes, date),
         now: new Date().toISOString(),
       });
     } catch (error) {
@@ -331,29 +333,9 @@ async function settlePaperDay(env, date) {
           { executionCostPolicy, originalScoreLookup },
         );
     nextPlan = await repository.savePlan(planInput);
-    // 方案 7 第三轮：质量摘要与证据固化到主账户冻结副本（首写固化，
-    // 同日重冻不覆盖）——执行前核验据此独立比对，改写计划的空历史
-    // 伪装在开盘前即被拦截。
-    if (planInput.tQuality)
-      await repository.db
-        .prepare(
-          "INSERT INTO frozen_t_quality (scope,signal_date,payload,digest,created_at) VALUES (?,?,?,?,?) ON CONFLICT(scope,signal_date) DO NOTHING",
-        )
-        .bind(
-          "main",
-          planInput.signalDate,
-          JSON.stringify({
-            tQuality: planInput.tQuality,
-            tQualityEvidence: planInput.tQualityEvidence,
-          }),
-          await digestOf({
-            tQuality: planInput.tQuality,
-            tQualityEvidence: planInput.tQualityEvidence,
-          }),
-          planInput.createdAt,
-        )
-        .run();
   }
+  // 重入和旧版本升级同样检查；缺失副本只能经账本独立核验后补齐。
+  if (nextPlan) await ensureFrozenTQuality(env, nextPlan, "main");
   const response = {
     status: nextPlan ? "SETTLED" : "WAITING_SNAPSHOT",
     date,

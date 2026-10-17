@@ -2,6 +2,7 @@ import { database } from "./database.js";
 import { digest } from "./paper.js";
 import { frozenSelectionPolicy } from "../domain/signal-selection.js";
 import { preserveProgramSignal } from "./strategy-signals.js";
+import { freezeQualityStatement } from "./t-quality.js";
 
 // 影子账户体系（§6/§7）：多账户隔离的 CAS 提交、计划、成交、净值与消费游标。
 // 物理存储键采用 (account_id, localId)/(account_id, trade_date) 组合键；
@@ -104,7 +105,7 @@ export class ShadowAccountRepository {
         throw new Error("影子账户计划已冻结，不允许覆盖");
       return existing;
     }
-    await this.db
+    const statement = this.db
       .prepare(
         "INSERT INTO shadow_plans (account_id, signal_date, payload, digest, created_at) VALUES (?, ?, ?, ?, ?)",
       )
@@ -114,8 +115,14 @@ export class ShadowAccountRepository {
         JSON.stringify(plan),
         digestValue,
         new Date().toISOString(),
-      )
-      .run();
+      );
+    const quality = await freezeQualityStatement(
+      this.db,
+      plan,
+      `shadow:${accountId}`,
+      digestValue,
+    );
+    await this.db.batch([statement, ...(quality ? [quality] : [])]);
     return { ...plan, digest: digestValue };
   }
   async session(accountId, tradeDate) {

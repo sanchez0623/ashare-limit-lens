@@ -18,6 +18,8 @@ import {
 import { BENCHMARK_CODES, DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
 import { programIdentity } from "../../shared/strategy-program.js";
 import { preserveProgramSignal } from "./strategy-signals.js";
+import { freezeQualityStatement } from "./t-quality.js";
+import { extractTTrades } from "../domain/t-quality.js";
 import { latestPolicyBundle, verifyPolicyBundle } from "./execution-cost.js";
 import {
   DEFAULT_SELECTION_VERSION,
@@ -218,12 +220,13 @@ export class PaperRepository {
       throw new Error("计划成本政策与摘要不一致，拒绝冻结");
     await preserveProgramSignal(this.db, plan);
     const hash = await digest(plan);
-    await this.db
+    const statement = this.db
       .prepare(
         "INSERT OR IGNORE INTO paper_plans (signal_date, created_at, payload, digest) VALUES (?, ?, ?, ?)",
       )
-      .bind(plan.signalDate, plan.createdAt, JSON.stringify(plan), hash)
-      .run();
+      .bind(plan.signalDate, plan.createdAt, JSON.stringify(plan), hash);
+    const quality = await freezeQualityStatement(this.db, plan, "main", hash);
+    await this.db.batch([statement, ...(quality ? [quality] : [])]);
     return this.plan(plan.signalDate);
   }
   async history(table, limit = 120) {
@@ -393,7 +396,7 @@ export class PaperRepository {
     return (result.results ?? []).map(tTradeRowToRecord);
   }
   // 未了结做T记录（等待恢复腿）：按代码过滤，供恢复腿并入。
-  async openTTradesByCodes(codes) {
+  async openTTradesByCodes(codes, beforeDate) {
     const wanted = [...new Set(codes)].filter(Boolean);
     if (!wanted.length) return [];
     const placeholders = wanted.map(() => "?").join(",");
@@ -403,7 +406,29 @@ export class PaperRepository {
       )
       .bind(...wanted)
       .all();
-    return (result.results ?? []).map(tTradeRowToRecord);
+    const rows = result.results ?? [];
+    if (!rows.length) return [];
+    // 均价已经取整，不能乘回数量当作精确名义额。读取原始成交重建
+    // open 累计值，也修复升级前已丢失名义额的部分成交记录。
+    const from = rows.map((row) => row.trade_date).sort()[0];
+    const ledger = await this.db
+      .prepare(
+        `SELECT payload FROM paper_ledger WHERE trade_date>=? ${beforeDate ? "AND trade_date<?" : ""} ORDER BY trade_date,id`,
+      )
+      .bind(from, ...(beforeDate ? [beforeDate] : []))
+      .all();
+    const open = new Map(
+      extractTTrades(
+        (ledger.results ?? [])
+          .map((row) => JSON.parse(row.payload))
+          .filter((fill) => wanted.includes(fill.code)),
+      ).open.map((record) => [record.id, record]),
+    );
+    return rows.map((row) => {
+      const record = open.get(row.id);
+      if (!record) throw new Error("未了结做T记录缺少原始成交流水");
+      return { ...record, created_at: row.created_at };
+    });
   }
   // 全部做T记录（展示用，按尝试日倒序）。
   async tTrades(limit = 50) {

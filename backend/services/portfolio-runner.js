@@ -1,6 +1,5 @@
 import { ShadowAccountRepository } from "../storage/shadow.js";
 import { buildOriginalScoreLookup, digest } from "../storage/paper.js";
-import { digestOf } from "../domain/research-lineage.js";
 import {
   selectionPolicyForBook,
   frozenSelectionPolicy,
@@ -21,7 +20,10 @@ import {
 } from "../domain/t-quality.js";
 import { tradingCalendar } from "./market.js";
 import { loadOrBuildExitContext } from "./exit-context.js";
-import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
+import {
+  assertStoredProgramPlan,
+  ensureFrozenTQuality,
+} from "./strategy-program-evidence.js";
 import {
   latestPolicyBundle,
   verifyPolicyBundle,
@@ -170,6 +172,7 @@ export async function freezePortfolioPlan(
   const existing = await shadows.plan(accountId, signalDate);
   if (existing) {
     frozenSelectionPolicy(existing);
+    await ensureFrozenTQuality(env, existing, `shadow:${accountId}`);
     return existing;
   }
   const selectionPolicy = selectionPolicyForBook(account.book);
@@ -251,29 +254,9 @@ export async function freezePortfolioPlan(
         now,
         { executionCostPolicy, originalScoreLookup, selectionPolicy },
       );
-  // 方案 7 第三轮：影子质量摘要与证据固化到账户作用域冻结副本（首写
-  // 固化）——执行前核验回读副本独立比对，改写计划的空历史伪装在开盘
-  // 前即被拦截。
-  if (plan.tQuality)
-    await shadows.db
-      .prepare(
-        "INSERT INTO frozen_t_quality (scope,signal_date,payload,digest,created_at) VALUES (?,?,?,?,?) ON CONFLICT(scope,signal_date) DO NOTHING",
-      )
-      .bind(
-        `shadow:${accountId}`,
-        plan.signalDate,
-        JSON.stringify({
-          tQuality: plan.tQuality,
-          tQualityEvidence: plan.tQualityEvidence,
-        }),
-        await digestOf({
-          tQuality: plan.tQuality,
-          tQualityEvidence: plan.tQualityEvidence,
-        }),
-        plan.createdAt,
-      )
-      .run();
-  return shadows.savePlan(accountId, plan);
+  const saved = await shadows.savePlan(accountId, plan);
+  await ensureFrozenTQuality(env, saved, `shadow:${accountId}`);
+  return saved;
 }
 
 // 晋级所依据的每个执行日都必须使用窗口政策；不能只检查当前账户标签。

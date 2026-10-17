@@ -154,13 +154,15 @@ export function applyRecoveryFill(record, fill) {
     updated.sell_quantity += fill.quantity ?? 0;
     updated.sell_price_cents = fill.priceCents;
     updated._sell_notional =
-      (record._sell_notional ?? 0) +
+      (record._sell_notional ??
+        (record.sell_price_cents ?? 0) * record.sell_quantity) +
       (fill.priceCents ?? 0) * (fill.quantity ?? 0);
   } else {
     updated.buy_quantity += fill.quantity ?? 0;
     updated.buy_price_cents = fill.priceCents;
     updated._buy_notional =
-      (record._buy_notional ?? 0) +
+      (record._buy_notional ??
+        (record.buy_price_cents ?? 0) * record.buy_quantity) +
       (fill.priceCents ?? 0) * (fill.quantity ?? 0);
   }
   const cash = legCashDelta(fill);
@@ -180,8 +182,8 @@ export function applyRecoveryFill(record, fill) {
 
 // 落库/汇总前的记录整形：均价折算（去内部名义额累计字段）。幂等：
 // 已整形记录（名义额字段已删）保留现有均价，不再除零归零。导出给
-// 结算链路：未了结记录初次落库前同样整形——恢复腿读回补齐后与完整
-// 重放的均价一致（尝试腿名义额不落库，均价随尝试日整形固化）。
+// 结算链路：未了结记录落库前同样整形；恢复时从原始账本重建精确
+// 名义额，不能用已经取整的均价反推。一次聚合结束后再调用此函数。
 export function settleRecord(record) {
   const shaped = { ...record };
   if (shaped._buy_notional !== undefined)

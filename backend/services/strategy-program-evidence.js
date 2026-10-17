@@ -15,30 +15,98 @@ import {
   downgradeEnabledForPlan,
   downgradeEnabledForSnapshot,
 } from "../../shared/downgrade.js";
-import { tQualityEnabledForPlan } from "../domain/t-quality.js";
+import {
+  tQualityEnabledForPlan,
+  buildTQualityEvidence,
+  extractTTrades,
+} from "../domain/t-quality.js";
+import {
+  assertFrozenTQuality,
+  frozenQualityRow,
+  freezeQualityStatement,
+  qualityPayload,
+} from "../storage/t-quality.js";
+import { tradingCalendar } from "./market.js";
+
+export { assertFrozenTQuality } from "../storage/t-quality.js";
 
 // 方案 7 第三轮：做T质量摘要的执行前独立锚点。计划冻结时把摘要与证据
 // 固化到账户作用域副本表（frozen_t_quality，首写固化，同日重冻不覆盖）；
 // 执行前核验回读副本与计划比对。只改计划（保留规则标记、把记录与证据
 // 一起改成空历史并重算订单）无法通过——副本里保存的是冻结时的真实
 // 输入，且不在计划 JSON 内，无法随计划一起改写。
-export async function assertFrozenTQuality(db, plan, scope) {
+export async function ensureFrozenTQuality(env, plan, scope) {
   if (!tQualityEnabledForPlan(plan)) return;
-  const row = await db
+  const db = env.DB;
+  if (await frozenQualityRow(db, plan, scope)) {
+    await assertFrozenTQuality(db, plan, scope);
+    return;
+  }
+  const shadow = scope.startsWith("shadow:");
+  if (scope !== "main" && (!shadow || !scope.slice(7)))
+    throw new Error("无效做T质量账户作用域");
+  const accountId = shadow ? scope.slice(7) : null;
+  // 只修复确实已冻结的计划。会话中的计划也必须关联同一已存输入，
+  // 不能把调用方送入的任意 JSON 直接升级成可信副本。
+  const stored = await db
     .prepare(
-      "SELECT payload,digest FROM frozen_t_quality WHERE scope=? AND signal_date=?",
+      `SELECT payload,digest FROM ${shadow ? "shadow_plans" : "paper_plans"}
+       WHERE signal_date=? ${shadow ? "AND account_id=?" : ""}`,
     )
-    .bind(scope, plan.signalDate)
+    .bind(plan.signalDate, ...(shadow ? [accountId] : []))
     .first();
-  if (!row) throw new Error("做T质量摘要冻结副本缺失，拒绝执行");
-  const payload = JSON.parse(row.payload);
+  const payload = qualityPayload(plan);
   if (
-    (await digestOf(payload)) !== row.digest ||
-    canonicalJson(payload.tQuality) !== canonicalJson(plan.tQuality) ||
-    canonicalJson(payload.tQualityEvidence) !==
-      canonicalJson(plan.tQualityEvidence)
+    !stored ||
+    (await digestOf(JSON.parse(stored.payload))) !== stored.digest ||
+    canonicalJson(qualityPayload(JSON.parse(stored.payload))) !==
+      canonicalJson(payload)
   )
-    throw new Error("做T质量摘要与账户冻结副本不一致");
+    throw new Error("做T质量摘要冻结副本缺失，原计划关联不一致");
+  const ledger = await db
+    .prepare(
+      `SELECT payload FROM ${shadow ? "shadow_ledger" : "paper_ledger"}
+       WHERE trade_date<=? ${shadow ? "AND account_id=?" : ""} ORDER BY trade_date,id`,
+    )
+    .bind(plan.signalDate, ...(shadow ? [accountId] : []))
+    .all();
+  const records = extractTTrades(
+    (ledger.results ?? []).map((row) => JSON.parse(row.payload)),
+  ).records;
+  const evidence = plan.tQualityEvidence;
+  if (
+    canonicalJson(buildTQualityEvidence(records, []).records) !==
+    canonicalJson(evidence.records)
+  )
+    throw new Error("做T质量证据与原始账本不一致，拒绝恢复冻结副本");
+  const dates = evidence.tradingDates;
+  if (
+    !Array.isArray(dates) ||
+    canonicalJson([...new Set(dates)].sort()) !== canonicalJson(dates) ||
+    dates.some((date) => typeof date !== "string" || date > plan.signalDate)
+  )
+    throw new Error("做T质量证据交易日无效，拒绝恢复冻结副本");
+  // 空日历保留当时的保守停手语义；非空日期需用独立日历核对，
+  // 不能靠在计划中编造交易日提前解除停手。只在升级恢复时查询。
+  if (dates.length) {
+    const calendar = await tradingCalendar(
+      dates[0],
+      plan.signalDate,
+      null,
+      500,
+    );
+    if (dates.some((date) => !calendar.dates.includes(date)))
+      throw new Error("做T质量证据与真实交易日历不一致，拒绝恢复冻结副本");
+  }
+  const storedPlan = JSON.parse(stored.payload);
+  const statement = await freezeQualityStatement(
+    db,
+    storedPlan,
+    scope,
+    stored.digest,
+  );
+  await statement.run();
+  await assertFrozenTQuality(db, plan, scope);
 }
 
 export async function assertStoredProgramPlan(
@@ -112,7 +180,7 @@ export async function assertStoredProgramPlan(
     throw new Error("策略程序原始快照与冻结摘要不一致");
   // 方案 7 第三轮：执行前用账户冻结副本独立核对做T质量摘要——伪造
   // 的"空历史"计划（保留规则标记）在此处即被拦截，不必等导出核验。
-  await assertFrozenTQuality(env.DB, plan, tQualityScope);
+  await ensureFrozenTQuality(env, plan, tQualityScope);
   assertProgramSnapshot(plan, snapshot, book);
 }
 
