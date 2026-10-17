@@ -90,7 +90,11 @@ test("20日振幅越界（<10% 或 >25%）→ 不判波段", () => {
       sectorMaxHeight: 4,
       history: { limitUp10d: false, ma20: 9, amplitude20 },
     });
-    assert.equal(r.stockClass, STOCK_CLASSES.MEDIOCRE, `amplitude=${amplitude20}`);
+    assert.equal(
+      r.stockClass,
+      STOCK_CLASSES.MEDIOCRE,
+      `amplitude=${amplitude20}`,
+    );
   }
 });
 

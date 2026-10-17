@@ -1,10 +1,7 @@
 import { database } from "../storage/database.js";
 import { beijingDate, readBuyPointParams } from "./review.js";
 import { marketData } from "./market.js";
-import {
-  getMa5ByCode,
-  getStockFeaturesByCode,
-} from "./daily-closes.js";
+import { getMa5ByCode, getStockFeaturesByCode } from "./daily-closes.js";
 import { safeError } from "../http.js";
 import { normalize, promotionStats } from "../../shared/scoring.js";
 

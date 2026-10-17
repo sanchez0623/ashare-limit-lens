@@ -72,12 +72,7 @@ export function classifyStock({ row, sectorMaxHeight, history }) {
   const close = num(row.close) ?? num(row.price);
 
   // 3) 强势反包型：涨停基因 + 站上 20 日线（且未达龙头标准——龙头已先行返回）
-  if (
-    limitUp10d === true &&
-    close !== null &&
-    ma20 !== null &&
-    close > ma20
-  )
+  if (limitUp10d === true && close !== null && ma20 !== null && close > ma20)
     return {
       stockClass: STOCK_CLASSES.STRONG_REVERSAL,
       reason: "近 10 日有涨停基因，收盘站上 20 日均线",

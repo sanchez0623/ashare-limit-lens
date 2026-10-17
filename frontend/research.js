@@ -182,9 +182,7 @@ function scoreHtml(s) {
 function recalculate() {
   const options = {
     // 服务端随 payload 下发的 MA5（daily parquet 计算），供首阴校验
-    ...(state.payload?.ma5ByCode
-      ? { ma5ByCode: state.payload.ma5ByCode }
-      : {}),
+    ...(state.payload?.ma5ByCode ? { ma5ByCode: state.payload.ma5ByCode } : {}),
     // 股票分类历史特征（涨停基因 / MA20 / 20 日振幅），供分类路由
     ...(state.payload?.historyByCode
       ? { historyByCode: state.payload.historyByCode }

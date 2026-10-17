@@ -315,7 +315,7 @@ export function analyze(
   }
   const historyOf = (code) =>
     options.historyByCode instanceof Map
-      ? options.historyByCode.get(code) ?? null
+      ? (options.historyByCode.get(code) ?? null)
       : (options.historyByCode?.[code] ?? null);
   const enriched = clean.map((r) => {
     const change = num(r.change);
