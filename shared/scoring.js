@@ -1,6 +1,41 @@
 import { classifySentimentCycle } from "./sentiment-cycle.js";
 import { annotateBuyPoint } from "./buy-point-type.js";
 import { classifyStock } from "./stock-class.js";
+
+// 噪声标签过滤：这些标签虽然出现在涨停原因中，但不代表市场主线
+const NOISE_THEMES = new Set([
+  "重组审核中止",
+  "复牌",
+  "停牌",
+  "退市",
+  "摘牌",
+  "ST",
+  "风险警示",
+  "立案调查",
+  "违规担保",
+  "资金占用",
+  "业绩预亏",
+  "业绩下滑",
+  "商誉减值",
+  "诉讼",
+  "仲裁",
+  "处罚",
+  "警示函",
+  "关注函",
+  "问询函",
+]);
+
+// 解析涨停原因标签
+// 输入: "半导体存储+重组审核中止+智慧城市"
+// 输出: ["半导体存储", "智慧城市"]（过滤噪声标签）
+export function parseThemes(limitUpReason) {
+  if (!limitUpReason || typeof limitUpReason !== "string") return [];
+  const tags = limitUpReason
+    .split(/[+，,、;；/]+/)
+    .map(t => t.trim())
+    .filter(t => t && !NOISE_THEMES.has(t) && t.length >= 2);
+  return [...new Set(tags)]; // 去重
+}
 export const FACTORS = [
   {
     key: "quality",
@@ -37,6 +72,27 @@ export const FACTORS = [
     name: "连板结构",
     weight: 5,
     description: "首板 75；2–3 板 100；4 板 65；5 板及以上 40",
+  },
+];
+// 双维度协同因子（可选，需要启用）
+export const DUAL_SYNERGY_FACTORS = [
+  {
+    key: "industrySynergy",
+    name: "行业协同",
+    weight: 8,
+    description: "基于行业板块的协同评分",
+  },
+  {
+    key: "themeSynergy",
+    name: "题材协同",
+    weight: 7,
+    description: "基于涨停原因标签的协同评分",
+  },
+  {
+    key: "dualSynergy",
+    name: "双维度协同",
+    weight: 15,
+    description: "行业 + 题材加权协同（60/40）",
   },
 ];
 export const PRESETS = {
@@ -78,6 +134,13 @@ export function normalize(row) {
     // 当日涨停池使用 lbc，昨日涨停池使用 ylbc（昨日连板数）。
     height: num(row.lbc) ?? num(row.ylbc),
     history: row.zttj ? `${row.zttj.days} 天 ${row.zttj.ct} 板` : null,
+    // 双维度协同评分：涨停原因和解析后的题材标签
+    limitUpReason: row.limitUpReason ?? null,
+    themes: parseThemes(row.limitUpReason),
+    // 同花顺独有字段（备用）
+    maxSealMoney: row.maxSealMoney ?? null,
+    isSt: row.isSt ?? false,
+    isNew: row.isNew ?? false,
   };
 }
 function mean(rows, key) {
@@ -137,12 +200,92 @@ export function sectorAnalysis(rows) {
     })
     .sort((a, b) => b.score - a.score || b.count - a.count);
 }
+
+// 题材协同分析：按涨停原因标签分组，计算题材热度
+// 输入: rows（包含 themes 字段的行）
+// 输出: 题材列表，每个题材包含 count、score、members 等
+export function themeAnalysis(rows) {
+  const themeMap = new Map();
+  rows.forEach((row) => {
+    const themes = row.themes || [];
+    themes.forEach((theme) => {
+      if (!themeMap.has(theme)) themeMap.set(theme, []);
+      themeMap.get(theme).push(row);
+    });
+  });
+
+  return [...themeMap]
+    .map(([theme, list]) => {
+      const known = list.filter((r) => r.breaks !== null),
+        quality = known.length
+          ? mean(
+              known.map((r) => ({ ...r, q: clamp(100 - r.breaks * 15, 10) })),
+              "q",
+            )
+          : null;
+      const height = Math.max(0, ...list.map((r) => r.height || 0));
+      const components = [
+        { name: "涨停集聚", weight: 35, value: clamp((list.length / 6) * 100) },
+        { name: "连板高度", weight: 25, value: clamp((height / 5) * 100) },
+        { name: "封板稳定", weight: 25, value: quality },
+        {
+          name: "早盘联动",
+          weight: 15,
+          value: list.filter((r) => r.first !== null).length
+            ? (list.filter((r) => r.first !== null && r.first < 103000).length /
+                list.filter((r) => r.first !== null).length) *
+              100
+            : null,
+        },
+      ];
+      const weight = components
+        .filter((c) => c.value !== null)
+        .reduce((s, c) => s + c.weight, 0);
+      const score = Math.round(
+        components.reduce(
+          (s, c) => s + (c.value === null ? 0 : c.value * c.weight),
+          0,
+        ) / weight,
+      );
+      return {
+        name: theme,
+        count: list.length,
+        height,
+        quality,
+        score,
+        coverage: weight,
+        components,
+        amount: list.reduce((s, r) => s + (r.amount || 0), 0),
+        members: list.map((r) => r.code),
+      };
+    })
+    .sort((a, b) => b.score - a.score || b.count - a.count);
+}
+
+// 双维度协同评分：结合行业协同和题材协同
+// industryScore: 行业协同分数（来自 sectorAnalysis）
+// themeScore: 题材协同分数（来自 themeAnalysis）
+// weights: { industry: 0.6, theme: 0.4 } 默认 60/40 权重
+export function dualSynergyScore(industryScore, themeScore, weights = { industry: 0.6, theme: 0.4 }) {
+  const scores = [];
+  if (industryScore !== null && industryScore !== undefined) {
+    scores.push({ score: industryScore, weight: weights.industry });
+  }
+  if (themeScore !== null && themeScore !== undefined) {
+    scores.push({ score: themeScore, weight: weights.theme });
+  }
+  if (scores.length === 0) return null;
+  const totalWeight = scores.reduce((s, x) => s + x.weight, 0);
+  const combined = scores.reduce((s, x) => s + x.score * x.weight, 0) / totalWeight;
+  return Math.round(combined);
+}
 export function analyzeStock(
   row,
   sectorScore,
   weights = PRESETS.balanced,
   prevRow = null,
   options = {},
+  themeScore = null,
 ) {
   const factorValues = {
     quality: row.breaks === null ? null : clamp(100 - row.breaks * 15, 10),
@@ -185,6 +328,10 @@ export function analyzeStock(
             : row.height === 4
               ? 65
               : 40,
+    // 双维度协同因子
+    industrySynergy: sectorScore ?? null,
+    themeSynergy: themeScore ?? null,
+    dualSynergy: dualSynergyScore(sectorScore, themeScore, options.dualSynergyWeights),
   };
   const risks = [];
   if (row.height >= 5)
@@ -227,9 +374,24 @@ export function analyzeStock(
     weight: weights[i],
     value: factorValues[f.key],
   }));
+  // 添加双维度协同因子（如果启用）
+  if (options.enableDualSynergy) {
+    const allFactors = [...FACTORS, ...DUAL_SYNERGY_FACTORS];
+    factors.push(
+      ...DUAL_SYNERGY_FACTORS.map((f) => ({
+        ...f,
+        weight: f.weight, // 双维度因子使用固定权重
+        value: factorValues[f.key],
+      })),
+    );
+  }
   const active = factors.filter((f) => f.value !== null),
     available = active.reduce((s, f) => s + f.weight, 0),
-    total = weights.reduce((a, b) => a + b, 0);
+    // 总权重 = 基础因子权重 + 双维度协同权重（如果启用）
+    total = weights.reduce((a, b) => a + b, 0) +
+      (options.enableDualSynergy
+        ? DUAL_SYNERGY_FACTORS.reduce((s, f) => s + f.weight, 0)
+        : 0);
   // 覆盖率分母排除"对该来源结构性不适用"的因子。封单强度（capital）对收盘
   // 未封的股票必然缺失——这是模型不适用，不是数据缺口；计入分母会让炸板
   // 候选覆盖率上限卡在 80% 以下（实测质量 30 + 换手 15 + 首封 15 + 板块 15
@@ -316,6 +478,27 @@ export function analyze(
   );
   const sectors = sectorAnalysis(clean),
     bySector = new Map(sectors.map((s) => [s.name, s.score]));
+  // 题材协同分析（双维度协同评分）
+  // 先解析所有行的题材标签，然后按题材分组计算协同分数
+  const rowsWithThemes = clean.map(r => ({
+    ...r,
+    themes: parseThemes(r.limitUpReason),
+  }));
+  const themes = themeAnalysis(rowsWithThemes),
+    byTheme = new Map(themes.map((t) => [t.name, t.score]));
+  // 为每只股票计算题材协同分数（取该股票所属题材中的最高分）
+  const byStockThemeScore = new Map();
+  for (const r of clean) {
+    const themes = parseThemes(r.limitUpReason);
+    if (themes.length > 0) {
+      const themeScores = themes
+        .map(t => byTheme.get(t))
+        .filter(s => s !== undefined && s !== null);
+      if (themeScores.length > 0) {
+        byStockThemeScore.set(r.code, Math.max(...themeScores));
+      }
+    }
+  }
   // 昨日同代码行作为 prevRow 传入，供买点分类器计算 prevChange/prevBreaks。
   const prevByCode = previous
     ? new Map(previous.map((r) => [r.code, r]))
@@ -364,6 +547,8 @@ export function analyze(
             history: historyOf(r.code),
           })
         : null;
+    // 解析题材标签（用于双维度协同评分）
+    const themes = parseThemes(r.limitUpReason);
     return {
       ...r,
       isLimitUp,
@@ -374,6 +559,7 @@ export function analyze(
       ...(openChange !== null ? { openChange } : {}),
       ...(ma5 !== null ? { ma5 } : {}),
       ...(options.lateSession === true ? { lateSession: true } : {}),
+      ...(themes.length > 0 ? { themes } : {}),
       ...(classification
         ? {
             stockClass: classification.stockClass,
@@ -393,6 +579,7 @@ export function analyze(
           weights,
           prevByCode?.get(r.code) ?? null,
           options,
+          byStockThemeScore.get(r.code) ?? null,
         ),
       )
       .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
@@ -431,6 +618,7 @@ export function analyze(
     stocks,
     brokenStocks,
     sectors,
+    themes,
     count: clean.length,
     excluded: rows.length - clean.length,
     first,

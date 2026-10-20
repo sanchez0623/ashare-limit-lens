@@ -25,7 +25,8 @@ export function shanghaiDayMs(dateStr) {
 async function request(path, params = {}, { retries = 2, delayMs = 500 } = {}) {
   const apiKey = getApiKey();
   if (!apiKey) {
-    throw new Error("FU_YAO_API_KEY 未设置");
+    // API key 未设置时，返回空数据而不是抛错，避免影响主流程
+    return { item: [], total: 0, unavailable: true };
   }
 
   const url = new URL(path, BASE);

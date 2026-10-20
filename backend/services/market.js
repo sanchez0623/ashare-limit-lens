@@ -79,26 +79,18 @@ function mergeLimitUpPools(emPool, thsPool) {
   // 合并数据
   return filteredEm.map(emRow => {
     const thsRow = thsMap.get(emRow.c);
-    return {
-      // 东财字段（优先）
-      c: emRow.c,
-      n: emRow.n,
-      zdp: emRow.zdp ?? thsRow?.price_change_ratio_pct,
-      lbc: emRow.lbc ?? thsRow?.continue_day_cnt,
-      fund: emRow.fund ?? thsRow?.seal_money,
-      fbt: emRow.fbt ?? thsRow?.limit_up_time,
-      hs: emRow.hs, // 换手率只能用东财（同花顺没有）
-      hybk: emRow.hybk, // 行业板块只能用东财
-      amount: emRow.amount,
-      // 同花顺独有字段（补全）
-      maxSealMoney: thsRow?.max_seal_money, // 峰值封单金额
-      limitUpReason: thsRow?.limit_up_reason, // 涨停原因
-      isSt: thsRow?.is_st ?? false, // ST 标记
-      isNew: thsRow?.is_new ?? false, // 新股标记
-      // 数据源标记
-      _dataSource: "eastmoney",
-      _thsSupplemented: !!thsRow,
-    };
+    // 保留所有东财原始字段
+    const merged = { ...emRow };
+    // 同花顺独有字段（仅当同花顺数据可用时添加）
+    if (thsRow) {
+      merged.maxSealMoney = thsRow.max_seal_money; // 峰值封单金额
+      merged.limitUpReason = thsRow.limit_up_reason; // 涨停原因
+      merged.isSt = thsRow.is_st ?? false; // ST 标记
+      merged.isNew = thsRow.is_new ?? false; // 新股标记
+      merged._dataSource = "eastmoney";
+      merged._thsSupplemented = true;
+    }
+    return merged;
   });
 }
 
@@ -125,23 +117,16 @@ function mergeLimitBreakPools(emPool, thsPool) {
   // 合并数据
   return filteredEm.map(emRow => {
     const thsRow = thsMap.get(emRow.c);
-    return {
-      // 东财字段（优先）
-      c: emRow.c,
-      n: emRow.n,
-      zdp: emRow.zdp ?? thsRow?.price_change_ratio_pct,
-      lbc: emRow.lbc ?? thsRow?.continue_day_cnt,
-      fund: emRow.fund ?? thsRow?.seal_money,
-      fbt: emRow.fbt ?? thsRow?.limit_up_time,
-      hs: emRow.hs,
-      zbc: emRow.zbc, // 炸板次数（东财有，同花顺用 open_times）
-      // 同花顺独有字段（补全）
-      openTimes: thsRow?.open_times, // 开板次数
-      maxSealMoney: thsRow?.max_seal_money,
-      // 数据源标记
-      _dataSource: "eastmoney",
-      _thsSupplemented: !!thsRow,
-    };
+    // 保留所有东财原始字段
+    const merged = { ...emRow };
+    // 同花顺独有字段（仅当同花顺数据可用时添加）
+    if (thsRow) {
+      merged.openTimes = thsRow.open_times; // 开板次数
+      merged.maxSealMoney = thsRow.max_seal_money;
+      merged._dataSource = "eastmoney";
+      merged._thsSupplemented = true;
+    }
+    return merged;
   });
 }
 
@@ -176,12 +161,20 @@ export async function marketData(date) {
   )
     warnings.push("昨日连板字段缺失或无效，晋级率暂缺。");
 
-  // 同花顺数据源状态
+  // 同花顺数据源状态（仅在 API key 已设置时检查失败）
   const thsWarnings = [];
-  if (thsLimitUp.status === "rejected") thsWarnings.push("同花顺涨停池获取失败");
-  if (thsLimitBreak.status === "rejected") thsWarnings.push("同花顺炸板池获取失败");
-  if (thsLimitDown.status === "rejected") thsWarnings.push("同花顺跌停池获取失败");
-  if (thsLadder.status === "rejected") thsWarnings.push("同花顺连板天梯获取失败");
+  if (thsLimitUp.status === "rejected" && !thsLimitUp.reason?.message?.includes("未设置")) {
+    thsWarnings.push("同花顺涨停池获取失败");
+  }
+  if (thsLimitBreak.status === "rejected" && !thsLimitBreak.reason?.message?.includes("未设置")) {
+    thsWarnings.push("同花顺炸板池获取失败");
+  }
+  if (thsLimitDown.status === "rejected" && !thsLimitDown.reason?.message?.includes("未设置")) {
+    thsWarnings.push("同花顺跌停池获取失败");
+  }
+  if (thsLadder.status === "rejected" && !thsLadder.reason?.message?.includes("未设置")) {
+    thsWarnings.push("同花顺连板天梯获取失败");
+  }
 
   // 合并涨停池数据（东财优先，同花顺补全）
   const mergedRows = mergeLimitUpPools(
