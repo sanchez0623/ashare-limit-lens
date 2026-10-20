@@ -7,18 +7,19 @@ import { existsSync } from "node:fs";
 // QuanQuant stock.db 路径
 const STOCK_DB_PATH = "D:/Sanchez/QuanQuant/hikyuu-quan/stock/stock.db";
 
-// 行业代码到名称的映射（基于常见申万行业分类）
+// 行业代码到名称的映射（基于 raw-pools-enhanced 数据学习）
 const INDUSTRY_NAMES = {
-  1: "银行", 2: "房地产", 3: "钢铁", 4: "交通运输", 5: "食品饮料",
-  6: "高速公路", 7: "汽车", 8: "机场港口", 9: "医药生物", 10: "化工",
-  11: "纺织服饰", 12: "家电", 13: "轻工制造", 14: "商业百货", 15: "旅游酒店",
-  16: "电力", 17: "燃气水务", 18: "农林牧渔", 19: "化工材料", 20: "煤炭",
-  21: "石油石化", 22: "贵金属", 23: "有色金属", 24: "通信", 25: "电子",
-  26: "计算机", 27: "传媒", 28: "国防军工", 29: "机械设备", 30: "电气设备",
-  31: "房地产服务", 32: "建筑装饰", 33: "建筑材料", 34: "水泥建材", 35: "环境治理",
-  36: "稀土小金属", 37: "锂业", 38: "造纸印刷", 39: "环保", 40: "公用事业",
-  41: "综合", 42: "传媒", 43: "新能源", 44: "光伏", 45: "储能", 46: "半导体",
-  47: "消费电子", 48: "汽车整车", 49: "汽车零部件", 50: "电池",
+  1: "银行证券", 2: "房地产", 3: "钢铁", 4: "家居建材", 5: "有色金属",
+  6: "电力设备", 7: "汽车", 8: "交通运输", 9: "医药生物", 10: "旅游酒店",
+  11: "房地产", 12: "商业百货", 13: "电子信息", 14: "食品饮料", 15: "纺织服饰",
+  16: "电力", 17: "农林牧渔", 18: "传媒影视", 19: "化工", 20: "煤炭",
+  21: "建筑装饰", 22: "水泥建材", 23: "家电", 24: "通信", 25: "综合",
+  26: "机械设备", 27: "化工材料", 28: "基础化工", 29: "电力设备", 30: "电气设备",
+  31: "房地产服务", 32: "建筑装饰", 33: "建筑材料", 34: "医药生物", 35: "环境治理",
+  36: "稀土小金属", 37: "食品饮料", 38: "造纸印刷", 39: "环保", 40: "公用事业",
+  41: "纺织服饰", 42: "公用事业", 43: "新能源", 44: "光伏", 45: "机械设备",
+  46: "传媒", 47: "塑料橡胶", 48: "玻璃", 49: "国防军工", 50: "国防军工",
+  51: "电子信息", 52: "综合",
 };
 
 // 缓存行业映射
@@ -49,16 +50,30 @@ export function loadIndustryMapping() {
       SELECT s.code, s.name, f.industry 
       FROM Stock s 
       LEFT JOIN stkfinance f ON s.stockid = f.stockid 
-      WHERE s.type = 1 AND f.industry > 0
+      WHERE (s.type = 1 OR s.type = 8) AND f.industry > 0
+      ORDER BY s.type ASC
     `).all();
     
     const mapping = new Map();
     for (const row of rows) {
-      mapping.set(row.code, {
-        name: row.name,
-        industry: row.industry,
-        industryName: INDUSTRY_NAMES[row.industry] ?? `行业${row.industry}`,
-      });
+      // 优先选择 type=1 (A 股)，如果有重复代码
+      if (mapping.has(row.code)) {
+        const existing = mapping.get(row.code);
+        if (row.industry > 0 && existing.industry === 0) {
+          // 如果现有的是无效行业代码，用新的替换
+          mapping.set(row.code, {
+            name: row.name,
+            industry: row.industry,
+            industryName: INDUSTRY_NAMES[row.industry] ?? `行业${row.industry}`,
+          });
+        }
+      } else {
+        mapping.set(row.code, {
+          name: row.name,
+          industry: row.industry,
+          industryName: INDUSTRY_NAMES[row.industry] ?? `行业${row.industry}`,
+        });
+      }
     }
     
     db.close();
