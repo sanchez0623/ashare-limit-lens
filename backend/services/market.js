@@ -3,6 +3,15 @@ import { symbol, beijingDate } from "./review.js";
 import { toCents } from "../domain/trading.js";
 import { normalize, promotionStats } from "../../shared/scoring.js";
 import { BENCHMARK_CODES } from "../../shared/benchmarks.js";
+import {
+  getLimitUpPool as thsGetLimitUpPool,
+  getLimitBreakPool as thsGetLimitBreakPool,
+  getLimitDownPool as thsGetLimitDownPool,
+  getLimitUpLadder as thsGetLimitUpLadder,
+  getPricesSnapshot as thsGetPricesSnapshot,
+  getAuctionSnapshot as thsGetAuctionSnapshot,
+  getShortTermBenchmark as thsGetShortTermBenchmark,
+} from "./fuyao.js";
 const CACHE = new Map();
 const EM_BASE = "https://push2ex.eastmoney.com/";
 const TOKEN = "7eea3edcaed734bea9cbfc24409ed989";
@@ -46,16 +55,115 @@ export async function getPool(endpoint, date) {
     total: body.data.tc ?? pool.length,
   };
 }
+// 合并东财和同花顺涨停池数据
+// 策略: 东财优先，同花顺备用 + 补全独有字段
+// 排除北交所（920xxx 代码），保持沪深主板 + 创业板口径
+function mergeLimitUpPools(emPool, thsPool) {
+  if (!emPool || !Array.isArray(emPool) || emPool.length === 0) {
+    return [];
+  }
+
+  // 过滤北交所股票
+  const filteredEm = emPool.filter(r => !r.c?.startsWith("920"));
+
+  // 建立同花顺数据索引
+  const thsMap = new Map();
+  if (thsPool && Array.isArray(thsPool)) {
+    for (const r of thsPool) {
+      if (r.ticker && !r.ticker.startsWith("920")) {
+        thsMap.set(r.ticker, r);
+      }
+    }
+  }
+
+  // 合并数据
+  return filteredEm.map(emRow => {
+    const thsRow = thsMap.get(emRow.c);
+    return {
+      // 东财字段（优先）
+      c: emRow.c,
+      n: emRow.n,
+      zdp: emRow.zdp ?? thsRow?.price_change_ratio_pct,
+      lbc: emRow.lbc ?? thsRow?.continue_day_cnt,
+      fund: emRow.fund ?? thsRow?.seal_money,
+      fbt: emRow.fbt ?? thsRow?.limit_up_time,
+      hs: emRow.hs, // 换手率只能用东财（同花顺没有）
+      hybk: emRow.hybk, // 行业板块只能用东财
+      amount: emRow.amount,
+      // 同花顺独有字段（补全）
+      maxSealMoney: thsRow?.max_seal_money, // 峰值封单金额
+      limitUpReason: thsRow?.limit_up_reason, // 涨停原因
+      isSt: thsRow?.is_st ?? false, // ST 标记
+      isNew: thsRow?.is_new ?? false, // 新股标记
+      // 数据源标记
+      _dataSource: "eastmoney",
+      _thsSupplemented: !!thsRow,
+    };
+  });
+}
+
+// 合并东财和同花顺炸板池数据
+// 策略: 东财优先，同花顺备用
+function mergeLimitBreakPools(emPool, thsPool) {
+  if (!emPool || !Array.isArray(emPool) || emPool.length === 0) {
+    return [];
+  }
+
+  // 过滤北交所股票
+  const filteredEm = emPool.filter(r => !r.c?.startsWith("920"));
+
+  // 建立同花顺数据索引
+  const thsMap = new Map();
+  if (thsPool && Array.isArray(thsPool)) {
+    for (const r of thsPool) {
+      if (r.ticker && !r.ticker.startsWith("920")) {
+        thsMap.set(r.ticker, r);
+      }
+    }
+  }
+
+  // 合并数据
+  return filteredEm.map(emRow => {
+    const thsRow = thsMap.get(emRow.c);
+    return {
+      // 东财字段（优先）
+      c: emRow.c,
+      n: emRow.n,
+      zdp: emRow.zdp ?? thsRow?.price_change_ratio_pct,
+      lbc: emRow.lbc ?? thsRow?.continue_day_cnt,
+      fund: emRow.fund ?? thsRow?.seal_money,
+      fbt: emRow.fbt ?? thsRow?.limit_up_time,
+      hs: emRow.hs,
+      zbc: emRow.zbc, // 炸板次数（东财有，同花顺用 open_times）
+      // 同花顺独有字段（补全）
+      openTimes: thsRow?.open_times, // 开板次数
+      maxSealMoney: thsRow?.max_seal_money,
+      // 数据源标记
+      _dataSource: "eastmoney",
+      _thsSupplemented: !!thsRow,
+    };
+  });
+}
+
 export async function marketData(date) {
   const hit = CACHE.get(date);
   if (hit && Date.now() - hit.time < 120000)
     return { ...hit.body, cached: true };
-  const [main, broken, yesterday] = await Promise.allSettled([
-    getPool("getTopicZTPool", date),
-    getPool("getTopicZBPool", date),
-    getPool("getYesterdayZTPool", date),
-  ]);
+
+  // 并行获取东财和同花顺数据
+  const [main, broken, yesterday, thsLimitUp, thsLimitBreak, thsLimitDown, thsLadder] =
+    await Promise.allSettled([
+      getPool("getTopicZTPool", date),
+      getPool("getTopicZBPool", date),
+      getPool("getYesterdayZTPool", date),
+      thsGetLimitUpPool(date),
+      thsGetLimitBreakPool(date),
+      thsGetLimitDownPool(date),
+      thsGetLimitUpLadder(),
+    ]);
+
   if (main.status === "rejected") throw main.reason;
+
   const warnings = [];
   if (broken.status === "rejected") warnings.push("炸板池未返回，封板率暂缺。");
   if (yesterday.status === "rejected" || !yesterday.value?.pool.length)
@@ -67,25 +175,54 @@ export async function marketData(date) {
     ).promotion === null
   )
     warnings.push("昨日连板字段缺失或无效，晋级率暂缺。");
+
+  // 同花顺数据源状态
+  const thsWarnings = [];
+  if (thsLimitUp.status === "rejected") thsWarnings.push("同花顺涨停池获取失败");
+  if (thsLimitBreak.status === "rejected") thsWarnings.push("同花顺炸板池获取失败");
+  if (thsLimitDown.status === "rejected") thsWarnings.push("同花顺跌停池获取失败");
+  if (thsLadder.status === "rejected") thsWarnings.push("同花顺连板天梯获取失败");
+
+  // 合并涨停池数据（东财优先，同花顺补全）
+  const mergedRows = mergeLimitUpPools(
+    main.value.pool,
+    thsLimitUp.status === "fulfilled" ? thsLimitUp.value.item : null,
+  );
+
+  // 合并炸板池数据（东财优先，同花顺补全）
+  const mergedBrokenRows = mergeLimitBreakPools(
+    broken.status === "fulfilled" ? broken.value.pool : null,
+    thsLimitBreak.status === "fulfilled" ? thsLimitBreak.value.item : null,
+  );
+
   const result = {
     date,
-    source: "东方财富公开行情",
+    source: "东方财富公开行情 + 同花顺金融数据",
     sourceUrl: "https://quote.eastmoney.com/ztb/detail",
-    scope: "沪深主板、创业板；不含 ST、科创板及连续一字新股",
+    scope: "沪深主板、创业板；不含 ST、科创板、北交所及连续一字新股",
     fetchedAt: new Date().toISOString(),
-    rows: main.value.pool,
-    broken: broken.status === "fulfilled" ? broken.value.pool.length : null,
+    rows: mergedRows,
+    broken: mergedBrokenRows.length || null,
     // 炸板池原始行：出池持仓的炸板次数来源（方案 5 炸板不回封信号）；
     // broken 仅保留家数供封板率/展示，不丢个股记录。
-    brokenRows: broken.status === "fulfilled" ? broken.value.pool : null,
+    brokenRows: mergedBrokenRows.length > 0 ? mergedBrokenRows : null,
     previous:
       yesterday.status === "fulfilled" && yesterday.value.pool.length
         ? yesterday.value.pool
         : null,
     previousLabel: "上一交易日",
-    warnings,
+    warnings: [...warnings, ...thsWarnings],
+    // 同花顺独有数据（备用 + 补全）
+    thsData: {
+      limitDownPool:
+        thsLimitDown.status === "fulfilled" ? thsLimitDown.value.item : null,
+      limitUpLadder:
+        thsLadder.status === "fulfilled" ? thsLadder.value.item : null,
+      supplementedCount: mergedRows.filter(r => r._thsSupplemented).length,
+    },
     cached: false,
   };
+
   if (CACHE.size >= 20) CACHE.delete(CACHE.keys().next().value);
   CACHE.set(date, { time: Date.now(), body: result });
   return result;

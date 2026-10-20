@@ -407,6 +407,7 @@ const ALLOWED_AI_HOSTS = new Set([
   "dashscope.aliyuncs.com",
   "ark.cn-beijing.volces.com",
   "ark.cn-shanghai.volces.com",
+  "token.sensenova.cn",
 ]);
 export function aiConfig(env) {
   const base = env?.AI_BASE_URL || "https://api.deepseek.com/v1",
