@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { analyze, normalize, PRESETS } from "./shared/scoring.js";
 import { spearman } from "./backend/domain/review-metrics.js";
 
-const DATA_DIR = "D:/Sanchez/AI/GithubProjects/ashare-limit-lens-probe/raw-pools";
+const DATA_DIR = "D:/Sanchez/AI/GithubProjects/ashare-limit-lens-probe/raw-pools-enhanced";
 
 // 加载所有 247 日数据
 const files = readdirSync(DATA_DIR).filter(f => f.endsWith('.json')).sort();
@@ -40,7 +40,7 @@ function convertToNormalized(row) {
     lbt: row.last_limit_up_time ? parseInt(row.last_limit_up_time.slice(-6)) : null,
     zbc: row.open_num,
     lbc: row.high_days_value ? parseInt(row.high_days_value.toString().slice(-2)) : null,
-    hybk: "未知", // 原始数据没有行业信息
+    hybk: row.hybk ?? "未知", // 从增强数据中读取行业信息
     zttj: null,
     // 双维度协同评分需要
     limitUpReason: row.reason_type,
