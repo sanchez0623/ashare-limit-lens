@@ -62,8 +62,23 @@ export function parseThemes(limitUpReason) {
 }
 
 // 获取标签权重（用于加权计算）
-export function getTagWeight(tag) {
-  return TAG_WEIGHTS[tag] ?? 1.0; // 默认权重 1.0
+// 优先从动态权重提供者获取，回退到静态配置
+// @param {string} tag 标签
+// @param {function} dynamicWeightsProvider 可选的动态权重提供者函数 (tag) => number
+export function getTagWeight(tag, dynamicWeightsProvider = null) {
+  // 1. 优先从动态权重提供者获取
+  if (dynamicWeightsProvider) {
+    try {
+      const dynamicWeight = dynamicWeightsProvider(tag);
+      if (dynamicWeight && dynamicWeight !== 1.0) {
+        return dynamicWeight;
+      }
+    } catch (e) {
+      // 提供者不可用，回退到静态配置
+    }
+  }
+  // 2. 回退到静态配置
+  return TAG_WEIGHTS[tag] ?? 1.0;
 }
 export const FACTORS = [
   {
@@ -231,9 +246,9 @@ export function sectorAnalysis(rows) {
 }
 
 // 题材协同分析：按涨停原因标签分组，计算题材热度
-// 输入: rows（包含 themes 字段的行）
+// 输入: rows（包含 themes 字段的行），dynamicWeightsProvider（可选的动态权重提供者）
 // 输出: 题材列表，每个题材包含 count、score、members 等
-export function themeAnalysis(rows) {
+export function themeAnalysis(rows, dynamicWeightsProvider = null) {
   const themeMap = new Map();
   rows.forEach((row) => {
     const themes = row.themes || [];
@@ -276,12 +291,18 @@ export function themeAnalysis(rows) {
           0,
         ) / weight,
       );
+      
+      // 获取标签权重（用于加权）
+      const tagWeight = dynamicWeightsProvider ? getTagWeight(theme, dynamicWeightsProvider) : getTagWeight(theme);
+      
       return {
         name: theme,
         count: list.length,
         height,
         quality,
-        score,
+        score: Math.round(score * tagWeight), // 应用标签权重
+        rawScore: score,
+        tagWeight,
         coverage: weight,
         components,
         amount: list.reduce((s, r) => s + (r.amount || 0), 0),
@@ -513,7 +534,8 @@ export function analyze(
     ...r,
     themes: parseThemes(r.limitUpReason),
   }));
-  const themes = themeAnalysis(rowsWithThemes),
+  // 传递动态权重提供者（后端可传入数据库查询函数）
+  const themes = themeAnalysis(rowsWithThemes, options.dynamicWeightsProvider),
     byTheme = new Map(themes.map((t) => [t.name, t.score]));
   // 为每只股票计算题材协同分数（取该股票所属题材中的最高分）
   const byStockThemeScore = new Map();

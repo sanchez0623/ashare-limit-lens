@@ -1,9 +1,10 @@
 import { publicFetch } from "./public-fetch.js";
 import { symbol, beijingDate } from "./review.js";
 import { toCents } from "../domain/trading.js";
-import { normalize, promotionStats } from "../../shared/scoring.js";
+import { normalize, promotionStats, parseThemes } from "../../shared/scoring.js";
 import { BENCHMARK_CODES } from "../../shared/benchmarks.js";
 import { enrichWithIndustry } from "./industry.js";
+import { batchRecordTagData, recordTagReturn } from "./tag-contribution.js";
 import {
   getLimitUpPool as thsGetLimitUpPool,
   getLimitBreakPool as thsGetLimitBreakPool,
@@ -185,6 +186,49 @@ export async function marketData(date) {
 
   // 补充行业信息（从 QuanQuant stock.db）
   const enrichedRows = enrichWithIndustry(mergedRows);
+  
+  // 记录标签数据（用于标签贡献度计算）
+  try {
+    const tagRecords = [];
+    for (const row of enrichedRows) {
+      const tags = parseThemes(row.limitUpReason);
+      for (const tag of tags) {
+        tagRecords.push({
+          code: row.c,
+          name: row.n,
+          tag: tag,
+          nextDayReturn: null, // 次日收益待更新
+        });
+      }
+    }
+    if (tagRecords.length > 0) {
+      batchRecordTagData(date, tagRecords);
+    }
+  } catch (err) {
+    console.warn(`[market] 标签数据记录失败：${err.message}`);
+  }
+  
+  // 更新前一天的标签收益
+  try {
+    if (previous && previous.length > 0) {
+      const previousDate = previous[0]._date || beijingDate(new Date(Date.now() - 86400000));
+      for (const prevRow of previous) {
+        const tags = parseThemes(prevRow.limitUpReason);
+        // 找到今天的对应股票，计算收益
+        const todayRow = enrichedRows.find(r => r.c === prevRow.c);
+        if (todayRow && prevRow.zdp && todayRow.zdp) {
+          // 次日收益 = (今日涨幅 - 昨日涨幅) / (1 + 昨日涨幅/100)
+          // 简化：直接记录今日涨幅作为次日收益
+          const nextDayReturn = todayRow.zdp / 100;
+          for (const tag of tags) {
+            recordTagReturn(previousDate, prevRow.c, nextDayReturn);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`[market] 标签收益更新失败：${err.message}`);
+  }
 
   // 合并炸板池数据（东财优先，同花顺补全）
   const mergedBrokenRows = mergeLimitBreakPools(

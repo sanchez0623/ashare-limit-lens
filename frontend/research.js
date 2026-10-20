@@ -47,6 +47,10 @@ document
 const state = {
   view: "overview",
   height: "all",
+  // 板块研究页内 行业 ↔ 题材 切换标签状态
+  synergyTab: "industry",
+  // 个股视图按题材标签筛选（点击题材行写入，清除 chip 或切换数据时复位）
+  themeFilter: null,
   weights: [...PRESETS.balanced],
   payload: null,
   analysis: null,
@@ -95,8 +99,8 @@ const titles = {
   stocks: ["个股分析", "涨停个股分析", "拆解封板表现，比较强度与风险。"],
   sectors: [
     "板块研究",
-    "行业板块研究",
-    "从涨停集聚与连板梯队，观察资金的共同方向。",
+    "板块与题材研究",
+    "行业分类与涨停原因标签，两个维度观察资金的共同方向。",
   ],
   review: [
     "昨日反馈",
@@ -196,6 +200,9 @@ function recalculate() {
         }
       : {}),
     ...(state.payload?.lateSession === true ? { lateSession: true } : {}),
+    // 双维度协同评分（行业 + 题材）
+    enableDualSynergy: true,
+    dualSynergyWeights: { industry: 0.8, theme: 0.2 },
     // 炸板池原始行（payload 已下发）：炸板低吸 / 尾盘跳水低吸 候选来源，
     // 与服务端 saveSnapshot 的 analyze 输入保持同口径
     ...(state.payload?.brokenRows?.length
@@ -275,6 +282,7 @@ function render() {
   $("pool-count").textContent = has ? a.count : "—";
   renderStocks();
   renderSectors();
+  renderThemes();
   renderLadder();
 }
 function filteredStocks() {
@@ -287,6 +295,7 @@ function filteredStocks() {
         r.name.toLowerCase().includes(query) ||
         r.code.includes(query)) &&
       (!sector || r.sector === sector) &&
+      (!state.themeFilter || (r.themes || []).includes(state.themeFilter)) &&
       (state.height === "all" ||
         (state.height === "first" ? r.height === 1 : r.height > 1)),
   );
@@ -306,6 +315,13 @@ function filteredStocks() {
 function renderStocks() {
   const rows = filteredStocks(),
     ready = state.analysis !== null;
+  // 题材筛选 chip：点击题材行写入 state.themeFilter，清除按钮或切换数据复位
+  const chip = $("theme-filter-chip");
+  if (chip) {
+    chip.hidden = !state.themeFilter;
+    if (state.themeFilter)
+      $("theme-filter-label").textContent = `题材：${state.themeFilter}`;
+  }
   const emptyTitle = state.loading
     ? "正在获取行情"
     : ready
@@ -328,12 +344,13 @@ function renderStocks() {
     .querySelectorAll("[data-stock]")
     .forEach((btn) => (btn.onclick = () => openStock(btn.dataset.stock)));
   $("table-status").textContent = ready
-    ? `显示 ${rows.length} / ${state.analysis.count} 家${state.analysis.excluded ? ` · 已剔除 ${state.analysis.excluded} 家 ST / 退市标识个股` : ""}`
+    ? `显示 ${rows.length} / ${state.analysis.count} 家${state.themeFilter ? ` · 题材 ${state.themeFilter}` : ""}${state.analysis.excluded ? ` · 已剔除 ${state.analysis.excluded} 家 ST / 退市标识个股` : ""}`
     : state.loading
       ? "公开行情加载中"
       : "等待有效数据";
 }
 function renderSectors() {
+  applySynergyTab();
   const sectors = state.analysis?.sectors || [];
   $("sector-rank").innerHTML = sectors.length
     ? sectors
@@ -356,6 +373,47 @@ function renderSectors() {
     (btn) =>
       (btn.onclick = () => {
         $("sector-filter").value = btn.dataset.sector;
+        setView("stocks");
+      }),
+  );
+}
+// 板块研究页 行业 ↔ 题材 切换：反映 state.synergyTab，控制两个面板显隐
+function applySynergyTab() {
+  const tab = state.synergyTab;
+  document
+    .querySelectorAll(".synergy-tab")
+    .forEach((btn) =>
+      btn.classList.toggle("active", btn.dataset.synergy === tab),
+    );
+  const industry = $("industry-panel");
+  const theme = $("theme-panel");
+  if (industry) industry.hidden = tab !== "industry";
+  if (theme) theme.hidden = tab !== "theme";
+}
+// 题材协同展示：与行业维度同结构，按涨停原因标签聚合
+function renderThemes() {
+  const themes = state.analysis?.themes || [];
+  $("theme-rank").innerHTML = themes.length
+    ? themes
+        .slice(0, 5)
+        .map(
+          (t, i) =>
+            `<button class="sector-row" data-theme="${escape(t.name)}"><div class="sector-row-label"><div><span class="rank-index">0${i + 1}</span>${escape(t.name)}</div><span class="sector-score">${t.score}</span></div><div class="sector-bar"><i style="width:${t.score}%"></i></div><div class="sector-row-meta">${t.count} 家涨停 · 最高 ${t.height} 板</div></button>`,
+        )
+        .join("")
+    : '<div class="empty compact">当日涨停原因未解析出有效题材标签。</div>';
+  $("theme-rows").innerHTML = themes.length
+    ? themes
+        .map(
+          (t) =>
+            `<tr><td><button class="stock-name" data-theme="${escape(t.name)}">${escape(t.name)}</button></td><td>${scoreHtml(t.score)}</td><td>${t.count}</td><td>${t.height} 板</td><td>${fmt(t.quality)} / 100</td><td>${fmt(t.components[3].value)}%</td><td>${money(t.amount)}</td></tr>`,
+        )
+        .join("")
+    : '<tr><td colspan="7"><div class="empty"><strong>暂无题材评分</strong>当日涨停原因缺失或仅含噪声标签时，无法解析题材协同。</div></td></tr>';
+  document.querySelectorAll("[data-theme]").forEach(
+    (btn) =>
+      (btn.onclick = () => {
+        state.themeFilter = btn.dataset.theme;
         setView("stocks");
       }),
   );
@@ -441,6 +499,7 @@ async function loadData() {
   state.error = null;
   state.payload = null;
   state.analysis = null;
+  state.themeFilter = null;
   state.review = null;
   state.ai = null;
   state.reviewMessage = "正在检查历史反馈";
@@ -509,7 +568,7 @@ function openStock(code) {
   const weakest = r.factors
     .filter((f) => f.value !== null)
     .sort((a, b) => a.value - b.value)[0];
-  const words = `${r.name}为${r.height === 1 ? "首板" : r.height ? `${r.height}连板` : "连板高度暂缺"}，${timeLabel(r.first)}首次封板${r.breaks !== null ? `，盘中炸板 ${r.breaks} 次` : ""}。${strongest ? `${strongest.name}是当前较强指标（${Math.round(strongest.value)} 分）。` : ""}${weakest && weakest !== strongest ? `${weakest.name}相对偏弱（${Math.round(weakest.value)} 分）。` : ""}所属行业 ${sec?.count || 0} 家涨停，板块得分 ${sec?.score ?? "—"}。`;
+  const words = `${r.name}为${r.height === 1 ? "首板" : r.height ? `${r.height}连板` : "连板高度暂缺"}，${timeLabel(r.first)}首次封板${r.breaks !== null ? `，盘中炸板 ${r.breaks} 次` : ""}。${strongest ? `${strongest.name}是当前较强指标（${Math.round(strongest.value)} 分）。` : ""}${weakest && weakest !== strongest ? `${weakest.name}相对偏弱（${Math.round(weakest.value)} 分）。` : ""}${r.themes?.length ? `涨停原因标签 ${r.themes.join("、")}。` : ""}所属行业 ${sec?.count || 0} 家涨停，板块得分 ${sec?.score ?? "—"}。`;
   $("stock-detail").innerHTML =
     `<div class="detail-head"><div><h2>${escape(r.name)}</h2><span class="stock-code">${escape(r.code)}${state.demo ? " · 演示样本" : ""}</span><div class="detail-tags"><span class="sector-tag">${escape(r.sector)}</span><span class="height-tag">${r.height === 1 ? "首板" : `${r.height ?? "—"} 板`}</span></div></div><div class="detail-score">${r.score ?? "—"}<small>综合评分 / 100</small></div></div><div class="detail-facts"><div><label>封单金额</label><strong>${money(r.seal)}</strong></div><div><label>封单 / 成交额</label><strong>${r.sealRatio === null ? "—" : fmt(r.sealRatio * 100)}%</strong></div><div><label>换手率</label><strong>${fmt(r.turnover)}%</strong></div><div><label>最后封板</label><strong>${timeLabel(r.last)}</strong></div></div><div class="detail-section"><h3>六维评分拆解</h3>${r.factors.map((f) => `<div class="factor-row"><span>${f.name}</span><span class="factor-track"><i style="width:${f.value ?? 0}%"></i></span><strong>${f.value === null ? "—" : Math.round(f.value)}</strong><span class="weight">权重 ${f.weight}</span></div>`).join("")}<p class="detail-footnote">有效指标均分 ${fmt(r.rawScore)} − 风险扣分 ${r.deduction} = ${r.score ?? "—"} 分 · 覆盖率 ${r.coverage}%</p></div><div class="detail-section"><h3>风险观察</h3>${r.risks.length ? r.risks.map((x) => `<div class="risk-row"><strong>${x.text} −${x.penalty}</strong><span>${x.detail}</span></div>`).join("") : '<p class="detail-footnote">当前字段未触发模型风险扣分项；公告、基本面与题材风险仍需单独核实。</p>'}</div><div class="detail-section"><h3>盘后诊断</h3><p class="detail-text">${escape(words)}</p></div><p class="detail-footnote">次日观察：竞价是否有承接、同板块是否形成合力、开板后能否回封。当前规则分数尚未经过历史收益校准，不代表上涨概率。</p>`;
   $("stock-dialog").showModal();
@@ -533,7 +592,25 @@ document.querySelectorAll("dialog").forEach(
     }),
 );
 $("help-btn").onclick = () => $("help-dialog").showModal();
-$("all-sectors").onclick = () => setView("sectors");
+$("all-sectors").onclick = () => {
+  state.synergyTab = "industry";
+  setView("sectors");
+};
+$("all-themes").onclick = () => {
+  state.synergyTab = "theme";
+  setView("sectors");
+};
+document.querySelectorAll(".synergy-tab").forEach(
+  (btn) =>
+    (btn.onclick = () => {
+      state.synergyTab = btn.dataset.synergy;
+      applySynergyTab();
+    }),
+);
+$("theme-filter-clear").onclick = () => {
+  state.themeFilter = null;
+  renderStocks();
+};
 $("refresh-btn").onclick = loadData;
 $("trade-date").onchange = loadData;
 $("search").oninput = renderStocks;
@@ -633,10 +710,37 @@ function demoData() {
     "示例·电力设备",
     "示例·医药制造",
   ];
+  // 涨停原因标签：演示双维度协同的题材聚合（含问询函噪声词，验证过滤）
+  const reasons = [
+    "人工智能+算力",
+    "人工智能+算力",
+    "人工智能",
+    "算力+半导体",
+    "人工智能+问询函",
+    "半导体+国产芯片",
+    "半导体",
+    "国产芯片",
+    "半导体+机器人",
+    "机器人",
+    "机器人+新能源",
+    "新能源",
+    "新能源+固态电池",
+    "固态电池",
+    "新能源",
+    "数据中心",
+    "数据中心+算力",
+    "数据中心",
+    "固态电池+新能源",
+    "人工智能",
+    "机器人",
+    "半导体",
+  ];
   return Array.from({ length: 22 }, (_, i) => ({
     c: `DEMO${String(i + 1).padStart(3, "0")}`,
     n: `示例个股 ${String(i + 1).padStart(2, "0")}`,
     hybk: sectors[Math.min(4, Math.floor(i / 5))],
+    // 双维度协同评分的题材来源（normalize 解析为 themes）
+    limitUpReason: reasons[i],
     p: (12 + i) * 1000,
     zdp: i % 4 === 0 ? 20 : 10,
     amount: (2 + (i % 6)) * 1e8,
@@ -658,6 +762,7 @@ $("demo-btn").onclick = () => {
   ++state.request;
   state.loading = false;
   state.demo = true;
+  state.themeFilter = null;
   state.error = null;
   state.review = null;
   state.ai = null;
@@ -981,6 +1086,12 @@ if (document.modelContext?.registerTool) {
                   name: s.name,
                   score: s.score,
                   count: s.count,
+                })) || [],
+              themes:
+                state.analysis?.themes.map((t) => ({
+                  name: t.name,
+                  score: t.score,
+                  count: t.count,
                 })) || [],
             };
           },
