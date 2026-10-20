@@ -3,6 +3,7 @@ import { symbol, beijingDate } from "./review.js";
 import { toCents } from "../domain/trading.js";
 import { normalize, promotionStats } from "../../shared/scoring.js";
 import { BENCHMARK_CODES } from "../../shared/benchmarks.js";
+import { enrichWithIndustry } from "./industry.js";
 import {
   getLimitUpPool as thsGetLimitUpPool,
   getLimitBreakPool as thsGetLimitBreakPool,
@@ -182,6 +183,9 @@ export async function marketData(date) {
     thsLimitUp.status === "fulfilled" ? thsLimitUp.value.item : null,
   );
 
+  // 补充行业信息（从 QuanQuant stock.db）
+  const enrichedRows = enrichWithIndustry(mergedRows);
+
   // 合并炸板池数据（东财优先，同花顺补全）
   const mergedBrokenRows = mergeLimitBreakPools(
     broken.status === "fulfilled" ? broken.value.pool : null,
@@ -194,7 +198,7 @@ export async function marketData(date) {
     sourceUrl: "https://quote.eastmoney.com/ztb/detail",
     scope: "沪深主板、创业板；不含 ST、科创板、北交所及连续一字新股",
     fetchedAt: new Date().toISOString(),
-    rows: mergedRows,
+    rows: enrichedRows,
     broken: mergedBrokenRows.length || null,
     // 炸板池原始行：出池持仓的炸板次数来源（方案 5 炸板不回封信号）；
     // broken 仅保留家数供封板率/展示，不丢个股记录。

@@ -2,28 +2,45 @@ import { classifySentimentCycle } from "./sentiment-cycle.js";
 import { annotateBuyPoint } from "./buy-point-type.js";
 import { classifyStock } from "./stock-class.js";
 
-// 噪声标签过滤：这些标签虽然出现在涨停原因中，但不代表市场主线
+// ============ 标签过滤与权重配置 ============
+
+// 1. 噪声标签黑名单（仅过滤明确的风险事件）
+// 基于 246 天回测验证：风险事件太稀少，过滤无影响；但为了代码清晰，保留过滤
 const NOISE_THEMES = new Set([
-  "重组审核中止",
-  "复牌",
-  "停牌",
-  "退市",
-  "摘牌",
-  "ST",
-  "风险警示",
-  "立案调查",
-  "违规担保",
-  "资金占用",
-  "业绩预亏",
-  "业绩下滑",
-  "商誉减值",
-  "诉讼",
-  "仲裁",
-  "处罚",
-  "警示函",
-  "关注函",
-  "问询函",
+  // 风险事件（负面）
+  "ST", "风险警示", "退市", "摘牌",
+  "立案调查", "处罚", "警示函", "关注函", "问询函",
+  "诉讼", "仲裁", "担保", "占用", "违规担保", "资金占用",
+  "业绩预亏", "业绩下滑", "商誉减值", "亏损",
+  "复牌", "停牌", "重组审核中止",
 ]);
+
+// 2. 标签权重表（基于 246 天回测验证结果）
+// 权重 > 1 表示增强，< 1 表示降权，0 表示过滤
+const TAG_WEIGHTS = {
+  // 所有权属性（政策驱动，有效信号）×1.5
+  "央企": 1.5, "国企": 1.5, "国资": 1.5, "国企改革": 1.5,
+  "北京国资": 1.5, "上海国资": 1.5, "深圳国资": 1.5,
+  "央企改革": 1.5, "国企混改": 1.5,
+  
+  // 公司事件（市场情绪，有效信号）×1.2
+  "回购": 1.2, "增持": 1.2, "股权激励": 1.2, "员工持股": 1.2,
+  "中标": 1.2, "订单": 1.2, "收购": 1.2, "重组": 1.2,
+  "并购": 1.2, "资产注入": 1.2, "控制权变更": 1.2,
+  
+  // 业绩报告（可能噪声）×0.5
+  "一季报增长": 0.5, "二季报增长": 0.5, "三季报增长": 0.5, "年报增长": 0.5,
+  "中报预增": 0.5, "半年报增长": 0.5, "业绩预增": 0.5, "业绩快报": 0.5,
+  "业绩预告": 0.5, "半年报": 0.5, "年报": 0.5, "季报": 0.5,
+  "年报预增": 0.5, "扭亏为盈": 0.5,
+  
+  // 宽泛概念（市场主线）×1.0（不过滤）
+  "人工智能": 1.0, "AI": 1.0, "新能源": 1.0, "数字经济": 1.0,
+  "数据要素": 1.0, "科技创新": 1.0, "高端制造": 1.0,
+};
+
+// 3. 频率过滤阈值：出现 < 3 次的标签视为噪声
+const MIN_TAG_FREQUENCY = 3;
 
 // 解析涨停原因标签
 // 输入: "半导体存储+重组审核中止+智慧城市"
@@ -33,8 +50,20 @@ export function parseThemes(limitUpReason) {
   const tags = limitUpReason
     .split(/[+，,、;；/]+/)
     .map(t => t.trim())
-    .filter(t => t && !NOISE_THEMES.has(t) && t.length >= 2);
+    .filter(t => {
+      if (!t || t.length < 2) return false;
+      // 1. 噪声黑名单过滤
+      if (NOISE_THEMES.has(t)) return false;
+      // 2. 权重为 0 的标签过滤
+      if (TAG_WEIGHTS[t] === 0) return false;
+      return true;
+    });
   return [...new Set(tags)]; // 去重
+}
+
+// 获取标签权重（用于加权计算）
+export function getTagWeight(tag) {
+  return TAG_WEIGHTS[tag] ?? 1.0; // 默认权重 1.0
 }
 export const FACTORS = [
   {
@@ -92,7 +121,7 @@ export const DUAL_SYNERGY_FACTORS = [
     key: "dualSynergy",
     name: "双维度协同",
     weight: 15,
-    description: "行业 + 题材加权协同（60/40）",
+    description: "行业 + 题材加权协同（80/20）",
   },
 ];
 export const PRESETS = {
@@ -265,8 +294,8 @@ export function themeAnalysis(rows) {
 // 双维度协同评分：结合行业协同和题材协同
 // industryScore: 行业协同分数（来自 sectorAnalysis）
 // themeScore: 题材协同分数（来自 themeAnalysis）
-// weights: { industry: 0.6, theme: 0.4 } 默认 60/40 权重
-export function dualSynergyScore(industryScore, themeScore, weights = { industry: 0.6, theme: 0.4 }) {
+// weights: { industry: 0.8, theme: 0.2 } 默认 80/20 权重（246 天回测优化）
+export function dualSynergyScore(industryScore, themeScore, weights = { industry: 0.8, theme: 0.2 }) {
   const scores = [];
   if (industryScore !== null && industryScore !== undefined) {
     scores.push({ score: industryScore, weight: weights.industry });
