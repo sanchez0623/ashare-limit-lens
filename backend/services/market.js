@@ -9,7 +9,12 @@ import {
   recordTagReturn,
   latestRecordedDateBefore,
 } from "./tag-contribution.js";
-import { getLimitUpPool as thsGetLimitUpPool } from "./fuyao.js";
+import {
+  getLimitUpPool as thsGetLimitUpPool,
+  getLimitBreakPool as thsGetLimitBreakPool,
+  getLimitDownPool as thsGetLimitDownPool,
+  getLimitUpLadder as thsGetLimitUpLadder,
+} from "./fuyao.js";
 const CACHE = new Map();
 const EM_BASE = "https://push2ex.eastmoney.com/";
 const TOKEN = "7eea3edcaed734bea9cbfc24409ed989";
@@ -93,11 +98,26 @@ function mergeLimitUpPools(emPool, thsPool) {
   });
 }
 
-// 炸板池直接使用东财口径（zbc 已含炸板次数），不再依赖同花顺。
+// 炸板池：东财口径优先（zbc 炸板次数），同花顺补全开板次数 open_times。
 // 排除北交所（920xxx 代码），保持沪深主板 + 创业板口径
-function mergeLimitBreakPools(emPool) {
-  if (!emPool || !Array.isArray(emPool)) return [];
-  return emPool.filter((r) => !r.c?.startsWith("920"));
+function mergeLimitBreakPools(emPool, thsPool) {
+  if (!emPool || !Array.isArray(emPool) || emPool.length === 0) return [];
+  const filteredEm = emPool.filter((r) => !r.c?.startsWith("920"));
+  const thsMap = new Map();
+  if (thsPool && Array.isArray(thsPool)) {
+    for (const r of thsPool) {
+      if (r.ticker && !r.ticker.startsWith("920")) thsMap.set(r.ticker, r);
+    }
+  }
+  return filteredEm.map((emRow) => {
+    const thsRow = thsMap.get(emRow.c);
+    const merged = { ...emRow };
+    if (thsRow) {
+      merged.openTimes = thsRow.open_times; // 开板次数（同花顺独有）
+      merged._thsSupplemented = true;
+    }
+    return merged;
+  });
 }
 
 
@@ -111,16 +131,18 @@ export async function marketData(date) {
     return { ...hit.body, cached: true };
 
   // 东财优先：涨停池/炸板池/昨日涨停池的权威口径全部来自东财。
-  // 同花顺涨停池并行拉取，仅补全东财缺失的字段（涨停原因、峰值封单等）。
-  const [main, broken, yesterday, thsLimitUp] = await Promise.allSettled([
-    getPool("getTopicZTPool", date),
-    getPool("getTopicZBPool", date),
-    getPool("getYesterdayZTPool", date),
-    thsGetLimitUpPool(date, {
-      timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS,
-      retries: 0,
-    }),
-  ]);
+  // 同花顺并行拉取四个补全源（涨停原因/炸板开板次数/跌停池/连板天梯），
+  // 全部带超时上限，失败只打服务端日志，不进用户告警、不阻塞行情返回。
+  const [main, broken, yesterday, thsLimitUp, thsLimitBreak, thsLimitDown, thsLadder] =
+    await Promise.allSettled([
+      getPool("getTopicZTPool", date),
+      getPool("getTopicZBPool", date),
+      getPool("getYesterdayZTPool", date),
+      thsGetLimitUpPool(date, { timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+      thsGetLimitBreakPool(date, { timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+      thsGetLimitDownPool(date, { timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+      thsGetLimitUpLadder({ timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+    ]);
 
   if (main.status === "rejected") throw main.reason;
 
@@ -141,10 +163,17 @@ export async function marketData(date) {
     warnings.push("昨日连板字段缺失或无效，晋级率暂缺。");
 
   // 同花顺补全失败只留服务端日志：东财主数据不依赖它，用户端不显示补全告警。
-  if (thsLimitUp.status === "rejected")
-    console.warn(
-      `[market] 同花顺补全不可用，按东财数据继续：${thsLimitUp.reason?.message ?? thsLimitUp.reason}`,
-    );
+  for (const [label, result] of [
+    ["涨停池", thsLimitUp],
+    ["炸板池", thsLimitBreak],
+    ["跌停池", thsLimitDown],
+    ["连板天梯", thsLadder],
+  ]) {
+    if (result.status === "rejected")
+      console.warn(
+        `[market] 同花顺补全不可用（${label}），按东财数据继续：${result.reason?.message ?? result.reason}`,
+      );
+  }
 
   // 合并涨停池数据（东财优先，同花顺补全）
   const mergedRows = mergeLimitUpPools(
@@ -194,9 +223,10 @@ export async function marketData(date) {
     console.warn(`[market] 标签收益更新失败：${err.message}`);
   }
 
-  // 炸板池直接使用东财口径
+  // 炸板池：东财口径 + 同花顺补全开板次数
   const mergedBrokenRows = mergeLimitBreakPools(
     broken.status === "fulfilled" ? broken.value.pool : null,
+    thsLimitBreak.status === "fulfilled" ? thsLimitBreak.value.item : null,
   );
 
   const result = {
@@ -216,12 +246,16 @@ export async function marketData(date) {
     previous: previousRows,
     previousLabel: "上一交易日",
     warnings,
-    // 同花顺补全状态（仅用于服务端排查，主数据始终来自东财）
+    // 同花顺独有数据（跌停池/连板天梯/补全命中数），主数据始终来自东财
     thsData: {
       supplementedCount,
       available:
         thsLimitUp.status === "fulfilled" &&
         Array.isArray(thsLimitUp.value.item),
+      limitDownPool:
+        thsLimitDown.status === "fulfilled" ? thsLimitDown.value.item : null,
+      limitUpLadder:
+        thsLadder.status === "fulfilled" ? thsLadder.value.item : null,
     },
     cached: false,
   };

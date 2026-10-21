@@ -96,20 +96,28 @@ export async function getLimitUpPool(dateStr, { size = 200, ...options } = {}) {
 }
 
 // 炸板池
-export async function getLimitBreakPool(dateStr, { size = 200 } = {}) {
+export async function getLimitBreakPool(dateStr, { size = 200, ...options } = {}) {
   const dateMs = shanghaiDayMs(dateStr);
-  return request("/api/a-share/special-data/limit-break-pool", { date_ms: dateMs, size });
+  return request(
+    "/api/a-share/special-data/limit-break-pool",
+    { date_ms: dateMs, size },
+    options,
+  );
 }
 
 // 跌停池
-export async function getLimitDownPool(dateStr, { size = 200 } = {}) {
+export async function getLimitDownPool(dateStr, { size = 200, ...options } = {}) {
   const dateMs = shanghaiDayMs(dateStr);
-  return request("/api/a-share/special-data/limit-down-pool", { date_ms: dateMs, size });
+  return request(
+    "/api/a-share/special-data/limit-down-pool",
+    { date_ms: dateMs, size },
+    options,
+  );
 }
 
-// 连板天梯（30 日）
-export async function getLimitUpLadder() {
-  return request("/api/a-share/special-data/limit-up-ladder");
+// 连板天梯（30 日，无入参）
+export async function getLimitUpLadder(options = {}) {
+  return request("/api/a-share/special-data/limit-up-ladder", {}, options);
 }
 
 // 行情快照（批量）
