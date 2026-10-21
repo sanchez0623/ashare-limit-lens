@@ -1,7 +1,7 @@
 // 同花顺金融数据 API 客户端
 // 官方文档: https://fuyao.aicubes.cn/docs/api-reference/overview/
 // 用途: 补全东财缺失字段（涨停原因、峰值封单、跌停池、竞价数据、盘中最高/最低）
-// 策略: 东财优先，同花顺备用 + 补全独有字段
+// 策略: 东财优先，同花顺只做补全；补全失败不得阻塞或降级东财主数据。
 
 const BASE = "https://fuyao.aicubes.cn";
 const CACHE = new Map();
@@ -22,7 +22,12 @@ export function shanghaiDayMs(dateStr) {
 }
 
 // 通用请求函数，处理 429 限流重试
-async function request(path, params = {}, { retries = 2, delayMs = 500 } = {}) {
+// timeoutMs/retries 可由补全调用方收紧：补全场景宁可放弃，也不拖慢主行情。
+async function request(
+  path,
+  params = {},
+  { retries = 2, delayMs = 500, timeoutMs = 20000 } = {},
+) {
   const apiKey = getApiKey();
   if (!apiKey) {
     // API key 未设置时，返回空数据而不是抛错，避免影响主流程
@@ -45,7 +50,7 @@ async function request(path, params = {}, { retries = 2, delayMs = 500 } = {}) {
     try {
       const res = await fetch(url.toString(), {
         headers: { "X-api-key": apiKey },
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const body = await res.json();
 
@@ -81,9 +86,13 @@ async function request(path, params = {}, { retries = 2, delayMs = 500 } = {}) {
 }
 
 // 涨停池
-export async function getLimitUpPool(dateStr, { size = 200 } = {}) {
+export async function getLimitUpPool(dateStr, { size = 200, ...options } = {}) {
   const dateMs = shanghaiDayMs(dateStr);
-  return request("/api/a-share/special-data/limit-up-pool", { date_ms: dateMs, size });
+  return request(
+    "/api/a-share/special-data/limit-up-pool",
+    { date_ms: dateMs, size },
+    options,
+  );
 }
 
 // 炸板池

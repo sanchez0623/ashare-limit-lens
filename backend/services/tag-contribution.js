@@ -8,7 +8,13 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_DIR = join(__dirname, "../../data");
-const DB_PATH = join(DB_DIR, "tag-contribution.db");
+// 默认落在 data/ 下；测试或运维可用环境变量指向独立库，避免测试样本污染真实标签收益。
+function resolveDbPath() {
+  return (
+    process.env.TAG_CONTRIBUTION_DB_PATH ||
+    join(DB_DIR, "tag-contribution.db")
+  );
+}
 
 // 确保数据目录存在
 if (!existsSync(DB_DIR)) {
@@ -68,7 +74,7 @@ function initDB(db) {
 let _db = null;
 export function getDB() {
   if (!_db) {
-    _db = new DatabaseSync(DB_PATH);
+    _db = new DatabaseSync(resolveDbPath());
     _db.exec("PRAGMA busy_timeout=5000;");
     initDB(_db);
   }
@@ -104,6 +110,19 @@ export function recordTagReturn(date, code, nextDayReturn) {
     SET next_day_return = ?
     WHERE date = ? AND code = ?
   `).run(nextDayReturn, date, code);
+}
+
+/**
+ * 查询早于给定日期的最近一次标签记录日期（用于回填上一交易日的次日收益）
+ * @param {string} date 日期 YYYY-MM-DD
+ * @returns {string|null}
+ */
+export function latestRecordedDateBefore(date) {
+  const db = getDB();
+  const row = db
+    .prepare("SELECT MAX(date) AS date FROM tag_appearances WHERE date < ?")
+    .get(date);
+  return row?.date ?? null;
 }
 
 /**
