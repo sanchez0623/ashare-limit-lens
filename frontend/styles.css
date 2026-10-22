@@ -2109,3 +2109,81 @@ table {
 .alerts-timeline-type {
   font-weight: 600;
 }
+
+/* 逐笔成交账本 —— 工具栏 */
+.ledger-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+  margin-bottom: 2px;
+  gap: 12px;
+}
+.ledger-toolbar .text-button {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ledger-date-filter select {
+  border: 1px solid #dce3eb;
+  border-radius: 6px;
+  background: #fff;
+  padding: 6px 10px;
+  color: var(--ink);
+  font-size: 12px;
+  min-width: 130px;
+}
+.ledger-toolbar .outline-tag.small {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+/* 逐笔成交账本 —— 分页控件 */
+.ledger-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 22px 4px;
+  flex-wrap: wrap;
+}
+.page-btn {
+  border: 1px solid #dce3eb;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.page-btn:hover:not(:disabled):not(.active) {
+  background: #f0f4f8;
+  border-color: #c3ccd6;
+}
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.page-btn.active {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
+  font-weight: 600;
+}
+.page-info {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 4px;
+}
+.page-numbers {
+  display: flex;
+  gap: 3px;
+}
+.page-ellipsis {
+  padding: 5px 6px;
+  font-size: 12px;
+  color: var(--muted);
+}

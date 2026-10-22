@@ -161,6 +161,7 @@ export async function api(request, env) {
     "/api/market": ["GET"],
     "/api/market/latest-date": ["GET"],
     "/api/paper": ["GET"],
+    "/api/paper/ledger": ["GET"],
     "/api/paper/settings": ["POST"],
     "/api/paper/export": ["GET"],
     "/api/paper/verify": ["GET"],
@@ -388,7 +389,26 @@ export async function api(request, env) {
     }
     if (path === "/api/market/latest-date")
       return json({ date: await latestTradingDate() });
-    if (path === "/api/paper") return json(await paperOverview(env));
+    if (path === "/api/paper")
+      return json(
+        await paperOverview(env, 0, {
+          ledgerPage: url.searchParams.get("ledgerPage"),
+          ledgerPageSize: url.searchParams.get("ledgerPageSize"),
+          ledgerDate: url.searchParams.get("ledgerDate") ?? "",
+        }),
+      );
+    if (path === "/api/paper/ledger") {
+      const date = url.searchParams.get("date") || "";
+      if (date && !validDate(date))
+        return json({ error: "请选择有效的成交日期" }, 400);
+      return json(
+        await new PaperRepository(env).ledgerPage({
+          page: url.searchParams.get("page"),
+          pageSize: url.searchParams.get("pageSize"),
+          date,
+        }),
+      );
+    }
     if (path === "/api/paper/live") return json(await realtimeStatus(env));
     if (path === "/api/paper/poll") {
       // 赛马批次运行时：主账户由联合行情帧驱动一次观察，不再独立拉取，

@@ -91,7 +91,14 @@ const executionNames = {
 };
 let data = null,
   busy = false,
-  settingsDirty = false;
+  settingsDirty = false,
+  ledgerPage = 1,
+  ledgerDate = "";
+const LEDGER_PAGE_SIZE = 10;
+let ledgerData = null,
+  ledgerLoading = false,
+  ledgerRequestId = 0,
+  overviewRequestId = 0;
 async function request(path, body) {
   const response = await fetch(path, {
     ...(body === undefined
@@ -256,6 +263,77 @@ function chart(rows, benchmarkLabel = "上证指数") {
       .join(" ");
   return `<svg class="equity-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="账户累计收益率与${escape(benchmarkLabel)}收益率"><line x1="${padding}" x2="${width - padding}" y1="${y(0)}" y2="${y(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${padding}" y="18" class="chart-axis">${percent(high)}</text><text x="${padding}" y="${height - 7}" class="chart-axis">${percent(low)}</text><polyline points="${points("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${points("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${rows.map((row, index) => `<circle cx="${x(index)}" cy="${y(row.totalReturn)}" r="3" fill="#13977e"><title>${escape(row.date)}：账户 ${percent(row.totalReturn)}；基准 ${percent(row.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>模拟账户</span><span><i class="benchmark"></i>${escape(benchmarkLabel)}</span><span>${escape(rows[0].date)} — ${escape(rows.at(-1).date)} · ${rows.length} 个结算日</span></div>${rows.length === 1 ? '<p class="panel-footnote">首次结算只建立收益基准；下一交易日起执行事前计划。</p>' : ""}`;
 }
+function renderLedgerPage(ledger, meta) {
+  const rows = Array.isArray(ledger) ? ledger : [];
+  const total = meta?.total ?? rows.length;
+  const totalPages =
+    meta?.totalPages ?? Math.max(1, Math.ceil(total / LEDGER_PAGE_SIZE));
+  const page = meta?.page ?? 1;
+
+  const rowsHtml = rows.length
+    ? rows
+        .map(
+          (fill) =>
+            `<tr><td>${escape(fill.date)}<span class="stock-code">${escape(fill.time)}</span></td><td><strong>${escape(fill.name)}</strong><span class="stock-code">${escape(fill.code)}</span></td><td>${actionNames[fill.action]} · ${fill.side === "BUY" ? "买" : "卖"}</td><td>${fill.quantity}</td><td>${money(fill.priceCents)}</td><td title="${escape(breakdown(fill))}"><details class="fee-breakdown"><summary>¥ ${money(fill.feeCents)}</summary><span>${escape(breakdown(fill))}</span></details><span class="stock-code">费用 v${fill.feeConfigVersion || 0}</span></td><td class="${tone(fill.cashDeltaCents)}">${money(fill.cashDeltaCents)}</td><td>${fill.dataQuality === "realtime_poll" ? "实时 HTTP 轮询" : fill.dataQuality === "minute" ? "历史分钟采样" : "开盘假设"}${fill.executionCost ? `<span class="stock-code">滑点 ${fill.executionCost.totalBps}bps · ${fill.executionCost.spreadSource === "BOOK" ? "盘口价差" : "回退价差"}</span>` : ""}</td></tr>`,
+        )
+        .join("")
+    : '<tr><td colspan="8"><div class="empty compact">该日期无成交记录。</div></td></tr>';
+
+  let pageButtons = "";
+  for (let i = 1; i <= totalPages; i++) {
+    if (
+      totalPages > 12 &&
+      i !== 1 &&
+      i !== totalPages &&
+      Math.abs(i - page) > 2
+    ) {
+      if (i === 2 || i === totalPages - 1)
+        pageButtons += '<span class="page-ellipsis">…</span>';
+      continue;
+    }
+    pageButtons += `<button class="page-btn ${i === page ? "active" : ""}" data-page="${i}">${i}</button>`;
+  }
+
+  const pagerHtml =
+    `<div class="ledger-pager">` +
+    `<button class="page-btn" data-page="${Math.max(1, page - 1)}" ${page <= 1 ? "disabled" : ""}>‹ 上一页</button>` +
+    `<span class="page-info">第 ${page} / ${totalPages} 页 · 共 ${total} 笔</span>` +
+    `<button class="page-btn" data-page="${Math.min(totalPages, page + 1)}" ${page >= totalPages ? "disabled" : ""}>下一页 ›</button>` +
+    `<div class="page-numbers">${pageButtons}</div>` +
+    `</div>`;
+
+  return { rowsHtml, pagerHtml, total, totalPages, page };
+}
+function renderLedger() {
+  const meta = ledgerData;
+  const ledgerRender = renderLedgerPage(meta?.rows, meta);
+  const total = meta?.total ?? 0;
+  $("paper-ledger-rows").innerHTML = total
+    ? ledgerRender.rowsHtml
+    : `<tr><td colspan="8"><div class="empty compact">${meta?.date ? "该日期无成交记录。" : "尚无成交记录。未满足成交条件的计划不会记为收益。"}</div></td></tr>`;
+  $("paper-ledger-rows").setAttribute("aria-busy", String(ledgerLoading));
+  $("paper-ledger-pager").innerHTML = total ? ledgerRender.pagerHtml : "";
+  const filter = $("paper-ledger-date-filter");
+  const dates = [
+    ...new Set([...(meta?.dates ?? []), ...(ledgerDate ? [ledgerDate] : [])]),
+  ];
+  filter.innerHTML =
+    "<option value=''>全部日期</option>" +
+    dates
+      .map((date) => `<option value="${escape(date)}">${escape(date)}</option>`)
+      .join("");
+  filter.value = ledgerDate;
+  filter.disabled = ledgerLoading;
+  if (ledgerLoading)
+    $("paper-ledger-pager")
+      .querySelectorAll("button")
+      .forEach((button) => (button.disabled = true));
+  $("paper-ledger-count").textContent = ledgerLoading
+    ? "加载中…"
+    : total
+      ? `${total} 笔 · ${ledgerRender.totalPages} 页`
+      : "无记录";
+}
 function render() {
   if (!data) return;
   const { book, equity, lastSettled, plan, run, versions, riskLimits } = data;
@@ -414,15 +492,7 @@ function render() {
   $("paper-outcomes").innerHTML = run?.outcomes?.length
     ? `<details><summary>最近执行反馈 · ${escape(run.date)}</summary><div class="execution-feedback">${run.outcomes.map((order) => `<p><strong>${escape(order.name)} · ${actionNames[order.action]}</strong><span>${order.status === "FILLED" ? "已成交" : order.status === "PARTIAL" ? "部分完成" : "未执行"} ${order.filledQuantity ? `${order.filledQuantity} 股` : ""} · ${escape(order.reason || "")}</span></p>`).join("")}</div></details>`
     : "";
-  $("paper-ledger-rows").innerHTML = data.ledger.length
-    ? [...data.ledger]
-        .sort((a, b) => b.date.localeCompare(a.date) || b.sequence - a.sequence)
-        .map(
-          (fill) =>
-            `<tr><td>${escape(fill.date)}<span class="stock-code">${escape(fill.time)}</span></td><td><strong>${escape(fill.name)}</strong><span class="stock-code">${escape(fill.code)}</span></td><td>${actionNames[fill.action]} · ${fill.side === "BUY" ? "买" : "卖"}</td><td>${fill.quantity}</td><td>${money(fill.priceCents)}</td><td title="${escape(breakdown(fill))}"><details class="fee-breakdown"><summary>¥ ${money(fill.feeCents)}</summary><span>${escape(breakdown(fill))}</span></details><span class="stock-code">费用 v${fill.feeConfigVersion || 0}</span></td><td class="${tone(fill.cashDeltaCents)}">${money(fill.cashDeltaCents)}</td><td>${fill.dataQuality === "realtime_poll" ? "实时 HTTP 轮询" : fill.dataQuality === "minute" ? "历史分钟采样" : "开盘假设"}${fill.executionCost ? `<span class="stock-code">滑点 ${fill.executionCost.totalBps}bps · ${fill.executionCost.spreadSource === "BOOK" ? "盘口价差" : "回退价差"}</span>` : ""}</td></tr>`,
-        )
-        .join("")
-    : '<tr><td colspan="8"><div class="empty compact">尚无成交记录。未满足成交条件的计划不会记为收益。</div></td></tr>';
+  renderLedger();
   const progress = run?.improvement;
   const days = progress?.days ?? Math.max(0, book.settlementCount - 1);
   $("paper-ai-tag").textContent = data.ai.configured
@@ -478,11 +548,53 @@ function render() {
   );
 }
 async function refresh() {
+  const requestId = ++overviewRequestId;
+  const ledgerId = ledgerRequestId;
   try {
-    data = await request("/api/paper");
+    const query = new URLSearchParams();
+    query.set("ledgerPage", String(ledgerPage));
+    query.set("ledgerPageSize", String(LEDGER_PAGE_SIZE));
+    query.set("ledgerDate", ledgerDate || "");
+    const result = await request(`/api/paper?${query.toString()}`);
+    if (requestId !== overviewRequestId) return;
+    data = result;
+    // 服务端会对页码做越界裁剪，用返回值同步本地状态，避免状态漂移。
+    // 翻页期间返回的旧概览不能覆盖新账本页。
+    if (ledgerId === ledgerRequestId && !ledgerLoading) {
+      ledgerData = data.ledgerMeta;
+      ledgerPage = ledgerData.page;
+      ledgerDate = ledgerData.date;
+    }
     render();
   } catch (error) {
-    message(error.message);
+    if (requestId === overviewRequestId) message(error.message);
+  }
+}
+async function refreshLedger() {
+  const requestId = ++ledgerRequestId;
+  ledgerLoading = true;
+  renderLedger();
+  try {
+    const query = new URLSearchParams({
+      page: String(ledgerPage),
+      pageSize: String(LEDGER_PAGE_SIZE),
+      date: ledgerDate,
+    });
+    const result = await request(`/api/paper/ledger?${query.toString()}`);
+    if (requestId !== ledgerRequestId) return;
+    ledgerData = result;
+    ledgerPage = result.page;
+    ledgerDate = result.date;
+  } catch (error) {
+    if (requestId !== ledgerRequestId) return;
+    ledgerPage = ledgerData?.page ?? 1;
+    ledgerDate = ledgerData?.date ?? "";
+    message(`成交账本加载失败：${error.message}`);
+  } finally {
+    if (requestId === ledgerRequestId) {
+      ledgerLoading = false;
+      renderLedger();
+    }
   }
 }
 async function perform(task) {
@@ -603,6 +715,19 @@ export function initializePaper() {
       return `设置已保存；策略参数登记为 ${result.book.activeStrategy}，将用于下一份计划，已冻结计划保持原参数。`;
     });
   };
+  $("paper-ledger-date-filter").onchange = () => {
+    ledgerDate = $("paper-ledger-date-filter").value;
+    ledgerPage = 1;
+    void refreshLedger();
+  };
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest(".page-btn[data-page]");
+    if (btn && !btn.disabled) {
+      ledgerPage = Number(btn.dataset.page);
+      void refreshLedger();
+      return;
+    }
+  });
   window.addEventListener("paper-updated", refresh);
   setInterval(() => {
     if (!document.hidden && !busy) void refresh();
