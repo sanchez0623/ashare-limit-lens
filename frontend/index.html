@@ -584,12 +584,22 @@
                 <div>
                   <h2>逐笔成交账本</h2>
                   <p>
-                    展示最近 100
-                    笔；完整导出包含全部成交、计划、行情、费用与校验值
+                    按日期筛选，分页浏览；完整导出包含全部成交、计划、行情、费用与校验值
                   </p>
                 </div>
                 <span class="outline-tag">费用与滑点已计入</span>
               </div>
+              <div class="ledger-toolbar">
+                <label class="text-button ledger-date-filter">
+                  筛选日期
+                  <select
+                    id="paper-ledger-date-filter"
+                    aria-label="按日期筛选"
+                  ></select>
+                </label>
+                <span id="paper-ledger-count" class="outline-tag small">—</span>
+              </div>
+              <div id="paper-ledger-pager"></div>
               <div class="table-scroll">
                 <table>
                   <thead>
