@@ -24,6 +24,7 @@ import {
   exportProgramSignals,
 } from "../backend/storage/strategy-signals.js";
 import { dataset, dateAt } from "./fixtures/trading.mjs";
+import { BUY_POINT_TYPES } from "../shared/buy-point-type.js";
 
 const legacy = () =>
   JSON.parse(
@@ -235,6 +236,13 @@ for (const program of [true, false]) {
       for (let index = 0; index < 2; index++) {
         account = await repository.account();
         const source = structuredClone(f.source);
+        // 新账户采用 v5；合成建仓样本显式具备打板买点。
+        for (const stock of source.stocks)
+          stock.buyPoint = {
+            primary: { type: BUY_POINT_TYPES.LIMIT_UP_MOMENTUM },
+            all: [{ type: BUY_POINT_TYPES.LIMIT_UP_MOMENTUM }],
+            labels: [BUY_POINT_TYPES.LIMIT_UP_MOMENTUM],
+          };
         source.date = dateAt(index);
         source.createdAt = `${source.date}T07:10:00.000Z`;
         if (!index) source.stocks = source.stocks.slice(0, 1);

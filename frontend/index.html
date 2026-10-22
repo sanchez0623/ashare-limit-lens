@@ -131,6 +131,16 @@
                 <select id="sector-filter" aria-label="筛选行业板块">
                   <option value="">全部行业</option>
                 </select>
+                <span id="theme-filter-chip" class="filter-chip" hidden
+                  ><span id="theme-filter-label"></span
+                  ><button
+                    id="theme-filter-clear"
+                    type="button"
+                    aria-label="清除题材筛选"
+                  >
+                    ×
+                  </button></span
+                >
               </div>
               <div class="table-subnav">
                 <div class="segments" role="group" aria-label="连板筛选">
@@ -186,9 +196,24 @@
                   </button>
                 </div>
                 <div id="sector-rank"></div>
-                <div class="panel-footnote">
-                  行业分类口径，不等同于概念题材热度
+                <div class="panel-footnote">行业分类口径，题材热度见下方</div>
+              </section>
+              <section class="panel theme-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>题材热度</h2>
+                    <p>涨停原因标签聚合，与行业维度互补</p>
+                  </div>
+                  <button
+                    class="icon-button"
+                    id="all-themes"
+                    aria-label="查看全部题材协同"
+                  >
+                    <span data-icon="flame"></span>
+                  </button>
                 </div>
+                <div id="theme-rank"></div>
+                <div class="panel-footnote">标签来自涨停原因，噪声词已过滤</div>
               </section>
               <section class="panel ladder-panel">
                 <div class="panel-heading">
@@ -206,30 +231,71 @@
           <section id="sectors-view" class="panel" hidden>
             <div class="panel-heading">
               <div>
-                <h2>行业板块评分</h2>
-                <p>点击板块，筛选它的涨停个股</p>
+                <h2>板块与题材协同</h2>
+                <p>行业分类与涨停原因标签，两种维度对照资金方向</p>
               </div>
-              <span class="outline-tag">透明权重</span>
+              <div
+                class="segments synergy-tabs"
+                role="group"
+                aria-label="协同维度切换"
+              >
+                <button class="synergy-tab active" data-synergy="industry">
+                  行业板块</button
+                ><button class="synergy-tab" data-synergy="theme">
+                  题材协同
+                </button>
+              </div>
             </div>
-            <div class="sector-formula">
-              涨停集聚 35% <span>+</span> 连板高度 25% <span>+</span> 封板稳定
-              25% <span>+</span> 早盘联动 15%
+            <div id="industry-panel" class="synergy-panel">
+              <div class="sector-formula">
+                涨停集聚 35% <span>+</span> 连板高度 25% <span>+</span> 封板稳定
+                25% <span>+</span> 早盘联动 15%<span class="formula-suffix"
+                  >按行业分类聚合</span
+                >
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>行业板块</th>
+                      <th>板块得分</th>
+                      <th>涨停家数</th>
+                      <th>最高连板</th>
+                      <th>封板稳定</th>
+                      <th>早盘联动</th>
+                      <th>涨停股成交额</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sector-rows"></tbody>
+                </table>
+              </div>
             </div>
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>行业板块</th>
-                    <th>板块得分</th>
-                    <th>涨停家数</th>
-                    <th>最高连板</th>
-                    <th>封板稳定</th>
-                    <th>早盘联动</th>
-                    <th>涨停股成交额</th>
-                  </tr>
-                </thead>
-                <tbody id="sector-rows"></tbody>
-              </table>
+            <div id="theme-panel" class="synergy-panel" hidden>
+              <div class="sector-formula">
+                涨停集聚 35% <span>+</span> 连板高度 25% <span>+</span> 封板稳定
+                25% <span>+</span> 早盘联动 15%<span class="formula-suffix"
+                  >按涨停原因标签聚合</span
+                >
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>题材标签</th>
+                      <th>题材得分</th>
+                      <th>涨停家数</th>
+                      <th>最高连板</th>
+                      <th>封板稳定</th>
+                      <th>早盘联动</th>
+                      <th>涨停股成交额</th>
+                    </tr>
+                  </thead>
+                  <tbody id="theme-rows"></tbody>
+                </table>
+              </div>
+              <div class="panel-footnote">
+                题材来自涨停原因公开标签，已过滤重组、问询、风险警示等噪声；同一只股票可能属于多个题材。
+              </div>
             </div>
           </section>
           <section id="review-view" hidden>
@@ -541,6 +607,7 @@
                   <tbody id="paper-stock-pnl-rows"></tbody>
                 </table>
               </div>
+              <div id="paper-stock-pnl-pager"></div>
               <div class="panel-footnote">
                 盈亏按 FIFO 摊入卖出成本核算，买入费用已计入持仓成本；做 T
                 的两腿分别按各自方向入账。汇总合计与账户已实现盈亏一致。
@@ -647,6 +714,23 @@
                 ><label
                   >收益基准指数<select id="paper-benchmark"></select
                 ></label>
+                <label
+                  >选股策略版本<select id="paper-selection-version">
+                    <option value="signal-ranking-v5">
+                      v5（龙头低吸·默认）
+                    </option>
+                    <option value="signal-ranking-v3">v3（分类路由）</option>
+                    <option value="signal-ranking-v4">
+                      v4（龙头低吸·不含 EOD 候选）
+                    </option>
+                    <option value="signal-ranking-v1" disabled>
+                      v1（历史兼容）
+                    </option>
+                    <option value="signal-ranking-v2" disabled>
+                      v2（历史兼容）
+                    </option>
+                  </select></label
+                >
                 <fieldset class="paper-fee-settings">
                   <legend>费用构成与自定义值</legend>
                   <div class="fee-settings-heading">

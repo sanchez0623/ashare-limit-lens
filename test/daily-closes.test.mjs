@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { parseEnv } from "node:util";
 import {
   computeMa5ByCode,
   computeStockFeaturesByCode,
@@ -401,17 +403,26 @@ test("EOD 行：有因子但昨日因子缺失 → change 保持未知（口径�
 });
 
 test("数据目录存在时烟雾测试（读取真实 parquet）", async (t) => {
-  const dir = process.env.QUAN_DATA_DIR;
-  if (!dir) return t.skip("未配置 QUAN_DATA_DIR，跳过真实数据烟雾测试");
+  let dir = process.env.QUAN_DATA_DIR;
+  if (!dir) {
+    try {
+      const config = parseEnv(
+        await readFile(new URL("../.env", import.meta.url), "utf8"),
+      );
+      dir = config.QUAN_DATA_DIR;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  if (!dir)
+    return t.skip(
+      "进程环境和 .env 均未配置 QUAN_DATA_DIR，跳过真实数据烟雾测试",
+    );
+  // 将本地配置仅传给真实数据检查，避免其他合成数据用例读取本机行情。
   const result = await getMa5ByCode({ QUAN_DATA_DIR: dir }, "2026-10-13");
   assert.ok(result.ma5ByCode.size > 0, `应产出 MA5：${result.reason ?? ""}`);
   assert.ok(result.asOf, "应解析出 asOf 交易日");
-  // 抽查任一产出代码的 MA5 为有限正值；数据滞后（未覆盖快照日）时
-  // 应为空并带 reason，同样算通过（严格日期一致的预期行为）。
-  if (result.ma5ByCode.size === 0) {
-    assert.match(result.reason ?? "", /未覆盖快照日/);
-    return;
-  }
+  // 抽查任一产出代码的 MA5 为有限正值。
   const [code, ma5] = [...result.ma5ByCode.entries()][0];
   assert.ok(
     Number.isFinite(ma5) && ma5 > 0,

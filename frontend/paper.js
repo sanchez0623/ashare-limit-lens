@@ -93,8 +93,10 @@ let data = null,
   busy = false,
   settingsDirty = false,
   ledgerPage = 1,
-  ledgerDate = "";
+  ledgerDate = "",
+  stockPnlPage = 1;
 const LEDGER_PAGE_SIZE = 10;
+const STOCK_PNL_PAGE_SIZE = 15;
 let ledgerData = null,
   ledgerLoading = false,
   ledgerRequestId = 0,
@@ -233,9 +235,18 @@ function priceConditions(order) {
             : "持有并监控保护阈值";
   return reference + execution + protection;
 }
-function chart(rows, benchmarkLabel = "上证指数") {
+function chart(rows, benchmarkLabel = "上证指数", status = "OK") {
   if (!rows.length)
     return '<div class="empty"><strong>收益曲线从首个结算日开始</strong>保存真实计划并执行后，逐日积累净值。</div>';
+  // 基准曲线的两种异常状态都要写明：既不画跨指数的曲线，也不静默缺线。
+  const repairAt =
+    status === "REPAIRED" ? status.slice("REPAIRED@".length) : "";
+  const benchmarkNote =
+    status === "OK"
+      ? ""
+      : status === "UNAVAILABLE"
+        ? '<p class="panel-footnote">基准曲线暂不可用：行情源本轮未返回所选指数收盘，宁缺毋滥，不展示可能混入其他指数的数值。</p>'
+        : `<p class="panel-footnote">基准曲线已校正：${repairAt} 起以 ${escape(benchmarkLabel)} 真实收盘重新起算；此前基准价锚定在错误指数上，整条曲线被跨指数放大。</p>`;
   const width = 760,
     height = 200,
     padding = 30;
@@ -261,7 +272,7 @@ function chart(rows, benchmarkLabel = "上证指数") {
       )
       .filter(Boolean)
       .join(" ");
-  return `<svg class="equity-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="账户累计收益率与${escape(benchmarkLabel)}收益率"><line x1="${padding}" x2="${width - padding}" y1="${y(0)}" y2="${y(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${padding}" y="18" class="chart-axis">${percent(high)}</text><text x="${padding}" y="${height - 7}" class="chart-axis">${percent(low)}</text><polyline points="${points("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${points("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${rows.map((row, index) => `<circle cx="${x(index)}" cy="${y(row.totalReturn)}" r="3" fill="#13977e"><title>${escape(row.date)}：账户 ${percent(row.totalReturn)}；基准 ${percent(row.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>模拟账户</span><span><i class="benchmark"></i>${escape(benchmarkLabel)}</span><span>${escape(rows[0].date)} — ${escape(rows.at(-1).date)} · ${rows.length} 个结算日</span></div>${rows.length === 1 ? '<p class="panel-footnote">首次结算只建立收益基准；下一交易日起执行事前计划。</p>' : ""}`;
+  return `<svg class="equity-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="账户累计收益率与${escape(benchmarkLabel)}收益率"><line x1="${padding}" x2="${width - padding}" y1="${y(0)}" y2="${y(0)}" stroke="#d9e1e8" stroke-dasharray="4 4"/><text x="${padding}" y="18" class="chart-axis">${percent(high)}</text><text x="${padding}" y="${height - 7}" class="chart-axis">${percent(low)}</text><polyline points="${points("benchmarkReturn")}" fill="none" stroke="#acb6c4" stroke-width="2"/><polyline points="${points("totalReturn")}" fill="none" stroke="#13977e" stroke-width="3"/>${rows.map((row, index) => `<circle cx="${x(index)}" cy="${y(row.totalReturn)}" r="3" fill="#13977e"><title>${escape(row.date)}：账户 ${percent(row.totalReturn)}；基准 ${percent(row.benchmarkReturn)}</title></circle>`).join("")}</svg><div class="chart-legend"><span><i></i>模拟账户</span><span><i class="benchmark"></i>${escape(benchmarkLabel)}</span><span>${escape(rows[0].date)} — ${escape(rows.at(-1).date)} · ${rows.length} 个结算日</span></div>${rows.length === 1 ? '<p class="panel-footnote">首次结算只建立收益基准；下一交易日起执行事前计划。</p>' : ""}${benchmarkNote}`;
 }
 function renderLedgerPage(ledger, meta) {
   const rows = Array.isArray(ledger) ? ledger : [];
@@ -304,6 +315,47 @@ function renderLedgerPage(ledger, meta) {
 
   return { rowsHtml, pagerHtml, total, totalPages, page };
 }
+function renderStockPnlPage(stockPnl, meta, heldQuantityByCode) {
+  const rows = Array.isArray(stockPnl) ? stockPnl : [];
+  const total = meta?.total ?? rows.length;
+  const totalPages =
+    meta?.totalPages ?? Math.max(1, Math.ceil(total / STOCK_PNL_PAGE_SIZE));
+  const page = meta?.page ?? 1;
+
+  const rowsHtml = rows.length
+    ? rows
+        .map(
+          (row) =>
+            `<tr><td><strong>${escape(row.name)}</strong><span class="stock-code">${escape(row.code)}</span></td><td>${escape(row.lastDate)}</td><td>${row.sellCount}</td><td>${row.winCount} 盈 / ${row.lossCount} 亏</td><td class="${tone(row.realizedPnlCents)}">¥ ${money(row.realizedPnlCents)}</td><td>${heldQuantityByCode.get(row.code) ? `仍持有 ${heldQuantityByCode.get(row.code)} 股` : "已清仓"}</td></tr>`,
+        )
+        .join("")
+    : '<tr><td colspan="6"><div class="empty compact">尚无已实现盈亏。卖出成交后按 FIFO 核算逐笔盈亏。</div></td></tr>';
+
+  let pageButtons = "";
+  for (let i = 1; i <= totalPages; i++) {
+    if (
+      totalPages > 12 &&
+      i !== 1 &&
+      i !== totalPages &&
+      Math.abs(i - page) > 2
+    ) {
+      if (i === 2 || i === totalPages - 1)
+        pageButtons += '<span class="page-ellipsis">…</span>';
+      continue;
+    }
+    pageButtons += `<button class="page-btn" data-pnl-page="${i}">${i}</button>`;
+  }
+
+  const pagerHtml =
+    `<div class="ledger-pager">` +
+    `<button class="page-btn" data-pnl-page="${Math.max(1, page - 1)}" ${page <= 1 ? "disabled" : ""}>‹ 上一页</button>` +
+    `<span class="page-info">第 ${page} / ${totalPages} 页 · 共 ${total} 只</span>` +
+    `<button class="page-btn" data-pnl-page="${Math.min(totalPages, page + 1)}" ${page >= totalPages ? "disabled" : ""}>下一页 ›</button>` +
+    `<div class="page-numbers">${pageButtons}</div>` +
+    `</div>`;
+
+  return { rowsHtml, pagerHtml, total, totalPages, page };
+}
 function renderLedger() {
   const meta = ledgerData;
   const ledgerRender = renderLedgerPage(meta?.rows, meta);
@@ -336,7 +388,17 @@ function renderLedger() {
 }
 function render() {
   if (!data) return;
-  const { book, equity, lastSettled, plan, run, versions, riskLimits } = data;
+  const {
+    book,
+    equity,
+    lastSettled,
+    plan,
+    run,
+    versions,
+    riskLimits,
+    ledgerMeta,
+    stockPnlMeta,
+  } = data;
   const live = data.realtime;
   const health = live?.health;
   $("paper-live-tag").textContent = live?.running
@@ -412,6 +474,7 @@ function render() {
   $("paper-chart").innerHTML = chart(
     data.equities,
     benchmarkName(data.benchmarkCode || book.benchmarkCode),
+    data.benchmarkStatus,
   );
   $("paper-risk").textContent =
     `单股上限 ${percent(riskLimits.maxPositionWeight)} · 总仓位上限 ${percent(riskLimits.maxGrossExposure)} · 回撤 ${percent(equity?.drawdown ?? 0)} / ${percent(riskLimits.maxDrawdown)} · 不透支`;
@@ -443,19 +506,30 @@ function render() {
       position.lots.reduce((sum, lot) => sum + lot.quantity, 0),
     ]),
   );
-  $("paper-stock-pnl-rows").innerHTML = data.stockPnl.length
-    ? data.stockPnl
-        .map(
-          (row) =>
-            `<tr><td><strong>${escape(row.name)}</strong><span class="stock-code">${escape(row.code)}</span></td><td>${escape(row.lastDate)}</td><td>${row.sellCount}</td><td>${row.winCount} 盈 / ${row.lossCount} 亏</td><td class="${tone(row.realizedPnlCents)}">¥ ${money(row.realizedPnlCents)}</td><td>${heldQuantityByCode.get(row.code) ? `仍持有 ${heldQuantityByCode.get(row.code)} 股` : "已清仓"}</td></tr>`,
-        )
-        .join("")
-    : '<tr><td colspan="6"><div class="empty compact">尚无已实现盈亏。卖出成交后按 FIFO 核算逐笔盈亏。</div></td></tr>';
+  const pnlRender = renderStockPnlPage(
+    data.stockPnl,
+    data.stockPnlMeta,
+    heldQuantityByCode,
+  );
+  const pnlTotal = data.stockPnlMeta?.total ?? 0;
+  $("paper-stock-pnl-rows").innerHTML = pnlRender.rowsHtml;
+  $("paper-stock-pnl-pager").innerHTML = pnlTotal ? pnlRender.pagerHtml : "";
   $("paper-plan-date").textContent = plan
     ? `${plan.signalDate} 盘后制定 → 下一交易日`
     : "尚未生成计划";
   $("paper-plan-meta").textContent = plan
-    ? `策略 ${plan.strategyVersion} · 选股 ${plan.selectionPolicy?.version === "signal-ranking-v2" ? "精确分 → 成交额 → 代码" : "整数分 → 代码"} · 费用 v${plan.feeConfigVersion || 0} · 成本 ${plan.executionCostPolicy ? `${plan.executionCostPolicy.modelVersion} v${plan.executionCostPolicy.version || 0}` : "旧版固定 10bps"}${plan.sourceSnapshotMissing ? " · 评分缺失，仅执行风险保护" : ""} · 目标仓位 ${percent(plan.targetExposure)} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
+    ? `策略 ${plan.strategyVersion} · 选股 ${(() => {
+        const v = plan.selectionPolicy?.version;
+        return v === "signal-ranking-v2"
+          ? "精确分 → 成交额 → 代码"
+          : v === "signal-ranking-v3"
+            ? "精确分 → 分类路由"
+            : v === "signal-ranking-v4"
+              ? "精确分 → 分类路由 → 买点闸门 → 炸板候选"
+              : v === "signal-ranking-v5"
+                ? "精确分 → 分类路由 → 买点闸门 → 炸板及首阴/假阴候选"
+                : "整数分 → 代码";
+      })()} · 费用 v${plan.feeConfigVersion || 0} · 成本 ${plan.executionCostPolicy ? `${plan.executionCostPolicy.modelVersion} v${plan.executionCostPolicy.version || 0}` : "旧版固定 10bps"}${plan.sourceSnapshotMissing ? " · 评分缺失，仅执行风险保护" : ""} · 目标仓位 ${percent(plan.targetExposure)} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
     : "当日评分保存后，生成下一交易日计划。";
   $("paper-plan-rows").innerHTML = plan?.orders.length
     ? plan.orders
@@ -531,6 +605,9 @@ function render() {
     $("paper-improvement-mode").value = book.improvementMode || "auto";
   if (!settingsDirty)
     $("paper-benchmark").value = book.benchmarkCode || DEFAULT_BENCHMARK;
+  if (!settingsDirty)
+    $("paper-selection-version").value =
+      book.selectionPolicyVersion ?? "signal-ranking-v1";
   $("paper-config-note").textContent = data.canEditCapital
     ? "交易计划开始执行前可自定义初始资金；费用与风控随时可调整。"
     : "初始资金作为收益基准已冻结；费用与风控仍可自定义，适用于后续新计划。";
@@ -555,6 +632,8 @@ async function refresh() {
     query.set("ledgerPage", String(ledgerPage));
     query.set("ledgerPageSize", String(LEDGER_PAGE_SIZE));
     query.set("ledgerDate", ledgerDate || "");
+    query.set("stockPnlPage", String(stockPnlPage));
+    query.set("stockPnlPageSize", String(STOCK_PNL_PAGE_SIZE));
     const result = await request(`/api/paper?${query.toString()}`);
     if (requestId !== overviewRequestId) return;
     data = result;
@@ -565,6 +644,7 @@ async function refresh() {
       ledgerPage = ledgerData.page;
       ledgerDate = ledgerData.date;
     }
+    if (data?.stockPnlMeta?.page) stockPnlPage = data.stockPnlMeta.page;
     render();
   } catch (error) {
     if (requestId === overviewRequestId) message(error.message);
@@ -693,6 +773,13 @@ export function initializePaper() {
           : {}),
         improvementMode: $("paper-improvement-mode").value,
         benchmarkCode: $("paper-benchmark").value || DEFAULT_BENCHMARK,
+        ...([
+          "signal-ranking-v3",
+          "signal-ranking-v4",
+          "signal-ranking-v5",
+        ].includes($("paper-selection-version").value)
+          ? { selectionPolicyVersion: $("paper-selection-version").value }
+          : {}),
         fees: Object.fromEntries(
           FEE_FIELDS.map(({ key }) => [
             key,
@@ -726,6 +813,11 @@ export function initializePaper() {
       ledgerPage = Number(btn.dataset.page);
       void refreshLedger();
       return;
+    }
+    const pnlBtn = event.target.closest(".page-btn[data-pnl-page]");
+    if (pnlBtn && !pnlBtn.disabled) {
+      stockPnlPage = Number(pnlBtn.dataset.pnlPage);
+      void refresh();
     }
   });
   window.addEventListener("paper-updated", refresh);

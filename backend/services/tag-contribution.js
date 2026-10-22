@@ -11,8 +11,7 @@ const DB_DIR = join(__dirname, "../../data");
 // 默认落在 data/ 下；测试或运维可用环境变量指向独立库，避免测试样本污染真实标签收益。
 function resolveDbPath() {
   return (
-    process.env.TAG_CONTRIBUTION_DB_PATH ||
-    join(DB_DIR, "tag-contribution.db")
+    process.env.TAG_CONTRIBUTION_DB_PATH || join(DB_DIR, "tag-contribution.db")
   );
 }
 
@@ -90,11 +89,13 @@ export function getDB() {
  */
 export function recordTagAppearance(date, code, name, tag) {
   const db = getDB();
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO tag_appearances (date, code, name, tag)
     VALUES (?, ?, ?, ?)
     ON CONFLICT(date, code, tag) DO NOTHING
-  `).run(date, code, name, tag);
+  `,
+  ).run(date, code, name, tag);
 }
 
 /**
@@ -105,11 +106,13 @@ export function recordTagAppearance(date, code, name, tag) {
  */
 export function recordTagReturn(date, code, nextDayReturn) {
   const db = getDB();
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE tag_appearances 
     SET next_day_return = ?
     WHERE date = ? AND code = ?
-  `).run(nextDayReturn, date, code);
+  `,
+  ).run(nextDayReturn, date, code);
 }
 
 /**
@@ -133,17 +136,23 @@ export function latestRecordedDateBefore(date) {
 export function batchRecordTagData(date, records) {
   const db = getDB();
   db.exec("BEGIN TRANSACTION;");
-  
+
   try {
     const insertStmt = db.prepare(`
       INSERT OR REPLACE INTO tag_appearances (date, code, name, tag, next_day_return)
       VALUES (?, ?, ?, ?, ?)
     `);
-    
+
     for (const rec of records) {
-      insertStmt.run(date, rec.code, rec.name, rec.tag, rec.nextDayReturn ?? null);
+      insertStmt.run(
+        date,
+        rec.code,
+        rec.name,
+        rec.tag,
+        rec.nextDayReturn ?? null,
+      );
     }
-    
+
     db.exec("COMMIT;");
   } catch (err) {
     db.exec("ROLLBACK;");
@@ -158,7 +167,9 @@ export function batchRecordTagData(date, records) {
  */
 export function calculateTagContribution(tag) {
   const db = getDB();
-  const result = db.prepare(`
+  const result = db
+    .prepare(
+      `
     SELECT 
       COUNT(*) as count,
       AVG(next_day_return) as avgReturn,
@@ -166,18 +177,23 @@ export function calculateTagContribution(tag) {
       SUM(next_day_return) as totalReturn
     FROM tag_appearances
     WHERE tag = ? AND next_day_return IS NOT NULL
-  `).get(tag);
-  
+  `,
+    )
+    .get(tag);
+
   if (!result || result.count === 0) {
     return { count: 0, avgReturn: 0, positiveRatio: 0.5, weight: 1.0 };
   }
-  
+
   // 基于收益计算权重
   // 权重范围：0.5 (差) 到 2.0 (好)
   // 基准：平均收益 0.5% 对应权重 1.0
   const baseReturn = 0.005; // 0.5%
-  const weight = Math.max(0.5, Math.min(2.0, 1 + (result.avgReturn - baseReturn) / baseReturn));
-  
+  const weight = Math.max(
+    0.5,
+    Math.min(2.0, 1 + (result.avgReturn - baseReturn) / baseReturn),
+  );
+
   return {
     count: result.count,
     avgReturn: result.avgReturn,
@@ -192,17 +208,21 @@ export function calculateTagContribution(tag) {
  */
 export function getAllTagWeights() {
   const db = getDB();
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     SELECT tag, weight
     FROM tag_weights
     WHERE sample_count >= 10
-  `).all();
-  
+  `,
+    )
+    .all();
+
   const weights = new Map();
   for (const row of rows) {
     weights.set(row.tag, row.weight);
   }
-  
+
   return weights;
 }
 
@@ -212,25 +232,36 @@ export function getAllTagWeights() {
 export function updateTagWeights() {
   const db = getDB();
   db.exec("BEGIN TRANSACTION;");
-  
+
   try {
     // 计算所有标签的贡献度并更新权重
-    const tags = db.prepare(`
+    const tags = db
+      .prepare(
+        `
       SELECT DISTINCT tag
       FROM tag_appearances
       WHERE next_day_return IS NOT NULL
-    `).all();
-    
+    `,
+      )
+      .all();
+
     for (const { tag } of tags) {
       const contribution = calculateTagContribution(tag);
       if (contribution.count >= 10) {
-        db.prepare(`
+        db.prepare(
+          `
           INSERT OR REPLACE INTO tag_weights (tag, weight, confidence, sample_count, last_updated)
           VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-        `).run(tag, contribution.weight, contribution.positiveRatio, contribution.count);
+        `,
+        ).run(
+          tag,
+          contribution.weight,
+          contribution.positiveRatio,
+          contribution.count,
+        );
       }
     }
-    
+
     db.exec("COMMIT;");
     return { updated: tags.length };
   } catch (err) {
@@ -255,9 +286,17 @@ export function getTagWeightWithDefault(tag, defaultWeight = 1.0) {
 export function getStats() {
   const db = getDB();
   return {
-    totalAppearances: db.prepare("SELECT COUNT(*) as count FROM tag_appearances").get().count,
-    tagsWithReturns: db.prepare("SELECT COUNT(DISTINCT tag) as count FROM tag_appearances WHERE next_day_return IS NOT NULL").get().count,
-    tagsWithWeights: db.prepare("SELECT COUNT(*) as count FROM tag_weights").get().count,
+    totalAppearances: db
+      .prepare("SELECT COUNT(*) as count FROM tag_appearances")
+      .get().count,
+    tagsWithReturns: db
+      .prepare(
+        "SELECT COUNT(DISTINCT tag) as count FROM tag_appearances WHERE next_day_return IS NOT NULL",
+      )
+      .get().count,
+    tagsWithWeights: db
+      .prepare("SELECT COUNT(*) as count FROM tag_weights")
+      .get().count,
     dbPath: DB_PATH,
   };
 }

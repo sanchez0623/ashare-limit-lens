@@ -57,7 +57,7 @@ async function request(
       // 429 限流重试
       if (body.code === 429) {
         if (attempt < retries) {
-          await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+          await new Promise((r) => setTimeout(r, delayMs * (attempt + 1)));
           continue;
         }
         throw new Error("同花顺 API 限流，重试后仍失败");
@@ -65,7 +65,9 @@ async function request(
 
       // 业务错误
       if (body.code !== 0) {
-        throw new Error(`同花顺 API 错误: code=${body.code}, message=${body.message}`);
+        throw new Error(
+          `同花顺 API 错误: code=${body.code}, message=${body.message}`,
+        );
       }
 
       // 缓存成功响应
@@ -75,7 +77,7 @@ async function request(
       return { ...body.data, cached: false };
     } catch (err) {
       if (attempt < retries) {
-        await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, delayMs * (attempt + 1)));
         continue;
       }
       throw err;
@@ -96,7 +98,10 @@ export async function getLimitUpPool(dateStr, { size = 200, ...options } = {}) {
 }
 
 // 炸板池
-export async function getLimitBreakPool(dateStr, { size = 200, ...options } = {}) {
+export async function getLimitBreakPool(
+  dateStr,
+  { size = 200, ...options } = {},
+) {
   const dateMs = shanghaiDayMs(dateStr);
   return request(
     "/api/a-share/special-data/limit-break-pool",
@@ -106,7 +111,10 @@ export async function getLimitBreakPool(dateStr, { size = 200, ...options } = {}
 }
 
 // 跌停池
-export async function getLimitDownPool(dateStr, { size = 200, ...options } = {}) {
+export async function getLimitDownPool(
+  dateStr,
+  { size = 200, ...options } = {},
+) {
   const dateMs = shanghaiDayMs(dateStr);
   return request(
     "/api/a-share/special-data/limit-down-pool",
@@ -123,43 +131,59 @@ export async function getLimitUpLadder(options = {}) {
 // 行情快照（批量）
 export async function getPricesSnapshot(thscodes, { limit = 100 } = {}) {
   // 单次最多 100 个，需要分批
-  const codes = Array.isArray(thscodes) ? thscodes : String(thscodes).split(",");
+  const codes = Array.isArray(thscodes)
+    ? thscodes
+    : String(thscodes).split(",");
   if (codes.length <= limit) {
-    return request("/api/a-share/prices/snapshot", { thscodes: codes.join(",") });
+    return request("/api/a-share/prices/snapshot", {
+      thscodes: codes.join(","),
+    });
   }
 
   // 分批请求
   const results = [];
   for (let i = 0; i < codes.length; i += limit) {
     const batch = codes.slice(i, i + limit);
-    const res = await request("/api/a-share/prices/snapshot", { thscodes: batch.join(",") });
+    const res = await request("/api/a-share/prices/snapshot", {
+      thscodes: batch.join(","),
+    });
     results.push(...(res.item || []));
-    await new Promise(r => setTimeout(r, 300)); // 避免限流
+    await new Promise((r) => setTimeout(r, 300)); // 避免限流
   }
   return { ...results[0], item: results, total: results.length };
 }
 
 // 集合竞价快照
 export async function getAuctionSnapshot(thscodes, { stage = "final" } = {}) {
-  const codes = Array.isArray(thscodes) ? thscodes : String(thscodes).split(",");
+  const codes = Array.isArray(thscodes)
+    ? thscodes
+    : String(thscodes).split(",");
   if (codes.length <= 100) {
-    return request("/api/a-share/auction/snapshot", { thscodes: codes.join(","), stage });
+    return request("/api/a-share/auction/snapshot", {
+      thscodes: codes.join(","),
+      stage,
+    });
   }
 
   // 分批请求
   const results = [];
   for (let i = 0; i < codes.length; i += 100) {
     const batch = codes.slice(i, i + 100);
-    const res = await request("/api/a-share/auction/snapshot", { thscodes: batch.join(","), stage });
+    const res = await request("/api/a-share/auction/snapshot", {
+      thscodes: batch.join(","),
+      stage,
+    });
     results.push(...(res.item || []));
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300));
   }
   return { ...results[0], item: results, total: results.length };
 }
 
 // 短线风向标竞价基准（历史可查）
 export async function getShortTermBenchmark(dateStr) {
-  return request("/api/a-share/auction/short-term-benchmark", { date: dateStr });
+  return request("/api/a-share/auction/short-term-benchmark", {
+    date: dateStr,
+  });
 }
 
 // 清除缓存

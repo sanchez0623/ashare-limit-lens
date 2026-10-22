@@ -2,6 +2,7 @@ import {
   PaperRepository,
   digest,
   buildOriginalScoreLookup,
+  normalizePageRequest,
 } from "../storage/paper.js";
 import {
   newBook,
@@ -200,14 +201,29 @@ async function settlePaperDay(env, date) {
       return { status: "BLOCKED", reason: error.message, calendarDates };
     }
     // 基准指数可切换：切换后按新指数当日收盘重新起算，避免跨指数混算。
+    // 基准价只认账户所选指数当日的真实收盘，并且只在已核对过来源时才沿用：
+    // 无来源标记的历史基准（曾取自另一支指数）绝不能继续沿用，否则基准价
+    // 会永久停在错误数值上，之后每日基准收益都被跨指数放大或缩小。
     settlement.book.benchmarkCode = benchmarkCode;
-    settlement.book.benchmarkBaseCents =
-      account.book.benchmarkCode === benchmarkCode
-        ? account.book.benchmarkBaseCents || benchmark?.closeCents || null
-        : benchmark?.closeCents || null;
+    const benchmarkDay =
+      benchmark && calendar.benchmarkCode === benchmarkCode ? benchmark : null;
+    const verifiedBase =
+      account.book.benchmarkCode === benchmarkCode &&
+      !!account.book.benchmarkBaseCents &&
+      !!account.book.benchmarkBaseDate;
+    settlement.book.benchmarkBaseCents = benchmarkDay
+      ? verifiedBase
+        ? account.book.benchmarkBaseCents
+        : benchmarkDay.closeCents
+      : null;
+    settlement.book.benchmarkBaseDate = benchmarkDay
+      ? verifiedBase
+        ? account.book.benchmarkBaseDate
+        : date
+      : null;
     settlement.equity.benchmarkReturn =
-      benchmark?.closeCents && settlement.book.benchmarkBaseCents
-        ? benchmark.closeCents / settlement.book.benchmarkBaseCents - 1
+      benchmarkDay?.closeCents && settlement.book.benchmarkBaseCents
+        ? benchmarkDay.closeCents / settlement.book.benchmarkBaseCents - 1
         : null;
     // 方案 7：做T记录提取——派生投影随结算同一 CAS 批落库。盘后路径
     // 当日成交在 settlement.ledger；实时路径逐帧已落库，从账本读回。
@@ -632,6 +648,10 @@ export async function verifyExport(bundle) {
   };
 }
 
+function pageSlice(rows, page, pageSize) {
+  const start = (page - 1) * pageSize;
+  return { rows: rows.slice(start, start + pageSize), start };
+}
 export async function paperOverview(env, attempt = 0, options = {}) {
   const repository = new RealtimeRepository(env);
   const { book, revision } = await repository.initialize(
@@ -644,22 +664,51 @@ export async function paperOverview(env, attempt = 0, options = {}) {
   );
   const equities = rows[0].map((row) => JSON.parse(row.payload)).reverse();
   // 收益曲线基准随账户设置整体重算：切换指数后历史段仍保持同一基准口径。
+  // 基准价锚点只能取自所选指数在首个结算日的真实收盘：它一旦锚错指数，
+  // 之后每日基准收益会被整体放大或缩小（沪深300 曾被锚到上证指数收盘，
+  // 一条下跌行情因此显示成 +12%）。
   const benchmarkCode = book.benchmarkCode || DEFAULT_BENCHMARK;
+  let benchmarkStatus = "OK";
+  // 本次调用是否自己写入了基准价来源标记：自愈会主动抬升账户 revision，
+  // 不能因此被下面"账户正在更新"的重试拦截，否则校正状态永远显示不出。
+  let benchmarkRepaired = false;
   if (equities.length) {
-    try {
-      const closes = await indexDailyCloses(
-        benchmarkCode,
-        equities[0].date,
-        equities.at(-1).date,
-      );
-      const base = closes.get(equities[0].date);
-      if (base)
-        for (const row of equities) {
-          const close = closes.get(row.date);
-          row.benchmarkReturn = close ? close / base - 1 : null;
-        }
-    } catch {
-      // 基准行情暂不可用时保留结算时记录的数值
+    const firstDate = equities[0].date;
+    const closes = await indexDailyCloses(
+      benchmarkCode,
+      firstDate,
+      equities.at(-1).date,
+    ).catch(() => null);
+    const base = closes?.get(firstDate) ?? null;
+    if (base) {
+      for (const row of equities) {
+        const close = closes.get(row.date);
+        row.benchmarkReturn = close ? close / base - 1 : null;
+      }
+      const matchesAnchor =
+        Number(book.benchmarkBaseCents) === base &&
+        book.benchmarkBaseDate === firstDate;
+      benchmarkStatus = matchesAnchor ? "OK" : `REPAIRED@${firstDate}`;
+      if (matchesAnchor) {
+        book.benchmarkBaseCents = base;
+        book.benchmarkBaseDate = firstDate;
+      } else {
+        // 自愈：把锚点改写成所选指数的首个结算日收盘，并标记来源，
+        // 使后续结算不再沿用被污染的基准价。
+        await repository.stampBenchmarkBase(revision, firstDate, base).then(
+          () => {
+            book.benchmarkBaseCents = base;
+            book.benchmarkBaseDate = firstDate;
+            benchmarkRepaired = true;
+          },
+          () => {},
+        );
+      }
+    } else {
+      // 基准行情暂不可用：结算时留存的可能来自另一支指数，宁缺毋滥，
+      // 交回空曲线让页面显式提示，而不是继续展示跨指数数值。
+      benchmarkStatus = "UNAVAILABLE";
+      for (const row of equities) row.benchmarkReturn = null;
     }
   }
   const [{ totals, stockPnl }, ledgerMeta] = await Promise.all([
@@ -670,6 +719,23 @@ export async function paperOverview(env, attempt = 0, options = {}) {
       date: options.ledgerDate,
     }),
   ]);
+  const stockPnlMeta = (() => {
+    const { page, pageSize } = normalizePageRequest(
+      { page: options.stockPnlPage, pageSize: options.stockPnlPageSize },
+      15,
+    );
+    const total = stockPnl.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const pageToUse = Math.min(page, totalPages);
+    const { rows } = pageSlice(stockPnl, pageToUse, pageSize);
+    return {
+      page: pageToUse,
+      pageSize,
+      total,
+      totalPages,
+      rows,
+    };
+  })();
   const audit = auditLedger(
     book.initialCashCents,
     [totals],
@@ -680,7 +746,11 @@ export async function paperOverview(env, attempt = 0, options = {}) {
     versions = await repository.versions(),
     strategyParams = await repository.strategy(book),
     realtime = await realtimeStatus(env);
-  if ((await repository.account()).revision !== revision) {
+  // 本次调用自己写入基准价来源标记也算 revision 变化，不触发重试。
+  if (
+    (await repository.account()).revision !== revision &&
+    !benchmarkRepaired
+  ) {
     if (attempt < 3) return paperOverview(env, attempt + 1, options);
     throw new Error("账户正在更新，请稍后重试");
   }
@@ -747,9 +817,11 @@ export async function paperOverview(env, attempt = 0, options = {}) {
     lastSettled: equities.at(-1) || null,
     equities,
     benchmarkCode,
+    benchmarkStatus,
     ledger: ledgerMeta.rows,
     ledgerMeta,
-    stockPnl,
+    stockPnl: stockPnlMeta.rows ?? stockPnl,
+    stockPnlMeta,
     plan: rows[1][0] ? JSON.parse(rows[1][0].payload) : null,
     run: rows[2][0] ? JSON.parse(rows[2][0].payload) : null,
     audit,

@@ -1,7 +1,11 @@
 import { publicFetch } from "./public-fetch.js";
 import { symbol, beijingDate } from "./review.js";
 import { toCents } from "../domain/trading.js";
-import { normalize, promotionStats, parseThemes } from "../../shared/scoring.js";
+import {
+  normalize,
+  promotionStats,
+  parseThemes,
+} from "../../shared/scoring.js";
 import { BENCHMARK_CODES } from "../../shared/benchmarks.js";
 import { enrichWithIndustry } from "./industry.js";
 import {
@@ -68,7 +72,7 @@ function mergeLimitUpPools(emPool, thsPool) {
   }
 
   // 过滤北交所股票
-  const filteredEm = emPool.filter(r => !r.c?.startsWith("920"));
+  const filteredEm = emPool.filter((r) => !r.c?.startsWith("920"));
 
   // 建立同花顺数据索引
   const thsMap = new Map();
@@ -81,7 +85,7 @@ function mergeLimitUpPools(emPool, thsPool) {
   }
 
   // 合并数据
-  return filteredEm.map(emRow => {
+  return filteredEm.map((emRow) => {
     const thsRow = thsMap.get(emRow.c);
     // 保留所有东财原始字段
     const merged = { ...emRow };
@@ -120,7 +124,6 @@ function mergeLimitBreakPools(emPool, thsPool) {
   });
 }
 
-
 // 同花顺只做字段补全，不参与主数据取舍：补全源超时/失败一律静默降级，
 // 既不能拖慢东财行情返回，也不能把补全失败混进用户可见告警。
 const THS_SUPPLEMENT_TIMEOUT_MS = 4000;
@@ -133,16 +136,32 @@ export async function marketData(date) {
   // 东财优先：涨停池/炸板池/昨日涨停池的权威口径全部来自东财。
   // 同花顺并行拉取四个补全源（涨停原因/炸板开板次数/跌停池/连板天梯），
   // 全部带超时上限，失败只打服务端日志，不进用户告警、不阻塞行情返回。
-  const [main, broken, yesterday, thsLimitUp, thsLimitBreak, thsLimitDown, thsLadder] =
-    await Promise.allSettled([
-      getPool("getTopicZTPool", date),
-      getPool("getTopicZBPool", date),
-      getPool("getYesterdayZTPool", date),
-      thsGetLimitUpPool(date, { timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
-      thsGetLimitBreakPool(date, { timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
-      thsGetLimitDownPool(date, { timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
-      thsGetLimitUpLadder({ timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
-    ]);
+  const [
+    main,
+    broken,
+    yesterday,
+    thsLimitUp,
+    thsLimitBreak,
+    thsLimitDown,
+    thsLadder,
+  ] = await Promise.allSettled([
+    getPool("getTopicZTPool", date),
+    getPool("getTopicZBPool", date),
+    getPool("getYesterdayZTPool", date),
+    thsGetLimitUpPool(date, {
+      timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS,
+      retries: 0,
+    }),
+    thsGetLimitBreakPool(date, {
+      timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS,
+      retries: 0,
+    }),
+    thsGetLimitDownPool(date, {
+      timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS,
+      retries: 0,
+    }),
+    thsGetLimitUpLadder({ timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+  ]);
 
   if (main.status === "rejected") throw main.reason;
 
@@ -155,10 +174,8 @@ export async function marketData(date) {
   if (broken.status === "rejected") warnings.push("炸板池未返回，封板率暂缺。");
   if (!previousRows) warnings.push("昨日涨停池未返回有效样本，晋级率暂缺。");
   else if (
-    promotionStats(
-      main.value.pool.map(normalize),
-      previousRows.map(normalize),
-    ).promotion === null
+    promotionStats(main.value.pool.map(normalize), previousRows.map(normalize))
+      .promotion === null
   )
     warnings.push("昨日连板字段缺失或无效，晋级率暂缺。");
 
@@ -180,9 +197,7 @@ export async function marketData(date) {
     main.value.pool,
     thsLimitUp.status === "fulfilled" ? thsLimitUp.value.item : null,
   );
-  const supplementedCount = mergedRows.filter(
-    (r) => r._thsSupplemented,
-  ).length;
+  const supplementedCount = mergedRows.filter((r) => r._thsSupplemented).length;
 
   // 补充行业信息（从 QuanQuant stock.db）
   const enrichedRows = enrichWithIndustry(mergedRows);
@@ -265,11 +280,14 @@ export async function marketData(date) {
   return result;
 }
 
-
 // 拉取单个指数的日线（含当日实时报价合并）；交易日历与基准曲线共用。
-async function indexKline(code, startDate, endDate, limit = 80) {
-  if (!Number.isInteger(limit) || limit < 1)
-    throw new Error("交易日历条数限制无效");
+// 腾讯主源不可用时用新浪补取同一指数——绝不换成另一支指数，
+// 跨指数基准会让账户收益曲线整体失真（沪深300 曾因此被上证收盘污染）。
+const KLINE_UNAVAILABLE = Symbol("index-kline-unavailable");
+const KLINE_STALE = Symbol("index-kline-stale");
+const SINA_CACHE = new Map();
+
+async function tencentIndexKline(code, startDate, endDate, limit) {
   const url = new URL("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get");
   url.searchParams.set(
     "param",
@@ -297,17 +315,96 @@ async function indexKline(code, startDate, endDate, limit = 80) {
   return days;
 }
 
+// 新浪日线：腾讯指数行情不可用时的同一指数备源。返回行与腾讯同形
+// [日期, 开, 收, 高, 低, 量]，供两条消费路径共用。
+async function fetchSinaIndexKline(code, limit) {
+  const url = new URL(
+    "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData",
+  );
+  url.searchParams.set("symbol", code);
+  url.searchParams.set("scale", "240");
+  url.searchParams.set("ma", "no");
+  // 只按条数回溯：取足覆盖 startDate 的交易日，再按日期区间裁剪。
+  url.searchParams.set("datalen", String(Math.max(260, limit + 40)));
+  const response = await publicFetch(url, 12000);
+  if (!response.ok) return KLINE_UNAVAILABLE;
+  const body = await response.json();
+  if (!Array.isArray(body) || !body.length) return KLINE_UNAVAILABLE;
+  const days = [];
+  for (const row of body) {
+    if (typeof row?.day !== "string" || row.day.length !== 10) continue;
+    days.push([
+      row.day,
+      Number(row.open),
+      Number(row.close),
+      Number(row.high),
+      Number(row.low),
+      Number(row.volume),
+    ]);
+  }
+  if (!days.length) return KLINE_UNAVAILABLE;
+  return days;
+}
+
+async function sinaIndexKline(code, startDate, endDate, limit) {
+  const key = `sina|${code}`;
+  const now = Date.now();
+  const hit = SINA_CACHE.get(key);
+  let result = hit && now - hit.time < 300000 ? hit.days : null;
+  if (result === null) {
+    result = await fetchSinaIndexKline(code, limit);
+    if (result !== KLINE_UNAVAILABLE) {
+      // 缓存未裁剪的全量行：不同日期区间的请求各自裁剪，避免串区间。
+      if (SINA_CACHE.size >= 20)
+        SINA_CACHE.delete(SINA_CACHE.keys().next().value);
+      SINA_CACHE.set(key, { time: now, days: result });
+    }
+  }
+  if (result === KLINE_UNAVAILABLE) return KLINE_UNAVAILABLE;
+  // 当日 K 线尚未落库时备源会缺最后几天：标记陈旧，让缺失显式留在
+  // 曲线里，而不是用另一支指数冒充同一指数的当日收盘。
+  if (result.at(-1)[0] < endDate) return KLINE_STALE;
+  return result.filter((row) => row[0] >= startDate && row[0] <= endDate);
+}
+
+async function indexKline(code, startDate, endDate, limit = 80) {
+  if (!Number.isInteger(limit) || limit < 1)
+    throw new Error("交易日历条数限制无效");
+  try {
+    return await tencentIndexKline(code, startDate, endDate, limit);
+  } catch {
+    const fallback = await sinaIndexKline(code, startDate, endDate, limit);
+    if (fallback === KLINE_UNAVAILABLE || fallback === KLINE_STALE)
+      throw new Error("交易日行情暂不可用");
+    return fallback;
+  }
+}
+
+const toBenchmarkRows = (days) =>
+  days.map((day) => ({
+    date: day[0],
+    closeCents: toCents(day[2]),
+    openCents: toCents(day[1]),
+  }));
+
 export async function tradingCalendar(
   startDate,
   endDate,
   benchmarkCode,
   calendarLimit = 80,
 ) {
-  // 交易日历固定取上证指数；基准曲线用账户所选指数，缺失时回退上证。
+  // 交易日历固定取上证指数（A股全市场交易日历）。
+  // 基准曲线必须来自账户所选指数：所选指数取不到时交回空基准 + 空代码，
+  // 绝不静默改用上证指数——那会把另一支指数的收盘当作所选指数的基准价，
+  // 之后每一日的基准收益都被跨指数放大或缩小（沪深300 曾被上证收盘污染）。
   // calendarLimit 供证据服务等长日历消费方使用，默认保持原 80 条行为。
   const days = await indexKline("sh000001", startDate, endDate, calendarLimit);
-  let benchmarkDays = days;
-  if (benchmarkCode && benchmarkCode !== "sh000001") {
+  let benchmark = [];
+  let benchmarkCodeUsed = null;
+  if (!benchmarkCode || benchmarkCode === "sh000001") {
+    benchmarkCodeUsed = "sh000001";
+    benchmark = toBenchmarkRows(days);
+  } else {
     try {
       const rows = await indexKline(
         benchmarkCode,
@@ -315,18 +412,19 @@ export async function tradingCalendar(
         endDate,
         calendarLimit,
       );
-      if (rows.length) benchmarkDays = rows;
+      if (rows.length) {
+        benchmarkCodeUsed = benchmarkCode;
+        benchmark = toBenchmarkRows(rows);
+      }
     } catch {
-      benchmarkDays = days;
+      // 交回空基准：基准行情缺失宁缺毋滥，由调用方标注 unavailable，
+      // 不用上证指数冒充所选指数。
     }
   }
   return {
     dates: days.map((day) => day[0]).sort(),
-    benchmark: benchmarkDays.map((day) => ({
-      date: day[0],
-      closeCents: toCents(day[2]),
-      openCents: toCents(day[1]),
-    })),
+    benchmark,
+    benchmarkCode: benchmarkCodeUsed,
   };
 }
 

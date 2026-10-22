@@ -8,35 +8,81 @@ import { classifyStock } from "./stock-class.js";
 // 基于 246 天回测验证：风险事件太稀少，过滤无影响；但为了代码清晰，保留过滤
 const NOISE_THEMES = new Set([
   // 风险事件（负面）
-  "ST", "风险警示", "退市", "摘牌",
-  "立案调查", "处罚", "警示函", "关注函", "问询函",
-  "诉讼", "仲裁", "担保", "占用", "违规担保", "资金占用",
-  "业绩预亏", "业绩下滑", "商誉减值", "亏损",
-  "复牌", "停牌", "重组审核中止",
+  "ST",
+  "风险警示",
+  "退市",
+  "摘牌",
+  "立案调查",
+  "处罚",
+  "警示函",
+  "关注函",
+  "问询函",
+  "诉讼",
+  "仲裁",
+  "担保",
+  "占用",
+  "违规担保",
+  "资金占用",
+  "业绩预亏",
+  "业绩下滑",
+  "商誉减值",
+  "亏损",
+  "复牌",
+  "停牌",
+  "重组审核中止",
 ]);
 
 // 2. 标签权重表（基于 246 天回测验证结果）
 // 权重 > 1 表示增强，< 1 表示降权，0 表示过滤
 const TAG_WEIGHTS = {
   // 所有权属性（政策驱动，有效信号）×1.5
-  "央企": 1.5, "国企": 1.5, "国资": 1.5, "国企改革": 1.5,
-  "北京国资": 1.5, "上海国资": 1.5, "深圳国资": 1.5,
-  "央企改革": 1.5, "国企混改": 1.5,
-  
+  央企: 1.5,
+  国企: 1.5,
+  国资: 1.5,
+  国企改革: 1.5,
+  北京国资: 1.5,
+  上海国资: 1.5,
+  深圳国资: 1.5,
+  央企改革: 1.5,
+  国企混改: 1.5,
+
   // 公司事件（市场情绪，有效信号）×1.2
-  "回购": 1.2, "增持": 1.2, "股权激励": 1.2, "员工持股": 1.2,
-  "中标": 1.2, "订单": 1.2, "收购": 1.2, "重组": 1.2,
-  "并购": 1.2, "资产注入": 1.2, "控制权变更": 1.2,
-  
+  回购: 1.2,
+  增持: 1.2,
+  股权激励: 1.2,
+  员工持股: 1.2,
+  中标: 1.2,
+  订单: 1.2,
+  收购: 1.2,
+  重组: 1.2,
+  并购: 1.2,
+  资产注入: 1.2,
+  控制权变更: 1.2,
+
   // 业绩报告（可能噪声）×0.5
-  "一季报增长": 0.5, "二季报增长": 0.5, "三季报增长": 0.5, "年报增长": 0.5,
-  "中报预增": 0.5, "半年报增长": 0.5, "业绩预增": 0.5, "业绩快报": 0.5,
-  "业绩预告": 0.5, "半年报": 0.5, "年报": 0.5, "季报": 0.5,
-  "年报预增": 0.5, "扭亏为盈": 0.5,
-  
+  一季报增长: 0.5,
+  二季报增长: 0.5,
+  三季报增长: 0.5,
+  年报增长: 0.5,
+  中报预增: 0.5,
+  半年报增长: 0.5,
+  业绩预增: 0.5,
+  业绩快报: 0.5,
+  业绩预告: 0.5,
+  半年报: 0.5,
+  年报: 0.5,
+  季报: 0.5,
+  年报预增: 0.5,
+  扭亏为盈: 0.5,
+
   // 宽泛概念（市场主线）×1.0（不过滤）
-  "人工智能": 1.0, "AI": 1.0, "新能源": 1.0, "数字经济": 1.0,
-  "数据要素": 1.0, "科技创新": 1.0, "高端制造": 1.0,
+  人工智能: 1.0,
+  AI: 1.0,
+  新能源: 1.0,
+  数字经济: 1.0,
+  数据要素: 1.0,
+  科技创新: 1.0,
+  高端制造: 1.0,
 };
 
 // 3. 频率过滤阈值：出现 < 3 次的标签视为噪声
@@ -49,8 +95,8 @@ export function parseThemes(limitUpReason) {
   if (!limitUpReason || typeof limitUpReason !== "string") return [];
   const tags = limitUpReason
     .split(/[+，,、;；/]+/)
-    .map(t => t.trim())
-    .filter(t => {
+    .map((t) => t.trim())
+    .filter((t) => {
       if (!t || t.length < 2) return false;
       // 1. 噪声黑名单过滤
       if (NOISE_THEMES.has(t)) return false;
@@ -291,10 +337,12 @@ export function themeAnalysis(rows, dynamicWeightsProvider = null) {
           0,
         ) / weight,
       );
-      
+
       // 获取标签权重（用于加权）
-      const tagWeight = dynamicWeightsProvider ? getTagWeight(theme, dynamicWeightsProvider) : getTagWeight(theme);
-      
+      const tagWeight = dynamicWeightsProvider
+        ? getTagWeight(theme, dynamicWeightsProvider)
+        : getTagWeight(theme);
+
       return {
         name: theme,
         count: list.length,
@@ -316,7 +364,11 @@ export function themeAnalysis(rows, dynamicWeightsProvider = null) {
 // industryScore: 行业协同分数（来自 sectorAnalysis）
 // themeScore: 题材协同分数（来自 themeAnalysis）
 // weights: { industry: 0.8, theme: 0.2 } 默认 80/20 权重（246 天回测优化）
-export function dualSynergyScore(industryScore, themeScore, weights = { industry: 0.8, theme: 0.2 }) {
+export function dualSynergyScore(
+  industryScore,
+  themeScore,
+  weights = { industry: 0.8, theme: 0.2 },
+) {
   const scores = [];
   if (industryScore !== null && industryScore !== undefined) {
     scores.push({ score: industryScore, weight: weights.industry });
@@ -326,7 +378,8 @@ export function dualSynergyScore(industryScore, themeScore, weights = { industry
   }
   if (scores.length === 0) return null;
   const totalWeight = scores.reduce((s, x) => s + x.weight, 0);
-  const combined = scores.reduce((s, x) => s + x.score * x.weight, 0) / totalWeight;
+  const combined =
+    scores.reduce((s, x) => s + x.score * x.weight, 0) / totalWeight;
   return Math.round(combined);
 }
 export function analyzeStock(
@@ -381,7 +434,11 @@ export function analyzeStock(
     // 双维度协同因子
     industrySynergy: sectorScore ?? null,
     themeSynergy: themeScore ?? null,
-    dualSynergy: dualSynergyScore(sectorScore, themeScore, options.dualSynergyWeights),
+    dualSynergy: dualSynergyScore(
+      sectorScore,
+      themeScore,
+      options.dualSynergyWeights,
+    ),
   };
   const risks = [];
   if (row.height >= 5)
@@ -438,7 +495,8 @@ export function analyzeStock(
   const active = factors.filter((f) => f.value !== null),
     available = active.reduce((s, f) => s + f.weight, 0),
     // 总权重 = 基础因子权重 + 双维度协同权重（如果启用）
-    total = weights.reduce((a, b) => a + b, 0) +
+    total =
+      weights.reduce((a, b) => a + b, 0) +
       (options.enableDualSynergy
         ? DUAL_SYNERGY_FACTORS.reduce((s, f) => s + f.weight, 0)
         : 0);
@@ -449,7 +507,7 @@ export function analyzeStock(
   // 连板数（ladder）在该来源同样缺失，但那是真实的数据缺口，保留在分母里
   // 反映信息不足。评分本体（raw）不受影响，仍只按已覆盖因子加权。
   const inapplicable =
-    row.candidateSource === "broken"
+    row.candidateSource === "broken" || row.candidateSource === "extra"
       ? factors
           .filter((f) => f.key === "capital" && f.value === null)
           .reduce((s, f) => s + f.weight, 0)
@@ -530,7 +588,7 @@ export function analyze(
     bySector = new Map(sectors.map((s) => [s.name, s.score]));
   // 题材协同分析（双维度协同评分）
   // 先解析所有行的题材标签，然后按题材分组计算协同分数
-  const rowsWithThemes = clean.map(r => ({
+  const rowsWithThemes = clean.map((r) => ({
     ...r,
     themes: parseThemes(r.limitUpReason),
   }));
@@ -543,17 +601,32 @@ export function analyze(
     const themes = parseThemes(r.limitUpReason);
     if (themes.length > 0) {
       const themeScores = themes
-        .map(t => byTheme.get(t))
-        .filter(s => s !== undefined && s !== null);
+        .map((t) => byTheme.get(t))
+        .filter((s) => s !== undefined && s !== null);
       if (themeScores.length > 0) {
         byStockThemeScore.set(r.code, Math.max(...themeScores));
       }
     }
   }
   // 昨日同代码行作为 prevRow 传入，供买点分类器计算 prevChange/prevBreaks。
+  // 昨日涨停池优先（权威口径）；prevEodByCode（日线 EOD 构造）补齐不在
+  // 涨停池中的代码——假阴跌停低吸需要昨日 open/close 来自 EOD，不在涨停
+  // 池的代码无法从 previous 获取。
   const prevByCode = previous
     ? new Map(previous.map((r) => [r.code, r]))
-    : null;
+    : new Map();
+  const prevRowFor = (row) => {
+    const prev = prevByCode.get(row.code) ?? null;
+    const eod = options.prevEodByCode?.get(row.code);
+    if (row.candidateSource !== "extra" || !eod) return prev;
+    return {
+      change: prev?.change ?? eod.prevChange ?? null,
+      open: prev?.open ?? eod.prevOpen ?? null,
+      close: prev?.close ?? prev?.price ?? eod.prevClose ?? null,
+      breaks: prev?.breaks ?? eod.prevBreaks ?? null,
+      height: prev?.height ?? null,
+    };
+  };
   // 补齐买点分类器需要的派生字段：isLimitUp / boardLimit / openChange / ma5。
   // isLimitUp 用 boardLimit 感知判断：创业板/科创板 20% 涨停不能按 9.7% 一刀切。
   // 判定条件：change >= boardLimit - 0.3（容差），且有首封时间或连板数 >=1。
@@ -604,9 +677,11 @@ export function analyze(
       ...r,
       isLimitUp,
       boardLimit,
-      // 溯源标记只在炸板行写：涨停池行保持既有形状不变（摘要变更最小）；
-      // 下游按 candidateSource 存在与否区分来源，缺失即涨停池。
-      ...(source === "broken" ? { candidateSource: source } : {}),
+      // 溯源标记：涨停池行保持既有形状不变（摘要变更最小）；
+      // 炸板行与额外候选行标记来源，下游按 candidateSource 区分。
+      ...(source === "broken" || source === "extra"
+        ? { candidateSource: source }
+        : {}),
       ...(openChange !== null ? { openChange } : {}),
       ...(ma5 !== null ? { ma5 } : {}),
       ...(options.lateSession === true ? { lateSession: true } : {}),
@@ -619,8 +694,17 @@ export function analyze(
         : {}),
     };
   };
+  // 额外候选行（EOD 构造的首阴/假阴候选）：与炸板池同口径——只补充候选，
+  // 不进入 sectorAnalysis / promotion / emotion / count / cycle 的输入。
+  const seenCodes = new Set([...clean, ...brokenClean].map((r) => r.code));
+  const extraClean = (options.extraCandidates ?? []).filter((r) => {
+    if (!r.code || /ST|退/.test(r.name) || seenCodes.has(r.code)) return false;
+    seenCodes.add(r.code);
+    return true;
+  });
   const enriched = clean.map((r) => enrichRow(r, "limit-up"));
   const brokenEnriched = brokenClean.map((r) => enrichRow(r, "broken"));
+  const extraEnriched = extraClean.map((r) => enrichRow(r, "extra"));
   const scoreAndSort = (enrichedRows) =>
     enrichedRows
       .map((r) =>
@@ -628,7 +712,7 @@ export function analyze(
           r,
           bySector.get(r.sector),
           weights,
-          prevByCode?.get(r.code) ?? null,
+          prevRowFor(r),
           options,
           byStockThemeScore.get(r.code) ?? null,
         ),
@@ -636,6 +720,7 @@ export function analyze(
       .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   const stocks = scoreAndSort(enriched);
   const brokenStocks = scoreAndSort(brokenEnriched);
+  const extraStocks = scoreAndSort(extraEnriched);
   const sealRate =
     broken === null
       ? null
@@ -668,6 +753,7 @@ export function analyze(
   return {
     stocks,
     brokenStocks,
+    extraStocks,
     sectors,
     themes,
     count: clean.length,

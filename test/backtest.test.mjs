@@ -5,6 +5,7 @@ import { localDatabase } from "../scripts/local-db.mjs";
 import { openHistoryStore } from "../backend/storage/history.js";
 import { runBacktest, backtestDetail } from "../backend/services/backtest.js";
 import { FACTORS, PRESETS } from "../shared/scoring.js";
+import { BUY_POINT_TYPES } from "../shared/buy-point-type.js";
 
 const DATES = ["2026-03-02", "2026-03-03", "2026-03-04"];
 const CODES = ["600001", "600002"];
@@ -28,6 +29,12 @@ function snapshotPayload(date, priceStep) {
         weight: PRESETS.balanced[i],
       })),
       risks: [],
+      // v5 默认设买点闸门：fixture stocks 默认带合格买点（打板）
+      buyPoint: {
+        primary: { type: BUY_POINT_TYPES.LIMIT_UP_MOMENTUM },
+        all: [{ type: BUY_POINT_TYPES.LIMIT_UP_MOMENTUM }],
+        labels: [BUY_POINT_TYPES.LIMIT_UP_MOMENTUM],
+      },
     })),
     sectors: [{ name: "测试行业", score: 82, count: CODES.length }],
   };
@@ -88,6 +95,7 @@ test("研究回测：采样模型成交、T+1 与费用入账、收益可重放�
       initialCapital: 1000000,
     });
     assert.equal(run.stage, "READY");
+    assert.equal(run.initialBook.selectionPolicy.version, "signal-ranking-v5");
     assert.equal(run.executionModel, "MINUTE_SAMPLE_V1");
     assert.equal(run.coverage.plannedPairs, 2);
     assert.equal(run.coverage.executedPairs, 2);
@@ -95,6 +103,11 @@ test("研究回测：采样模型成交、T+1 与费用入账、收益可重放�
     assert.ok(Number.isFinite(run.coverage.totalReturn));
     assert.ok(run.coverage.feesCents > 0);
     const detail = await backtestDetail(env, run.id);
+    assert.ok(
+      detail.plans.every(
+        (p) => p.selectionPolicy.version === "signal-ranking-v5",
+      ),
+    );
     assert.equal(detail.verification.totalReturnMatches, true);
     assert.ok(detail.ledgerCount > 0);
     const dayOneSells = detail.ledger.filter(

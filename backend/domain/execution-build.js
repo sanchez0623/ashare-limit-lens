@@ -20,6 +20,10 @@ const files = [
   // 评分与股票分类（方案 3）：PRESETS 权重与 CLASS_WEIGHT_PRESETS 路由
   // 直接决定候选评分与候选池，必须纳入指纹防规则漂移。
   "shared/scoring.js",
+  // V5 的候选构造与买点资格会影响实际建仓，冻结窗口须绑定同一实现。
+  "shared/buy-point-type.js",
+  "backend/services/eod-candidates.js",
+  "backend/services/daily-closes.js",
   "shared/stock-class.js",
   "shared/execution-cost.js",
   "shared/exit-signals.js",

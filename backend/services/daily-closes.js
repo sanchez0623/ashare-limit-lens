@@ -588,6 +588,173 @@ export async function getExitEodRowsByCode(env, snapshotDate) {
   }
 }
 
+// ---------- 候选源 EOD 行（含昨日 prev 数据，供首阴/假阴候选构造） ----------
+// 返回 Map<code, { close, open, high, change, volume, limitUpPct,
+//   prevClose, prevOpen, prevHigh, prevChange, prevBreaks }>。
+//
+// prevBreaks=1 仅表示日线最高价达到按分取整的涨停价，不代表真实炸板次数。
+// 未触及或前日数据不足时为 null，不能把接近涨停当作已触板。
+export function computeEodRowsWithPrev(dataset, snapshotDate) {
+  const { dates, dateIdx, codes } = dataset;
+  if (!dates.length) return { rowsByCode: new Map(), asOf: null };
+  if (snapshotDate && DATE_RE.test(snapshotDate) && !dateIdx.has(snapshotDate))
+    return {
+      rowsByCode: new Map(),
+      asOf: dates[dates.length - 1] ?? null,
+      reason: `日线数据未覆盖快照日 ${snapshotDate}`,
+    };
+  const end =
+    snapshotDate && dateIdx.has(snapshotDate)
+      ? dateIdx.get(snapshotDate)
+      : dates.length - 1;
+  const asOf = dates[end];
+  const rowsByCode = new Map();
+  for (const [code, s] of codes) {
+    const p = lowerBound(s.dates, end);
+    if (p < 0 || s.dates[p] !== end) continue; // 停牌 / 当日无收盘
+    const hasFactor = s.hasFactor;
+    const fEnd = hasFactor ? s.adjs[p] : 1;
+    if (!(s.closes[p] > 0) || !Number.isFinite(fEnd) || fEnd <= 0) continue;
+    // 昨日必须是上一个全市场交易日，停牌前的旧 K 线不冒充昨日。
+    if (p < 1 || s.dates[p - 1] !== end - 1) continue;
+    // 今日数据（与 computeExitEodRowsByCode 口径一致）
+    const close = hasFactor ? (s.closes[p] * s.adjs[p]) / fEnd : s.closes[p];
+    let open = null,
+      high = null,
+      change = null;
+    if (Number.isFinite(s.opens?.[p]))
+      open = hasFactor ? (s.opens[p] * s.adjs[p]) / fEnd : s.opens[p];
+    if (Number.isFinite(s.highs[p]))
+      high = hasFactor ? (s.highs[p] * s.adjs[p]) / fEnd : s.highs[p];
+    if (p > 0 && Number.isFinite(s.closes[p - 1])) {
+      const prevClose = hasFactor
+        ? Number.isFinite(s.adjs[p - 1])
+          ? (s.closes[p - 1] * s.adjs[p - 1]) / fEnd
+          : null
+        : s.closes[p - 1];
+      if (prevClose !== null && prevClose > 0)
+        change = (close / prevClose) * 100 - 100;
+    }
+    // 昨日数据（prevOpen / prevClose / prevHigh）
+    let prevClose = null,
+      prevOpen = null,
+      prevHigh = null,
+      prevChange = null,
+      prevBreaks = null;
+    if (p >= 1) {
+      const adjPrev = hasFactor ? s.adjs[p - 1] : null;
+      const hasPrevAdj = adjPrev !== null && Number.isFinite(adjPrev);
+      if (Number.isFinite(s.closes[p - 1]))
+        prevClose = hasFactor
+          ? hasPrevAdj
+            ? (s.closes[p - 1] * adjPrev) / fEnd
+            : null
+          : s.closes[p - 1];
+      if (Number.isFinite(s.opens?.[p - 1]))
+        prevOpen = hasFactor
+          ? hasPrevAdj
+            ? (s.opens[p - 1] * adjPrev) / fEnd
+            : null
+          : s.opens[p - 1];
+      if (Number.isFinite(s.highs[p - 1]))
+        prevHigh = hasFactor
+          ? hasPrevAdj
+            ? (s.highs[p - 1] * adjPrev) / fEnd
+            : null
+          : s.highs[p - 1];
+      // 昨日涨幅 = 昨收 / 前日收 - 1（需 p≥2）
+      if (p >= 2 && prevClose !== null && Number.isFinite(s.closes[p - 2])) {
+        const adjPrev2 = hasFactor ? s.adjs[p - 2] : null;
+        const hasPrev2Adj = adjPrev2 !== null && Number.isFinite(adjPrev2);
+        const closeP2 = hasFactor
+          ? hasPrev2Adj
+            ? (s.closes[p - 2] * adjPrev2) / fEnd
+            : null
+          : s.closes[p - 2];
+        if (closeP2 !== null && closeP2 > 0)
+          prevChange = (prevClose / closeP2) * 100 - 100;
+      }
+      // 触板代理只读取连续的前日 K 线，以实际分位涨停价判断。
+      if (
+        p >= 2 &&
+        s.dates[p - 2] === end - 2 &&
+        prevHigh !== null &&
+        Number.isFinite(s.closes[p - 2])
+      ) {
+        const adjPrev2 = hasFactor ? s.adjs[p - 2] : null;
+        const hasPrev2Adj = adjPrev2 !== null && Number.isFinite(adjPrev2);
+        const closeP2 = hasFactor
+          ? hasPrev2Adj
+            ? (s.closes[p - 2] * adjPrev2) / fEnd
+            : null
+          : s.closes[p - 2];
+        if (closeP2 !== null && closeP2 > 0) {
+          const limitUpPct = boardLimitOf(code);
+          const limitUpPrice =
+            Math.round(closeP2 * (1 + limitUpPct / 100) * 100) / 100;
+          if (prevHigh >= limitUpPrice - 0.000001) prevBreaks = 1;
+        }
+      }
+    }
+    const volume = s.volumes?.[p];
+    rowsByCode.set(code, {
+      close: Math.round(close * 1000) / 1000,
+      open:
+        open !== null && Number.isFinite(open)
+          ? Math.round(open * 1000) / 1000
+          : null,
+      high:
+        high !== null && Number.isFinite(high)
+          ? Math.round(high * 1000) / 1000
+          : null,
+      change:
+        change !== null && Number.isFinite(change)
+          ? Math.round(change * 100) / 100
+          : null,
+      volume: Number.isFinite(volume) && volume >= 0 ? volume : null,
+      limitUpPct: boardLimitOf(code),
+      prevClose:
+        prevClose !== null && Number.isFinite(prevClose)
+          ? Math.round(prevClose * 1000) / 1000
+          : null,
+      prevOpen:
+        prevOpen !== null && Number.isFinite(prevOpen)
+          ? Math.round(prevOpen * 1000) / 1000
+          : null,
+      prevHigh:
+        prevHigh !== null && Number.isFinite(prevHigh)
+          ? Math.round(prevHigh * 1000) / 1000
+          : null,
+      prevChange:
+        prevChange !== null && Number.isFinite(prevChange)
+          ? Math.round(prevChange * 100) / 100
+          : null,
+      prevBreaks,
+    });
+  }
+  return { rowsByCode, asOf };
+}
+
+export async function getEodRowsWithPrev(env, snapshotDate) {
+  const dataDir = dailyDataDir(env);
+  if (!dataDir)
+    return {
+      rowsByCode: new Map(),
+      asOf: null,
+      reason: "未配置 QUAN_DATA_DIR，候选源 EOD 行不可用",
+    };
+  try {
+    const dataset = await loadDailyDataset(dataDir);
+    return computeEodRowsWithPrev(dataset, snapshotDate);
+  } catch (error) {
+    return {
+      rowsByCode: new Map(),
+      asOf: null,
+      reason: `日线数据读取失败：${safeError(error)}`,
+    };
+  }
+}
+
 export async function getStockFeaturesByCode(env, snapshotDate) {
   const dataDir = dailyDataDir(env);
   if (!dataDir)

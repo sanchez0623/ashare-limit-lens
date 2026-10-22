@@ -395,6 +395,8 @@ export async function api(request, env) {
           ledgerPage: url.searchParams.get("ledgerPage"),
           ledgerPageSize: url.searchParams.get("ledgerPageSize"),
           ledgerDate: url.searchParams.get("ledgerDate") ?? "",
+          stockPnlPage: url.searchParams.get("stockPnlPage"),
+          stockPnlPageSize: url.searchParams.get("stockPnlPageSize"),
         }),
       );
     if (path === "/api/paper/ledger") {
@@ -512,6 +514,7 @@ export async function api(request, env) {
               "riskLimits",
               "strategyParams",
               "benchmarkCode",
+              "selectionPolicyVersion",
             ].includes(key),
         )
       )

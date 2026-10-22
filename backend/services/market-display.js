@@ -104,6 +104,7 @@ async function archivedMarket(env, date) {
       // 旧归档无炸板候选字段时补空数组，保持展示形状与服务端 analyze
       // 输出一致（display-only，不参与计划冻结与摘要）。
       brokenStocks: snapshot.brokenStocks ?? [],
+      extraStocks: snapshot.extraStocks ?? [],
       sectors: snapshot.sectors,
       emotion: snapshot.emotion ?? null,
     },

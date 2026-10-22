@@ -9,17 +9,58 @@ const STOCK_DB_PATH = "D:/Sanchez/QuanQuant/hikyuu-quan/stock/stock.db";
 
 // 行业代码到名称的映射（基于 raw-pools-enhanced 数据学习）
 const INDUSTRY_NAMES = {
-  1: "银行证券", 2: "房地产", 3: "钢铁", 4: "家居建材", 5: "有色金属",
-  6: "电力设备", 7: "汽车", 8: "交通运输", 9: "医药生物", 10: "旅游酒店",
-  11: "房地产", 12: "商业百货", 13: "电子信息", 14: "食品饮料", 15: "纺织服饰",
-  16: "电力", 17: "农林牧渔", 18: "传媒影视", 19: "化工", 20: "煤炭",
-  21: "建筑装饰", 22: "水泥建材", 23: "家电", 24: "通信", 25: "综合",
-  26: "机械设备", 27: "化工材料", 28: "基础化工", 29: "电力设备", 30: "电气设备",
-  31: "房地产服务", 32: "建筑装饰", 33: "建筑材料", 34: "医药生物", 35: "环境治理",
-  36: "稀土小金属", 37: "食品饮料", 38: "造纸印刷", 39: "环保", 40: "公用事业",
-  41: "纺织服饰", 42: "公用事业", 43: "新能源", 44: "光伏", 45: "机械设备",
-  46: "传媒", 47: "塑料橡胶", 48: "玻璃", 49: "国防军工", 50: "国防军工",
-  51: "电子信息", 52: "综合",
+  1: "银行证券",
+  2: "房地产",
+  3: "钢铁",
+  4: "家居建材",
+  5: "有色金属",
+  6: "电力设备",
+  7: "汽车",
+  8: "交通运输",
+  9: "医药生物",
+  10: "旅游酒店",
+  11: "房地产",
+  12: "商业百货",
+  13: "电子信息",
+  14: "食品饮料",
+  15: "纺织服饰",
+  16: "电力",
+  17: "农林牧渔",
+  18: "传媒影视",
+  19: "化工",
+  20: "煤炭",
+  21: "建筑装饰",
+  22: "水泥建材",
+  23: "家电",
+  24: "通信",
+  25: "综合",
+  26: "机械设备",
+  27: "化工材料",
+  28: "基础化工",
+  29: "电力设备",
+  30: "电气设备",
+  31: "房地产服务",
+  32: "建筑装饰",
+  33: "建筑材料",
+  34: "医药生物",
+  35: "环境治理",
+  36: "稀土小金属",
+  37: "食品饮料",
+  38: "造纸印刷",
+  39: "环保",
+  40: "公用事业",
+  41: "纺织服饰",
+  42: "公用事业",
+  43: "新能源",
+  44: "光伏",
+  45: "机械设备",
+  46: "传媒",
+  47: "塑料橡胶",
+  48: "玻璃",
+  49: "国防军工",
+  50: "国防军工",
+  51: "电子信息",
+  52: "综合",
 };
 
 // 缓存行业映射
@@ -33,27 +74,31 @@ const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时缓存
  */
 export function loadIndustryMapping() {
   const now = Date.now();
-  if (_industryMapping && (now - _lastLoadTime) < CACHE_TTL) {
+  if (_industryMapping && now - _lastLoadTime < CACHE_TTL) {
     return _industryMapping;
   }
-  
+
   if (!existsSync(STOCK_DB_PATH)) {
     console.warn(`[industry] stock.db 不存在：${STOCK_DB_PATH}`);
     return new Map();
   }
-  
+
   try {
     const db = new DatabaseSync(STOCK_DB_PATH);
     db.exec("PRAGMA busy_timeout=5000;");
-    
-    const rows = db.prepare(`
+
+    const rows = db
+      .prepare(
+        `
       SELECT s.code, s.name, f.industry 
       FROM Stock s 
       LEFT JOIN stkfinance f ON s.stockid = f.stockid 
       WHERE (s.type = 1 OR s.type = 8) AND f.industry > 0
       ORDER BY s.type ASC
-    `).all();
-    
+    `,
+      )
+      .all();
+
     const mapping = new Map();
     for (const row of rows) {
       // 优先选择 type=1 (A 股)，如果有重复代码
@@ -75,12 +120,12 @@ export function loadIndustryMapping() {
         });
       }
     }
-    
+
     db.close();
-    
+
     _industryMapping = mapping;
     _lastLoadTime = now;
-    
+
     console.log(`[industry] 加载行业映射：${mapping.size} 只股票`);
     return mapping;
   } catch (err) {
@@ -106,11 +151,11 @@ export function getIndustryInfo(code) {
  */
 export function enrichWithIndustry(rows) {
   if (!Array.isArray(rows)) return rows;
-  
+
   const mapping = loadIndustryMapping();
   let matched = 0;
-  
-  return rows.map(row => {
+
+  return rows.map((row) => {
     const info = mapping.get(row.c ?? row.code);
     if (info && info.industry > 0) {
       row.hybk = info.industryName;
@@ -131,12 +176,12 @@ export function enrichWithIndustry(rows) {
 export function getIndustryDistribution() {
   const mapping = loadIndustryMapping();
   const distribution = new Map();
-  
+
   for (const [code, info] of mapping.entries()) {
     const name = info.industryName;
     distribution.set(name, (distribution.get(name) ?? 0) + 1);
   }
-  
+
   return [...distribution.entries()]
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count);

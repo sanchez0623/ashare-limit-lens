@@ -24,6 +24,9 @@ import { latestPolicyBundle, verifyPolicyBundle } from "./execution-cost.js";
 import {
   DEFAULT_SELECTION_VERSION,
   SELECTION_VERSION_V2,
+  SELECTION_VERSION_V3,
+  SELECTION_VERSION_V4,
+  SELECTION_VERSION_V5,
   selectionPolicy,
   selectionPolicyFields,
   selectionPolicyForBook,
@@ -148,15 +151,17 @@ export class PaperRepository {
   }
   async upgradeSelectionPolicy() {
     const account = await this.account();
-    // 升级范围：无显式版本的旧账户与 v2 账户，一律升到最新版本（当前 v3，
-    // 启用股票分类路由）。显式登记的其他版本（含 v1）不自动改参——显式
-    // 版本表示用户主动选择，不覆盖。v4 是显式选择的策略，不自动升级存量
-    // 账户（见 signal-selection.js 中 DEFAULT_SELECTION_VERSION 的说明）。
+    // 升级范围：无显式版本的旧账户、v2、v3 账户，一律升到最新版本（当前 v5，
+    // 启用龙头低吸完整能力：分类路由 + 炸板候选 + 买点闸门 + EOD 候选）。
+    // 手动选择版本的账户及显式 v1/v4 不自动改参。
     // 升级只在研究窗口释放后执行，留审计记录。
     const currentVersion = account?.book?.selectionPolicyVersion;
     if (
       !account ||
-      (currentVersion !== undefined && currentVersion !== SELECTION_VERSION_V2)
+      account.book.selectionPolicyMode === "manual" ||
+      (currentVersion !== undefined &&
+        currentVersion !== SELECTION_VERSION_V2 &&
+        currentVersion !== SELECTION_VERSION_V3)
     )
       return;
     const owner = await this.db
@@ -206,6 +211,38 @@ export class PaperRepository {
       .bind("primary")
       .first();
     return row ? { revision: row.revision, book: JSON.parse(row.state) } : null;
+  }
+  // 基准价来源标记（CAS）：只有拿所选指数当日真实收盘核对过，才把基准价
+  // 标记为已验证。无来源标记的历史基准不许被结算链沿用——那正是把沪深300
+  // 基准锚在上证指数收盘上的漏洞入口。
+  async stampBenchmarkBase(expectedRevision, date, baseCents) {
+    if (
+      !Number.isInteger(expectedRevision) ||
+      expectedRevision < 0 ||
+      !date ||
+      !Number.isInteger(baseCents) ||
+      baseCents <= 0
+    )
+      throw new Error("基准价来源标记无效");
+    const account = await this.account();
+    if (!account) throw new Error("账户不存在");
+    if (account.revision !== expectedRevision)
+      throw new Error("账户状态已变更，基准价来源标记未写入");
+    const book = {
+      ...account.book,
+      benchmarkBaseDate: date,
+      benchmarkBaseCents: baseCents,
+    };
+    const stamp = new Date().toISOString();
+    await this.db.transaction(async () => {
+      await this.db
+        .prepare(
+          "UPDATE paper_accounts SET state=?, revision=revision+1, updated_at=? WHERE id=? AND revision=?",
+        )
+        .bind(JSON.stringify(book), stamp, "primary", account.revision)
+        .run();
+    });
+    return book;
   }
   async snapshot(date) {
     return parse(
@@ -624,6 +661,20 @@ export class PaperRepository {
         throw new Error("基准指数无效");
       book.benchmarkCode = settings.benchmarkCode;
     }
+    // 选股政策版本（v5 默认，v3/v4 可回退）：显式选择，仅影响后续新计划，
+    // 已冻结计划与历史成交保持原政策。不触发当日计划重冻——新政策从下一
+    // 交易日生效，与费用/风控的调整纪律一致。
+    if (settings.selectionPolicyVersion !== undefined) {
+      const allowed = [
+        SELECTION_VERSION_V3,
+        SELECTION_VERSION_V4,
+        SELECTION_VERSION_V5,
+      ];
+      if (!allowed.includes(settings.selectionPolicyVersion))
+        throw new Error("选股政策版本无效");
+      book.selectionPolicyVersion = settings.selectionPolicyVersion;
+      book.selectionPolicyMode = "manual";
+    }
     const stamp = now.toISOString(),
       nonce = crypto.randomUUID();
     const statements = [
@@ -766,6 +817,9 @@ export class PaperRepository {
       feesChanged,
       riskChanged,
       strategyChanged: !!strategyChange,
+      selectionPolicyChanged:
+        selectionPolicyForBook(account.book).version !==
+        selectionPolicyForBook(book).version,
       before: {
         initialCashCents: account.book.initialCashCents,
         fees: feesForBook(account.book),
@@ -778,6 +832,7 @@ export class PaperRepository {
         },
         improvementMode: account.book.improvementMode,
         benchmarkCode: account.book.benchmarkCode || DEFAULT_BENCHMARK,
+        selectionPolicyVersion: selectionPolicyForBook(account.book).version,
       },
       after: {
         initialCashCents: book.initialCashCents,
@@ -791,6 +846,7 @@ export class PaperRepository {
         },
         improvementMode: book.improvementMode,
         benchmarkCode: book.benchmarkCode || DEFAULT_BENCHMARK,
+        selectionPolicyVersion: selectionPolicyForBook(book).version,
       },
       previousBaselines: baselines.map((row) => JSON.parse(row.payload)),
       revisedPlanDate: replacement?.signalDate || null,

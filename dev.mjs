@@ -35,6 +35,7 @@ createServer(async (req, res) => {
       AI_BASE_URL: process.env.AI_BASE_URL,
       AI_MODEL: process.env.AI_MODEL,
       LOCAL_RESEARCH_DB_PATH: process.env.LOCAL_RESEARCH_DB_PATH,
+      QUAN_DATA_DIR: process.env.QUAN_DATA_DIR,
     });
     res.writeHead(response.status, Object.fromEntries(response.headers));
     res.end(Buffer.from(await response.arrayBuffer()));

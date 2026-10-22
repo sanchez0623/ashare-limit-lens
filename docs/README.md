@@ -17,6 +17,8 @@
 
 ## 目录约定
 
+龙头低吸接入现状见 [dragon-head-dip-buy 实现核对](design/dragon-head-dip-buy-implementation-audit.md)（2026-10-22，部分实现，含源码、真实数据链路与当前账户运行核查）。
+
 ```text
 docs/
   README.md                         文档统一入口

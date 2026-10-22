@@ -1,5 +1,11 @@
 import { database } from "../storage/database.js";
-import { getMa5ByCode, getStockFeaturesByCode } from "./daily-closes.js";
+import { buildEodCandidates } from "./eod-candidates.js";
+import { loadIndustryMapping } from "./industry.js";
+import {
+  getMa5ByCode,
+  getStockFeaturesByCode,
+  getEodRowsWithPrev,
+} from "./daily-closes.js";
 import { DOWNGRADE_RULES_VERSION } from "../../shared/downgrade.js";
 import { T_QUALITY_RULES_VERSION } from "../domain/t-quality.js";
 export { database } from "../storage/database.js";
@@ -102,10 +108,36 @@ export async function saveSnapshot(env, market, weights) {
   // 显式逐字段构造评分选项：配置永远无法覆盖 ma5ByCode / lateSession
   // 等行情输入。
   const { firstNegMinPrevHeight } = await readBuyPointParams(env);
+  // EOD 候选源：从日线 parquet 构造首阴低吸 / 假阴跌停低吸的候选行。
+  // QUAN_DATA_DIR 未配置或数据不可用时，候选为空（宁缺毋滥），不影响
+  // 涨停池 / 炸板池链路。
+  const prevRows = market.previous?.map(normalize) ?? null;
+  let extraCandidates = null;
+  let prevEodByCode = null;
+  try {
+    const { rowsByCode: eodRows } = await getEodRowsWithPrev(env, market.date);
+    const existingCodes = new Set(
+      [...market.rows, ...(market.brokenRows ?? [])].map(
+        (row) => row.c ?? row.code,
+      ),
+    );
+    extraCandidates = buildEodCandidates({
+      previous: prevRows ?? [],
+      eodRows,
+      ma5ByCode,
+      existingCodes,
+      stockInfoByCode: eodRows.size ? loadIndustryMapping() : new Map(),
+      firstNegMinPrevHeight,
+    });
+    // 保留统一的 prev* 字段形状，交给评分器映射到昨日行情。
+    prevEodByCode = eodRows;
+  } catch {
+    // EOD 不可用时候选为空，不影响涨停池 / 炸板池链路
+  }
   const a = analyze(
     market.rows.map(normalize),
     market.broken,
-    market.previous?.map(normalize) ?? null,
+    prevRows,
     weights,
     // saveSnapshot 仅在收盘后（15:05+）执行，尾盘时点成立
     {
@@ -116,9 +148,13 @@ export async function saveSnapshot(env, market, weights) {
       // 炸板池行（与 rows 同为原始行，需各自归一化）：炸板低吸 /
       // 尾盘跳水低吸 的候选来源。缺失时为空候选，不影响涨停池链路。
       brokenRows: market.brokenRows?.map(normalize) ?? null,
+      // 额外候选行（EOD 构造）：首阴低吸 / 假阴跌停低吸
+      extraCandidates: extraCandidates ?? null,
+      // EOD 昨日字段仅补齐额外候选，不改变涨停池/炸板池原有评分输入。
+      prevEodByCode: prevEodByCode ?? null,
     },
   );
-  const { stocks, sectors, brokenStocks, ...marketSummary } = a;
+  const { stocks, sectors, brokenStocks, extraStocks, ...marketSummary } = a;
   const createdAt = new Date().toISOString();
   const payload = {
     date: market.date,
@@ -141,6 +177,9 @@ export async function saveSnapshot(env, market, weights) {
     // 注意与 market.brokenRows 分工：brokenStocks 是评分/买点产物，
     // market.brokenRows 保留原始行供出池持仓炸板次数（exit-context）读取。
     brokenStocks,
+    // EOD 候选行（已打分、已做买点标注）：首阴低吸 / 假阴跌停低吸
+    // 的候选宇宙。旧快照无此字段 → 摘要输入不变，自动保持旧语义。
+    ...(extraStocks ? { extraStocks } : {}),
     sectors,
     emotion: a.emotion,
     marketSummary,

@@ -68,8 +68,7 @@ function installProvider(thsRespond) {
       return Response.json({ rc: 0, data: { qdate, pool: [] } });
     if (endpoint === "getYesterdayZTPool")
       return Response.json({ rc: 0, data: { qdate, pool: YESTERDAY_ROWS } });
-    if (endpoint.startsWith("ths:"))
-      return Response.json(thsRespond(endpoint));
+    if (endpoint.startsWith("ths:")) return Response.json(thsRespond(endpoint));
     throw new Error(`unexpected provider call: ${endpoint}`);
   };
   return {

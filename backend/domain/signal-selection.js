@@ -7,12 +7,12 @@ export const LEGACY_SELECTION_VERSION = "signal-ranking-v1";
 export const SELECTION_VERSION_V2 = "signal-ranking-v2";
 export const SELECTION_VERSION_V3 = "signal-ranking-v3";
 export const SELECTION_VERSION_V4 = "signal-ranking-v4";
-// v4 是显式选择的策略，不是全局默认：买点闸门是龙头低吸特有语义，把它
-// 设成默认会波及所有账户与所有策略家族（现金防守、首板、连板、低换手、
-// 板块共振都不以打板/炸板低吸为入场条件）。缺省仍是 v3；需要闸门与炸板
-// 候选的调用方显式传 SELECTION_VERSION_V4（回测经 selectionPolicyVersion
-// 入口选择）。
-export const DEFAULT_SELECTION_VERSION = SELECTION_VERSION_V3;
+export const SELECTION_VERSION_V5 = "signal-ranking-v5";
+// v5 是当前默认：龙头低吸（dragon-head-dip-buy）策略的完整能力——
+// 分类路由 + 炸板候选 + 买点闸门 + EOD 候选（首阴低吸/假阴跌停低吸）——
+// 直接成为新账户的默认行为，无需手动切换。v3/v4 保留为回退选项；
+// 缺少版本的历史账户按 v1 解释。
+export const DEFAULT_SELECTION_VERSION = SELECTION_VERSION_V5;
 const policies = Object.freeze({
   [LEGACY_SELECTION_VERSION]: Object.freeze({
     version: LEGACY_SELECTION_VERSION,
@@ -45,6 +45,18 @@ const policies = Object.freeze({
     stockClassRouting: true,
     brokenCandidateSource: true,
   }),
+  // v5：EOD 候选源扩展。首阴低吸 / 假阴跌停低吸 的候选行从日线 parquet
+  // 构造，评分因子结构性缺失（无封单、无首封时间），门控按买点资格豁免
+  // 覆盖/评分检查。其余字段与 v4 一致。
+  [SELECTION_VERSION_V5]: Object.freeze({
+    version: SELECTION_VERSION_V5,
+    scorePrecision: 6,
+    liquiditySource: "signal-day-turnover-cny",
+    tieBreak: "code-asc",
+    stockClassRouting: true,
+    brokenCandidateSource: true,
+    extraCandidateSource: true,
+  }),
 });
 // SHA-256(canonicalJson(policy))。常量使同步纯内核也能冻结完整摘要；
 // 回归测试独立重算，政策字段变化必须新增版本及摘要。
@@ -57,6 +69,8 @@ const digests = Object.freeze({
     "508cd643a3e2ef3842b55a89ec761a0a39851e7fd327c14fae96f39c5a828aa7",
   [SELECTION_VERSION_V4]:
     "2fbf957ad0be7c4bb1cbb9b09cf066f3187c8bc984df3db2d799e387908f0b02",
+  [SELECTION_VERSION_V5]:
+    "777dc3af6c39c79d09380122de3338fae44cf40b54eab592e55621f74ce06352",
 });
 export function selectionPolicy(version = DEFAULT_SELECTION_VERSION) {
   if (!Object.hasOwn(policies, version))
@@ -112,7 +126,10 @@ export function selectionPolicyMatches(record, book) {
 // 闸门集合不进 policy 对象——selectionPolicyDigest 逐字段用 !== 比较，
 // Set 会被判为"内容与声明版本不一致"；版本即闸门开关，集合在模块内定义。
 export function buyPointGateForPolicy(policy) {
-  return policy.version === SELECTION_VERSION_V4 ? A_GRADE_BUY_POINTS : null;
+  return policy.version === SELECTION_VERSION_V4 ||
+    policy.version === SELECTION_VERSION_V5
+    ? A_GRADE_BUY_POINTS
+    : null;
 }
 export function liquidityAmountCents(amount) {
   if (!Number.isFinite(amount) || amount <= 0) return null;
@@ -134,6 +151,8 @@ export function selectionSnapshotDigest(snapshot) {
   // 纳入，保证选择摘要确定性与新字段冻结。
   if (snapshot.brokenStocks !== undefined)
     digestSource.brokenStocks = [...snapshot.brokenStocks].sort(codeOrder);
+  if (snapshot.extraStocks !== undefined)
+    digestSource.extraStocks = [...snapshot.extraStocks].sort(codeOrder);
   return digestOf(digestSource);
 }
 // 观察池分级（方案 8）：独立规则版本，不进入选股政策与摘要。

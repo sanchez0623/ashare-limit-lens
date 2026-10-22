@@ -849,6 +849,39 @@ tbody tr:hover {
   margin: 0 9px;
   color: #b2c6bd;
 }
+.sector-formula .formula-suffix {
+  margin-left: 12px;
+  color: #a8b3bf;
+  font-size: 11px;
+}
+/* 题材筛选 chip：点击题材行写入 state.themeFilter，× 清除 */
+.filter-chip {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #e8f3ef;
+  color: var(--teal);
+  border: 1px solid #c5e4dc;
+  border-radius: 999px;
+  padding: 3px 4px 3px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.filter-chip button {
+  background: transparent;
+  border: 0;
+  color: var(--teal);
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 5px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.filter-chip button:hover {
+  background: #c5e4dc;
+}
 .model-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
@@ -1320,6 +1353,7 @@ dialog::backdrop {
   .filters {
     padding-inline: 17px;
     gap: 8px;
+    flex-wrap: wrap;
   }
   .filters select {
     max-width: 130px;

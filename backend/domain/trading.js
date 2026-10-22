@@ -33,6 +33,7 @@ import {
   detectDowngradeForPosition,
 } from "../../shared/downgrade.js";
 import { checkExitSignals } from "../../shared/exit-signals.js";
+import { BUY_POINT_TYPES } from "../../shared/buy-point-type.js";
 import {
   T_QUALITY_RULES_VERSION,
   summarizeTQuality,
@@ -60,6 +61,7 @@ import { canonicalJson } from "./research-lineage.js";
 import {
   DEFAULT_SELECTION_VERSION,
   LEGACY_SELECTION_VERSION,
+  SELECTION_VERSION_V5,
   buyPointGateForPolicy,
   selectionPolicy,
   selectionPolicyForBook,
@@ -181,10 +183,17 @@ export function scoreSignals(snapshot, strategy, policy = selectionPolicy()) {
   // 不进入 sectorAnalysis / promotion / emotion 的输入，这里只是把它们作为
   // 候选补充进来。旧版本不并入，信号形状与排序逐字节不变；旧快照无
   // brokenStocks 字段时 ?? [] 兜底，同样不变。
-  const candidateRows =
-    policy.brokenCandidateSource === true
-      ? [...snapshot.stocks, ...(snapshot.brokenStocks ?? [])]
-      : snapshot.stocks;
+  // v5：EOD 候选源（首阴低吸 / 假阴跌停低吸）并入信号，候选行从日线
+  // parquet 构造，评分因子结构性缺失，门控按买点资格豁免覆盖/评分检查。
+  const candidateRows = [
+    ...snapshot.stocks,
+    ...(policy.brokenCandidateSource === true
+      ? (snapshot.brokenStocks ?? [])
+      : []),
+    ...(policy.extraCandidateSource === true
+      ? (snapshot.extraStocks ?? [])
+      : []),
+  ];
   const signals = candidateRows.map((stock) => {
     const weights = weightsFor(stock);
     let weight = 0,
@@ -484,8 +493,8 @@ export function createPlan(
         ? {
             buyPoint: {
               primary: s.buyPoint.primary,
-              secondary: s.buyPoint.secondary,
-              confidence: s.buyPoint.confidence,
+              secondary: s.buyPoint.secondary ?? null,
+              confidence: s.buyPoint.confidence ?? null,
             },
           }
         : {}),
@@ -864,14 +873,30 @@ export function createPlan(
       audit.reason = "已有持仓，按持仓计划处理";
       continue;
     }
+    // 只有 v5 的 EOD 候选且命中首阴/假阴买点时，才豁免结构性缺失的
+    // 评分与覆盖检查。来源标记本身不授予建仓资格，也不改变旧版本门槛。
+    const buyPointQualified = buyPointGate
+      ? (signal.buyPoint?.labels ?? []).some((type) => buyPointGate.has(type))
+      : null;
+    const eodBuyPointQualified =
+      policy.version === SELECTION_VERSION_V5 &&
+      signal.candidateSource === "extra" &&
+      (signal.buyPoint?.labels ?? []).some((type) =>
+        [
+          BUY_POINT_TYPES.FIRST_NEG_DIP,
+          BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP,
+        ].includes(type),
+      );
     if (
       !/^\d{6}$/.test(signal.code) ||
       ((modernSelection || strategyProgram) &&
-        (!Number.isFinite(signal.score) ||
-          !Number.isFinite(signal.coverage) ||
-          !Number.isFinite(signal.sectorScore))) ||
-      signal.coverage < 80 ||
-      signal.score < strategy.minScore ||
+        !Number.isFinite(signal.sectorScore)) ||
+      (!eodBuyPointQualified &&
+        (((modernSelection || strategyProgram) &&
+          (!Number.isFinite(signal.score) ||
+            !Number.isFinite(signal.coverage))) ||
+          signal.coverage < 80 ||
+          signal.score < strategy.minScore)) ||
       signal.sectorScore < strategy.minSectorScore ||
       (strategyProgram && Object.hasOwn(signal, "consecutiveBoards")
         ? signal.consecutiveBoards
@@ -882,10 +907,7 @@ export function createPlan(
       audit.reason = "未满足评分、板块、覆盖、风险或价格条件";
       continue;
     }
-    if (
-      buyPointGate &&
-      !(signal.buyPoint?.labels ?? []).some((type) => buyPointGate.has(type))
-    ) {
+    if (buyPointGate && !buyPointQualified && !eodBuyPointQualified) {
       // 闸门放在评分/板块/覆盖门槛之后：先确保候选数据可用且质量达标，
       // 再按买点资格过滤，避免把"数据不足"与"买点不合格"记成同一个原因。
       audit.reason = "买点未命中建仓闸门（仅放行打板 / 炸板低吸）";

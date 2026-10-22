@@ -38,7 +38,13 @@ await build({
   bundle: true,
   format: "esm",
   platform: "browser",
-  external: ["node:sqlite", "node:fs", "node:path", "node:url", "node:fs/promises"],
+  external: [
+    "node:sqlite",
+    "node:fs",
+    "node:path",
+    "node:url",
+    "node:fs/promises",
+  ],
   target: "es2022",
   outfile: "dist/server/index.js",
 });
