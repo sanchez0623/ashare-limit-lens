@@ -52,6 +52,18 @@ export async function digest(value) {
   ).join("");
 }
 const parse = (row) => (row ? JSON.parse(row.payload) : null);
+export function normalizePageRequest(params, defaultSize) {
+  const positiveInteger = (value, fallback) => {
+    const number = Number(value ?? fallback);
+    return Number.isFinite(number)
+      ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.trunc(number)))
+      : fallback;
+  };
+  return {
+    page: positiveInteger(params?.page, 1),
+    pageSize: Math.min(100, positiveInteger(params?.pageSize, defaultSize)),
+  };
+}
 // 做T记录（方案 7）：DB 行 → 记录对象（与成交流水提取器同一形状）。
 function tTradeRowToRecord(row) {
   return {
@@ -258,6 +270,69 @@ export class PaperRepository {
       .bind(limit)
       .all();
     return result.results;
+  }
+  async ledgerPage(options = {}) {
+    const { page, pageSize } = normalizePageRequest(options, 10);
+    const date = typeof options.date === "string" ? options.date : "";
+    const where = date ? "WHERE trade_date = ?" : "";
+    const args = date ? [date] : [];
+    const [count, dates] = await Promise.all([
+      this.db
+        .prepare(`SELECT COUNT(*) AS total FROM paper_ledger ${where}`)
+        .bind(...args)
+        .first(),
+      this.db
+        .prepare(
+          "SELECT DISTINCT trade_date FROM paper_ledger ORDER BY trade_date DESC",
+        )
+        .all(),
+    ]);
+    const total = count.total;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const currentPage = Math.min(page, totalPages);
+    const result = await this.db
+      .prepare(
+        `SELECT payload FROM paper_ledger ${where}
+         ORDER BY trade_date DESC, COALESCE(CAST(json_extract(payload, '$.sequence') AS INTEGER), 0) DESC, id DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .bind(...args, pageSize, (currentPage - 1) * pageSize)
+      .all();
+    return {
+      page: currentPage,
+      pageSize,
+      total,
+      totalPages,
+      date,
+      dates: dates.results.map((row) => row.trade_date),
+      rows: result.results.map(parse),
+    };
+  }
+  async ledgerSummary() {
+    // 数据库聚合全历史现金流与个股盈亏，不把成交明细加载到概览内存。
+    // SQLite 的唯一 MAX 聚合同时选取该行的裸列，名称沿用最近成交日。
+    const result = await this.db
+      .prepare(
+        `SELECT json_extract(payload, '$.code') AS code,
+                json_extract(payload, '$.name') AS name,
+                MAX(trade_date) AS lastDate,
+                SUM(CASE WHEN json_extract(payload, '$.side') = 'SELL' THEN 1 ELSE 0 END) AS sellCount,
+                SUM(CASE WHEN json_extract(payload, '$.side') = 'SELL' AND json_extract(payload, '$.realizedPnlCents') > 0 THEN 1 ELSE 0 END) AS winCount,
+                SUM(CASE WHEN json_extract(payload, '$.side') = 'SELL' AND json_extract(payload, '$.realizedPnlCents') < 0 THEN 1 ELSE 0 END) AS lossCount,
+                SUM(COALESCE(json_extract(payload, '$.realizedPnlCents'), 0)) AS realizedPnlCents,
+                SUM(COALESCE(json_extract(payload, '$.cashDeltaCents'), 0)) AS cashDeltaCents,
+                SUM(COALESCE(json_extract(payload, '$.feeCents'), 0)) AS feeCents
+         FROM paper_ledger GROUP BY json_extract(payload, '$.code')
+         ORDER BY realizedPnlCents DESC, code`,
+      )
+      .all();
+    const totals = { cashDeltaCents: 0, realizedPnlCents: 0, feeCents: 0 };
+    const stockPnl = result.results.map((row) => {
+      for (const key of Object.keys(totals)) totals[key] += row[key];
+      const { cashDeltaCents, feeCents, ...stock } = row;
+      return stock;
+    });
+    return { totals, stockPnl };
   }
   async versions() {
     const result = await this.db

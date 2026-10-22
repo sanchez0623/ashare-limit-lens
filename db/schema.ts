@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   sqliteTable,
   text,
@@ -48,7 +49,14 @@ export const paperLedger = sqliteTable(
     tradeDate: text("trade_date").notNull(),
     payload: text("payload").notNull(),
   },
-  (table) => [index("idx_paper_ledger_trade_date").on(table.tradeDate)],
+  (table) => [
+    index("idx_paper_ledger_trade_date").on(table.tradeDate),
+    index("idx_paper_ledger_page").on(
+      sql`${table.tradeDate} DESC`,
+      sql`COALESCE(CAST(json_extract(${table.payload}, '$.sequence') AS INTEGER), 0) DESC`,
+      sql`${table.id} DESC`,
+    ),
+  ],
 );
 export const paperMarketDays = sqliteTable("paper_market_days", {
   tradeDate: text("trade_date").primaryKey(),

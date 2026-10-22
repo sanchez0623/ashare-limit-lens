@@ -632,14 +632,14 @@ export async function verifyExport(bundle) {
   };
 }
 
-export async function paperOverview(env, attempt = 0) {
+export async function paperOverview(env, attempt = 0, options = {}) {
   const repository = new RealtimeRepository(env);
   const { book, revision } = await repository.initialize(
     await readWeights(env),
   );
   const rows = await Promise.all(
-    ["paper_equity", "paper_ledger", "paper_plans", "paper_runs"].map((table) =>
-      repository.history(table, table === "paper_ledger" ? 100 : 120),
+    ["paper_equity", "paper_plans", "paper_runs"].map((table) =>
+      repository.history(table, 120),
     ),
   );
   const equities = rows[0].map((row) => JSON.parse(row.payload)).reverse();
@@ -662,44 +662,17 @@ export async function paperOverview(env, attempt = 0) {
       // 基准行情暂不可用时保留结算时记录的数值
     }
   }
-  const allLedger = (await repository.history("paper_ledger", 100000)).map(
-    (row) => JSON.parse(row.payload),
-  );
-  // 历史个股盈亏：按代码聚合全部成交的 FIFO 已实现盈亏（买入腿恒为 0，
-  // 口径与 auditLedger 的全账本合计一致）。history() 按日期倒序返回，
-  // 最近交易日用比较取最大值，不依赖输入顺序。
-  const stockPnl = [];
-  const stockPnlByCode = new Map();
-  for (const fill of allLedger) {
-    let row = stockPnlByCode.get(fill.code);
-    if (!row) {
-      row = {
-        code: fill.code,
-        name: fill.name,
-        lastDate: fill.date,
-        sellCount: 0,
-        winCount: 0,
-        lossCount: 0,
-        realizedPnlCents: 0,
-      };
-      stockPnlByCode.set(fill.code, row);
-      stockPnl.push(row);
-    }
-    if (fill.date > row.lastDate) row.lastDate = fill.date;
-    if (fill.side === "SELL") {
-      row.sellCount += 1;
-      if (fill.realizedPnlCents > 0) row.winCount += 1;
-      else if (fill.realizedPnlCents < 0) row.lossCount += 1;
-    }
-    row.realizedPnlCents += fill.realizedPnlCents || 0;
-  }
-  stockPnl.sort(
-    (a, b) =>
-      b.realizedPnlCents - a.realizedPnlCents || a.code.localeCompare(b.code),
-  );
+  const [{ totals, stockPnl }, ledgerMeta] = await Promise.all([
+    repository.ledgerSummary(),
+    repository.ledgerPage({
+      page: options.ledgerPage,
+      pageSize: options.ledgerPageSize,
+      date: options.ledgerDate,
+    }),
+  ]);
   const audit = auditLedger(
     book.initialCashCents,
-    allLedger,
+    [totals],
     book,
     book.positions,
   );
@@ -708,7 +681,7 @@ export async function paperOverview(env, attempt = 0) {
     strategyParams = await repository.strategy(book),
     realtime = await realtimeStatus(env);
   if ((await repository.account()).revision !== revision) {
-    if (attempt < 3) return paperOverview(env, attempt + 1);
+    if (attempt < 3) return paperOverview(env, attempt + 1, options);
     throw new Error("账户正在更新，请稍后重试");
   }
   // 盘中实时盯市：实时执行器已把账本按"晚于最近结算日"的交易时段报价
@@ -774,10 +747,11 @@ export async function paperOverview(env, attempt = 0) {
     lastSettled: equities.at(-1) || null,
     equities,
     benchmarkCode,
-    ledger: rows[1].map((row) => JSON.parse(row.payload)),
+    ledger: ledgerMeta.rows,
+    ledgerMeta,
     stockPnl,
-    plan: rows[2][0] ? JSON.parse(rows[2][0].payload) : null,
-    run: rows[3][0] ? JSON.parse(rows[3][0].payload) : null,
+    plan: rows[1][0] ? JSON.parse(rows[1][0].payload) : null,
+    run: rows[2][0] ? JSON.parse(rows[2][0].payload) : null,
     audit,
     riskLimits: riskLimitsForBook(book),
     strategyParams,
