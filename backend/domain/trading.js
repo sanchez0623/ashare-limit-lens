@@ -60,6 +60,7 @@ import { canonicalJson } from "./research-lineage.js";
 import {
   DEFAULT_SELECTION_VERSION,
   LEGACY_SELECTION_VERSION,
+  buyPointGateForPolicy,
   selectionPolicy,
   selectionPolicyForBook,
   selectionPolicyFields,
@@ -174,7 +175,17 @@ export function scoreSignals(snapshot, strategy, policy = selectionPolicy()) {
   const sectorScores = new Map(
     snapshot.sectors.map((sector) => [sector.name, sector.score]),
   );
-  const signals = snapshot.stocks.map((stock) => {
+  // v4：炸板池候选并入信号（方案 9）。候选行与涨停池行共用 analyze 内同一
+  // 套 enrichRow + analyzeStock，评分/分类/买点口径一致，唯一差别是 isLimitUp
+  // 判定来源与 candidateSource 溯源标记。口径隔离只发生在打分之前：炸板行
+  // 不进入 sectorAnalysis / promotion / emotion 的输入，这里只是把它们作为
+  // 候选补充进来。旧版本不并入，信号形状与排序逐字节不变；旧快照无
+  // brokenStocks 字段时 ?? [] 兜底，同样不变。
+  const candidateRows =
+    policy.brokenCandidateSource === true
+      ? [...snapshot.stocks, ...(snapshot.brokenStocks ?? [])]
+      : snapshot.stocks;
+  const signals = candidateRows.map((stock) => {
     const weights = weightsFor(stock);
     let weight = 0,
       weighted = 0;
@@ -840,6 +851,9 @@ export function createPlan(
   let opened = 0;
   // v3：平庸型只在"新增买入候选"阶段排除；信号列表保留完整持仓风险信号
   const stockClassRouting = policy.stockClassRouting === true;
+  // v4：买点硬闸门。只对新增建仓生效，不影响持仓的风险保护动作（减仓/止损
+  // 继续走原有信号）。旧版本返回 null，闸门整体跳过，行为逐字节不变。
+  const buyPointGate = buyPointGateForPolicy(policy);
   for (const [index, signal] of signals.entries()) {
     const audit = selectionAudit.candidates[index];
     if (stockClassRouting && signal.stockClass === STOCK_CLASSES.MEDIOCRE) {
@@ -866,6 +880,15 @@ export function createPlan(
       !(signal.price > 0)
     ) {
       audit.reason = "未满足评分、板块、覆盖、风险或价格条件";
+      continue;
+    }
+    if (
+      buyPointGate &&
+      !(signal.buyPoint?.labels ?? []).some((type) => buyPointGate.has(type))
+    ) {
+      // 闸门放在评分/板块/覆盖门槛之后：先确保候选数据可用且质量达标，
+      // 再按买点资格过滤，避免把"数据不足"与"买点不合格"记成同一个原因。
+      audit.reason = "买点未命中建仓闸门（仅放行打板 / 炸板低吸）";
       continue;
     }
     if (

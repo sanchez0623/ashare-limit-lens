@@ -1,8 +1,20 @@
 import { publicFetch } from "./public-fetch.js";
 import { symbol, beijingDate } from "./review.js";
 import { toCents } from "../domain/trading.js";
-import { normalize, promotionStats } from "../../shared/scoring.js";
+import { normalize, promotionStats, parseThemes } from "../../shared/scoring.js";
 import { BENCHMARK_CODES } from "../../shared/benchmarks.js";
+import { enrichWithIndustry } from "./industry.js";
+import {
+  batchRecordTagData,
+  recordTagReturn,
+  latestRecordedDateBefore,
+} from "./tag-contribution.js";
+import {
+  getLimitUpPool as thsGetLimitUpPool,
+  getLimitBreakPool as thsGetLimitBreakPool,
+  getLimitDownPool as thsGetLimitDownPool,
+  getLimitUpLadder as thsGetLimitUpLadder,
+} from "./fuyao.js";
 const CACHE = new Map();
 const EM_BASE = "https://push2ex.eastmoney.com/";
 const TOKEN = "7eea3edcaed734bea9cbfc24409ed989";
@@ -46,50 +58,213 @@ export async function getPool(endpoint, date) {
     total: body.data.tc ?? pool.length,
   };
 }
+// 合并东财涨停池与同花顺补全字段
+// 策略: 东财优先且口径不变；同花顺只补东财没有的字段（涨停原因等），
+// 拿不到同花顺数据时按纯东财数据返回，不降级也不报错。
+// 排除北交所（920xxx 代码），保持沪深主板 + 创业板口径
+function mergeLimitUpPools(emPool, thsPool) {
+  if (!emPool || !Array.isArray(emPool) || emPool.length === 0) {
+    return [];
+  }
+
+  // 过滤北交所股票
+  const filteredEm = emPool.filter(r => !r.c?.startsWith("920"));
+
+  // 建立同花顺数据索引
+  const thsMap = new Map();
+  if (thsPool && Array.isArray(thsPool)) {
+    for (const r of thsPool) {
+      if (r.ticker && !r.ticker.startsWith("920")) {
+        thsMap.set(r.ticker, r);
+      }
+    }
+  }
+
+  // 合并数据
+  return filteredEm.map(emRow => {
+    const thsRow = thsMap.get(emRow.c);
+    // 保留所有东财原始字段
+    const merged = { ...emRow };
+    // 同花顺独有字段（仅当同花顺数据可用时添加）
+    if (thsRow) {
+      merged.maxSealMoney = thsRow.max_seal_money; // 峰值封单金额
+      merged.limitUpReason = thsRow.limit_up_reason; // 涨停原因
+      merged.isSt = thsRow.is_st ?? false; // ST 标记
+      merged.isNew = thsRow.is_new ?? false; // 新股标记
+      merged._dataSource = "eastmoney";
+      merged._thsSupplemented = true;
+    }
+    return merged;
+  });
+}
+
+// 炸板池：东财口径优先（zbc 炸板次数），同花顺补全开板次数 open_times。
+// 排除北交所（920xxx 代码），保持沪深主板 + 创业板口径
+function mergeLimitBreakPools(emPool, thsPool) {
+  if (!emPool || !Array.isArray(emPool) || emPool.length === 0) return [];
+  const filteredEm = emPool.filter((r) => !r.c?.startsWith("920"));
+  const thsMap = new Map();
+  if (thsPool && Array.isArray(thsPool)) {
+    for (const r of thsPool) {
+      if (r.ticker && !r.ticker.startsWith("920")) thsMap.set(r.ticker, r);
+    }
+  }
+  return filteredEm.map((emRow) => {
+    const thsRow = thsMap.get(emRow.c);
+    const merged = { ...emRow };
+    if (thsRow) {
+      merged.openTimes = thsRow.open_times; // 开板次数（同花顺独有）
+      merged._thsSupplemented = true;
+    }
+    return merged;
+  });
+}
+
+
+// 同花顺只做字段补全，不参与主数据取舍：补全源超时/失败一律静默降级，
+// 既不能拖慢东财行情返回，也不能把补全失败混进用户可见告警。
+const THS_SUPPLEMENT_TIMEOUT_MS = 4000;
+
 export async function marketData(date) {
   const hit = CACHE.get(date);
   if (hit && Date.now() - hit.time < 120000)
     return { ...hit.body, cached: true };
-  const [main, broken, yesterday] = await Promise.allSettled([
-    getPool("getTopicZTPool", date),
-    getPool("getTopicZBPool", date),
-    getPool("getYesterdayZTPool", date),
-  ]);
+
+  // 东财优先：涨停池/炸板池/昨日涨停池的权威口径全部来自东财。
+  // 同花顺并行拉取四个补全源（涨停原因/炸板开板次数/跌停池/连板天梯），
+  // 全部带超时上限，失败只打服务端日志，不进用户告警、不阻塞行情返回。
+  const [main, broken, yesterday, thsLimitUp, thsLimitBreak, thsLimitDown, thsLadder] =
+    await Promise.allSettled([
+      getPool("getTopicZTPool", date),
+      getPool("getTopicZBPool", date),
+      getPool("getYesterdayZTPool", date),
+      thsGetLimitUpPool(date, { timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+      thsGetLimitBreakPool(date, { timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+      thsGetLimitDownPool(date, { timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+      thsGetLimitUpLadder({ timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+    ]);
+
   if (main.status === "rejected") throw main.reason;
+
+  const previousRows =
+    yesterday.status === "fulfilled" && yesterday.value.pool.length
+      ? yesterday.value.pool
+      : null;
+
   const warnings = [];
   if (broken.status === "rejected") warnings.push("炸板池未返回，封板率暂缺。");
-  if (yesterday.status === "rejected" || !yesterday.value?.pool.length)
-    warnings.push("昨日涨停池未返回有效样本，晋级率暂缺。");
+  if (!previousRows) warnings.push("昨日涨停池未返回有效样本，晋级率暂缺。");
   else if (
     promotionStats(
       main.value.pool.map(normalize),
-      yesterday.value.pool.map(normalize),
+      previousRows.map(normalize),
     ).promotion === null
   )
     warnings.push("昨日连板字段缺失或无效，晋级率暂缺。");
+
+  // 同花顺补全失败只留服务端日志：东财主数据不依赖它，用户端不显示补全告警。
+  for (const [label, result] of [
+    ["涨停池", thsLimitUp],
+    ["炸板池", thsLimitBreak],
+    ["跌停池", thsLimitDown],
+    ["连板天梯", thsLadder],
+  ]) {
+    if (result.status === "rejected")
+      console.warn(
+        `[market] 同花顺补全不可用（${label}），按东财数据继续：${result.reason?.message ?? result.reason}`,
+      );
+  }
+
+  // 合并涨停池数据（东财优先，同花顺补全）
+  const mergedRows = mergeLimitUpPools(
+    main.value.pool,
+    thsLimitUp.status === "fulfilled" ? thsLimitUp.value.item : null,
+  );
+  const supplementedCount = mergedRows.filter(
+    (r) => r._thsSupplemented,
+  ).length;
+
+  // 补充行业信息（从 QuanQuant stock.db）
+  const enrichedRows = enrichWithIndustry(mergedRows);
+
+  // 记录标签数据（用于标签贡献度计算）
+  try {
+    const tagRecords = [];
+    for (const row of enrichedRows) {
+      const tags = parseThemes(row.limitUpReason);
+      for (const tag of tags) {
+        tagRecords.push({
+          code: row.c,
+          name: row.n,
+          tag: tag,
+          nextDayReturn: null, // 次日收益待更新
+        });
+      }
+    }
+    if (tagRecords.length > 0) {
+      batchRecordTagData(date, tagRecords);
+    }
+  } catch (err) {
+    console.warn(`[market] 标签数据记录失败：${err.message}`);
+  }
+
+  // 更新上一交易日的标签次日收益：昨日涨停池行自带今日涨幅 zdp，
+  // 直接用它作为次日收益，避免只统计“今天又涨停”的样本造成偏差。
+  try {
+    const previousDate = latestRecordedDateBefore(date);
+    if (previousRows && previousDate) {
+      for (const prevRow of previousRows) {
+        const nextDayReturn = Number(prevRow?.zdp) / 100;
+        if (!prevRow?.c || !Number.isFinite(nextDayReturn)) continue;
+        recordTagReturn(previousDate, prevRow.c, nextDayReturn);
+      }
+    }
+  } catch (err) {
+    console.warn(`[market] 标签收益更新失败：${err.message}`);
+  }
+
+  // 炸板池：东财口径 + 同花顺补全开板次数
+  const mergedBrokenRows = mergeLimitBreakPools(
+    broken.status === "fulfilled" ? broken.value.pool : null,
+    thsLimitBreak.status === "fulfilled" ? thsLimitBreak.value.item : null,
+  );
+
   const result = {
     date,
-    source: "东方财富公开行情",
+    source:
+      supplementedCount > 0
+        ? "东方财富公开行情（同花顺补全涨停原因）"
+        : "东方财富公开行情",
     sourceUrl: "https://quote.eastmoney.com/ztb/detail",
-    scope: "沪深主板、创业板；不含 ST、科创板及连续一字新股",
+    scope: "沪深主板、创业板；不含 ST、科创板、北交所及连续一字新股",
     fetchedAt: new Date().toISOString(),
-    rows: main.value.pool,
-    broken: broken.status === "fulfilled" ? broken.value.pool.length : null,
+    rows: enrichedRows,
+    broken: mergedBrokenRows.length || null,
     // 炸板池原始行：出池持仓的炸板次数来源（方案 5 炸板不回封信号）；
     // broken 仅保留家数供封板率/展示，不丢个股记录。
-    brokenRows: broken.status === "fulfilled" ? broken.value.pool : null,
-    previous:
-      yesterday.status === "fulfilled" && yesterday.value.pool.length
-        ? yesterday.value.pool
-        : null,
+    brokenRows: mergedBrokenRows.length > 0 ? mergedBrokenRows : null,
+    previous: previousRows,
     previousLabel: "上一交易日",
     warnings,
+    // 同花顺独有数据（跌停池/连板天梯/补全命中数），主数据始终来自东财
+    thsData: {
+      supplementedCount,
+      available:
+        thsLimitUp.status === "fulfilled" &&
+        Array.isArray(thsLimitUp.value.item),
+      limitDownPool:
+        thsLimitDown.status === "fulfilled" ? thsLimitDown.value.item : null,
+      limitUpLadder:
+        thsLadder.status === "fulfilled" ? thsLadder.value.item : null,
+    },
     cached: false,
   };
+
   if (CACHE.size >= 20) CACHE.delete(CACHE.keys().next().value);
   CACHE.set(date, { time: Date.now(), body: result });
   return result;
 }
+
 
 // 拉取单个指数的日线（含当日实时报价合并）；交易日历与基准曲线共用。
 async function indexKline(code, startDate, endDate, limit = 80) {
