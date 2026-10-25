@@ -7,6 +7,8 @@
 
 股票名称与双行业的界面更新、后台任务及 API 见 [数据管理](data-management.md)。
 
+纸感界面、研究导航与市场切片导出见 [市场观察室](design/market-observatory.md)（已实施于当前开发分支）。
+
 申万多归属与官方、乐咕、同花顺的对照依据见 [2026-10-24 来源核对](industry-source-crosscheck-2026-10-24.md)。
 
 东财原生批量、F10 当前行业的全量对照与故障切换规则见 [东财行业接口核对](eastmoney-industry-sources.md)。

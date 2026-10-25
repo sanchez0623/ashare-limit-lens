@@ -12,7 +12,13 @@ const client = await build({
   minify: true,
 });
 const js = client.outputFiles[0].text;
-const css = await readFile("frontend/styles.css", "utf8");
+const css = (
+  await Promise.all(
+    ["frontend/styles.css", "frontend/observatory.css"].map((path) =>
+      readFile(path, "utf8"),
+    ),
+  )
+).join("\n");
 const html = await readFile("frontend/index.html", "utf8");
 const assets = {
   "/": { body: html, type: "text/html; charset=utf-8" },

@@ -13,6 +13,7 @@
     "build": "node build.mjs",
     "test": "node scripts/run-v5-regression.mjs",
     "test:v5": "node scripts/run-v5-regression.mjs",
+    "test:ui": "node --test test/frontend/*.test.mjs",
     "test:dragon": "node --test legacy-tests/dragon-risk.mjs legacy-tests/dragon-flexibility.mjs test/dragon/*.test.mjs",
     "dev": "node dev.mjs",
     "start": "node server.mjs",

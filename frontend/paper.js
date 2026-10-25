@@ -106,6 +106,8 @@ let data = null,
   ledgerDate = "",
   stockPnlPage = 1;
 let entryPlan;
+let paperController;
+let onStateChange = () => {};
 const LEDGER_PAGE_SIZE = 10;
 const STOCK_PNL_PAGE_SIZE = 15;
 let ledgerData = null,
@@ -401,6 +403,7 @@ function renderLedger() {
 }
 function render() {
   if (!data) return;
+  onStateChange(data);
   const archivePanel = $("paper-archives");
   if (archivePanel) {
     archivePanel.hidden = !data.archives?.length;
@@ -724,7 +727,9 @@ async function perform(task) {
     if (data) renderDragonSettings(data, { request, perform });
   }
 }
-export function initializePaper() {
+export function initializePaper({ onState = () => {} } = {}) {
+  if (paperController) return paperController;
+  onStateChange = onState;
   entryPlan = initializeEntryPlan($("paper-entry-plan"));
   initializeEntryObservation({
     request,
@@ -873,5 +878,6 @@ export function initializePaper() {
     if (!document.hidden && !busy) void refresh();
   }, 15000);
   void refresh();
-  return { refresh };
+  paperController = { refresh, getSnapshot: () => data };
+  return paperController;
 }

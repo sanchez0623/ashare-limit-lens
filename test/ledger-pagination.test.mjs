@@ -314,6 +314,7 @@ async function browserFixture(t) {
     element,
     requests,
     client,
+    initializeAgain: module.exports.initializePaper,
     meta,
     initial,
     flush,
@@ -323,6 +324,14 @@ async function browserFixture(t) {
     },
   };
 }
+
+test("重复初始化账户界面复用控制器，不重复注册刷新循环或发送概览请求", async (t) => {
+  const f = await browserFixture(t);
+  const count = f.requests.length;
+  assert.equal(f.initializeAgain(), f.client);
+  assert.equal(f.requests.length, count);
+  assert.ok(f.client.getSnapshot());
+});
 
 test("前端翻页只请求账本，晚到的自动刷新不能覆盖当前页；筛选从第一页查询", async (t) => {
   const f = await browserFixture(t);

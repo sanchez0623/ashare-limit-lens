@@ -11,6 +11,8 @@ import { initializeAlerts } from "./alerts.js";
 import { initializeDataManagement, beijingTime } from "./data-management.js";
 import { isExecutionReview } from "../shared/review.js";
 import { executionReviewView, reviewMoney } from "./execution-review.js";
+import { initializeObservatory } from "./observatory.js";
+import { parseRoute, routeHash } from "./observatory-model.js";
 import {
   researchIndustryName,
   researchIndustryGroups,
@@ -53,6 +55,8 @@ document
   .forEach((el) => (el.innerHTML = icon(el.dataset.icon)));
 const state = {
   view: "overview",
+  paperTab: "live",
+  reviewTab: "review",
   height: "all",
   // 板块研究页内 行业 ↔ 题材 切换标签状态
   synergyTab: "industry",
@@ -90,9 +94,41 @@ const today = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
   day: "2-digit",
 }).format(new Date());
-$("trade-date").value = today;
+const initialRoute = parseRoute(window.location.hash, today);
+let routingReady = false,
+  applyingRoute = false,
+  pendingSector = null,
+  dateChosen = !!initialRoute.date,
+  lastAppliedHash = "";
+const scrollPositions = new Map();
+$("trade-date").value = initialRoute.date || today;
 $("trade-date").max = today;
-const paper = initializePaper();
+const observatory = initializeObservatory({
+  navigate(view, tab) {
+    if (view === "paper" && tab) state.paperTab = tab;
+    if (view === "review" && tab) state.reviewTab = tab;
+    if (view === "sectors" && tab) state.synergyTab = tab;
+    setView(view);
+  },
+  onHeight(height) {
+    state.height = height;
+    state.themeFilter = null;
+    $("search").value = "";
+    $("sector-filter").value = "";
+    setView("stocks");
+  },
+  onSector: selectSector,
+  onArchive(date) {
+    dateChosen = true;
+    $("trade-date").value = date;
+    state.reviewTab = "review";
+    setView("review");
+    void loadData();
+  },
+  getPayload: () => (state.demo ? null : state.payload),
+  getPlan: () => paper.getSnapshot()?.plan,
+});
+const paper = initializePaper({ onState: observatory.updateExecution });
 const dataManagement = initializeDataManagement();
 const titles = {
   data: [
@@ -101,25 +137,29 @@ const titles = {
     "查看覆盖情况，手动更新股票信息与两套行业分类。",
   ],
   paper: [
-    "模拟交易",
-    "让评分接受账户检验",
-    "制定计划、模拟执行、核对收益，用真实结果改进策略。",
+    "模拟执行",
+    "让计划，走进市场。",
+    "跟踪当前账户的执行、持仓与结果，逐一核对判断。",
   ],
   overview: [
-    "总览复盘",
-    "每日涨停复盘",
-    "把涨停拆成信号，把判断建立在数据上。",
+    "今日观察",
+    "市场，自有形状。",
+    "从全貌到细节，让每一个判断都有迹可循。",
   ],
-  stocks: ["个股分析", "涨停个股分析", "拆解封板表现，比较强度与风险。"],
+  stocks: [
+    "深入研究 / 个股",
+    "沿着信号，看到依据。",
+    "拆解封板表现，在同一口径下比较强度与风险。",
+  ],
   sectors: [
-    "板块研究",
-    "板块与题材研究",
+    "深入研究 / 市场主线",
+    "资金的线索，在这里交汇。",
     "行业分类与涨停原因标签，两个维度观察资金的共同方向。",
   ],
   review: [
-    "昨日反馈",
-    "让昨日判断接受检验",
-    "保存当时的判断，用实际表现检验，再由 AI 审视。",
+    "复盘档案",
+    "每个判断，都有回声。",
+    "翻开当日的依据，用实际表现检验，再留下一份观察。",
   ],
   settings: ["设置", "设置", "管理复盘评分、大模型连接与高级研究。"],
   strategies: [
@@ -133,17 +173,78 @@ const titles = {
     "执行错误、风险处置与盘后失败主动通知；整机离线由外部监测发现。",
   ],
 };
+function routeState() {
+  return {
+    view: state.view,
+    tab:
+      state.view === "paper"
+        ? state.paperTab
+        : state.view === "review"
+          ? state.reviewTab
+          : state.synergyTab,
+    date: $("trade-date").value,
+    industryTaxonomy: state.industryTaxonomy,
+    height: state.height,
+    query: $("search").value,
+    sector: pendingSector ?? $("sector-filter").value,
+    theme: state.themeFilter,
+    sort: $("sort").value,
+  };
+}
+function syncRoute({ replace = false } = {}) {
+  if (!routingReady || applyingRoute) return;
+  const hash = routeHash(routeState());
+  if (window.location.hash !== hash)
+    window.history[replace ? "replaceState" : "pushState"](null, "", hash);
+  lastAppliedHash = hash;
+}
+function restoreRoute({ initial = false } = {}) {
+  if (!initial && window.location.hash === lastAppliedHash) return;
+  const anchor = window.location.hash.slice(1);
+  if (anchor === "main-content") return;
+  lastAppliedHash = window.location.hash;
+  const route = parseRoute(window.location.hash, today);
+  const changedDate = !!route.date && route.date !== $("trade-date").value;
+  applyingRoute = true;
+  if (route.date) {
+    $("trade-date").value = route.date;
+    dateChosen = true;
+  }
+  state.paperTab = route.view === "paper" ? route.tab : state.paperTab;
+  state.reviewTab = route.view === "review" ? route.tab : state.reviewTab;
+  state.synergyTab = route.view === "sectors" ? route.tab : state.synergyTab;
+  state.industryTaxonomy = route.industryTaxonomy;
+  state.height = route.height;
+  state.themeFilter = route.theme || null;
+  $("search").value = route.query;
+  $("sort").value = route.sort;
+  $("industry-taxonomy").value = route.industryTaxonomy;
+  $("stock-industry-taxonomy").value = route.industryTaxonomy;
+  pendingSector = route.sector;
+  if (state.analysis && !changedDate) updateFilters();
+  setView(route.view);
+  applyingRoute = false;
+  if (changedDate && !initial) void loadData();
+}
+function selectSector(name, taxonomy = "EM") {
+  changeIndustryTaxonomy(taxonomy);
+  $("sector-filter").value = name;
+  state.themeFilter = null;
+  state.height = "all";
+  $("search").value = "";
+  setView("stocks");
+}
+function selectTheme(name) {
+  state.themeFilter = name;
+  state.height = "all";
+  $("search").value = "";
+  $("sector-filter").value = "";
+  setView("stocks");
+}
 function setView(view) {
   if (!titles[view]) return;
+  if (view !== state.view) scrollPositions.set(state.view, window.scrollY);
   state.view = view;
-  const navigationView = view === "strategies" ? "settings" : view;
-  document.querySelectorAll(".sidebar [data-view]").forEach((el) => {
-    el.classList.toggle("active", el.dataset.view === navigationView);
-    el.setAttribute(
-      "aria-current",
-      el.dataset.view === navigationView ? "page" : "false",
-    );
-  });
   $("crumb").textContent = titles[view][0];
   $("page-title").textContent = titles[view][1];
   $("page-subtitle").textContent = titles[view][2];
@@ -162,6 +263,7 @@ function setView(view) {
   $("strategies-view").hidden = view !== "strategies";
   $("alerts-view").hidden = view !== "alerts";
   $("data-view").hidden = view !== "data";
+  observatory.setWorkspace(state);
   if (view === "data") $("summary").hidden = true;
   dataManagement.setVisible(view === "data");
   updateSource();
@@ -185,8 +287,11 @@ function setView(view) {
     view === "stocks" ? "minmax(0,1fr)" : "";
   render();
   renderReview();
-  window.scrollTo(0, 0);
+  syncRoute();
+  window.scrollTo(0, scrollPositions.get(view) ?? 0);
 }
+window.addEventListener("popstate", () => restoreRoute());
+window.addEventListener("hashchange", () => restoreRoute());
 document
   .querySelectorAll("[data-view]")
   .forEach((el) => (el.onclick = () => setView(el.dataset.view)));
@@ -314,6 +419,14 @@ function render() {
   renderSectors();
   renderThemes();
   renderLadder();
+  observatory.render(
+    state,
+    researchIndustryGroups(
+      state.analysis,
+      state.industryTaxonomy,
+      state.payload?.industryMetadata,
+    ).groups,
+  );
 }
 function filteredStocks() {
   let rows = state.analysis?.stocks || [];
@@ -338,7 +451,11 @@ function filteredStocks() {
             ) === sector)) &&
       (!state.themeFilter || (r.themes || []).includes(state.themeFilter)) &&
       (state.height === "all" ||
-        (state.height === "first" ? r.height === 1 : r.height > 1)),
+        (state.height === "first"
+          ? r.height === 1
+          : state.height === "relay"
+            ? r.height > 1
+            : r.height === Number(state.height))),
   );
   const sort = $("sort").value;
   return rows
@@ -368,6 +485,32 @@ function industryResearchNote() {
 function renderStocks() {
   const rows = filteredStocks(),
     ready = state.analysis !== null;
+  document.querySelectorAll("[data-height]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.height === state.height);
+    button.setAttribute(
+      "aria-pressed",
+      String(button.dataset.height === state.height),
+    );
+  });
+  let exact = $("exact-height-filter");
+  if (!exact) {
+    exact = document.createElement("span");
+    exact.id = "exact-height-filter";
+    exact.className = "exact-height-chip";
+    $("overview-content")
+      .querySelector(".table-subnav .segments")
+      .append(exact);
+  }
+  exact.hidden = !/^\d+$/.test(state.height);
+  exact.innerHTML = exact.hidden
+    ? ""
+    : `${state.height} 板 <button aria-label="清除精确连板筛选">×</button>`;
+  if (!exact.hidden)
+    exact.querySelector("button").onclick = () => {
+      state.height = "all";
+      renderStocks();
+      syncRoute({ replace: true });
+    };
   const currentSw = state.industryTaxonomy !== "EM";
   $("stock-industry-note").hidden = !currentSw && !state.payload?.archived;
   $("stock-industry-note").textContent = industryResearchNote();
@@ -437,9 +580,7 @@ function renderSectors() {
   document.querySelectorAll("[data-sector]").forEach(
     (btn) =>
       (btn.onclick = () => {
-        changeIndustryTaxonomy(btn.dataset.sectorTaxonomy);
-        $("sector-filter").value = btn.dataset.sector;
-        setView("stocks");
+        selectSector(btn.dataset.sector, btn.dataset.sectorTaxonomy);
       }),
   );
 }
@@ -479,8 +620,7 @@ function renderThemes() {
   document.querySelectorAll("[data-theme]").forEach(
     (btn) =>
       (btn.onclick = () => {
-        state.themeFilter = btn.dataset.theme;
-        setView("stocks");
+        selectTheme(btn.dataset.theme);
       }),
   );
 }
@@ -547,7 +687,7 @@ function updateSource() {
       : "东方财富 · 等待数据";
   $("demo-btn").textContent = state.demo ? "返回公开行情" : "查看演示";
   $("notice").hidden =
-    ["data", "settings", "strategies"].includes(state.view) ||
+    !["overview", "stocks", "sectors", "review"].includes(state.view) ||
     (!state.error && !state.demo && !p?.warnings?.length);
   $("notice").textContent =
     state.error ||
@@ -555,6 +695,15 @@ function updateSource() {
       ? "当前为虚构演示样本，所有个股、日期关联与得分均不代表实际行情。"
       : p?.warnings?.join(" ")) ||
     "";
+  $("notice").classList.toggle(
+    "archive-note",
+    !state.error &&
+      !state.demo &&
+      !!p?.archived &&
+      p.warnings?.length === 1 &&
+      p.warnings[0] ===
+        "当前展示已保存的盘后评分，个股与板块得分保持当天冻结值。",
+  );
   $("refresh-btn").disabled = state.loading;
   $("refresh-btn").innerHTML =
     `${icon("refresh")}${state.loading ? "获取中…" : "刷新行情"}`;
@@ -567,7 +716,6 @@ async function loadData({ skipReview = false } = {}) {
   state.error = null;
   state.payload = null;
   state.analysis = null;
-  state.themeFilter = null;
   state.review = null;
   state.ai = null;
   state.reviewMessage = "正在检查历史反馈";
@@ -604,6 +752,7 @@ async function loadData({ skipReview = false } = {}) {
       updateSource();
       updateWeightSummary();
       render();
+      syncRoute({ replace: true });
       if (
         !skipReview &&
         state.payload?.date === today &&
@@ -616,7 +765,8 @@ async function loadData({ skipReview = false } = {}) {
   }
 }
 function updateFilters() {
-  const selected = $("sector-filter").value;
+  const selected = pendingSector ?? $("sector-filter").value;
+  pendingSector = null;
   const research = researchIndustryGroups(
     state.analysis,
     state.industryTaxonomy,
@@ -645,13 +795,14 @@ function changeIndustryTaxonomy(value) {
   $("stock-industry-taxonomy").value = value;
   $("sector-filter").value = "";
   updateFilters();
-  renderStocks();
-  renderSectors();
+  render();
 }
-$("industry-taxonomy").onchange = (event) =>
+$("industry-taxonomy").onchange = $("stock-industry-taxonomy").onchange = (
+  event,
+) => {
   changeIndustryTaxonomy(event.target.value);
-$("stock-industry-taxonomy").onchange = (event) =>
-  changeIndustryTaxonomy(event.target.value);
+  syncRoute({ replace: true });
+};
 window.addEventListener("metadata-updated", () => {
   void loadData({ skipReview: true });
 });
@@ -668,7 +819,8 @@ function openStock(code) {
   const words = `${r.name}为${r.height === 1 ? "首板" : r.height ? `${r.height}连板` : "连板高度暂缺"}，${timeLabel(r.first)}首次封板${r.breaks !== null ? `，盘中炸板 ${r.breaks} 次` : ""}。${strongest ? `${strongest.name}是当前较强指标（${Math.round(strongest.value)} 分）。` : ""}${weakest && weakest !== strongest ? `${weakest.name}相对偏弱（${Math.round(weakest.value)} 分）。` : ""}${r.themes?.length ? `涨停原因标签 ${r.themes.join("、")}。` : ""}所属行业 ${sec?.count || 0} 家涨停，板块得分 ${sec?.score ?? "—"}。`;
   $("stock-detail").innerHTML =
     `<div class="detail-head"><div><h2>${escape(r.name)}</h2><span class="stock-code">${escape(r.code)}${state.demo ? " · 演示样本" : ""}</span><div class="detail-tags"><span class="sector-tag">${escape(r.sector)}</span><span class="height-tag">${r.height === 1 ? "首板" : `${r.height ?? "—"} 板`}</span></div></div><div class="detail-score">${r.score ?? "—"}<small>综合评分 / 100</small></div></div><div class="detail-facts"><div><label>封单金额</label><strong>${money(r.seal)}</strong></div><div><label>封单 / 成交额</label><strong>${r.sealRatio === null ? "—" : fmt(r.sealRatio * 100)}%</strong></div><div><label>换手率</label><strong>${fmt(r.turnover)}%</strong></div><div><label>最后封板</label><strong>${timeLabel(r.last)}</strong></div></div><div class="detail-section"><h3>六维评分拆解</h3>${r.factors.map((f) => `<div class="factor-row"><span>${f.name}</span><span class="factor-track"><i style="width:${f.value ?? 0}%"></i></span><strong>${f.value === null ? "—" : Math.round(f.value)}</strong><span class="weight">权重 ${f.weight}</span></div>`).join("")}<p class="detail-footnote">有效指标均分 ${fmt(r.rawScore)} − 风险扣分 ${r.deduction} = ${r.score ?? "—"} 分 · 覆盖率 ${r.coverage}%</p></div><div class="detail-section"><h3>风险观察</h3>${r.risks.length ? r.risks.map((x) => `<div class="risk-row"><strong>${x.text} −${x.penalty}</strong><span>${x.detail}</span></div>`).join("") : '<p class="detail-footnote">当前字段未触发模型风险扣分项；公告、基本面与题材风险仍需单独核实。</p>'}</div><div class="detail-section"><h3>盘后诊断</h3><p class="detail-text">${escape(words)}</p></div><p class="detail-footnote">次日观察：竞价是否有承接、同板块是否形成合力、开板后能否回封。当前规则分数尚未经过历史收益校准，不代表上涨概率。</p>`;
-  $("stock-dialog").showModal();
+  observatory.showStockPlan(code, state.payload?.date, state.demo);
+  if (!$("stock-dialog").open) $("stock-dialog").showModal();
 }
 document
   .querySelectorAll(".close-dialog")
@@ -701,18 +853,27 @@ document.querySelectorAll(".synergy-tab").forEach(
   (btn) =>
     (btn.onclick = () => {
       state.synergyTab = btn.dataset.synergy;
-      applySynergyTab();
+      setView("sectors");
     }),
 );
 $("theme-filter-clear").onclick = () => {
   state.themeFilter = null;
   renderStocks();
+  syncRoute({ replace: true });
 };
 $("refresh-btn").onclick = loadData;
-$("trade-date").onchange = loadData;
-$("search").oninput = renderStocks;
-$("sector-filter").onchange = renderStocks;
-$("sort").onchange = renderStocks;
+$("trade-date").onchange = () => {
+  dateChosen = true;
+  syncRoute();
+  void loadData();
+};
+$("search").oninput =
+  $("sector-filter").onchange =
+  $("sort").onchange =
+    () => {
+      renderStocks();
+      syncRoute({ replace: true });
+    };
 document.querySelectorAll("[data-height]").forEach(
   (btn) =>
     (btn.onclick = () => {
@@ -721,6 +882,7 @@ document.querySelectorAll("[data-height]").forEach(
         .querySelectorAll("[data-height]")
         .forEach((x) => x.classList.toggle("active", x === btn));
       renderStocks();
+      syncRoute({ replace: true });
     }),
 );
 function renderWeights() {
@@ -888,6 +1050,7 @@ function returnCell(value) {
   return `<span class="${value > 0 ? "up" : value < 0 ? "down" : ""}">${pct(value)}</span>`;
 }
 function renderReview() {
+  observatory.renderArchives(state.history, $("trade-date").value);
   const r = state.review,
     ai = state.ai;
   const execution = !r || isExecutionReview(r);
@@ -1112,7 +1275,9 @@ function renderReview() {
   document.querySelectorAll("[data-history]").forEach(
     (btn) =>
       (btn.onclick = () => {
+        dateChosen = true;
         $("trade-date").value = btn.dataset.history;
+        syncRoute();
         void loadData();
       }),
   );
@@ -1128,11 +1293,11 @@ async function readReview(req = state.request) {
     const p = await response.json(),
       h = await historyResponse.json();
     if (req !== state.request || state.demo) return;
+    state.history = historyResponse.ok ? h : state.history;
     if (!response.ok) throw new Error(p.error);
     state.review = p.review;
     state.ai = p.ai;
     state.aiConfig = p.aiStatus || state.aiConfig;
-    state.history = historyResponse.ok ? h : state.history;
     // 滚动证据为探索诊断（purpose=DIAGNOSTIC），只展示后端冻结结果
     state.evidence = evidenceResponse.ok ? await evidenceResponse.json() : null;
     state.reviewMessage =
@@ -1217,12 +1382,18 @@ $("ai-grade-btn").onclick = async () => {
   }
 };
 async function applyDefaultTradeDate() {
+  if (dateChosen) return;
   try {
     const response = await fetch("/api/market/latest-date", {
       signal: AbortSignal.timeout(6000),
     });
     const p = await response.json();
-    if (response.ok && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && p.date <= today)
+    if (
+      !dateChosen &&
+      response.ok &&
+      /^\d{4}-\d{2}-\d{2}$/.test(p.date) &&
+      p.date <= today
+    )
       $("trade-date").value = p.date;
   } catch {}
 }
@@ -1249,6 +1420,8 @@ function validWeightsForUI(w) {
     w.some((v) => v > 0)
   );
 }
+routingReady = true;
+restoreRoute({ initial: true });
 renderWeights();
 updateSource();
 render();
