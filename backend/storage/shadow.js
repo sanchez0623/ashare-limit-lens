@@ -1,5 +1,6 @@
 import { database } from "./database.js";
-import { digest } from "./paper.js";
+import { bindDragonPlan } from "./dragon-risk.js";
+import { digest, normalizePageRequest } from "./paper.js";
 import { frozenSelectionPolicy } from "../domain/signal-selection.js";
 import { preserveProgramSignal } from "./strategy-signals.js";
 import { freezeQualityStatement } from "./t-quality.js";
@@ -11,10 +12,12 @@ import { freezeQualityStatement } from "./t-quality.js";
 // 重复或回退的帧在 SQL 层幂等跳过；一账户的失败不阻塞其他账户。
 
 export const SHADOW_ACCOUNT_KINDS = Object.freeze({
+  DRAGON_OBSERVATION: "DRAGON_OBSERVATION",
   CANDIDATE: "CANDIDATE",
   PARENT_MATCH: "PARENT_MATCH",
   BASELINE_MATCH: "BASELINE_MATCH",
   BASELINE_CONTINUOUS: "BASELINE_CONTINUOUS",
+  INTRADAY_OBSERVATION: "INTRADAY_OBSERVATION",
 });
 
 export class ShadowAccountRepository {
@@ -95,9 +98,9 @@ export class ShadowAccountRepository {
       .first();
     return row ? { ...JSON.parse(row.payload), digest: row.digest } : null;
   }
-  async savePlan(accountId, plan) {
+  async savePlan(accountId, plan, snapshot = null) {
     frozenSelectionPolicy(plan);
-    await preserveProgramSignal(this.db, plan);
+    await preserveProgramSignal(this.db, plan, snapshot);
     const digestValue = await digest(plan);
     const existing = await this.plan(accountId, plan.signalDate);
     if (existing) {
@@ -122,7 +125,12 @@ export class ShadowAccountRepository {
       `shadow:${accountId}`,
       digestValue,
     );
-    await this.db.batch([statement, ...(quality ? [quality] : [])]);
+    const dragon = await bindDragonPlan(this.db, plan, `shadow:${accountId}`);
+    await this.db.batch([
+      statement,
+      ...(quality ? [quality] : []),
+      ...(dragon ? [dragon] : []),
+    ]);
     return { ...plan, digest: digestValue };
   }
   async session(accountId, tradeDate) {
@@ -144,6 +152,35 @@ export class ShadowAccountRepository {
         .all()
     ).results;
     return rows.map((row) => JSON.parse(row.payload));
+  }
+  async ledgerPage(accountId, options = {}) {
+    const { page, pageSize } = normalizePageRequest(options, 10);
+    const date = typeof options.date === "string" ? options.date : "";
+    const where = `WHERE account_id = ?${date ? " AND trade_date = ?" : ""}`;
+    const args = date ? [accountId, date] : [accountId];
+    const count = await this.db
+      .prepare(`SELECT COUNT(*) AS total FROM shadow_ledger ${where}`)
+      .bind(...args)
+      .first();
+    const total = count.total;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const currentPage = Math.min(page, totalPages);
+    const result = await this.db
+      .prepare(
+        `SELECT payload FROM shadow_ledger ${where}
+         ORDER BY trade_date DESC, COALESCE(CAST(json_extract(payload, '$.sequence') AS INTEGER), 0) DESC, id DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .bind(...args, pageSize, (currentPage - 1) * pageSize)
+      .all();
+    return {
+      page: currentPage,
+      pageSize,
+      total,
+      totalPages,
+      date,
+      rows: result.results.map((row) => JSON.parse(row.payload)),
+    };
   }
   async equities(accountId) {
     const rows = (

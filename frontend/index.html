@@ -40,14 +40,14 @@
           <button data-view="paper" class="nav-item">
             <span data-icon="chart"></span>模拟交易
           </button>
-          <button data-view="strategies" class="nav-item">
-            <span data-icon="sliders"></span>策略赛马
-          </button>
           <button data-view="alerts" class="nav-item">
             <span data-icon="shield"></span>运维告警
           </button>
-          <button data-view="model" class="nav-item">
-            <span data-icon="sliders"></span>评分模型
+          <button data-view="data" class="nav-item">
+            <span data-icon="database"></span>数据管理
+          </button>
+          <button data-view="settings" class="nav-item">
+            <span data-icon="sliders"></span>设置
           </button>
         </nav>
         <div class="sidebar-note">
@@ -128,6 +128,12 @@
                     aria-label="搜索涨停个股"
                   />
                 </div>
+                <select id="stock-industry-taxonomy" aria-label="研究行业分类">
+                  <option value="EM">东财行业</option>
+                  <option value="SW1">申万一级</option>
+                  <option value="SW2">申万二级</option>
+                  <option value="SW3">申万三级</option>
+                </select>
                 <select id="sector-filter" aria-label="筛选行业板块">
                   <option value="">全部行业</option>
                 </select>
@@ -158,13 +164,18 @@
                   </select>
                 </div>
               </div>
+              <p
+                id="stock-industry-note"
+                class="small-muted stock-industry-note"
+                hidden
+              ></p>
               <div class="table-scroll">
                 <table>
                   <thead>
                     <tr>
                       <th>个股 / 代码</th>
                       <th>综合评分</th>
-                      <th>行业板块</th>
+                      <th id="stock-industry-header">东财行业</th>
                       <th>连板</th>
                       <th>首封时间</th>
                       <th>封单金额</th>
@@ -247,6 +258,18 @@
               </div>
             </div>
             <div id="industry-panel" class="synergy-panel">
+              <div class="industry-research-toolbar">
+                <label
+                  >研究分类
+                  <select id="industry-taxonomy" aria-label="板块研究分类">
+                    <option value="EM">东财行业</option>
+                    <option value="SW1">申万一级</option>
+                    <option value="SW2">申万二级</option>
+                    <option value="SW3">申万三级</option>
+                  </select></label
+                >
+                <span id="industry-research-note" class="small-muted"></span>
+              </div>
               <div class="sector-formula">
                 涨停集聚 35% <span>+</span> 连板高度 25% <span>+</span> 封板稳定
                 25% <span>+</span> 早盘联动 15%<span class="formula-suffix"
@@ -298,14 +321,14 @@
               </div>
             </div>
           </section>
-          <section id="review-view" hidden>
+          <section id="review-view" class="execution-review" hidden>
             <div class="review-intro">
               <div>
                 <span class="outline-tag" id="review-date-label"
                   >等待首个反馈日</span
                 >
                 <p id="review-status">
-                  当天收盘后保存原始评分，下一个交易日核验市场表现。
+                  核验昨日冻结计划在今日的实际成交与收盘表现。
                 </p>
               </div>
               <button class="secondary" id="run-review">
@@ -317,8 +340,10 @@
               <section class="panel">
                 <div class="panel-heading">
                   <div>
-                    <h2>原始评分与实际表现</h2>
-                    <p>固定昨日样本，检验今天的表现，避免事后挑选赢家</p>
+                    <h2 id="review-stock-title">昨日计划与今日成交表现</h2>
+                    <p id="review-stock-description">
+                      仅主账户实际成交标的；按冻结计划核验
+                    </p>
                   </div>
                   <span id="review-coverage" class="outline-tag">等待样本</span>
                 </div>
@@ -330,27 +355,29 @@
                 <div class="table-scroll">
                   <table>
                     <thead>
-                      <tr>
-                        <th>昨日涨停个股</th>
-                        <th>原始评分</th>
-                        <th>次日开盘</th>
-                        <th>次日收盘</th>
-                        <th>盘中最低</th>
-                        <th>再次涨停</th>
+                      <tr id="review-stock-headers">
+                        <th>实际成交个股</th>
+                        <th>买点与动作</th>
+                        <th>实际成交</th>
+                        <th>今日市场表现</th>
+                        <th>含费损益（元）</th>
+                        <th>执行反馈</th>
                       </tr>
                     </thead>
                     <tbody id="review-rows"></tbody>
                   </table>
                 </div>
-                <div class="panel-footnote">
-                  收益以原始收盘价为基准，未假设能在涨停价成交；不等同于可实现策略收益。
+                <div class="panel-footnote" id="review-footnote">
+                  当日损益仅合计主账户实际成交标的；市场涨跌与交易盈亏分别展示。
                 </div>
               </section>
               <section class="panel ai-panel">
                 <div class="panel-heading">
                   <div>
                     <h2>AI 系统评估</h2>
-                    <p>用已核验的市场结果，审视评分质量</p>
+                    <p id="review-ai-description">
+                      用已核验成交、成本与风控事实复盘
+                    </p>
                   </div>
                   <span class="outline-tag" id="ai-status-tag">检查连接</span>
                 </div>
@@ -364,19 +391,21 @@
             <section class="panel review-sector-panel">
               <div class="panel-heading">
                 <div>
-                  <h2>板块判断反馈</h2>
-                  <p>使用昨日固定的涨停成员，比较次日平均表现</p>
+                  <h2 id="review-sector-title">板块反馈</h2>
+                  <p id="review-sector-description">
+                    按实际成交标的的冻结行业归属汇总
+                  </p>
                 </div>
               </div>
               <div class="table-scroll">
                 <table>
                   <thead>
-                    <tr>
-                      <th>昨日行业板块</th>
-                      <th>原始板块分</th>
-                      <th>有效 / 原始样本</th>
-                      <th>次日平均收益</th>
-                      <th>再次涨停比例</th>
+                    <tr id="review-sector-headers">
+                      <th>冻结行业板块</th>
+                      <th>成交只数 / 笔数</th>
+                      <th>买入 / 卖出金额（元）</th>
+                      <th>含费损益（元）</th>
+                      <th>资料覆盖 / 费用</th>
                     </tr>
                   </thead>
                   <tbody id="review-sector-rows"></tbody>
@@ -387,19 +416,122 @@
               <div class="panel-heading">
                 <div>
                   <h2>反馈记录</h2>
-                  <p>持续积累样本，再判断模型是否稳定有效</p>
+                  <p>保存每次冻结依据与反馈结果，新旧口径分别展示</p>
                 </div>
               </div>
               <div id="review-history"></div>
             </section>
+            <section
+              class="panel history-panel history-replay"
+              aria-labelledby="strict-history-title"
+            >
+              <div class="panel-heading history-replay-heading">
+                <span
+                  class="history-replay-icon"
+                  data-icon="refresh"
+                  aria-hidden="true"
+                ></span>
+                <div class="history-replay-intro">
+                  <h2 id="strict-history-title">
+                    历史候选与六类回放
+                    <span class="history-replay-version">V5</span>
+                  </h2>
+                  <p>
+                    按前一交易日生成计划，逐日核验候选与六类买点的执行证据。
+                  </p>
+                </div>
+              </div>
+              <div class="history-replay-body">
+                <div
+                  class="history-replay-toolbar"
+                  role="group"
+                  aria-label="历史回放设置"
+                >
+                  <div class="history-replay-dates">
+                    <label
+                      class="history-replay-field"
+                      for="strict-history-start"
+                    >
+                      执行起日
+                      <input
+                        id="strict-history-start"
+                        type="date"
+                        value="2026-01-01"
+                      />
+                    </label>
+                    <span class="history-replay-separator" aria-hidden="true"
+                      >—</span
+                    >
+                    <label
+                      class="history-replay-field"
+                      for="strict-history-end"
+                    >
+                      执行止日
+                      <input id="strict-history-end" type="date" />
+                    </label>
+                  </div>
+                  <div class="history-replay-actions">
+                    <button
+                      class="primary"
+                      id="strict-history-run"
+                      type="button"
+                    >
+                      <span data-icon="refresh" aria-hidden="true"></span>
+                      重构并验收
+                    </button>
+                    <button
+                      class="secondary"
+                      id="strict-history-refresh"
+                      type="button"
+                    >
+                      <span data-icon="database" aria-hidden="true"></span>
+                      读取报告
+                    </button>
+                    <button
+                      class="secondary"
+                      id="strict-history-download"
+                      type="button"
+                      hidden
+                    >
+                      下载逐日缺口
+                    </button>
+                  </div>
+                </div>
+                <div class="history-replay-note">
+                  <span data-icon="info" aria-hidden="true"></span>
+                  <div>
+                    <p>
+                      沿用当前主账户策略、费用、风控及成交成本，以 100
+                      万元空仓开始，研究结果独立保存。
+                    </p>
+                    <p>
+                      缺少逐帧行情、盘口或竞价证据时，整个区间停止收益计算；五分钟线不替代逐帧证据。
+                    </p>
+                  </div>
+                </div>
+                <div class="history-replay-result">
+                  <p
+                    id="strict-history-status"
+                    class="history-replay-status"
+                    role="status"
+                  >
+                    点击「读取报告」查看已完成的验收。
+                  </p>
+                  <div
+                    id="strict-history-report"
+                    class="history-replay-report"
+                  ></div>
+                </div>
+              </div>
+            </section>
           </section>
-          <section id="model-view" hidden>
+          <section id="settings-view" aria-label="设置" hidden>
             <div class="model-grid">
               <section class="panel">
                 <div class="panel-heading">
                   <div>
-                    <h2>个股评分权重</h2>
-                    <p>即时重算并保存；已归档的原始评分不会被覆盖</p>
+                    <h2>复盘评分设置</h2>
+                    <p>调整评分权重与观察排序；已归档的原始评分保持冻结</p>
                   </div>
                   <span id="weight-total" class="outline-tag">合计 100%</span>
                 </div>
@@ -473,6 +605,17 @@
                 给出证据、判断失误与参数候选；模拟交易策略仅在独立验证通过后启用，历史记录保持冻结。
               </p>
             </section>
+            <section class="panel settings-research">
+              <div class="panel-heading">
+                <div>
+                  <h2>高级研究</h2>
+                  <p>策略赛马用于旧策略的候选比较、验证与批次记录。</p>
+                </div>
+                <button type="button" class="secondary" data-view="strategies">
+                  查看策略赛马
+                </button>
+              </div>
+            </section>
           </section>
           <section id="paper-view" hidden>
             <div class="paper-toolbar">
@@ -481,6 +624,7 @@
                 ><span id="paper-audit" class="outline-tag">检查账本</span>
               </div>
               <div>
+                <a class="secondary" href="#dragon-config-panel">交易配置</a>
                 <a
                   class="secondary"
                   href="/api/paper/export?format=csv"
@@ -502,6 +646,13 @@
             <p class="paper-message" id="paper-message" role="status">
               模拟账户按事前计划执行，真实数据到达后更新收益。
             </p>
+            <details id="paper-archives" class="panel paper-panel" hidden>
+              <summary>历史交易归档</summary>
+              <p>
+                旧周期的成交、持仓及盈亏保存在历史中。当前周期独立计算，归档不产生卖出成交或收益。
+              </p>
+              <div id="paper-archive-list"></div>
+            </details>
             <div id="paper-metrics" class="metrics"></div>
             <section class="panel paper-panel">
               <div class="panel-heading">
@@ -638,7 +789,7 @@
                   <tbody id="paper-plan-rows"></tbody>
                 </table>
               </div>
-              <div id="paper-selection-audit" class="paper-outcomes"></div>
+              <div id="paper-entry-plan" class="paper-outcomes"></div>
               <div id="paper-outcomes" class="paper-outcomes"></div>
               <div class="panel-footnote">
                 实时轮询按已观察到的报价先后执行做 T；14:50
@@ -689,6 +840,277 @@
                 分钟成交量参与率；缺少分钟行情时仅使用明确标记的开盘成交假设。无法还原逐笔排队，不等同于实盘成交。
               </div>
             </section>
+            <section
+              class="panel dragon-panel"
+              id="dragon-config-panel"
+              aria-labelledby="dragon-config-title"
+            >
+              <header class="dragon-header">
+                <div>
+                  <span class="dragon-eyebrow">V5 · 交易配置</span>
+                  <h2 id="dragon-config-title">龙头风险预算</h2>
+                  <p>用风险确定仓位，让加仓与做 T 遵守同一套边界。</p>
+                </div>
+                <span id="dragon-policy-state" class="dragon-state"
+                  >待保存配置</span
+                >
+              </header>
+              <div class="dragon-content">
+                <div class="dragon-notice">
+                  <span class="dragon-notice-mark" aria-hidden="true">i</span>
+                  <p id="dragon-policy-message"></p>
+                </div>
+                <ol
+                  class="dragon-progress"
+                  id="dragon-progress"
+                  aria-label="政策启用进度"
+                ></ol>
+                <form id="dragon-config-form">
+                  <div class="dragon-main-grid">
+                    <fieldset class="dragon-card dragon-risk-card">
+                      <legend>账户风险边界</legend>
+                      <p class="dragon-card-note">
+                        8 项必要设置，按账户权益约束每一次新增风险。
+                      </p>
+                      <div
+                        id="dragon-risk-controls"
+                        class="dragon-risk-grid"
+                      ></div>
+                    </fieldset>
+                    <fieldset class="dragon-card dragon-operations-card">
+                      <legend>持仓操作</legend>
+                      <p class="dragon-card-note">
+                        开关表示允许；实际执行仍需满足市场和买点条件。
+                      </p>
+                      <div
+                        id="dragon-operation-controls"
+                        class="dragon-switch-list"
+                      ></div>
+                    </fieldset>
+                  </div>
+                  <details class="dragon-accordion">
+                    <summary>
+                      <span
+                        ><strong>买点与高级模板</strong
+                        ><small>6 个买点开关 · 3 项高级参数</small></span
+                      ><span class="dragon-chevron" aria-hidden="true"></span>
+                    </summary>
+                    <div class="dragon-details-body">
+                      <div class="dragon-subheading">
+                        <h3>买点启停</h3>
+                        <p>形态、历史准入和交易时段由模板统一管理。</p>
+                      </div>
+                      <div
+                        id="dragon-buy-controls"
+                        class="dragon-buy-grid"
+                      ></div>
+                      <div class="dragon-subheading">
+                        <h3>高级模板</h3>
+                        <p>
+                          人工设置可一次保存全部合法参数，下一份计划生效，标记为未验证；AI
+                          候选继续研究验证。
+                        </p>
+                      </div>
+                      <div
+                        id="dragon-advanced-controls"
+                        class="dragon-advanced-grid"
+                      ></div>
+                    </div>
+                  </details>
+                  <div class="dragon-save-bar">
+                    <p>
+                      <span class="dragon-save-dot"></span
+                      ><span id="dragon-save-note"
+                        >保存后用于下一份未冻结计划，已有持仓基准保留。</span
+                      >
+                    </p>
+                    <button type="submit" class="primary" data-paper-operation>
+                      保存新配置
+                    </button>
+                    <button
+                      type="button"
+                      id="dragon-cancel-research-save"
+                      class="secondary"
+                      data-paper-operation
+                      hidden
+                    >
+                      终止当前研究并保存
+                    </button>
+                  </div>
+                  <p
+                    id="dragon-research-lock"
+                    class="dragon-info-text"
+                    hidden
+                  ></p>
+                </form>
+                <div class="dragon-secondary-grid">
+                  <section class="dragon-info-card">
+                    <div class="dragon-subheading">
+                      <h3>运行诊断与启用</h3>
+                      <span class="dragon-caption"
+                        >人工设置可直接使用 · AI 候选须验证</span
+                      >
+                    </div>
+                    <p id="dragon-verification" class="dragon-info-text"></p>
+                    <button
+                      type="button"
+                      id="dragon-validate-button"
+                      class="secondary"
+                      data-paper-operation
+                      hidden
+                    >
+                      发起研究验证
+                    </button>
+                    <button
+                      type="button"
+                      id="dragon-activate-button"
+                      class="secondary"
+                      data-paper-operation
+                      disabled
+                    >
+                      申请结清旧仓并整体切换
+                    </button>
+                    <button
+                      type="button"
+                      id="dragon-resume-button"
+                      class="secondary"
+                      data-paper-operation
+                      hidden
+                    >
+                      结清后开启新的风险周期
+                    </button>
+                  </section>
+                  <section class="dragon-info-card">
+                    <div class="dragon-subheading">
+                      <h3>市场情境预览</h3>
+                      <span class="dragon-caption">只预览，不修改配置</span>
+                    </div>
+                    <div class="dragon-preview-actions">
+                      <label class="sr-only" for="dragon-preview-phase"
+                        >预览市场情境</label
+                      ><select id="dragon-preview-phase"></select
+                      ><button
+                        type="button"
+                        id="dragon-preview-button"
+                        class="secondary"
+                        data-paper-operation
+                      >
+                        预览权限
+                      </button>
+                    </div>
+                    <p id="dragon-preview" class="dragon-info-text">
+                      选择一种市场状态，查看预算收紧和操作权限。
+                    </p>
+                  </section>
+                </div>
+                <details class="dragon-accordion">
+                  <summary>
+                    <span
+                      ><strong>设定值与实际生效值</strong
+                      ><small>逐项查看限制原因和生效计划</small></span
+                    ><span class="dragon-chevron" aria-hidden="true"></span>
+                  </summary>
+                  <div class="table-scroll">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>配置项</th>
+                          <th>设定值</th>
+                          <th>实际生效值</th>
+                          <th>限制原因</th>
+                          <th>生效计划</th>
+                        </tr>
+                      </thead>
+                      <tbody id="dragon-effective-rows"></tbody>
+                    </table>
+                  </div>
+                </details>
+                <details class="dragon-accordion">
+                  <summary>
+                    <span
+                      ><strong>固定交易规则</strong
+                      ><small>市场权限 · 加仓 · 退出 · 双向 T</small></span
+                    ><span class="dragon-chevron" aria-hidden="true"></span>
+                  </summary>
+                  <div class="dragon-details-body dragon-rule-grid">
+                    <div>
+                      <h3>市场权限</h3>
+                      <p>
+                        上升使用全额预算；高潮使用 70%
+                        并禁止亏损补仓；退潮停止新增并逐步降至
+                        20%；冰点退出；数据不足保留有效保护。改善需连续两份有效快照。
+                      </p>
+                    </div>
+                    <div>
+                      <h3>加仓纪律</h3>
+                      <p>
+                        盈利 0.5R 至 1R 前可加仓一次、最多初仓 50%；亏损
+                        0.5R—0.75R 可补仓一次、最多
+                        25%。须新买点确认，新增风险最多为新仓预算一半。
+                      </p>
+                    </div>
+                    <div>
+                      <h3>主仓退出</h3>
+                      <p>
+                        1R、2R 各减战略建仓量 30%，其余跟踪 1R。打板最多 4
+                        个结算日，炸板与首阴 3 日，其余 2 日。加仓和做 T
+                        不重置持有时钟。
+                      </p>
+                    </div>
+                    <div>
+                      <h3>双向做 T</h3>
+                      <p>
+                        以前收偏离 2% 触发；09:35—14:45 前启动，14:50
+                        起尝试第二腿。同股每天一轮，与加仓互斥；连续两轮净亏损暂停三日，始终遵守
+                        T+1。
+                      </p>
+                    </div>
+                  </div>
+                </details>
+                <details class="dragon-accordion">
+                  <summary>
+                    <span
+                      ><strong>做 T 配对与盈亏</strong
+                      ><small>实际两腿现金流 · 扣除全部费用</small></span
+                    ><span class="dragon-chevron" aria-hidden="true"></span>
+                  </summary>
+                  <div class="dragon-details-body">
+                    <p id="dragon-t-summary" class="dragon-info-text"></p>
+                  </div>
+                  <div class="table-scroll">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>股票／日期</th>
+                          <th>方向</th>
+                          <th>状态</th>
+                          <th>买／卖数量</th>
+                          <th>扣费后净价差</th>
+                        </tr>
+                      </thead>
+                      <tbody id="dragon-t-records"></tbody>
+                    </table>
+                  </div>
+                </details>
+                <details
+                  id="dragon-legacy-history"
+                  class="dragon-accordion"
+                  hidden
+                >
+                  <summary>
+                    <span
+                      ><strong>旧策略与旧风控</strong
+                      ><small>只读历史 · 不参与新政策</small></span
+                    ><span class="dragon-chevron" aria-hidden="true"></span>
+                  </summary>
+                  <pre
+                    id="dragon-legacy-values"
+                    class="dragon-details-body"
+                  ></pre>
+                </details>
+              </div>
+            </section>
+
             <section class="panel paper-panel">
               <div class="panel-heading">
                 <div>
@@ -731,6 +1153,34 @@
                     </option>
                   </select></label
                 >
+                <label
+                  >交易执行方式<select id="paper-entry-execution-mode">
+                    <option value="next-open">原开盘执行</option>
+                    <option
+                      id="paper-entry-execution-option"
+                      value="intraday-conditional"
+                    >
+                      盘中条件执行
+                    </option>
+                  </select></label
+                >
+                <div class="paper-fee-settings">
+                  <strong>盘中执行验证</strong>
+                  <p
+                    id="paper-entry-observation-status"
+                    class="small-muted"
+                  ></p>
+                  <button
+                    id="paper-entry-observe"
+                    type="button"
+                    class="secondary"
+                    aria-haspopup="dialog"
+                    aria-controls="paper-entry-observation-dialog"
+                    data-paper-operation
+                  >
+                    启动影子观察
+                  </button>
+                </div>
                 <fieldset class="paper-fee-settings">
                   <legend>费用构成与自定义值</legend>
                   <div class="fee-settings-heading">
@@ -806,6 +1256,9 @@
           <section id="strategies-view" hidden>
             <div class="paper-toolbar">
               <div>
+                <button type="button" class="secondary" data-view="settings">
+                  返回设置
+                </button>
                 <span id="strategies-status-note" class="outline-tag"
                   >同一冻结批次内固定候选并行前瞻；批次结束至多启用一个候选</span
                 >
@@ -930,6 +1383,115 @@
               </div>
             </section>
           </section>
+          <section id="data-view" hidden>
+            <section class="panel data-management-head">
+              <div class="panel-heading">
+                <div>
+                  <h2>手动更新数据</h2>
+                  <p id="data-capability">正在读取更新执行器状态</p>
+                </div>
+                <button class="secondary" id="data-refresh">刷新状态</button>
+              </div>
+              <div class="data-actions">
+                <button class="primary" data-update-scope="stock_list">
+                  更新股票名册</button
+                ><button class="secondary" data-update-scope="stock_em">
+                  更新东财行业</button
+                ><button class="secondary" data-update-scope="industry_sw">
+                  更新申万行业</button
+                ><button class="secondary" data-update-scope="all">
+                  全部更新
+                </button>
+              </div>
+              <p id="data-message" class="small-muted" role="status">
+                点击按钮后在后台执行，关闭浏览器不会停止更新。
+              </p>
+            </section>
+            <div class="data-cards">
+              <section class="panel">
+                <h3>股票基础信息</h3>
+                <div id="data-stock-count" class="data-big">—</div>
+                <p class="small-muted">当前源名单数量 · 沪深主板与创业板</p>
+                <p>最近成功更新 <span id="data-stock-time">未初始化</span></p>
+                <p id="data-stock-source" class="small-muted">
+                  交易所优先 · 新浪备用 · 无需 Key
+                </p>
+              </section>
+              <section class="panel">
+                <h3>东财行业 · 评分与风控</h3>
+                <div id="data-em-count" class="data-big">—</div>
+                <p>
+                  行业数量 · 有效覆盖 <strong id="data-em-coverage">—</strong>
+                </p>
+                <p class="small-muted">
+                  保留行情原始行业，缺失时使用同源映射补充。
+                </p>
+                <p>最近成功更新 <span id="data-em-time">未初始化</span></p>
+                <p id="data-em-source" class="small-muted">
+                  原生 f100 批量接口 · F10 当前行业备用
+                </p>
+              </section>
+              <section class="panel">
+                <h3>申万行业 · 研究分组</h3>
+                <div id="data-sw-count" class="data-big">—</div>
+                <p>
+                  范围内一级 / 二级 / 三级 · 当前名单覆盖
+                  <strong id="data-sw-coverage">—</strong>
+                </p>
+                <p>最近成功更新 <span id="data-sw-time">未初始化</span></p>
+                <p id="data-sw-source" class="small-muted">
+                  理杏仁申万 2021 批量 API · 2 次批量请求，需核验时加 1
+                  次官方文件
+                </p>
+              </section>
+            </div>
+            <section class="panel" id="data-active" hidden>
+              <div class="panel-heading">
+                <div>
+                  <h3 id="data-job-stage">等待执行</h3>
+                  <p id="data-job-detail"></p>
+                </div>
+                <button class="secondary" id="data-cancel">取消更新</button>
+              </div>
+              <progress
+                id="data-progress"
+                max="100"
+                aria-label="当前步骤更新进度"
+              ></progress>
+            </section>
+            <section class="panel data-coverage">
+              <h3>行业覆盖情况</h3>
+              <p id="data-missing-em" class="small-muted"></p>
+              <p id="data-missing-sw" class="small-muted"></p>
+              <p class="small-muted">
+                未覆盖的行业保持缺失；单次名单缺失不直接判定为退市。研究页中的申万分组使用最新分类，并标明分类更新时间。
+              </p>
+              <p class="small-muted">
+                “原快照行业”保留归档时的分类；旧归档可能沿用旧版行业字典，不随本次更新修正。“当前申万分类”用于研究展示，不改写原快照、综合评分或交易记录。
+              </p>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>最近 20 次更新</h3>
+                  <p>两套数据独立发布；失败保留上一版有效数据。</p>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>提交时间（北京时间）</th>
+                      <th>更新范围</th>
+                      <th>状态</th>
+                      <th>结果与变化</th>
+                    </tr>
+                  </thead>
+                  <tbody id="data-job-rows"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
           <footer class="page-footer">
             <span>LIMIT LENS <i>·</i> 每日涨停研究</span
             ><span
@@ -947,6 +1509,211 @@
         </button>
       </div>
       <div id="stock-detail"></div>
+    </dialog>
+    <dialog
+      id="paper-entry-observation-dialog"
+      class="detail-dialog entry-observation-dialog"
+      aria-labelledby="paper-entry-observation-title"
+    >
+      <div class="dialog-top">
+        <h2 id="paper-entry-observation-title">影子观察进度</h2>
+        <button
+          id="paper-entry-observation-close"
+          type="button"
+          class="icon-button"
+          aria-label="关闭影子观察进度"
+        >
+          ×
+        </button>
+      </div>
+      <div
+        id="paper-entry-observation-detail"
+        role="status"
+        aria-live="polite"
+      ></div>
+      <button
+        id="paper-entry-observation-refresh"
+        type="button"
+        class="secondary"
+      >
+        刷新进度
+      </button>
+    </dialog>
+    <dialog
+      id="paper-entry-ledger-dialog"
+      class="detail-dialog entry-ledger-dialog"
+      aria-labelledby="paper-entry-ledger-title"
+    >
+      <div class="dialog-top">
+        <h2 id="paper-entry-ledger-title">影子模拟成交明细</h2>
+        <button
+          id="paper-entry-ledger-close"
+          type="button"
+          class="icon-button"
+          aria-label="关闭影子模拟成交明细"
+        >
+          ×
+        </button>
+      </div>
+      <p id="paper-entry-ledger-summary" class="small-muted"></p>
+      <form id="paper-entry-ledger-filter" class="entry-ledger-filter">
+        <label
+          >成交日期 <input id="paper-entry-ledger-date" type="date"
+        /></label>
+        <button type="submit" class="secondary">按日期查询</button>
+        <button
+          id="paper-entry-ledger-all-dates"
+          type="button"
+          class="text-button"
+        >
+          全部日期
+        </button>
+      </form>
+      <div class="entry-ledger-context">
+        <section
+          id="paper-entry-ledger-pnl"
+          aria-label="影子账户当前盈亏"
+        ></section>
+        <section
+          id="paper-entry-ledger-stocks"
+          aria-label="影子账户个股盈亏汇总"
+        ></section>
+        <p id="paper-entry-ledger-pnl-note" class="small-muted" hidden>
+          买入行按本批剩余持仓计算浮盈亏，卖出行显示本笔已实现盈亏，均含费用；汇总按完整观察期计算，日期和分页只筛选成交明细。
+        </p>
+      </div>
+      <p
+        id="paper-entry-ledger-message"
+        class="small-muted"
+        role="status"
+        aria-live="polite"
+      ></p>
+      <div
+        id="paper-entry-ledger-scroll"
+        class="table-scroll entry-ledger-table-scroll"
+      >
+        <table id="paper-entry-ledger-table">
+          <thead>
+            <tr>
+              <th scope="col">成交时间</th>
+              <th scope="col">股票</th>
+              <th scope="col">当前估值价（元）</th>
+              <th scope="col">本笔盈亏（元）</th>
+              <th scope="col">动作 / 买点</th>
+              <th scope="col">数量（股）</th>
+              <th scope="col">成交价（元）</th>
+              <th scope="col">成交金额（元）</th>
+              <th scope="col">费用（元）</th>
+              <th scope="col">现金变动（元）</th>
+            </tr>
+          </thead>
+          <tbody id="paper-entry-ledger-rows"></tbody>
+        </table>
+      </div>
+      <nav id="paper-entry-ledger-pager" aria-label="影子模拟成交分页"></nav>
+      <button id="paper-entry-ledger-refresh" type="button" class="secondary">
+        刷新明细
+      </button>
+    </dialog>
+    <dialog
+      id="paper-entry-candidates-dialog"
+      class="detail-dialog entry-candidates-dialog"
+      aria-labelledby="paper-entry-candidates-title"
+    >
+      <div class="dialog-top">
+        <h2 id="paper-entry-candidates-title">影子观察候选明细</h2>
+        <button
+          id="paper-entry-candidates-close"
+          type="button"
+          class="icon-button"
+          aria-label="关闭影子观察候选明细"
+        >
+          ×
+        </button>
+      </div>
+      <p id="paper-entry-candidates-summary" class="small-muted"></p>
+      <p class="small-muted">
+        这是下一交易日的观察池，入池不代表买入。实际成交须等待盘中买点触发，并通过行情、风险及资金约束。
+      </p>
+      <div
+        id="paper-entry-candidates-distribution"
+        class="entry-candidates-distribution"
+      ></div>
+      <div class="entry-candidates-explanations">
+        <details
+          id="paper-entry-candidates-explanation"
+          class="entry-candidates-explanation"
+        >
+          <summary>入池依据与准入核对</summary>
+          <div id="paper-entry-candidates-rules"></div>
+        </details>
+        <details
+          id="paper-entry-candidates-scoring-explanation"
+          class="entry-candidates-explanation"
+        >
+          <summary>评分依据</summary>
+          <div id="paper-entry-candidates-scoring-rules"></div>
+        </details>
+      </div>
+      <form id="paper-entry-candidates-filter" class="entry-candidates-filter">
+        <label
+          >股票名称 / 代码<input
+            id="paper-entry-candidates-search"
+            type="search"
+            maxlength="64"
+            placeholder="输入名称或代码"
+        /></label>
+        <label
+          >股票类型<select id="paper-entry-candidates-class"></select
+        ></label>
+        <label
+          >信号日买点<select id="paper-entry-candidates-buy-point"></select
+        ></label>
+        <button type="submit" class="secondary">筛选</button>
+        <button
+          id="paper-entry-candidates-reset"
+          type="button"
+          class="text-button"
+        >
+          重置
+        </button>
+      </form>
+      <p
+        id="paper-entry-candidates-message"
+        class="small-muted"
+        role="status"
+        aria-live="polite"
+      ></p>
+      <div
+        id="paper-entry-candidates-scroll"
+        class="table-scroll entry-candidates-table-scroll"
+      >
+        <table id="paper-entry-candidates-table">
+          <thead>
+            <tr>
+              <th scope="col">入池顺序</th>
+              <th scope="col">股票 / 行业</th>
+              <th scope="col">股票类型 / 依据</th>
+              <th scope="col">信号日买点 / 依据</th>
+              <th scope="col">冻结排序分</th>
+              <th scope="col">信号日成交额</th>
+              <th scope="col">入池来源 / 准入条件</th>
+            </tr>
+          </thead>
+          <tbody id="paper-entry-candidates-rows"></tbody>
+        </table>
+      </div>
+      <nav
+        id="paper-entry-candidates-pager"
+        aria-label="影子观察候选分页"
+      ></nav>
+      <button
+        id="paper-entry-candidates-refresh"
+        type="button"
+        class="secondary"
+      >
+        刷新候选
+      </button>
     </dialog>
     <dialog id="help-dialog" class="help-dialog">
       <div class="dialog-top">

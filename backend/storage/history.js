@@ -317,6 +317,14 @@ export class HistoryDatasetStore {
         digest TEXT NOT NULL,
         PRIMARY KEY (dataset_id, trade_date, code)
       );
+      CREATE TABLE IF NOT EXISTS history_archived_frames (
+        dataset_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (dataset_id, trade_date, sequence)
+      );
       CREATE TABLE IF NOT EXISTS history_dataset_owners (
         dataset_id TEXT PRIMARY KEY,
         job_id TEXT,
@@ -633,6 +641,7 @@ export class HistoryDatasetStore {
     const minuteRefs = await this.datasetMinuteRefs(datasetId);
     const observationRefs = await this.datasetObservationRefs(datasetId);
     const scoreRefs = await this.datasetScoreRefs(datasetId);
+    const frameRefs = await this.datasetFrameRefs(datasetId);
     return {
       executionModel: executionModel ?? null,
       coverage: coverage ?? null,
@@ -641,6 +650,9 @@ export class HistoryDatasetStore {
       minuteRefs,
       observationRefs,
       scoreRefs,
+      ...(frameRefs.length || coverage?.reconstructionVersion
+        ? { frameRefs }
+        : {}),
     };
   }
   async datasetIntegrity(datasetId) {
@@ -658,6 +670,11 @@ export class HistoryDatasetStore {
         "数据集输入（日线/分钟/观察价格/评分）与发布时的 manifest 摘要不一致",
       );
     const contentTables = [
+      {
+        sql: "SELECT trade_date, payload, digest FROM history_archived_frames WHERE dataset_id = ? ORDER BY trade_date, sequence",
+        label: "真实归档帧",
+        recompute: (payload) => digestOf(JSON.parse(payload)),
+      },
       {
         sql: "SELECT trade_date, payload, digest FROM history_daily_inputs WHERE dataset_id = ? ORDER BY trade_date",
         label: "日线输入",
@@ -965,6 +982,101 @@ export class HistoryDatasetStore {
       .bind(newId, sourceId)
       .run();
     return { id: newId, sourceCoverage: source.coverage };
+  }
+  async datasetFrameRefs(datasetId) {
+    await this.ensure();
+    return (
+      await this.db
+        .prepare(
+          "SELECT trade_date AS tradeDate, sequence, digest FROM history_archived_frames WHERE dataset_id = ? ORDER BY trade_date, sequence",
+        )
+        .bind(datasetId)
+        .all()
+    ).results;
+  }
+  async saveArchivedFrame(datasetId, frame, owner = null) {
+    await this.ensure();
+    const digest = await digestOf(frame);
+    const existing = await this.db
+      .prepare(
+        "SELECT digest FROM history_archived_frames WHERE dataset_id = ? AND trade_date = ? AND sequence = ?",
+      )
+      .bind(datasetId, frame.tradeDate, frame.sequence)
+      .first();
+    if (existing && existing.digest !== digest)
+      throw new Error("归档帧序号冲突，拒绝覆盖");
+    return this._applyGuarded(datasetId, owner, () => {
+      // Inserts are immutable, including on resumed imports.
+      this.db
+        .prepare(
+          "INSERT OR IGNORE INTO history_archived_frames (dataset_id, trade_date, sequence, payload, digest) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(
+          datasetId,
+          frame.tradeDate,
+          frame.sequence,
+          JSON.stringify(frame),
+          digest,
+        )
+        ._run();
+    });
+  }
+  async listArchivedFrames(datasetId, date) {
+    await this.ensure();
+    const rows = (
+      await this.db
+        .prepare(
+          "SELECT payload FROM history_archived_frames WHERE dataset_id = ? AND trade_date = ? ORDER BY sequence",
+        )
+        .bind(datasetId, date)
+        .all()
+    ).results;
+    return rows.map((row) => JSON.parse(row.payload));
+  }
+  async cloneForObservations(sourceId) {
+    const integrity = await this.datasetIntegrity(sourceId);
+    if (!integrity?.verified) throw new Error("源候选数据集完整性校验失败");
+    const clone = await this.cloneDatasetForMinutes(sourceId);
+    await this.db
+      .prepare(
+        "UPDATE history_dataset_versions SET kind = 'OBSERVATIONS' WHERE id = ?",
+      )
+      .bind(clone.id)
+      .run();
+    for (const spec of [
+      [
+        "history_reviews",
+        "signal_date, label_end_date, review_version, payload, digest",
+      ],
+      ["history_archived_frames", "trade_date, sequence, payload, digest"],
+    ])
+      await this.db
+        .prepare(
+          `INSERT INTO ${spec[0]} (dataset_id, ${spec[1]}) SELECT ?, ${spec[1]} FROM ${spec[0]} WHERE dataset_id = ?`,
+        )
+        .bind(clone.id, sourceId)
+        .run();
+    // Keep raw artifact references in the clone manifest as well.
+    const refs = await this.datasetChunkRefs(sourceId);
+    for (const ref of refs) {
+      const source = await this.db
+        .prepare(
+          "SELECT * FROM history_chunks WHERE job_id = ? AND chunk_key = ?",
+        )
+        .bind(ref.jobId, ref.chunkKey)
+        .first();
+      await this.saveChunk(`clone-${clone.id}`, {
+        chunkKey: ref.chunkKey,
+        datasetId: clone.id,
+        requestRange: source.request_range,
+        actualRange: source.actual_range,
+        rows: source.rows,
+        stage: "DONE",
+        rawDigest: ref.rawDigest,
+        artifactRef: ref.artifactRef,
+      });
+    }
+    return clone;
   }
   async createBacktestRun({
     id,

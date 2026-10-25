@@ -1,4 +1,8 @@
-import { ShadowAccountRepository } from "../storage/shadow.js";
+import {
+  ShadowAccountRepository,
+  SHADOW_ACCOUNT_KINDS,
+} from "../storage/shadow.js";
+import { isDragon } from "../domain/dragon-risk.js";
 import { buildOriginalScoreLookup, digest } from "../storage/paper.js";
 import {
   selectionPolicyForBook,
@@ -43,6 +47,16 @@ export async function consumePortfolioFrame(
   if (!account) return { skipped: true, reason: "影子账户不存在" };
   if (account.status !== "ACTIVE")
     return { skipped: true, reason: "账户已停用" };
+  // 周末不推进独立观察；研究账户的历史合成帧语义保持独立。
+  if (
+    account.kind === SHADOW_ACCOUNT_KINDS.INTRADAY_OBSERVATION &&
+    [0, 6].includes(new Date(`${frame.tradeDate}T00:00:00Z`).getUTCDay())
+  )
+    return {
+      skipped: true,
+      status: "NON_TRADING_DAY",
+      reason: "周末不创建或推进影子观察会话",
+    };
   if (shadows.hasConsumed(account, frame.tradeDate, frame.sequence))
     return { skipped: true, consumed: true };
   if (account.cursorDate && frame.tradeDate < account.cursorDate)
@@ -65,6 +79,15 @@ export async function consumePortfolioFrame(
       return {
         stalled: true,
         reason: "缺少执行日前冻结的计划，账户暂停消费；不事后构造计划",
+      };
+    if (
+      plan.entryExecutionPolicy &&
+      frame.payload?.pool?.sources?.researchPoolDate &&
+      frame.payload.pool.sources.researchPoolDate !== plan.signalDate
+    )
+      return {
+        stalled: true,
+        reason: "盘中条件计划的信号日不是行情帧确认的上一交易日，暂停影子账户",
       };
     // 首次开会话前核验政策摘要（§5.4）。
     if (
@@ -93,6 +116,9 @@ export async function consumePortfolioFrame(
     quotes: frame.payload?.quotes ?? frame.quotes,
     pollIntervalSeconds:
       frame.payload?.pollIntervalSeconds ?? frame.pollIntervalSeconds,
+    ...(frame.payload?.entryInputs || frame.entryInputs
+      ? { entryInputs: frame.payload?.entryInputs ?? frame.entryInputs }
+      : {}),
   };
   if (session)
     await assertStoredProgramPlan(env, working.plan, working.initialBook, {
@@ -179,6 +205,29 @@ export async function freezePortfolioPlan(
   // 同一批次与主账户冻结相同政策（§3.2）：影子组合是独立假设路径，
   // 但成本假设必须一致，否则对照与赛马排名不可比。
   const executionCostPolicy = await latestPolicyBundle(env.DB);
+  if (isDragon(account.book)) {
+    const plan = snapshot
+      ? createPlan(
+          snapshot,
+          account.book,
+          null,
+          account.book.dragonConfigId,
+          now,
+          {
+            executionCostPolicy,
+            snapshotDigest: await selectionSnapshotDigest(snapshot),
+          },
+        )
+      : defensivePlan(
+          account.book.lastDate,
+          account.book,
+          null,
+          account.book.dragonConfigId,
+          now,
+          { executionCostPolicy },
+        );
+    return shadows.savePlan(accountId, plan, snapshot);
+  }
   // 持仓股掉出当日涨停池时，从最近快照归档回查原始评分用于计划展示。
   const originalScoreLookup = await buildOriginalScoreLookup(
     env.DB,
@@ -254,7 +303,7 @@ export async function freezePortfolioPlan(
         now,
         { executionCostPolicy, originalScoreLookup, selectionPolicy },
       );
-  const saved = await shadows.savePlan(accountId, plan);
+  const saved = await shadows.savePlan(accountId, plan, snapshot);
   await ensureFrozenTQuality(env, saved, `shadow:${accountId}`);
   return saved;
 }

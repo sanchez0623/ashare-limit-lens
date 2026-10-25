@@ -14,8 +14,22 @@ import {
   downgradeEnabledForPlan,
 } from "../../shared/downgrade.js";
 import { planRiskLimits } from "../../shared/risk-limits.js";
+import {
+  isDragon,
+  openDragonSession,
+  advanceDragonSession,
+  closeDragonSession,
+} from "./dragon-risk.js";
 import { frozenSelectionPolicy } from "./signal-selection.js";
 import { assertProgramPlan } from "./strategy-program.js";
+import { planFreezeDeadline } from "../../shared/observation-schedule.js";
+import {
+  assertEntryPolicy,
+  initialEntryState,
+  updateEntryAdmissions,
+  updateEntryPath,
+  assessEntry,
+} from "./intraday-entry.js";
 
 export const TERMINAL = new Set([
   "FILLED",
@@ -55,19 +69,22 @@ function running(order) {
   };
 }
 export function openSession(book, plan, date) {
+  if (isDragon(book) || isDragon(plan))
+    return openDragonSession(book, plan, date);
+  assertEntryPolicy(plan);
   if (plan) frozenSelectionPolicy(plan);
   if (plan) assertProgramPlan(plan, book);
   if (
     plan?.strategy?.program &&
     (!Number.isFinite(Date.parse(plan.createdAt)) ||
-      Date.parse(plan.createdAt) >= Date.parse(`${date}T01:15:00.000Z`))
+      Date.parse(plan.createdAt) >= planFreezeDeadline(plan, date))
   )
     throw new Error("策略程序计划实际冻结时间晚于执行日前闸门");
   if (
     !plan ||
     plan.signalDate !== book.lastDate ||
     plan.signalDate >= date ||
-    plan.createdAt >= `${date}T01:15:00.000Z`
+    Date.parse(plan.createdAt) >= planFreezeDeadline(plan, date)
   )
     throw new Error("缺少执行日前冻结的计划，自动交易暂停");
   // 新版本计划缺政策/摘要时暂停执行（§3.2）；旧计划返回 null 走旧执行器。
@@ -168,6 +185,9 @@ export function openSession(book, plan, date) {
     sequence: 0,
     fillCount: 0,
     quotes: {},
+    ...(plan.entryExecutionPolicy
+      ? { entryState: initialEntryState(plan) }
+      : {}),
     orders,
     lastObservedAt: null,
     // 同股区间成本状态（§4.4）：policyDigest + byCode 区间游标随会话
@@ -187,6 +207,13 @@ function mark(book) {
 
 // One observation advances only durable state. No future bars, timers or side effects.
 export function advanceSession(inputBook, inputSession, observation) {
+  if (
+    isDragon(inputBook) ||
+    isDragon(inputSession) ||
+    isDragon(inputSession.plan)
+  )
+    return advanceDragonSession(inputBook, inputSession, observation);
+  assertEntryPolicy(inputSession.plan);
   assertProgramPlan(inputSession.plan, inputSession.initialBook);
   if (inputSession.plan) frozenSelectionPolicy(inputSession.plan);
   const book = structuredClone(inputBook),
@@ -208,6 +235,7 @@ export function advanceSession(inputBook, inputSession, observation) {
   // 方案 6：首帧开盘套用计划冻结的降级声明（与 executePlan 同一口径），
   // 当日保护单的降级收益上限随即生效；零帧会话由 closeSession 套用。
   if (session.sequence === 1) applyPlanDowngrades(book, session.plan);
+  if (session.entryState) updateEntryAdmissions(session, observation);
   const accepted = [];
   for (const [code, quote] of Object.entries(observation.quotes)) {
     const quoteTime = new Date(quote.timestamp).getTime(),
@@ -229,7 +257,8 @@ export function advanceSession(inputBook, inputSession, observation) {
       continue;
     const expected =
       session.initialBook.positions.find((p) => p.code === code)?.markCents ||
-      session.plan.orders.find((o) => o.code === code)?.referenceCents;
+      session.plan.orders.find((o) => o.code === code)?.referenceCents ||
+      session.plan.entryExecutionPolicy?.history[code]?.previousCloseCents;
     if (
       expected &&
       Math.abs(quote.previousCloseCents - expected) >
@@ -258,6 +287,7 @@ export function advanceSession(inputBook, inputSession, observation) {
         ? quote.volumeShares - last.volumeShares
         : 0;
     session.quotes[code] = structuredClone(quote);
+    updateEntryPath(session, code, quote, last, volume, observation.observedAt);
     // 报价已被接受：该股此前的除权暂停标记必须清除，否则会自动永远挂着。
     for (const order of session.orders)
       if (order.code === code && order.holdCode) order.holdCode = null;
@@ -273,6 +303,16 @@ export function advanceSession(inputBook, inputSession, observation) {
     Object.entries(session.quotes).map(([code, q]) => [code, q.closeCents]),
   );
   const clockTime = clock.time;
+  for (const order of session.orders) {
+    if (
+      order.conditionalEntry &&
+      !TERMINAL.has(order.status) &&
+      clockTime > (order.entryTrigger?.expiresAt ?? "14:55:00")
+    ) {
+      order.status = order.filledQuantity ? "EXPIRED_PARTIAL" : "EXPIRED";
+      order.reason = "买点有效窗口结束，取消剩余买入数量";
+    }
+  }
   // Expire buys even when the provider is unavailable; sells and risk exits keep retrying.
   for (const order of session.orders)
     if (
@@ -285,9 +325,29 @@ export function advanceSession(inputBook, inputSession, observation) {
       order.status = order.filledQuantity ? "EXPIRED_PARTIAL" : "EXPIRED";
       order.reason = "建仓/加仓窗口结束，取消剩余买入数量";
     }
-  for (const { code, quote, volume } of accepted.sort((a, b) =>
-    a.code.localeCompare(b.code),
-  )) {
+  const entryPriority = (item) => {
+    if (!session.entryState) return [0, 0];
+    const order = session.orders.find(
+      (o) => o.conditionalEntry && o.code === item.code,
+    );
+    const entry = order
+      ? assessEntry(session, book, order, observation, item.quote, item.volume)
+      : null;
+    const index = session.plan.entryExecutionPolicy.candidates.indexOf(
+      item.code,
+    );
+    return [
+      entry?.ready
+        ? session.plan.entryExecutionPolicy.rules.priority.indexOf(entry.type)
+        : 99,
+      index < 0 ? 200 : index,
+    ];
+  };
+  for (const { code, quote, volume } of accepted.sort((a, b) => {
+    const x = entryPriority(a),
+      y = entryPriority(b);
+    return x[0] - y[0] || x[1] - y[1] || a.code.localeCompare(b.code);
+  })) {
     // 新成本模型（§4.4）：同一报价区间内的订单共享绝对成交容量，由
     // executeFill 依据 session.executionState 的区间游标执行；旧模型保持
     // 原有的每帧预算分派。
@@ -337,6 +397,12 @@ export function advanceSession(inputBook, inputSession, observation) {
           // 采样质量来自观测本身：分钟采样重放与实时轮询分别声明（§4.5）。
           quality: observation.observationQuality || "realtime_poll",
           intervalKey: quote.timestamp,
+          ...(order.conditionalEntry
+            ? {
+                observedAt: observation.observedAt,
+                entryEvidence: order.entryEvidence,
+              }
+            : {}),
         },
         session.executionState,
       );
@@ -358,6 +424,21 @@ export function advanceSession(inputBook, inputSession, observation) {
       return result;
     }
     for (const order of list) {
+      if (
+        book.dragonTransition?.state === "DRAINING" &&
+        ((order.side === "BUY" && !order.recovery) ||
+          (order.side === "PAIR" && !order.firstFilled))
+      ) {
+        order.status = "CANCELLED";
+        order.reason = "新政策过渡期停止旧体系新增风险";
+        continue;
+      }
+      if (
+        book.dragonTransition?.state === "DRAINING" &&
+        order.side === "PAIR" &&
+        order.firstFilled
+      )
+        order.phase = "SECOND";
       if (TERMINAL.has(order.status)) continue;
       if (order.protective) {
         if (!order.triggered) {
@@ -504,6 +585,58 @@ export function advanceSession(inputBook, inputSession, observation) {
         }
       } else {
         if (order.protective && !order.triggered) continue;
+        if (order.conditionalEntry) {
+          const entry = assessEntry(
+            session,
+            book,
+            order,
+            observation,
+            quote,
+            volume,
+          );
+          if (!entry.ready) {
+            order.reason = entry.reason;
+            order.status = entry.expired
+              ? order.filledQuantity
+                ? "EXPIRED_PARTIAL"
+                : "EXPIRED"
+              : entry.status;
+            continue;
+          }
+          order.entryTrigger = entry.trigger;
+          order.entryEvidence = entry.evidence;
+          order.entryBudgetCents = entry.budgetCents;
+          order.maxPriceCents = entry.maxPriceCents;
+          order.buyPoint = {
+            primary: { type: entry.type },
+            labels: [entry.type],
+          };
+          if (!order.filledQuantity) {
+            order.quantity = entry.desired;
+            order.stopCents = Math.round(
+              quote.closeCents * (1 - session.plan.strategy.stopLoss),
+            );
+            order.takeProfitCents = Math.round(
+              quote.closeCents * (1 + session.plan.strategy.takeProfit),
+            );
+            if (entry.strategyAllocations)
+              order.strategyAllocations = entry.strategyAllocations;
+          }
+          order.status = "TRIGGERED";
+          const result = fill(
+            order,
+            "BUY",
+            Math.min(entry.desired, Math.max(0, quote.ask1Shares)),
+          );
+          if (result.ok) {
+            order.filledQuantity += result.quantity;
+            order.status =
+              order.filledQuantity >= order.quantity ? "FILLED" : "PARTIAL";
+            if (!session.entryState.openedCodes.includes(order.code))
+              session.entryState.openedCodes.push(order.code);
+          }
+          continue;
+        }
         if (order.side === "BUY" && !order.allDay && clockTime > "09:35:00")
           continue;
         if (
@@ -530,7 +663,10 @@ export function advanceSession(inputBook, inputSession, observation) {
   // Newly acquired stock is monitored, too. Its T+1-blocked exit persists to the next day.
   for (const p of book.positions)
     if (!session.orders.some((o) => o.code === p.code && o.protective)) {
-      const original = session.plan.orders.find((o) => o.code === p.code) || {};
+      const original =
+        session.plan.orders.find((o) => o.code === p.code) ||
+        session.orders.find((o) => o.conditionalEntry && o.code === p.code) ||
+        {};
       const basis = costBasis(p) / totalQuantity(p);
       session.orders.push(
         running({
@@ -557,6 +693,12 @@ export function advanceSession(inputBook, inputSession, observation) {
 }
 
 export function closeSession(inputBook, inputSession, dataset) {
+  if (
+    isDragon(inputBook) ||
+    isDragon(inputSession) ||
+    isDragon(inputSession.plan)
+  )
+    return closeDragonSession(inputBook, inputSession, dataset);
   const book = structuredClone(inputBook),
     session = structuredClone(inputSession),
     notices = [];

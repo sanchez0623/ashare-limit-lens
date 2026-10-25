@@ -4,12 +4,16 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "cheerio": "^1.2.0",
     "hyparquet": "^1.31.4",
-    "hyparquet-compressors": "^1.1.2"
+    "hyparquet-compressors": "^1.1.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node scripts/run-v5-regression.mjs",
+    "test:v5": "node scripts/run-v5-regression.mjs",
+    "test:dragon": "node --test legacy-tests/dragon-risk.mjs legacy-tests/dragon-flexibility.mjs test/dragon/*.test.mjs",
     "dev": "node dev.mjs",
     "start": "node server.mjs",
     "verify:paper": "node scripts/verify-paper.mjs",

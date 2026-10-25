@@ -2,6 +2,7 @@
 // 冻结样本与 Top 分组下的单日 IC 与观察超额。纯函数：无数据库/网络依赖；
 // 收益内核统一小数（0.003 = 0.3 个百分点 = 30bps），单位转换只在 DTO/显示边界。
 import { digestOf } from "./research-lineage.js";
+import { EM_SCORING_TAXONOMY } from "./stock-metadata.js";
 import {
   MIN_SECTOR_COUNT,
   SECTOR_MIN_VALID_STOCKS,
@@ -57,7 +58,10 @@ export function reviewContextDigest(frozenSnapshot) {
     weights: frozenSnapshot?.weights ?? null,
     poolDefinition: "EASTMONEY_ZT_POOL_FROZEN",
     topDefinition: "FROZEN_ORDER_TOP_20PCT",
-    sectorRule: "FROZEN_PRIMARY_SECTOR",
+    sectorRule:
+      frozenSnapshot?.industryContext?.scoringTaxonomy === EM_SCORING_TAXONOMY
+        ? EM_SCORING_TAXONOMY
+        : "FROZEN_PRIMARY_SECTOR",
     returnMeasure: "PREVIOUS_CLOSE_TO_CLOSE_DECIMAL",
   });
 }

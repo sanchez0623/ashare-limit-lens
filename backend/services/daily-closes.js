@@ -70,12 +70,18 @@ async function openAsyncBuffer(filePath) {
 
 // ---------- parquet 列读取：流式按行组归并，避免全量行对象落内存 ----------
 
-async function readColumns(filePath, columns) {
+async function readColumns(filePath, columns, optionalColumns = []) {
   const { parquetMetadataAsync, parquetRead } = await import("hyparquet");
   const { compressors } = await import("hyparquet-compressors");
   const file = await openAsyncBuffer(filePath);
   try {
     const meta = await parquetMetadataAsync(file);
+    columns = [
+      ...columns,
+      ...optionalColumns.filter((column) =>
+        meta.schema.some((field) => field.name === column),
+      ),
+    ];
     const rgRows = meta.row_groups.map((rg) => Number(rg.num_rows));
     const rgStarts = [];
     for (let acc = 0, i = 0; i < rgRows.length; i++) {
@@ -136,22 +142,19 @@ async function readColumns(filePath, columns) {
 // ---------- 数据集解析与缓存 ----------
 
 async function parseDataset(dailyPath, adjPath) {
-  const daily = await readColumns(dailyPath, [
-    "code",
-    "date",
-    "open",
-    "high",
-    "low",
-    "close",
-    "volume",
-  ]);
+  const daily = await readColumns(
+    dailyPath,
+    ["code", "date", "open", "high", "low", "close", "volume"],
+    ["amount"],
+  );
   const dCode = daily.get("code"),
     dDate = daily.get("date"),
     dOpen = daily.get("open"),
     dHigh = daily.get("high"),
     dLow = daily.get("low"),
     dClose = daily.get("close"),
-    dVolume = daily.get("volume");
+    dVolume = daily.get("volume"),
+    dAmount = daily.get("amount");
   const datesSet = new Set();
   const builders = new Map(); // code -> { d: string[], c/o/h/l/v: number[] }
   for (let i = 0; i < dCode.length; i++) {
@@ -183,7 +186,7 @@ async function parseDataset(dailyPath, adjPath) {
     datesSet.add(date);
     let rec = builders.get(code);
     if (!rec) {
-      rec = { d: [], c: [], o: [], h: [], l: [], v: [] };
+      rec = { d: [], c: [], o: [], h: [], l: [], v: [], a: [] };
       builders.set(code, rec);
     }
     rec.d.push(date);
@@ -192,6 +195,12 @@ async function parseDataset(dailyPath, adjPath) {
     rec.h.push(validHighLow ? high : Number.NaN);
     rec.l.push(validHighLow ? low : Number.NaN);
     rec.v.push(validVolume ? volume : Number.NaN);
+    const amount = Number(dAmount?.[i]);
+    rec.a.push(
+      dAmount?.[i] != null && Number.isFinite(amount) && amount >= 0
+        ? amount
+        : Number.NaN,
+    );
   }
 
   // 复权因子按 code+date 建索引；缺失的因子在 per-code 数组里以 NaN 表示
@@ -229,6 +238,7 @@ async function parseDataset(dailyPath, adjPath) {
     const hs = new Float64Array(n).fill(Number.NaN);
     const ls = new Float64Array(n).fill(Number.NaN);
     const vs = new Float64Array(n).fill(Number.NaN);
+    const amounts = new Float64Array(n).fill(Number.NaN);
     const as = new Float64Array(n).fill(Number.NaN);
     const fm = adjByCode.get(code) ?? null;
     for (let k = 0; k < n; k++) {
@@ -239,6 +249,7 @@ async function parseDataset(dailyPath, adjPath) {
       hs[k] = rec.h[i];
       ls[k] = rec.l[i];
       vs[k] = rec.v[i];
+      amounts[k] = rec.a[i];
       const f = fm?.get(rec.d[i]);
       if (f !== undefined) as[k] = f;
     }
@@ -249,6 +260,7 @@ async function parseDataset(dailyPath, adjPath) {
       highs: hs,
       lows: ls,
       volumes: vs,
+      amounts,
       adjs: as,
       // 该股在因子文件中是否有任何覆盖：完全没有 → 才允许未复权口径
       hasFactor: (fm?.size ?? 0) > 0,

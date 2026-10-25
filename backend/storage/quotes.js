@@ -14,6 +14,7 @@ export class QuoteFrameRepository {
     pollIntervalSeconds,
     pool,
     capture,
+    entryInputs,
   }) {
     const poolManifest = {
       codes: [...pool.codes].sort(),
@@ -28,6 +29,7 @@ export class QuoteFrameRepository {
       poolDigest,
       pool: poolManifest,
       capture: capture ?? null,
+      ...(entryInputs ? { entryInputs } : {}),
     };
     const digest = await digestOf(payload);
     const createdAt = new Date().toISOString();

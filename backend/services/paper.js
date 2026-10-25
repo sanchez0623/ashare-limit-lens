@@ -5,6 +5,17 @@ import {
   normalizePageRequest,
 } from "../storage/paper.js";
 import {
+  dragonStatus,
+  applyDragonLifecycle,
+  maintainDragonObservation,
+} from "./dragon-risk.js";
+import { isDragon } from "../domain/dragon-risk.js";
+import { tradingArchives } from "../storage/trading-archives.js";
+import {
+  dragonConfigProvenance,
+  verifyDragonConfigProvenance,
+} from "../storage/dragon-risk.js";
+import {
   newBook,
   createPlan,
   defensivePlan,
@@ -19,7 +30,7 @@ import {
 } from "./market.js";
 import { readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
-import { digestOf } from "../domain/research-lineage.js";
+import { digestOf, canonicalJson } from "../domain/research-lineage.js";
 import { loadOrBuildExitContext } from "./exit-context.js";
 import {
   extractTTrades,
@@ -35,7 +46,11 @@ import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { calibrationForPolicy } from "./execution-calibration.js";
 import { verifyCalibratedPolicy } from "../domain/execution-calibration.js";
 import { safeError } from "../http.js";
-import { exportProgramSignals } from "../storage/strategy-signals.js";
+import {
+  exportProgramSignals,
+  preserveProgramSignal,
+} from "../storage/strategy-signals.js";
+import { buildIntradayContext } from "./intraday-inputs.js";
 import { feesForBook } from "../../shared/fees.js";
 import { riskLimitsForBook } from "../../shared/risk-limits.js";
 import { DEFAULT_BENCHMARK } from "../../shared/benchmarks.js";
@@ -50,6 +65,10 @@ import {
   closeSession,
 } from "../domain/realtime.js";
 import { realtimeStatus } from "./realtime.js";
+import {
+  maintainEntryObservation,
+  entryObservationStatus,
+} from "./entry-observation.js";
 import {
   assertStoredProgramPlan,
   ensureFrozenTQuality,
@@ -115,7 +134,7 @@ async function settlePaperDay(env, date) {
   let calendar = null;
   // 方案 6：降级检测需要当日评分快照，提前读取（评分流水线先于盘后结算
   // 落库；缺失时当日检测跳过，次日仍按当日数据检查）。
-  const snapshot = await repository.snapshot(date);
+  let snapshot = await repository.snapshot(date);
   if (!existing) {
     const from = new Date(
       new Date(`${account.book.lastDate || date}T00:00:00Z`).getTime() -
@@ -276,12 +295,35 @@ async function settlePaperDay(env, date) {
     };
   }
   account = await repository.account();
+  await applyDragonLifecycle(env, date);
+  account = await repository.account();
   let nextPlan = await repository.plan(date);
+  if (
+    !nextPlan &&
+    snapshot &&
+    account.book.entryExecutionMode === "intraday-conditional" &&
+    !Object.keys(snapshot.intradayEntryContext?.history ?? {}).length
+  ) {
+    const context = await buildIntradayContext(env, snapshot);
+    if (!Object.keys(context.history).length)
+      return {
+        status: "WAITING_ENTRY_HISTORY",
+        date,
+        calendarDates,
+        reason:
+          "日线尚未覆盖信号日或候选历史不足，等待数据更新后在开盘前冻结条件计划",
+      };
+    snapshot = {
+      ...snapshot,
+      createdAt: new Date().toISOString(),
+      intradayEntryContext: context,
+    };
+  }
   // 方案 5 卖出上下文（仅生成新计划时计算；已有冻结计划不重写）：
   // 与影子组合/研究重放引用同一固化版本（exit_context_inputs，首写固化），
   // 日线 Parquet 补齐后不漂移；同一快照在任一链路得到同一上下文。
   let exitContext = null;
-  if (snapshot && !nextPlan) {
+  if (snapshot && !nextPlan && !isDragon(account.book)) {
     exitContext = await loadOrBuildExitContext({
       env,
       db: repository.db,
@@ -296,7 +338,12 @@ async function settlePaperDay(env, date) {
   // 摘要不可直接声明。
   let tQuality = null;
   let tQualityEvidence = null;
-  if (snapshot && !nextPlan && tQualityEnabledForSnapshot(snapshot)) {
+  if (
+    snapshot &&
+    !nextPlan &&
+    !isDragon(account.book) &&
+    tQualityEnabledForSnapshot(snapshot)
+  ) {
     try {
       const tRecords = await repository.recentTTrades();
       const tradingDates = calendar?.dates ?? [];
@@ -313,7 +360,9 @@ async function settlePaperDay(env, date) {
   if (!nextPlan) {
     // 新政策从下一个尚未冻结的计划生效（§3.2）：计划冻结完整政策 bundle。
     const executionCostPolicy = await effectiveExecutionCostPolicy(env);
-    const strategy = await repository.strategy(account.book);
+    const strategy = isDragon(account.book)
+      ? null
+      : await repository.strategy(account.book);
     // 持仓股掉出当日涨停池时，从最近快照归档回查原始评分用于计划展示。
     const originalScoreLookup = await buildOriginalScoreLookup(
       repository.db,
@@ -348,10 +397,26 @@ async function settlePaperDay(env, date) {
           new Date().toISOString(),
           { executionCostPolicy, originalScoreLookup },
         );
+    if (planInput.entryExecutionPolicy)
+      await preserveProgramSignal(repository.db, planInput, snapshot);
     nextPlan = await repository.savePlan(planInput);
   }
   // 重入和旧版本升级同样检查；缺失副本只能经账本独立核验后补齐。
   if (nextPlan) await ensureFrozenTQuality(env, nextPlan, "main");
+  let entryObservation = null;
+  try {
+    await maintainDragonObservation(env, date);
+  } catch {
+    /* Pending real-day verification remains visible. */
+  }
+  try {
+    entryObservation = await maintainEntryObservation(env, date);
+  } catch {
+    entryObservation = {
+      status: "ERROR",
+      reason: "影子观察维护未完成，将在下一次盘后流程重试",
+    };
+  }
   const response = {
     status: nextPlan ? "SETTLED" : "WAITING_SNAPSHOT",
     date,
@@ -369,6 +434,7 @@ async function settlePaperDay(env, date) {
         }
       : null,
     improvement,
+    entryObservation,
     reason: nextPlan
       ? "当日账本已结算，下一交易日计划已冻结"
       : "已结算，等待当日评分后生成下一交易日计划",
@@ -407,6 +473,16 @@ export async function exportPaper(env, attempt = 0) {
     })),
   );
   const versions = await repository.versions();
+  const dragonConfigs = (
+    await env.DB.prepare(
+      "SELECT * FROM dragon_config_versions ORDER BY created_at,id",
+    ).all()
+  ).results;
+  const dragonBindings = (
+    await env.DB.prepare(
+      "SELECT * FROM dragon_plan_bindings WHERE scope='main' ORDER BY signal_date",
+    ).all()
+  ).results;
   const calibrationIds = new Set(
     rows[2]
       .map((row) => JSON.parse(row.payload).executionCostPolicy)
@@ -430,6 +506,8 @@ export async function exportPaper(env, attempt = 0) {
     feeConfig: feesForBook(book),
     executionCostPolicy: await effectiveExecutionCostPolicy(env),
     executionCostCalibrations,
+    dragonConfigs,
+    dragonBindings,
     equities: rows[0].map((row) => JSON.parse(row.payload)).reverse(),
     ledger: rows[1]
       .map((row) => JSON.parse(row.payload))
@@ -483,11 +561,59 @@ export async function verifyExport(bundle) {
   let hashes = true,
     replay = true;
   let book = newBook(bundle.initialCashCents / 100);
+  const cycleStarts = (bundle.configurationHistory ?? []).filter(
+    (row) => row.payload.type === "TRADING_CYCLE_STARTED",
+  );
+  if (latest.tradingCycleId || cycleStarts.length) {
+    const start = cycleStarts[0];
+    const initial = start?.payload.initialBook;
+    if (
+      cycleStarts.length !== 1 ||
+      !initial ||
+      start.payload.id !== latest.tradingCycleId ||
+      initial?.tradingCycleId !== latest.tradingCycleId ||
+      initial.initialCashCents !== bundle.initialCashCents ||
+      initial.lastDate !== start.payload.signalDate ||
+      initial.positions?.length !== 0 ||
+      initial.cashCents !== bundle.initialCashCents ||
+      initial.equityCents !== bundle.initialCashCents ||
+      initial.realizedPnlCents !== 0 ||
+      initial.feesCents !== 0 ||
+      initial.settlementCount !== 0 ||
+      (await digest(start.payload)) !== start.digest
+    )
+      hashes = replay = false;
+    else book = structuredClone(initial);
+  }
   let fillIndex = 0;
   // 方案 7：重放成交与交易日累积——做T质量摘要的独立锚点输入（重放
   // 成交与导出账本逐条比对绑定，不可篡改；数据集日期即交易日序列）。
   const replayedFills = [];
   const replayedDates = [];
+  const policyEvents = (bundle.configurationHistory ?? [])
+    .map((r) => r.payload)
+    .filter((e) => e.type?.startsWith("DRAGON_"))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const appliedEvents = new Set();
+  function applyPolicyEvents(stamp, signalDate = null) {
+    for (let i = 0; i < policyEvents.length; i++) {
+      const e = policyEvents[i];
+      if (
+        appliedEvents.has(i) ||
+        !(
+          Date.parse(e.createdAt) <= Date.parse(stamp) ||
+          (signalDate &&
+            e.effectiveSignalDate &&
+            e.effectiveSignalDate <= signalDate)
+        )
+      )
+        continue;
+      if (e.dragonFields) Object.assign(book, structuredClone(e.dragonFields));
+      if (e.riskRuntime) Object.assign(book, structuredClone(e.riskRuntime));
+      if (e.transition) book.dragonTransition = structuredClone(e.transition);
+      appliedEvents.add(i);
+    }
+  }
   const sourceFor = (plan) =>
     plan &&
     (bundle.signalSnapshots?.find(
@@ -510,6 +636,42 @@ export async function verifyExport(bundle) {
     // 冻结政策的内容寻址核验（§3.2）：计划内嵌政策 payload 必须与摘要一致，
     // 否则重放无法证明使用了声明过的成交假设。
     for (const row of bundle.plans) {
+      const binding = bundle.dragonBindings?.find(
+        (b) => b.signal_date === row.payload.signalDate,
+      );
+      if (binding || isDragon(row.payload)) {
+        const p = row.payload;
+        const record = bundle.dragonConfigs?.find(
+          (c) => c.id === p.dragonPolicy?.configId,
+        );
+        const configRecord = record
+          ? {
+              id: record.id,
+              digest: record.digest,
+              engineBuild: record.engine_build,
+              baseId: record.base_id,
+              origin: record.origin ?? "LEGACY",
+              validationMode: record.validation_mode ?? "RESEARCH_REQUIRED",
+              replacesId: record.replaces_id ?? null,
+              provenanceDigest: record.provenance_digest ?? null,
+            }
+          : null;
+        if (
+          !isDragon(p) ||
+          !binding ||
+          !record ||
+          !(await verifyDragonConfigProvenance(configRecord)) ||
+          canonicalJson(dragonConfigProvenance(configRecord)) !==
+            canonicalJson(p.dragonPolicy.provenance ?? null) ||
+          binding.plan_digest !== (await digest(p)) ||
+          binding.config_id !== record.id ||
+          (await digest(JSON.parse(record.payload))) !== record.digest ||
+          record.digest !== p.dragonPolicy.configDigest ||
+          record.engine_build !== p.engineBuild ||
+          (await digest(p.dragonPolicy.config)) !== record.digest
+        )
+          hashes = false;
+      }
       frozenSelectionPolicy(row.payload);
       const audit = row.payload.selectionAudit;
       if (audit?.snapshotDigest) {
@@ -540,7 +702,10 @@ export async function verifyExport(bundle) {
     }
     for (let index = 0; index < bundle.datasets.length; index++) {
       const dataset = bundle.datasets[index].payload;
-      const plan = index ? plans.get(dataset.previousTradingDate) : null;
+      const plan = book.lastDate
+        ? plans.get(dataset.previousTradingDate)
+        : null;
+      if (plan) applyPolicyEvents(`${dataset.date}T01:15:00Z`, plan.signalDate);
       // 方案 7：做T质量摘要的独立锚点——用重放成交（截至信号日）与
       // 数据集交易日独立重算摘要，与计划声明比对：改写摘要或其证据
       // 都无法通过核验。
@@ -553,7 +718,10 @@ export async function verifyExport(bundle) {
           hashes = false;
       }
       assertProgramSnapshot(plan, sourceFor(plan), book);
-      if (index && (!plan || book.lastDate !== dataset.previousTradingDate)) {
+      if (
+        book.lastDate &&
+        (!plan || book.lastDate !== dataset.previousTradingDate)
+      ) {
         replay = false;
         break;
       }
@@ -562,6 +730,7 @@ export async function verifyExport(bundle) {
         let session = openSession(book, plan, dataset.date),
           fills = [];
         for (const tick of liveTicks.get(dataset.date) || []) {
+          applyPolicyEvents(tick.payload.observedAt, plan?.signalDate);
           const step = advanceSession(book, session, tick.payload);
           book = step.book;
           session = step.session;
@@ -600,6 +769,7 @@ export async function verifyExport(bundle) {
     )) {
       if (date <= (book.lastDate || "")) continue;
       const plan = plans.get(book.lastDate);
+      applyPolicyEvents(`${date}T01:15:00Z`, plan?.signalDate);
       // 方案 7：未结算日的已冻结计划同样用账本锚点复核质量摘要。
       if (plan?.tQuality) {
         const recomputed = summarizeTQuality(
@@ -613,6 +783,7 @@ export async function verifyExport(bundle) {
       let session = openSession(book, plan, date),
         fills = [];
       for (const tick of liveTicks.get(date) || []) {
+        applyPolicyEvents(tick.payload.observedAt, plan?.signalDate);
         const step = advanceSession(book, session, tick.payload);
         book = step.book;
         session = step.session;
@@ -832,7 +1003,10 @@ export async function paperOverview(env, attempt = 0, options = {}) {
     versions,
     ai: aiConfig(env),
     realtime,
+    entryObservation: await entryObservationStatus(env),
+    dragon: await dragonStatus(env, book),
     tTrades,
     tQuality,
+    archives: await tradingArchives(env),
   };
 }

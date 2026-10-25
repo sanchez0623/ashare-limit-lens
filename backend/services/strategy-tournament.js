@@ -1,4 +1,5 @@
 import { ResearchRepository } from "../storage/research.js";
+import { isDragon } from "../domain/dragon-risk.js";
 import { CohortRepository } from "../storage/cohorts.js";
 import {
   ShadowAccountRepository,
@@ -94,6 +95,14 @@ export async function reserveCohort(repository, env, { propose = null } = {}) {
   const account = await repository.account();
   if (!account?.book)
     return { status: "COLLECTING", reason: "主账户尚未初始化" };
+  if (
+    isDragon(account.book) ||
+    account.book.dragonTransition?.state === "DRAINING"
+  )
+    return {
+      status: "POLICY_ISOLATED",
+      reason: "旧策略赛马不能修改新政策，使用高级模板研究",
+    };
   const pairs = await collectPairs(repository);
   if (!aiConfig(env).configured && propose === requestCohortProposal)
     return {
@@ -861,7 +870,20 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
   const running = cohort?.stage === "RUNNING";
   // 连续固定基线跨批次持续运行（§6）：无活动批次时仍采集并喂给持续基线。
   const continuous = await shadows.account(continuousBaselineId);
-  if (!running && continuous?.status !== "ACTIVE") return null;
+  const intradayObserver = await shadows.account(
+    "intraday-entry-observation-v1",
+  );
+  const dragonObservers = await shadows.accounts({
+    kinds: [SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION],
+  });
+  const entryObservationDay = ![0, 6].includes(marketClock(now).weekday);
+  if (
+    !running &&
+    continuous?.status !== "ACTIVE" &&
+    (intradayObserver?.status !== "ACTIVE" || !entryObservationDay) &&
+    !dragonObservers.some((account) => account.status === "ACTIVE")
+  )
+    return null;
   const frame = await captureQuoteFrame(env, now, { providers });
   if (!frame) return null;
   const frames = new QuoteFrameRepository(env);
@@ -906,6 +928,8 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
           return quotes;
         },
         observedAt: primaryFrame.observedAt,
+        entryInputs:
+          primaryFrame.payload?.entryInputs ?? primaryFrame.entryInputs,
       });
       // 只有"观察已提交"的状态才推进到后续帧（§7.2 按序消费）：CAS 冲突、
       // 错误、BLOCKED（上一交易日未结算）、MARKET_CLOSED / NON_TRADING_DAY /
@@ -928,19 +952,29 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
     running
       ? activeAccounts.filter(
           (account) =>
+            account.kind === SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION ||
             account.kind === SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS ||
+            account.kind === SHADOW_ACCOUNT_KINDS.INTRADAY_OBSERVATION ||
             account.cohortId === cohort.id,
         )
       : activeAccounts.filter(
           (account) =>
-            account.kind === SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS,
+            account.kind === SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION ||
+            account.kind === SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS ||
+            account.kind === SHADOW_ACCOUNT_KINDS.INTRADAY_OBSERVATION,
         )
-  ).sort((a, b) => {
-    const rank = (kind) => (kind === SHADOW_ACCOUNT_KINDS.CANDIDATE ? 1 : 0);
-    return (
-      rank(a.kind) - rank(b.kind) || a.accountId.localeCompare(b.accountId)
-    );
-  });
+  )
+    .filter(
+      (account) =>
+        account.kind !== SHADOW_ACCOUNT_KINDS.INTRADAY_OBSERVATION ||
+        entryObservationDay,
+    )
+    .sort((a, b) => {
+      const rank = (kind) => (kind === SHADOW_ACCOUNT_KINDS.CANDIDATE ? 1 : 0);
+      return (
+        rank(a.kind) - rank(b.kind) || a.accountId.localeCompare(b.accountId)
+      );
+    });
   const results = [];
   for (const account of ordered) {
     // 按序重放已落盘帧（§7.2）：从账户游标日期起补齐"已采集未消费"的帧，

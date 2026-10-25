@@ -6,6 +6,7 @@ RUN --mount=type=secret,id=proxy_ca \
     if [ -f /run/secrets/proxy_ca ]; then NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca npm ci --strict-ssl=true; else npm ci; fi
 COPY . .
 RUN npm run build
+RUN npm prune --omit=dev
 
 FROM node:24-bookworm-slim
 WORKDIR /app
@@ -15,6 +16,7 @@ COPY --from=build --chown=node:node /app/backend ./backend
 COPY --from=build --chown=node:node /app/shared ./shared
 COPY --from=build --chown=node:node /app/scripts ./scripts
 COPY --from=build --chown=node:node /app/drizzle ./drizzle
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/server.mjs /app/package.json ./
 RUN mkdir /data && chown node:node /data
 USER node

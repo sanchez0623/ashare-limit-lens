@@ -1,4 +1,5 @@
 import { RealtimeRepository } from "../storage/realtime.js";
+import { isDragon } from "../domain/dragon-risk.js";
 import { CohortRepository } from "../storage/cohorts.js";
 import { ShadowAccountRepository } from "../storage/shadow.js";
 import { digest } from "../storage/paper.js";
@@ -36,6 +37,12 @@ export async function promoteCohortChampion(
 ) {
   const cohorts = new CohortRepository(env);
   const papers = new RealtimeRepository(env);
+  const policyAccount = await papers.account();
+  if (
+    isDragon(policyAccount?.book) ||
+    policyAccount?.book.dragonTransition?.state === "DRAINING"
+  )
+    throw new Error("旧研究报告不能晋级到新交易政策");
   const shadows = new ShadowAccountRepository(env);
   const cohort = await cohorts.getCohort(cohortId);
   if (!cohort) throw new Error("赛马批次不存在");

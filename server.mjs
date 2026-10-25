@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { localDatabase } from "./scripts/local-db.mjs";
 import { startTradingRunner } from "./scripts/trading-runner.mjs";
+import { startDataUpdateWorker } from "./scripts/data-worker-supervisor.mjs";
 import worker from "./dist/server/index.js";
 try {
   process.loadEnvFile();
@@ -23,6 +24,10 @@ mkdirSync(dirname(dbPath), { recursive: true });
 const DB = localDatabase(dbPath),
   env = {
     DB,
+    DATA_UPDATE_RUNNER:
+      process.env.DATA_WORKER_ENABLED === "false" ? "disabled" : "local",
+    SW_METADATA_SOURCE: process.env.SW_METADATA_SOURCE || "lixinger",
+    LIXINGER_CONFIGURED: !!process.env.LIXINGER_TOKEN?.trim(),
     AI_API_KEY: process.env.AI_API_KEY,
     AI_BASE_URL: process.env.AI_BASE_URL,
     AI_MODEL: process.env.AI_MODEL,
@@ -84,8 +89,12 @@ const server = createServer(async (req, res) => {
   }
 });
 let runner;
+let dataWorker;
 server.listen(port, host, () => {
   console.log(`Trading server listening on port ${port}`);
+  dataWorker = startDataUpdateWorker(dbPath, {
+    enabled: env.DATA_UPDATE_RUNNER === "local",
+  });
   if (process.env.TRADING_ENABLED !== "false")
     runner = startTradingRunner(env, async () =>
       (
@@ -140,9 +149,11 @@ server.listen(port, host, () => {
 });
 let stopped = false;
 for (const signal of ["SIGTERM", "SIGINT"])
-  process.on(signal, () => {
+  process.on(signal, async () => {
+    if (stopped) return;
     stopped = true;
     runner?.stop();
+    await dataWorker?.stop();
     server.close(() => {
       DB.close();
       process.exit(0);

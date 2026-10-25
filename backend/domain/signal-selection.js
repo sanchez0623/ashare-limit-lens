@@ -8,12 +8,22 @@ export const SELECTION_VERSION_V2 = "signal-ranking-v2";
 export const SELECTION_VERSION_V3 = "signal-ranking-v3";
 export const SELECTION_VERSION_V4 = "signal-ranking-v4";
 export const SELECTION_VERSION_V5 = "signal-ranking-v5";
+export const SELECTION_VERSION_DRAGON = "dragon-risk-v1";
 // v5 是当前默认：龙头低吸（dragon-head-dip-buy）策略的完整能力——
 // 分类路由 + 炸板候选 + 买点闸门 + EOD 候选（首阴低吸/假阴跌停低吸）——
 // 直接成为新账户的默认行为，无需手动切换。v3/v4 保留为回退选项；
 // 缺少版本的历史账户按 v1 解释。
 export const DEFAULT_SELECTION_VERSION = SELECTION_VERSION_V5;
 const policies = Object.freeze({
+  [SELECTION_VERSION_DRAGON]: Object.freeze({
+    version: SELECTION_VERSION_DRAGON,
+    scorePrecision: 0,
+    liquiditySource: "signal-day-turnover-cny",
+    tieBreak: "buy-point-turnover-code-asc",
+    stockClassRouting: false,
+    brokenCandidateSource: true,
+    extraCandidateSource: true,
+  }),
   [LEGACY_SELECTION_VERSION]: Object.freeze({
     version: LEGACY_SELECTION_VERSION,
     scorePrecision: 0,
@@ -61,6 +71,8 @@ const policies = Object.freeze({
 // SHA-256(canonicalJson(policy))。常量使同步纯内核也能冻结完整摘要；
 // 回归测试独立重算，政策字段变化必须新增版本及摘要。
 const digests = Object.freeze({
+  [SELECTION_VERSION_DRAGON]:
+    "1920284cd8ab676fecf928d3dd03e11cbcbbca1be5fde4e457c58fca42d2db0f",
   [LEGACY_SELECTION_VERSION]:
     "7b340abd928a57f1d401351952ad40219e29a81ee74a33f44747b128209f883a",
   [SELECTION_VERSION_V2]:
@@ -91,11 +103,18 @@ export function selectionPolicyDigest(policy) {
   return digests[policy.version];
 }
 export function selectionPolicyForBook(book) {
+  if (book?.tradingPolicyVersion === SELECTION_VERSION_DRAGON)
+    return selectionPolicy(SELECTION_VERSION_DRAGON);
   return selectionPolicy(
     book?.selectionPolicyVersion ?? LEGACY_SELECTION_VERSION,
   );
 }
 export function frozenSelectionPolicy(record) {
+  if (
+    record?.selectionPolicy?.version === SELECTION_VERSION_DRAGON &&
+    record.tradingPolicyVersion !== SELECTION_VERSION_DRAGON
+  )
+    throw new Error("新政策缺少独立交易标记，禁止降级为旧计划");
   if (
     record?.selectionPolicy === undefined &&
     record?.selectionPolicyDigest === undefined

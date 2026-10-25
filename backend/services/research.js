@@ -1,4 +1,6 @@
 import { aiConfig } from "./review.js";
+import { isDragon } from "../domain/dragon-risk.js";
+import { proposeDragonImprovement } from "./dragon-research.js";
 import { feesForBook } from "../../shared/fees.js";
 import { requestProposal } from "./improvement.js";
 import { replayStrategy, validateCandidate } from "../domain/validation.js";
@@ -382,6 +384,12 @@ export async function proposeImprovement(
   const research = new ResearchRepository(env);
   const policy = await research.getPolicy();
   const account = await repository.account();
+  if (isDragon(account?.book)) return proposeDragonImprovement(env);
+  if (account?.book.dragonTransition?.state === "DRAINING")
+    return {
+      status: "POLICY_ISOLATED",
+      reason: "新政策禁止旧策略提案；仅通过独立高级模板研究",
+    };
   const pairs = await collectPairs(repository);
   if (!aiConfig(env).configured)
     return {
@@ -610,6 +618,12 @@ export async function proposeBootstrapImprovement(
   { datasetId } = {},
   propose = requestProposal,
 ) {
+  const policyAccount = await repository.account();
+  if (
+    isDragon(policyAccount?.book) ||
+    policyAccount?.book.dragonTransition?.state === "DRAINING"
+  )
+    throw new Error("新政策禁止旧冷启动策略覆盖配置");
   const research = new ResearchRepository(env);
   const policy = await research.getPolicy();
   const minTrainingDays = policy.payload.bootstrapMinTrainingDays ?? 20;

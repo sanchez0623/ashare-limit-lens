@@ -1,4 +1,5 @@
 import { assertProgramSnapshot } from "../domain/trading.js";
+import { assertStoredDragonPlan } from "../storage/dragon-risk.js";
 import { digestOf, canonicalJson } from "../domain/research-lineage.js";
 import { selectionSnapshotDigest } from "../domain/signal-selection.js";
 import {
@@ -116,6 +117,11 @@ export async function assertStoredProgramPlan(
   { tQualityScope = "main" } = {},
 ) {
   if (!plan) return;
+  if (await assertStoredDragonPlan(env.DB, plan, book, tQualityScope)) {
+    const snapshot = await frozenProgramSignal(env.DB, plan);
+    assertProgramSnapshot(plan, snapshot, book);
+    return;
+  }
   const version = plan.strategyVersion
     ? await env.DB.prepare("SELECT params FROM strategy_versions WHERE id=?")
         .bind(plan.strategyVersion)
@@ -166,7 +172,9 @@ export async function assertStoredProgramPlan(
     !program &&
     !downgradeEnabled &&
     !sourceDowngradeEnabled &&
-    !planTQualityEnabled
+    !planTQualityEnabled &&
+    !plan.entryExecutionPolicy &&
+    !snapshot?.intradayEntryContext
   )
     return;
   if (sourceDowngradeEnabled && !plan.selectionAudit?.snapshotDigest)

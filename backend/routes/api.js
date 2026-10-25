@@ -16,12 +16,30 @@ import {
 import { marketData, latestTradingDate } from "../services/market.js";
 import { marketForDisplay } from "../services/market-display.js";
 import {
+  StockMetadataRepository,
+  metadataStatus,
+} from "../storage/stock-metadata.js";
+import { DATA_SCOPES, DataUpdateError } from "../domain/stock-metadata.js";
+import {
   paperOverview,
   runPaperDay,
   exportPaper,
   verifyExport,
 } from "../services/paper.js";
 import { PaperRepository } from "../storage/paper.js";
+import {
+  tradingArchives,
+  tradingArchive,
+  archivedLedgerCsv,
+} from "../storage/trading-archives.js";
+import {
+  saveDragonSettings,
+  previewDragonConfig,
+  requestDragonActivation,
+  dragonStatus,
+  requestDragonValidation,
+  resumeDragonRiskCycle,
+} from "../services/dragon-risk.js";
 import {
   proposeImprovement,
   promoteCandidate,
@@ -64,6 +82,12 @@ import {
 } from "../services/execution-cost.js";
 import { runExecutionSensitivity } from "../services/execution-sensitivity.js";
 import { ExecutionCostRepository } from "../storage/execution-cost.js";
+import { requestEntryObservation } from "../services/entry-observation.js";
+import { entryObservationProgress } from "../services/entry-observation-progress.js";
+import { entryObservationLedger } from "../services/entry-observation-ledger.js";
+import { entryObservationCandidates } from "../services/entry-observation-candidates.js";
+import { OBSERVATION_CLASS_LABELS } from "../../shared/entry-observation-display.js";
+import { BUY_POINT_LABELS } from "../../shared/buy-point-type.js";
 import { exportExecutionStress } from "../services/execution-stress.js";
 import {
   importExecutionCalibration,
@@ -94,7 +118,7 @@ async function runDaily(env) {
   let market = null,
     marketError = null;
   try {
-    market = await marketData(date);
+    market = await marketData(date, env);
   } catch (error) {
     marketError = safeError(error);
   }
@@ -110,17 +134,20 @@ async function runDaily(env) {
   } catch (error) {
     tournament = { error: safeError(error) };
   }
-  let result = { review: null, reason: marketError },
+  let result = { review: null, reason: null },
     aiError = null;
-  if (market) {
-    try {
-      result = await loadReview(env, date, market);
-    } catch (error) {
-      result.reason = safeError(error);
-    }
+  try {
+    result = await loadReview(env, date);
+  } catch (error) {
+    result.reason = safeError(error);
   }
   let ai = result.ai || null;
-  if (aiConfig(env).configured && result.review && !ai) {
+  if (
+    aiConfig(env).configured &&
+    result.review &&
+    !ai &&
+    result.review.validCount > 0
+  ) {
     try {
       ai = await gradeWithAI(env, result);
     } catch (error) {
@@ -153,16 +180,27 @@ export async function api(request, env) {
   const url = new URL(request.url),
     path = url.pathname;
   const methods = {
+    "/api/data/status": ["GET"],
+    "/api/data/update": ["POST"],
     "/api/settings": ["GET", "POST"],
     "/api/history": ["GET"],
     "/api/review": ["GET"],
     "/api/run-daily": ["POST"],
+    "/api/paper/entry-observation": ["GET", "POST"],
+    "/api/paper/entry-observation/ledger": ["GET"],
+    "/api/paper/entry-observation/candidates": ["GET"],
     "/api/ai-grade": ["POST"],
     "/api/market": ["GET"],
     "/api/market/latest-date": ["GET"],
     "/api/paper": ["GET"],
     "/api/paper/ledger": ["GET"],
+    "/api/paper/archives": ["GET"],
     "/api/paper/settings": ["POST"],
+    "/api/paper/dragon/preview": ["POST"],
+    "/api/paper/dragon/activate": ["POST"],
+    "/api/paper/dragon/resume": ["POST"],
+    "/api/paper/dragon/validate": ["POST"],
+    "/api/paper/dragon": ["GET"],
     "/api/paper/export": ["GET"],
     "/api/paper/verify": ["GET"],
     "/api/paper/execution-cost": ["GET", "PUT"],
@@ -197,6 +235,9 @@ export async function api(request, env) {
   const historyImportMatch = path.match(
     /^\/api\/history\/imports\/([a-z0-9-]+)(\/run)?$/,
   );
+  const dataJobMatch = path.match(
+    /^\/api\/data\/jobs\/([a-z0-9-]+)(\/cancel)?$/,
+  );
   const backtestMatch = path.match(/^\/api\/backtests\/([a-z0-9-]+)$/);
   const cohortMatch = path.match(
     /^\/api\/strategies\/cohorts\/([a-z0-9-]+)(\/lineage|\/export)?$/,
@@ -215,10 +256,13 @@ export async function api(request, env) {
     !backtestMatch &&
     !cohortMatch &&
     !incidentMatch &&
-    !incidentAckMatch
+    !incidentAckMatch &&
+    !dataJobMatch
   )
     return json({ error: "接口不存在" }, 404);
-  const allowedMethods = methods[path] ?? ["GET", "POST"];
+  const allowedMethods =
+    methods[path] ??
+    (dataJobMatch ? [dataJobMatch[2] ? "POST" : "GET"] : ["GET", "POST"]);
   if (!allowedMethods.includes(request.method))
     return json({ error: "不支持此请求方法" }, 405);
   if (
@@ -235,6 +279,45 @@ export async function api(request, env) {
   if (Number(request.headers.get("Content-Length") || 0) > bodyLimit)
     return json({ error: "请求内容过长" }, 413);
   try {
+    if (path === "/api/data/status") return json(await metadataStatus(env));
+    if (path === "/api/data/update") {
+      const body = await readJson(request);
+      if (
+        !body ||
+        typeof body !== "object" ||
+        Array.isArray(body) ||
+        Object.keys(body).some((key) => key !== "scope")
+      )
+        throw new DataUpdateError("更新请求仅支持 scope 字段");
+      if (!DATA_SCOPES.includes(body.scope))
+        throw new DataUpdateError(
+          "更新范围必须为 stock_list、stock_em、industry_sw 或 all",
+        );
+      const status = await metadataStatus(env);
+      if (!status.available)
+        throw new DataUpdateError(status.capabilityReason, 503);
+      if (status.activeJob) {
+        if (status.activeJob.scope === body.scope)
+          return json({ job: status.activeJob, reused: true }, 202);
+        throw new DataUpdateError("另一个更新任务正在运行", 409, {
+          activeJob: status.activeJob,
+        });
+      }
+      if (!status.workerHealthy)
+        throw new DataUpdateError(status.capabilityReason, 503);
+      return json(
+        await new StockMetadataRepository(env).createJob(body.scope),
+        202,
+      );
+    }
+    if (dataJobMatch) {
+      const repo = new StockMetadataRepository(env);
+      const job = dataJobMatch[2]
+        ? await repo.cancel(dataJobMatch[1])
+        : await repo.job(dataJobMatch[1]);
+      if (!job) throw new DataUpdateError("更新任务不存在", 404);
+      return json({ job });
+    }
     if (path === "/api/settings") {
       if (request.method === "GET")
         return json({
@@ -294,7 +377,13 @@ export async function api(request, env) {
         !/^\d{4}-\d{2}-\d{2}$/.test(end ?? "")
       )
         return json({ error: "请提供 start 与 end 日期（YYYY-MM-DD）" }, 400);
-      return json(await probeHistoryCapabilities(env, { start, end }));
+      return json(
+        await probeHistoryCapabilities(env, {
+          start,
+          end,
+          provider: url.searchParams.get("provider") ?? "tencent-free",
+        }),
+      );
     }
     if (path === "/api/history/imports") {
       if (request.method === "GET")
@@ -337,6 +426,8 @@ export async function api(request, env) {
       const body = await readJson(request);
       const run = await runBacktest(env, {
         datasetId: body.datasetId,
+        executionModel: body.executionModel,
+        executionCostPolicy: body.executionCostPolicy,
         selectionPolicyVersion: body.selectionPolicyVersion,
         name: body.name,
         strategy: body.strategy,
@@ -399,6 +490,26 @@ export async function api(request, env) {
           stockPnlPageSize: url.searchParams.get("stockPnlPageSize"),
         }),
       );
+    if (path === "/api/paper/archives") {
+      const id = url.searchParams.get("id");
+      if (!id) return json({ archives: await tradingArchives(env) });
+      const archive = await tradingArchive(env, id);
+      if (!archive) return json({ error: "交易历史归档不存在" }, 404);
+      const csv = url.searchParams.get("format") === "csv";
+      return new Response(
+        csv ? archivedLedgerCsv(archive) : JSON.stringify(archive),
+        {
+          headers: {
+            "Content-Type": csv
+              ? "text/csv; charset=utf-8"
+              : "application/json; charset=utf-8",
+            "Content-Disposition": `attachment; filename="trading-history-${archive.summary.tradeDate}.${csv ? "csv" : "json"}"`,
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+          },
+        },
+      );
+    }
     if (path === "/api/paper/ledger") {
       const date = url.searchParams.get("date") || "";
       if (date && !validDate(date))
@@ -501,8 +612,96 @@ export async function api(request, env) {
       const detail = await cohortDetail(env, cohortId);
       return detail ? json(detail) : json({ error: "赛马批次不存在" }, 404);
     }
+    if (path === "/api/paper/entry-observation/candidates") {
+      const signalDate = url.searchParams.get("signalDate") || "";
+      const stockClass = url.searchParams.get("stockClass") || "";
+      const buyPoint = url.searchParams.get("buyPoint") || "";
+      const q = (url.searchParams.get("q") || "").trim();
+      if (signalDate && !validDate(signalDate))
+        return json({ error: "请选择有效的信号日期" }, 400);
+      if (stockClass && !Object.hasOwn(OBSERVATION_CLASS_LABELS, stockClass))
+        return json({ error: "股票类型无效" }, 400);
+      if (
+        buyPoint &&
+        buyPoint !== "unclassified" &&
+        !Object.hasOwn(BUY_POINT_LABELS, buyPoint)
+      )
+        return json({ error: "买点类型无效" }, 400);
+      if (q.length > 64)
+        return json({ error: "搜索内容请限制在64字以内" }, 400);
+      const result = await entryObservationCandidates(env, {
+        signalDate,
+        stockClass,
+        buyPoint,
+        q,
+        page: url.searchParams.get("page"),
+        pageSize: url.searchParams.get("pageSize"),
+      });
+      return result
+        ? json(result)
+        : json({ error: "该信号日尚无冻结影子观察计划" }, 404);
+    }
+    if (path === "/api/paper/entry-observation/ledger") {
+      const date = url.searchParams.get("date") || "";
+      if (date && !validDate(date))
+        return json({ error: "请选择有效的成交日期" }, 400);
+      return json(
+        await entryObservationLedger(env, {
+          page: url.searchParams.get("page"),
+          pageSize: url.searchParams.get("pageSize"),
+          date,
+        }),
+      );
+    }
+    if (path === "/api/paper/entry-observation")
+      return json(
+        request.method === "GET"
+          ? await entryObservationProgress(env)
+          : await requestEntryObservation(env),
+      );
+    if (path === "/api/paper/dragon") return json(await dragonStatus(env));
+    if (path === "/api/paper/dragon/preview") {
+      const body = await readJson(request);
+      if (
+        !body ||
+        Object.keys(body).some((k) => !["config", "phase"].includes(k))
+      )
+        return json({ error: "预览字段无效" }, 400);
+      return json(previewDragonConfig(body.config, body.phase));
+    }
+    if (path === "/api/paper/dragon/activate")
+      return json(await requestDragonActivation(env));
+    if (path === "/api/paper/dragon/resume")
+      return json(await resumeDragonRiskCycle(env));
+    if (path === "/api/paper/dragon/validate")
+      return json(await requestDragonValidation(env));
     if (path === "/api/paper/settings") {
       const body = await readJson(request);
+      if (body && Object.hasOwn(body, "dragonConfig")) {
+        if (
+          Object.keys(body).some(
+            (key) => !["dragonConfig", "cancelResearch"].includes(key),
+          )
+        )
+          return json({ error: "新交易配置请与基础账户设置分别保存" }, 400);
+        if (
+          body.cancelResearch !== undefined &&
+          (!body.cancelResearch ||
+            typeof body.cancelResearch !== "object" ||
+            Array.isArray(body.cancelResearch) ||
+            Object.keys(body.cancelResearch).length !== 2 ||
+            typeof body.cancelResearch.ownerId !== "string" ||
+            !["DRAGON", "EXPERIMENT", "COHORT"].includes(
+              body.cancelResearch.ownerType,
+            ))
+        )
+          return json({ error: "终止研究需要指定当前研究类型和编号" }, 400);
+        return json(
+          await saveDragonSettings(env, body.dragonConfig, {
+            cancelResearch: body.cancelResearch,
+          }),
+        );
+      }
       if (
         !body ||
         Object.keys(body).some(
@@ -515,6 +714,7 @@ export async function api(request, env) {
               "strategyParams",
               "benchmarkCode",
               "selectionPolicyVersion",
+              "entryExecutionMode",
             ].includes(key),
         )
       )
@@ -720,6 +920,8 @@ export async function api(request, env) {
       activated: await promoteCandidate(repository, env, body.id),
     });
   } catch (error) {
+    if (error instanceof DataUpdateError)
+      return json({ error: error.message, ...error.details }, error.status);
     return json({ error: safeError(error) }, 503);
   }
 }

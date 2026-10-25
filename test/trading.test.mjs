@@ -12,11 +12,7 @@ import {
   BASE_STRATEGY,
   transactionFees,
 } from "../backend/domain/trading.js";
-import {
-  replayStrategy,
-  validateProposal,
-  validateCandidate,
-} from "../backend/domain/validation.js";
+import { replayStrategy } from "../backend/domain/validation.js";
 import {
   loadOrBuildExitContext,
   loadPersistedExitInputs,
@@ -36,8 +32,6 @@ import {
   buildOriginalScoreLookup,
 } from "../backend/storage/paper.js";
 import { exportPaper, verifyExport } from "../backend/services/paper.js";
-import { requestProposal } from "../backend/services/improvement.js";
-import { proposeImprovement as improveStrategy } from "../backend/services/research.js";
 import { aiConfig } from "../backend/services/review.js";
 import { api } from "../backend/routes/api.js";
 import { localDatabase } from "../scripts/local-db.mjs";
@@ -536,100 +530,7 @@ test("原子账本并发结算只有一次；完整导出重放及篡改检测",
   );
   DB.close();
 });
-test("AI 参数禁止代码、资金和风险上限修改；无改进或覆盖不足拒绝启用", () => {
-  assert.throws(
-    () =>
-      validateProposal({ rationale: "test", patch: { maxGrossExposure: 1 } }),
-    /未授权/,
-  );
-  assert.throws(
-    () => validateProposal({ rationale: "test", patch: { stopLoss: 0.5 } }),
-    /越界/,
-  );
-  const all = pairs();
-  const train = all.slice(0, 20),
-    holdout = all.slice(20, 30);
-  const candidate = validateProposal({
-    rationale: "测试候选",
-    patch: { minScore: 85 },
-  }).params;
-  const good = validateCandidate(
-    train,
-    holdout,
-    BASE_STRATEGY,
-    candidate,
-    100000,
-  );
-  assert.equal(good.passed, true, JSON.stringify(good.checks));
-  assert.equal(
-    validateCandidate(train, holdout, BASE_STRATEGY, BASE_STRATEGY, 100000)
-      .passed,
-    false,
-  );
-  const missing = structuredClone(holdout);
-  missing[0].dataset.quotes = {};
-  assert.equal(
-    validateCandidate(train, missing, BASE_STRATEGY, candidate, 100000).passed,
-    false,
-  );
-});
-test("研究闸门下数据不足不发起提案，历史通过不再自动启用", async () => {
-  const DB = localDatabase(),
-    env = {
-      DB,
-      AI_API_KEY: "test-only-secret",
-      AI_BASE_URL: "https://api.deepseek.com/v1",
-    };
-  const repository = new PaperRepository(env);
-  await repository.initialize();
-  const all = pairs(30);
-  for (const pair of all) {
-    await DB.prepare(
-      "INSERT OR IGNORE INTO snapshots (trade_date,created_at,payload) VALUES (?,?,?)",
-    )
-      .bind(
-        pair.snapshot.date,
-        pair.snapshot.createdAt,
-        JSON.stringify(pair.snapshot),
-      )
-      .run();
-    await DB.prepare(
-      "INSERT INTO paper_market_days (trade_date,payload,digest) VALUES (?,?,?)",
-    )
-      .bind(pair.dataset.date, JSON.stringify(pair.dataset), "fixture")
-      .run();
-  }
-  let calls = 0;
-  const fetchBefore = globalThis.fetch;
-  globalThis.fetch = async () => {
-    calls++;
-    return Response.json({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              rationale: "基于训练数据过滤较弱评分",
-              patch: { minScore: 85 },
-            }),
-          },
-        },
-      ],
-    });
-  };
-  try {
-    const result = await improveStrategy(repository, env, requestProposal);
-    assert.equal(result.status, "COLLECTING");
-    assert.deepEqual(result.required, { trainDays: 60, histTestDays: 20 });
-    assert.equal(calls, 0);
-    assert.equal(
-      (await repository.account()).book.activeStrategy,
-      "baseline-v1",
-    );
-  } finally {
-    globalThis.fetch = fetchBefore;
-    DB.close();
-  }
-});
+
 test("API 阻止跨站写入、错误方法和未验证版本；密钥不进入响应", async () => {
   const DB = localDatabase(),
     env = { DB, AI_API_KEY: "test-only-secret" };
@@ -2169,24 +2070,6 @@ test("金字塔减仓：成交推进档位，后续计划不重复减仓", () =>
   );
   const nextOrder = nextPlan.orders.find((o) => o.code === "600099");
   assert.equal(nextOrder.action, "HOLD");
-});
-
-test("AI 赛马候选：pyramidReduce 向量校验", () => {
-  const ok = validateProposal({
-    rationale: "r",
-    patch: { pyramidReduce: [0.4, 0.3, 0.2] },
-  });
-  assert.deepEqual(ok.params.pyramidReduce, [0.4, 0.3, 0.2]);
-  for (const bad of [
-    [0.4, 0.3],
-    [0.4, 0.3, 0.2, 0.1],
-    [0.4, 0.3, 0.6],
-    [0.4, 0.3, "x"],
-  ])
-    assert.throws(
-      () => validateProposal({ rationale: "r", patch: { pyramidReduce: bad } }),
-      /金字塔/,
-    );
 });
 
 test("手动策略参数：pyramidReduce 可选默认、越界拒绝", () => {

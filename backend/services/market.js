@@ -7,7 +7,8 @@ import {
   parseThemes,
 } from "../../shared/scoring.js";
 import { BENCHMARK_CODES } from "../../shared/benchmarks.js";
-import { enrichWithIndustry } from "./industry.js";
+import { enrichMarketIndustries } from "./industry.js";
+import { supplementPriceRows } from "./price-supplement.js";
 import {
   batchRecordTagData,
   recordTagReturn,
@@ -128,10 +129,10 @@ function mergeLimitBreakPools(emPool, thsPool) {
 // 既不能拖慢东财行情返回，也不能把补全失败混进用户可见告警。
 const THS_SUPPLEMENT_TIMEOUT_MS = 4000;
 
-export async function marketData(date) {
+export async function marketData(date, env) {
   const hit = CACHE.get(date);
   if (hit && Date.now() - hit.time < 120000)
-    return { ...hit.body, cached: true };
+    return enrichMarketIndustries(env, { ...hit.body, cached: true });
 
   // 东财优先：涨停池/炸板池/昨日涨停池的权威口径全部来自东财。
   // 同花顺并行拉取四个补全源（涨停原因/炸板开板次数/跌停池/连板天梯），
@@ -199,8 +200,9 @@ export async function marketData(date) {
   );
   const supplementedCount = mergedRows.filter((r) => r._thsSupplemented).length;
 
-  // 补充行业信息（从 QuanQuant stock.db）
-  const enrichedRows = enrichWithIndustry(mergedRows);
+  // Preserve provider-native EM sectors. Missing sectors are supplemented from
+  // the published EM snapshot after the raw market cache has been read.
+  const enrichedRows = mergedRows;
 
   // 记录标签数据（用于标签贡献度计算）
   try {
@@ -244,6 +246,17 @@ export async function marketData(date) {
     thsLimitBreak.status === "fulfilled" ? thsLimitBreak.value.item : null,
   );
 
+  const priceSupplement = await supplementPriceRows(
+    date,
+    [...enrichedRows, ...mergedBrokenRows],
+    {
+      quotes: (codes, day) =>
+        tradingQuotes(codes, day, { timeoutMs: 4000, singleAttempt: true }),
+    },
+  );
+  const pricedMain = priceSupplement.rows.slice(0, enrichedRows.length);
+  const pricedBroken = priceSupplement.rows.slice(enrichedRows.length);
+
   const result = {
     date,
     source:
@@ -253,11 +266,12 @@ export async function marketData(date) {
     sourceUrl: "https://quote.eastmoney.com/ztb/detail",
     scope: "沪深主板、创业板；不含 ST、科创板、北交所及连续一字新股",
     fetchedAt: new Date().toISOString(),
-    rows: enrichedRows,
+    rows: pricedMain,
     broken: mergedBrokenRows.length || null,
     // 炸板池原始行：出池持仓的炸板次数来源（方案 5 炸板不回封信号）；
     // broken 仅保留家数供封板率/展示，不丢个股记录。
-    brokenRows: mergedBrokenRows.length > 0 ? mergedBrokenRows : null,
+    brokenRows: pricedBroken.length > 0 ? pricedBroken : null,
+    priceSupplementation: priceSupplement.evidence,
     previous: previousRows,
     previousLabel: "上一交易日",
     warnings,
@@ -277,7 +291,7 @@ export async function marketData(date) {
 
   if (CACHE.size >= 20) CACHE.delete(CACHE.keys().next().value);
   CACHE.set(date, { time: Date.now(), body: result });
-  return result;
+  return enrichMarketIndustries(env, result);
 }
 
 // 拉取单个指数的日线（含当日实时报价合并）；交易日历与基准曲线共用。
@@ -452,13 +466,25 @@ export async function latestTradingDate(today = beijingDate()) {
   return dates.filter((date) => date <= today).at(-1) ?? null;
 }
 
-export async function tradingQuotes(codes, date) {
+export async function tradingQuotes(
+  codes,
+  date,
+  { timeoutMs = 12000, singleAttempt = false } = {},
+) {
   const validCodes = [...new Set(codes)].filter((code) => /^\d{6}$/.test(code));
   const quotes = {};
   for (let index = 0; index < validCodes.length; index += 150) {
     const part = validCodes.slice(index, index + 150);
     const url = `https://qt.gtimg.cn/q=${part.map(symbol).join(",")}`;
-    const response = await publicFetch(url, 12000);
+    const response = singleAttempt
+      ? await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            Referer: "https://gu.qq.com/",
+          },
+          signal: AbortSignal.timeout(timeoutMs),
+        })
+      : await publicFetch(url, timeoutMs);
     if (!response.ok) throw new Error("持仓行情获取失败");
     const text = new TextDecoder("gb18030").decode(
       await response.arrayBuffer(),
@@ -514,6 +540,15 @@ export function parseTencentQuotes(text, date) {
         };
       }
     } else orderBookQuality = "MISSING";
+    const volumeShares = Math.round(Number(fields[6]) * 100);
+    const amountCny = Number(fields[37]) * 10000;
+    const vwapCents =
+      volumeShares > 0 ? Math.round((amountCny * 100) / volumeShares) : null;
+    const amountVerified =
+      Number.isFinite(amountCny) &&
+      amountCny > 0 &&
+      vwapCents >= positive(fields[34]) &&
+      vwapCents <= positive(fields[33]);
     quotes[match[2]] = {
       date,
       closeCents: positive(fields[3]),
@@ -522,6 +557,7 @@ export function parseTencentQuotes(text, date) {
       highCents: positive(fields[33]),
       lowCents: positive(fields[34]),
       volumeShares: Math.round(Number(fields[6]) * 100),
+      ...(amountVerified ? { amountCny, vwapCents } : {}),
       limitUpCents: positive(fields[47]),
       limitDownCents: positive(fields[48]),
       ...orderBook,

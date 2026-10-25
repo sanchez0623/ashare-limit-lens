@@ -26,7 +26,12 @@ export function shanghaiDayMs(dateStr) {
 async function request(
   path,
   params = {},
-  { retries = 2, delayMs = 500, timeoutMs = 20000 } = {},
+  {
+    retries = 2,
+    delayMs = 500,
+    timeoutMs = 20000,
+    cacheTtlMs = CACHE_TTL,
+  } = {},
 ) {
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -42,7 +47,7 @@ async function request(
   // 检查缓存
   const cacheKey = url.toString();
   const hit = CACHE.get(cacheKey);
-  if (hit && Date.now() - hit.time < CACHE_TTL) {
+  if (hit && cacheTtlMs > 0 && Date.now() - hit.time < cacheTtlMs) {
     return { ...hit.data, cached: true };
   }
 
@@ -88,11 +93,14 @@ async function request(
 }
 
 // 涨停池
-export async function getLimitUpPool(dateStr, { size = 200, ...options } = {}) {
+export async function getLimitUpPool(
+  dateStr,
+  { size = 200, page = 1, ...options } = {},
+) {
   const dateMs = shanghaiDayMs(dateStr);
   return request(
     "/api/a-share/special-data/limit-up-pool",
-    { date_ms: dateMs, size },
+    { date_ms: dateMs, size, page },
     options,
   );
 }
@@ -100,12 +108,12 @@ export async function getLimitUpPool(dateStr, { size = 200, ...options } = {}) {
 // 炸板池
 export async function getLimitBreakPool(
   dateStr,
-  { size = 200, ...options } = {},
+  { size = 200, page = 1, ...options } = {},
 ) {
   const dateMs = shanghaiDayMs(dateStr);
   return request(
     "/api/a-share/special-data/limit-break-pool",
-    { date_ms: dateMs, size },
+    { date_ms: dateMs, size, page },
     options,
   );
 }
@@ -129,61 +137,210 @@ export async function getLimitUpLadder(options = {}) {
 }
 
 // 行情快照（批量）
-export async function getPricesSnapshot(thscodes, { limit = 100 } = {}) {
+export async function getPricesSnapshot(
+  thscodes,
+  { limit = 100, ...options } = {},
+) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Error("快照分组大小无效");
   // 单次最多 100 个，需要分批
   const codes = Array.isArray(thscodes)
     ? thscodes
     : String(thscodes).split(",");
+  if (!codes.length) return { item: [], total: 0 };
   if (codes.length <= limit) {
-    return request("/api/a-share/prices/snapshot", {
-      thscodes: codes.join(","),
-    });
+    return request(
+      "/api/a-share/prices/snapshot",
+      {
+        thscodes: codes.join(","),
+      },
+      { ...options, cacheTtlMs: 0 },
+    );
   }
 
   // 分批请求
   const results = [];
+  const batches = [];
   for (let i = 0; i < codes.length; i += limit) {
     const batch = codes.slice(i, i + limit);
-    const res = await request("/api/a-share/prices/snapshot", {
-      thscodes: batch.join(","),
-    });
+    const res = await request(
+      "/api/a-share/prices/snapshot",
+      {
+        thscodes: batch.join(","),
+      },
+      { ...options, cacheTtlMs: 0 },
+    );
+    batches.push(res);
     results.push(...(res.item || []));
     await new Promise((r) => setTimeout(r, 300)); // 避免限流
   }
-  return { ...results[0], item: results, total: results.length };
+  return {
+    ...batches[0],
+    item: results,
+    total: results.length,
+    batches: batches.map((batch) => ({ timestamp: batch.timestamp })),
+  };
+}
+
+export async function getPricesHistorical(
+  thscode,
+  { start, end, adjust = "none", ...options } = {},
+) {
+  if (
+    !/^\d{6}\.(SH|SZ)$/.test(thscode) ||
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end < start ||
+    !["none", "forward"].includes(adjust)
+  )
+    throw new Error("日线请求参数无效");
+  return request(
+    "/api/a-share/prices/historical",
+    {
+      thscode,
+      interval: "1d",
+      start,
+      end,
+      adjust,
+    },
+    options,
+  );
 }
 
 // 集合竞价快照
-export async function getAuctionSnapshot(thscodes, { stage = "final" } = {}) {
+export async function getAuctionSnapshot(
+  thscodes,
+  { stage = "final", ...options } = {},
+) {
   const codes = Array.isArray(thscodes)
     ? thscodes
     : String(thscodes).split(",");
   if (codes.length <= 100) {
-    return request("/api/a-share/auction/snapshot", {
-      thscodes: codes.join(","),
-      stage,
-    });
+    return request(
+      "/api/a-share/auction/snapshot",
+      {
+        thscodes: codes.join(","),
+        stage,
+      },
+      { ...options, cacheTtlMs: 0 },
+    );
   }
 
   // 分批请求
   const results = [];
+  const batches = [];
   for (let i = 0; i < codes.length; i += 100) {
     const batch = codes.slice(i, i + 100);
-    const res = await request("/api/a-share/auction/snapshot", {
-      thscodes: batch.join(","),
-      stage,
-    });
+    const res = await request(
+      "/api/a-share/auction/snapshot",
+      {
+        thscodes: batch.join(","),
+        stage,
+      },
+      { ...options, cacheTtlMs: 0 },
+    );
+    batches.push(res);
     results.push(...(res.item || []));
     await new Promise((r) => setTimeout(r, 300));
   }
-  return { ...results[0], item: results, total: results.length };
+  return {
+    ...batches[0],
+    item: results,
+    total: results.length,
+    batches: batches.map(({ timestamp, auction_phase, data_status }) => ({
+      timestamp,
+      auction_phase,
+      data_status,
+    })),
+    ...(batches.some(
+      (b) =>
+        b.auction_phase !== batches[0].auction_phase ||
+        b.data_status !== batches[0].data_status,
+    )
+      ? { data_status: "not_ready" }
+      : {}),
+  };
 }
 
 // 短线风向标竞价基准（历史可查）
-export async function getShortTermBenchmark(dateStr) {
-  return request("/api/a-share/auction/short-term-benchmark", {
-    date: dateStr,
-  });
+export async function getShortTermBenchmark(dateStr, options = {}) {
+  return request(
+    "/api/a-share/auction/short-term-benchmark",
+    {
+      date: dateStr,
+    },
+    options,
+  );
+}
+
+export async function getAuctionOpportunityDates(options = {}) {
+  return request(
+    "/api/a-share/special-data/auction-opportunity-dates",
+    {},
+    options,
+  );
+}
+
+export async function getAuctionOpportunities({
+  date,
+  thscodes = [],
+  exclude_st = true,
+  maxPages = 50,
+  deadlineMs = 4000,
+  ...options
+} = {}) {
+  const codes = Array.isArray(thscodes)
+    ? thscodes
+    : String(thscodes).split(",");
+  const groups = codes.length
+    ? Array.from({ length: Math.ceil(codes.length / 50) }, (_, i) =>
+        codes.slice(i * 50, i * 50 + 50),
+      )
+    : [[]];
+  const deadline = Date.now() + deadlineMs;
+  const groupsResult = await Promise.all(
+    groups.map(async (group) => {
+      const items = [];
+      let metadata = {},
+        truncated = false;
+      for (let page = 1; page <= maxPages; page++) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          truncated = true;
+          break;
+        }
+        const response = await request(
+          "/api/a-share/special-data/auction-stock-opportunities",
+          {
+            date,
+            thscodes: group.length ? group.join(",") : undefined,
+            exclude_st,
+            page,
+            size: 20,
+          },
+          {
+            ...options,
+            timeoutMs: Math.max(
+              1,
+              Math.min(options.timeoutMs ?? 4000, remaining),
+            ),
+            retries: 0,
+            cacheTtlMs: 10000,
+          },
+        );
+        metadata = response;
+        items.push(...(response.item ?? []));
+        if (!response.pagination?.has_next) break;
+        if (page === maxPages) truncated = true;
+      }
+      return { ...metadata, item: items, truncated };
+    }),
+  );
+  return {
+    ...groupsResult[0],
+    item: groupsResult.flatMap((r) => r.item),
+    truncated: groupsResult.some((r) => r.truncated),
+  };
 }
 
 // 清除缓存

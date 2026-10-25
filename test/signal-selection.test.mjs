@@ -5,7 +5,6 @@ import {
   newBook,
   scoreSignals,
   createPlan,
-  defensivePlan,
   executePlan,
   transactionFees,
 } from "../backend/domain/trading.js";
@@ -69,9 +68,7 @@ function tiedSnapshot(date = dateAt(0)) {
     ...s,
     rawScore: 0,
     factors: [100, 100, 95, 100, 69, 100].map((value) => ({ value })),
-    // v5 默认设买点闸门：fixture stocks 默认带合格买点（打板），
-    // 避免每个测试都要显式传 v3 政策。需要测试"无买点被拒"的用例
-    // 显式清空 buyPoint.labels。
+    // V5 合成候选默认命中打板；拒绝用例须显式清空买点。
     buyPoint: {
       primary: { type: BUY_POINT_TYPES.LIMIT_UP_MOMENTUM },
       all: [{ type: BUY_POINT_TYPES.LIMIT_UP_MOMENTUM }],
@@ -135,7 +132,7 @@ test("新账户、缺省政策及无期初账本的重放统一默认 v5", () =>
   );
 });
 
-test("v3 存量账户受研究窗口保护，释放后仅升级一次；显式 v1/v4 保留", async () =>
+test("V5 升级：存量账户受研究窗口保护，释放后仅升级一次", async () =>
   withDB(async (env, DB) => {
     const repo = new PaperRepository(env);
     const account = await repo.initialize();
@@ -169,50 +166,22 @@ test("v3 存量账户受研究窗口保护，释放后仅升级一次；显式 v
       JSON.parse(changes[0].payload).after.selectionPolicy.version,
       SELECTION_VERSION_V5,
     );
-    for (const version of [LEGACY_SELECTION_VERSION, SELECTION_VERSION_V4]) {
-      await DB.prepare("UPDATE paper_accounts SET state=? WHERE id='primary'")
-        .bind(JSON.stringify({ ...original, selectionPolicyVersion: version }))
-        .run();
-      assert.equal(
-        (await repo.initialize()).book.selectionPolicyVersion,
-        version,
-      );
-    }
   }));
 
-test("各版本仍执行评分及覆盖门槛，v5 只豁免具有 EOD 买点的额外候选", () => {
-  for (const version of [
-    LEGACY_SELECTION_VERSION,
-    SELECTION_VERSION_V2,
-    SELECTION_VERSION_V3,
-    SELECTION_VERSION_V4,
-    SELECTION_VERSION_V5,
-  ]) {
-    const snap = tiedSnapshot();
-    for (const stock of snap.stocks) stock.coverage = 30;
-    snap.stocks[0].candidateSource = "extra";
-    assert.equal(
-      makePlan(snap, newBook(), { selectionPolicy: selectionPolicy(version) })
-        .orders.length,
-      0,
-      version,
-    );
-    for (const stock of snap.stocks) {
-      stock.coverage = 100;
-      stock.factors = Array.from({ length: 6 }, () => ({ value: 20 }));
-    }
-    assert.equal(
-      makePlan(snap, newBook(), { selectionPolicy: selectionPolicy(version) })
-        .orders.length,
-      0,
-      version,
-    );
+test("V5 评分及覆盖门槛：仅标记 extra 而无合格 EOD 买点不能豁免", () => {
+  const snap = tiedSnapshot();
+  for (const stock of snap.stocks) stock.coverage = 30;
+  snap.stocks[0].candidateSource = "extra";
+  assert.equal(makePlan(snap).orders.length, 0);
+  for (const stock of snap.stocks) {
+    stock.coverage = 100;
+    stock.factors = Array.from({ length: 6 }, () => ({ value: 20 }));
   }
+  assert.equal(makePlan(snap).orders.length, 0);
 });
 
-test("v3 股票分类路由：按类别切换权重预设，平庸型被排除出候选池", () => {
+test("V5 股票分类路由：按类别切换权重，平庸型禁止新增建仓", () => {
   const snap = tiedSnapshot();
-  // 002343 连板龙头（relay 权重）；002692 未分类（策略权重）；300001 平庸
   snap.stocks[0].stockClass = "relay-leader";
   delete snap.stocks[1].stockClass;
   snap.stocks.push({
@@ -220,31 +189,21 @@ test("v3 股票分类路由：按类别切换权重预设，平庸型被排除�
     code: "300001",
     stockClass: "mediocre",
   });
-  // v2：无路由、无排除 → 三只全部参与，统一策略权重
-  const v2 = scoreSignals(
+  const signals = scoreSignals(
     snap,
     strategy,
-    selectionPolicy(SELECTION_VERSION_V2),
-  );
-  assert.equal(v2.length, 3);
-  // v3：平庸股仍保留在信号列表（持仓股依赖当日信号触发风险动作），
-  // 但按策略权重评分；龙头按 relay 权重重算（[30,20,10,10,20,10] → 93.3 分），
-  // 未分类的 002692 保持策略权重（balanced → 94.6 分）并反超龙头居首
-  const v3 = scoreSignals(
-    snap,
-    strategy,
-    selectionPolicy(DEFAULT_SELECTION_VERSION),
+    selectionPolicy(SELECTION_VERSION_V5),
   );
   assert.deepEqual(
-    v3.map((s) => [s.code, s.score]),
+    signals.map((s) => [s.code, s.score]),
     [
       ["002692", 95],
       ["300001", 95],
       ["002343", 93],
     ],
   );
-  // 默认政策继承 v3 分类路由：平庸股不出现在新增买入订单中
   const plan = makePlan(snap);
+  assert.equal(plan.selectionPolicy.version, SELECTION_VERSION_V5);
   assert.equal(
     plan.selectionAudit.candidates.find((c) => c.code === "300001").reason,
     "平庸型不进入新增候选池",
@@ -255,7 +214,7 @@ test("v3 股票分类路由：按类别切换权重预设，平庸型被排除�
   );
 });
 
-test("v3 平庸剔除不影响持仓风险信号：持仓股当日走弱仍减仓，与 v2 一致", () => {
+test("V5 平庸剔除不影响持仓风险信号：当日走弱仍减仓", () => {
   const snap = tiedSnapshot();
   // 002343：已持仓且当日被判定平庸（评分 40，旧分可能很高）
   snap.stocks[0].stockClass = "mediocre";
@@ -284,18 +243,12 @@ test("v3 平庸剔除不影响持仓风险信号：持仓股当日走弱仍减�
   book.cashCents = book.initialCashCents - 1_000_000;
   book.equityCents = book.initialCashCents;
   book.peakEquityCents = book.equityCents;
-  const v2 = makePlan(snap, book, {
-    selectionPolicy: selectionPolicy(SELECTION_VERSION_V2),
-  });
-  const v3 = makePlan(snap, book); // 默认政策继承 v3 分类路由
-  const v2Action = v2.orders.find((o) => o.code === "002343")?.action;
-  const v3Action = v3.orders.find((o) => o.code === "002343")?.action;
-  // 当日评分 40 < 65 → 走弱减仓；v3 不因剔除平庸而沿用旧评分做正向 T
-  assert.equal(v3Action, v2Action);
-  assert.equal(v3Action, "REDUCE");
+  const plan = makePlan(snap, book);
+  assert.equal(plan.selectionPolicy.version, SELECTION_VERSION_V5);
+  assert.equal(plan.orders.find((o) => o.code === "002343")?.action, "REDUCE");
 });
 
-test("v3 未持仓的平庸股：保留在候选审计中但标注不进入候选池", () => {
+test("V5 未持仓的平庸股：保留在候选审计中但标注不进入候选池", () => {
   const snap = tiedSnapshot();
   snap.stocks[0].stockClass = "mediocre";
   const plan = makePlan(snap); // 无持仓 → 全部为新增候选
@@ -311,38 +264,11 @@ test("v3 未持仓的平庸股：保留在候选审计中但标注不进入候�
   assert.match(other.reason, /通过资格与资金检查/);
 });
 
-test("v4 政策摘要独立重算一致；字段缺失、改值或跨版本冒充均拒绝", async () => {
-  const v4 = selectionPolicy(SELECTION_VERSION_V4);
-  assert.equal(v4.brokenCandidateSource, true, "v4 启用炸板候选来源");
-  assert.equal(v4.stockClassRouting, true, "v4 继承 v3 的股票分类路由");
-  assert.equal(v4.scorePrecision, 6);
-  assert.equal(v4.liquiditySource, "signal-day-turnover-cny");
-  assert.equal(selectionPolicyDigest(v4), await digestOf(v4));
-  assert.deepEqual(frozenSelectionPolicy(selectionPolicyFields(v4)), v4);
-  assert.throws(
-    () => selectionPolicyDigest({ ...v4, brokenCandidateSource: undefined }),
-    /内容与声明版本不一致/,
-  );
-  assert.throws(
-    () => selectionPolicyDigest({ ...v4, brokenCandidateSource: false }),
-    /内容与声明版本不一致/,
-  );
-  // v3 内容改挂 v4 版本：字段集合不同，必须拒绝
-  assert.throws(
-    () =>
-      selectionPolicyDigest({
-        ...selectionPolicy(SELECTION_VERSION_V3),
-        version: SELECTION_VERSION_V4,
-      }),
-    /内容与声明版本不一致/,
-  );
-});
-
 test("v5 政策摘要独立重算一致；字段缺失、改值或跨版本冒充均拒绝", async () => {
   const v5 = selectionPolicy(SELECTION_VERSION_V5);
-  assert.equal(v5.brokenCandidateSource, true, "v5 继承 v4 的炸板候选来源");
+  assert.equal(v5.brokenCandidateSource, true, "V5 启用炸板候选来源");
   assert.equal(v5.extraCandidateSource, true, "v5 启用 EOD 候选来源");
-  assert.equal(v5.stockClassRouting, true, "v5 继承 v3 的股票分类路由");
+  assert.equal(v5.stockClassRouting, true, "V5 启用股票分类路由");
   assert.equal(v5.scorePrecision, 6);
   assert.equal(v5.liquiditySource, "signal-day-turnover-cny");
   assert.equal(selectionPolicyDigest(v5), await digestOf(v5));
@@ -366,32 +292,22 @@ test("v5 政策摘要独立重算一致；字段缺失、改值或跨版本冒�
   );
 });
 
-test("买点闸门属于 v4 和 v5；v1/v2/v3 一律不设闸门", () => {
-  for (const version of [SELECTION_VERSION_V4, SELECTION_VERSION_V5]) {
-    const gate = buyPointGateForPolicy(selectionPolicy(version));
-    assert.ok(gate instanceof Set, `${version} 设买点闸门`);
-    assert.ok(gate.has(BUY_POINT_TYPES.LIMIT_UP_MOMENTUM));
-    assert.ok(gate.has(BUY_POINT_TYPES.BROKEN_BOARD_DIP));
-  }
-  for (const version of [
-    LEGACY_SELECTION_VERSION,
-    SELECTION_VERSION_V2,
-    SELECTION_VERSION_V3,
-  ])
-    assert.equal(
-      buyPointGateForPolicy(selectionPolicy(version)),
-      null,
-      `${version} 不设买点闸门`,
-    );
-  assert.ok(
-    buyPointGateForPolicy(selectionPolicy()) instanceof Set,
-    "默认是 v5，设买点闸门",
+test("V5 买点闸门放行打板和炸板低吸，EOD 买点由额外候选资格处理", () => {
+  const gate = buyPointGateForPolicy(selectionPolicy(SELECTION_VERSION_V5));
+  assert.ok(gate instanceof Set);
+  assert.deepEqual(
+    [...gate].sort(),
+    [
+      BUY_POINT_TYPES.LIMIT_UP_MOMENTUM,
+      BUY_POINT_TYPES.BROKEN_BOARD_DIP,
+    ].sort(),
   );
+  assert.equal(gate.has(BUY_POINT_TYPES.FIRST_NEG_DIP), false);
+  assert.equal(gate.has(BUY_POINT_TYPES.FAKE_NEG_LIMIT_DIP), false);
+  assert.deepEqual(buyPointGateForPolicy(selectionPolicy()), gate);
 });
 
-test("v4 把炸板候选并入信号；v3 与旧快照逐字节不变", () => {
-  const v4Policy = selectionPolicy(SELECTION_VERSION_V4);
-  const v3Policy = selectionPolicy(SELECTION_VERSION_V3);
+test("V5 把炸板候选并入信号；缺少可选候选池时仍可评分", () => {
   const snap = tiedSnapshot();
   snap.brokenStocks = [
     {
@@ -402,25 +318,25 @@ test("v4 把炸板候选并入信号；v3 与旧快照逐字节不变", () => {
       candidateSource: "broken",
     },
   ];
-  const v4 = scoreSignals(snap, strategy, v4Policy);
-  const v3 = scoreSignals(snap, strategy, v3Policy);
-  assert.equal(v4.length, snap.stocks.length + 1);
-  assert.equal(v4.at(-1).code, "300999");
-  assert.equal(v4.at(-1).candidateSource, "broken");
-  assert.equal(v3.length, snap.stocks.length);
-  assert.ok(
-    v3.every((s) => !Object.hasOwn(s, "candidateSource")),
-    "v3 信号不携带炸板候选",
+  const signals = scoreSignals(
+    snap,
+    strategy,
+    selectionPolicy(SELECTION_VERSION_V5),
   );
-  // 旧快照无 brokenStocks 字段：v4 兜底空数组，行为与 v3 一致
-  const legacySnap = tiedSnapshot();
+  assert.equal(signals.length, snap.stocks.length + 1);
+  assert.equal(signals.at(-1).code, "300999");
+  assert.equal(signals.at(-1).candidateSource, "broken");
+  const withoutPools = tiedSnapshot();
   assert.deepEqual(
-    scoreSignals(legacySnap, strategy, v4Policy).map((s) => s.code),
-    scoreSignals(legacySnap, strategy, v3Policy).map((s) => s.code),
+    scoreSignals(withoutPools, strategy),
+    scoreSignals(
+      { ...withoutPools, brokenStocks: [], extraStocks: [] },
+      strategy,
+    ),
   );
 });
 
-test("v4 建仓闸门：无合格买点被拒并记因，炸板低吸候选放行", () => {
+test("V5 建仓闸门：无合格买点被拒并记因，炸板低吸候选放行", () => {
   const snap = tiedSnapshot();
   // 涨停池候选无买点（一字板低换手被排除、或涨停但无打板形态）
   for (const stock of snap.stocks)
@@ -443,8 +359,8 @@ test("v4 建仓闸门：无合格买点被拒并记因，炸板低吸候选放�
       },
     },
   ];
-  const v4Policy = selectionPolicy(SELECTION_VERSION_V4);
-  const plan = makePlan(snap, newBook(), { selectionPolicy: v4Policy });
+  const v5Policy = selectionPolicy(SELECTION_VERSION_V5);
+  const plan = makePlan(snap, newBook(), { selectionPolicy: v5Policy });
   assert.equal(plan.orders.length, 1);
   assert.equal(plan.orders[0].code, "300999");
   assert.equal(
@@ -455,11 +371,6 @@ test("v4 建仓闸门：无合格买点被拒并记因，炸板低吸候选放�
     plan.selectionAudit.candidates.find((c) => c.code === "300999").reason,
     /通过资格与资金检查/,
   );
-  // 同一快照在 v3 下不设闸门：流动性决胜者照常建仓，行为逐字节不变
-  const v3Plan = makePlan(snap, newBook(), {
-    selectionPolicy: selectionPolicy(SELECTION_VERSION_V3),
-  });
-  assert.ok(v3Plan.orders.some((o) => o.code === "002692"));
   // 闸门只约束新增建仓：持仓的风险保护动作不被闸门拦下
   const book = newBook(100000);
   book.positions = [
@@ -482,22 +393,21 @@ test("v4 建仓闸门：无合格买点被拒并记因，炸板低吸候选放�
   book.cashCents = book.initialCashCents - 1_000_000;
   book.equityCents = book.initialCashCents;
   book.peakEquityCents = book.equityCents;
-  // 002343 当日走弱（评分 40 < 65）：v4 闸门不得拦下走弱减仓
+  // 002343 当日走弱（评分 40 < 65）：V5 闸门不得拦下走弱减仓
   snap.stocks[0].factors = [40, 40, 40, 40, 40, 40].map((value) => ({
     value,
   }));
   snap.stocks[0].deduction = 0;
-  const gated = makePlan(snap, book, { selectionPolicy: v4Policy });
+  const gated = makePlan(snap, book, { selectionPolicy: v5Policy });
   assert.equal(
     gated.orders.find((o) => o.code === "002343")?.action,
     "REDUCE",
-    "v4 闸门不改变持仓的走弱减仓",
+    "V5 闸门不改变持仓的走弱减仓",
   );
 });
 
 test("v5 把 EOD 候选并入信号；买点合格候选豁免覆盖/评分检查", () => {
   const v5Policy = selectionPolicy(SELECTION_VERSION_V5);
-  const v3Policy = selectionPolicy(SELECTION_VERSION_V3);
   const snap = tiedSnapshot();
   // EOD 候选：评分因子结构性缺失（覆盖 30 < 80），但买点合格（首阴低吸）
   snap.extraStocks = [
@@ -539,19 +449,10 @@ test("v5 把 EOD 候选并入信号；买点合格候选豁免覆盖/评分检�
   assert.equal(v5Signals.length, snap.stocks.length + 2);
   assert.ok(v5Signals.some((s) => s.code === "600999"));
   assert.ok(v5Signals.some((s) => s.code === "600998"));
-  // v3 不并入 extraStocks
-  const v3Signals = scoreSignals(snap, strategy, v3Policy);
-  assert.equal(v3Signals.length, snap.stocks.length);
-  assert.ok(!v3Signals.some((s) => s.code === "600999"));
-  // 旧快照无 extraStocks 字段：v5 兜底空数组，行为与 v4 一致
-  const legacySnap = tiedSnapshot();
+  const withoutExtra = tiedSnapshot();
   assert.deepEqual(
-    scoreSignals(legacySnap, strategy, v5Policy).map((s) => s.code),
-    scoreSignals(
-      legacySnap,
-      strategy,
-      selectionPolicy(SELECTION_VERSION_V4),
-    ).map((s) => s.code),
+    scoreSignals(withoutExtra, strategy, v5Policy),
+    scoreSignals({ ...withoutExtra, extraStocks: [] }, strategy, v5Policy),
   );
 });
 
@@ -642,7 +543,7 @@ test("v5 建仓闸门：买点合格候选豁免覆盖/评分，不合格候选�
   );
 });
 
-test("v2 模拟账户在窗口释放后升级到最新版本，启用股票分类路由", async () =>
+test("V5 升级：旧账户升级后启用当前选股政策", async () =>
   withDB(async (env, DB) => {
     const repo = new PaperRepository(env);
     const book = (await repo.initialize()).book;
@@ -660,12 +561,9 @@ test("v2 模拟账户在窗口释放后升级到最新版本，启用股票分�
       DEFAULT_SELECTION_VERSION,
     );
   }));
-test("真实同因子并列：v2 选成交额较大者；v1 保留整数分及代码顺序", () => {
+test("V5 真实同因子并列按成交额决胜，保留输入顺序与候选跳过原因", () => {
   const snap = tiedSnapshot();
-  const modern = makePlan(snap);
-  const legacy = makePlan(snap, newBook(), {
-    selectionPolicy: selectionPolicy(LEGACY_SELECTION_VERSION),
-  });
+  const plan = makePlan(snap);
   assert.deepEqual(
     scoreSignals(snap, strategy).map((s) => [s.code, s.score, s.scoreValue]),
     [
@@ -673,11 +571,10 @@ test("真实同因子并列：v2 选成交额较大者；v1 保留整数分及�
       ["002343", 95, 94.6],
     ],
   );
-  assert.equal(modern.orders[0].code, "002692");
-  assert.equal(modern.orders[0].liquidityAmountCents, 26_600_000_000);
-  assert.equal(legacy.orders[0].code, "002343");
-  assert.equal(Object.hasOwn(legacy.orders[0], "scoreValue"), false);
-  assert.equal(modern.selectionAudit.candidates[1].reason, "建仓名额已用完");
+  assert.equal(plan.selectionPolicy.version, SELECTION_VERSION_V5);
+  assert.equal(plan.orders[0].code, "002692");
+  assert.equal(plan.orders[0].liquidityAmountCents, 26_600_000_000);
+  assert.equal(plan.selectionAudit.candidates[1].reason, "建仓名额已用完");
   assert.deepEqual(snap, tiedSnapshot(), "排序不能修改归档评分或快照顺序");
 });
 test("整数展示并列先比较精确分，未知成交额不盖过较高分", () => {
@@ -764,17 +661,7 @@ test("缺失评分或覆盖不能入选；重复股票代码拒绝生成计划",
   snap.stocks[1].code = snap.stocks[0].code;
   assert.throws(() => makePlan(snap), /重复股票代码/);
 });
-test("v1 显式重跑仍沿用原有缺失覆盖字段判定，v2 从严筛选", () => {
-  const snap = tiedSnapshot();
-  snap.stocks.forEach((s) => delete s.coverage);
-  assert.equal(
-    makePlan(snap, newBook(), {
-      selectionPolicy: selectionPolicy(LEGACY_SELECTION_VERSION),
-    }).orders[0].code,
-    "002343",
-  );
-  assert.equal(makePlan(snap).orders.length, 0);
-});
+
 test("打乱股票和板块输入不改变排序、规范化快照摘要及计划摘要", async () => {
   const snap = tiedSnapshot();
   snap.sectors.push({ name: "另一行业", score: 70 });
@@ -797,102 +684,49 @@ test("打乱股票和板块输入不改变排序、规范化快照摘要及计�
   reversed.stocks[0] = { ...reversed.stocks[0], amount: 2 };
   assert.notEqual(await selectionSnapshotDigest(reversed), sourceDigest);
 });
-test("炸板候选纳入选择摘要且乱序不敏感；旧快照无字段时摘要不变", async () => {
-  // 此测试验证快照摘要行为，使用 v3 避免 v5 把 brokenStocks 并入 candidateRows
-  // （测试用 brokenStocks 无 factors 字段，scoreSignals 会报错）
-  const v3 = selectionPolicy(SELECTION_VERSION_V3);
+test("V5 涨停、炸板和 EOD 候选共同冻结摘要，乱序不改变计划", async () => {
   const snap = tiedSnapshot();
-  const legacyDigest = await selectionSnapshotDigest(snap);
-  // 旧快照形状（无 brokenStocks）：新逻辑不补空数组，摘要逐字节不变
-  assert.equal(await selectionSnapshotDigest(snap), legacyDigest);
-  assert.equal(
-    await digest(
-      makePlan(snap, newBook(), {
-        selectionPolicy: v3,
-        snapshotDigest: legacyDigest,
-      }),
-    ),
-    await digest(
-      makePlan({ ...snap }, newBook(), {
-        selectionPolicy: v3,
-        snapshotDigest: legacyDigest,
-      }),
-    ),
-  );
+  const originalDigest = await selectionSnapshotDigest(snap);
   snap.brokenStocks = [
-    { code: "600999", name: "炸板乙", score: 70, coverage: 100 },
-    { code: "600003", name: "炸板甲", score: 60, coverage: 100 },
+    {
+      ...snap.stocks[0],
+      code: "600999",
+      name: "炸板乙",
+      candidateSource: "broken",
+    },
+    {
+      ...snap.stocks[1],
+      code: "600003",
+      name: "炸板甲",
+      candidateSource: "broken",
+    },
   ];
-  const newDigest = await selectionSnapshotDigest(snap);
-  assert.notEqual(newDigest, legacyDigest);
-  const reversed = {
-    ...snap,
-    brokenStocks: [...snap.brokenStocks].reverse(),
-  };
-  assert.equal(await selectionSnapshotDigest(reversed), newDigest);
+  snap.extraStocks = [
+    {
+      ...snap.stocks[0],
+      code: "600998",
+      candidateSource: "extra",
+      buyPoint: {
+        primary: { type: BUY_POINT_TYPES.FIRST_NEG_DIP },
+        all: [{ type: BUY_POINT_TYPES.FIRST_NEG_DIP }],
+        labels: [BUY_POINT_TYPES.FIRST_NEG_DIP],
+      },
+    },
+  ];
+  const snapshotDigest = await selectionSnapshotDigest(snap);
+  assert.notEqual(snapshotDigest, originalDigest);
+  const reversed = { ...snap, brokenStocks: [...snap.brokenStocks].reverse() };
+  assert.equal(await selectionSnapshotDigest(reversed), snapshotDigest);
   assert.equal(
-    await digest(
-      makePlan(reversed, newBook(), {
-        selectionPolicy: v3,
-        snapshotDigest: newDigest,
-      }),
-    ),
-    await digest(
-      makePlan(snap, newBook(), {
-        selectionPolicy: v3,
-        snapshotDigest: newDigest,
-      }),
-    ),
+    await digest(makePlan(reversed, newBook(), { snapshotDigest })),
+    await digest(makePlan(snap, newBook(), { snapshotDigest })),
   );
+  const changed = structuredClone(snap);
+  changed.extraStocks[0].amount = 1;
+  assert.notEqual(await selectionSnapshotDigest(changed), snapshotDigest);
 });
-test("炸板候选不进入候选池与建仓：即使分数达标也不产生订单", () => {
-  const snap = tiedSnapshot();
-  const codes = snap.stocks.map((s, i) => `6000${90 + i}`);
-  snap.brokenStocks = codes.map((code, i) => ({
-    ...snap.stocks[0],
-    code,
-    name: `炸板样本${i + 1}`,
-    score: 100,
-    coverage: 100,
-    candidateSource: "broken",
-  }));
-  // v3 不并入炸板候选——v4/v5 才把 brokenStocks 纳入 candidateRows
-  const v3Policy = selectionPolicy(SELECTION_VERSION_V3);
-  const plan = makePlan(snap, newBook(), { selectionPolicy: v3Policy });
-  assert.ok(plan.orders.length > 0, "涨停池照常建仓");
-  assert.ok(
-    plan.orders.every((order) => !codes.includes(order.code)),
-    "不产生任何炸板来源订单",
-  );
-  assert.equal(
-    plan.selectionAudit.candidates.some((c) => codes.includes(c.code)),
-    false,
-    "炸板候选不进入选股审计",
-  );
-  const signals = scoreSignals(
-    snap,
-    { ...BASE_STRATEGY, maxPositions: 1 },
-    v3Policy,
-  );
-  assert.equal(signals.length, snap.stocks.length);
-  assert.ok(
-    signals.every((s) => !codes.includes(s.code)),
-    "评分信号只来自涨停池",
-  );
-});
-test("政策摘要独立 SHA-256 重算一致；未知版本与同版本改内容拒绝", async () => {
-  for (const version of [
-    LEGACY_SELECTION_VERSION,
-    SELECTION_VERSION_V2,
-    SELECTION_VERSION_V3,
-    SELECTION_VERSION_V4,
-    SELECTION_VERSION_V5,
-  ]) {
-    const p = selectionPolicy(version);
-    assert.equal(selectionPolicyDigest(p), await digestOf(p));
-    assert.deepEqual(frozenSelectionPolicy(selectionPolicyFields(p)), p);
-  }
-  assert.equal(frozenSelectionPolicy({}).version, LEGACY_SELECTION_VERSION);
+
+test("V5 冻结政策拒绝未知版本、缺失摘要和内容篡改", async () => {
   assert.throws(() => selectionPolicy("__proto__"), /不受支持/);
   assert.throws(
     () => frozenSelectionPolicy({ selectionPolicy: selectionPolicy() }),
@@ -987,7 +821,7 @@ test("主账户和影子计划使用同一政策与快照；重复冻结不覆�
     });
     assert.equal(again.digest, ignored);
   }));
-test("旧账户有活动窗口时保持 v1；释放后仅升级未来政策且留审计记录", async () =>
+test("V5 升级保留已冻结旧计划，活动窗口释放后仅更新未来政策", async () =>
   withDB(async (env, DB) => {
     const repo = new PaperRepository(env);
     const book = await oldAccount(repo, DB);
@@ -1008,7 +842,7 @@ test("旧账户有活动窗口时保持 v1；释放后仅升级未来政策且�
     await repo.initialize();
     assert.equal((await repo.history("paper_configuration_history")).length, 1);
   }));
-test("旧账户升级与窗口领取并发时，SQL 守卫阻止改参及伪审计写入", async () =>
+test("V5 升级与窗口领取并发时先阻止写入，窗口释放后正常升级", async () =>
   withDB(async (env, DB) => {
     const repo = new PaperRepository(env);
     await oldAccount(repo, DB);
@@ -1023,8 +857,16 @@ test("旧账户升级与窗口领取并发时，SQL 守卫阻止改参及伪审�
       LEGACY_SELECTION_VERSION,
     );
     assert.equal((await repo.history("paper_configuration_history")).length, 0);
+    DB.batch = batch;
+    await DB.prepare("DELETE FROM research_window_owners").run();
+    await repo.upgradeSelectionPolicy();
+    assert.equal(
+      (await repo.account()).book.selectionPolicyVersion,
+      SELECTION_VERSION_V5,
+    );
+    assert.equal((await repo.history("paper_configuration_history")).length, 1);
   }));
-test("盘后改费用重冻计划仍保留旧选股版本", async () =>
+test("V5 盘后改费用重冻计划保留当前政策及成交额排序", async () =>
   withDB(async (env, DB) => {
     const repo = new PaperRepository(env);
     await repo.initialize();
@@ -1035,7 +877,7 @@ test("盘后改费用重冻计划仍保留旧选股版本", async () =>
       .run();
     await saveSnapshot(DB, tiedSnapshot());
     const old = makePlan(tiedSnapshot(), account.book, {
-      selectionPolicy: selectionPolicy(LEGACY_SELECTION_VERSION),
+      selectionPolicy: selectionPolicy(SELECTION_VERSION_V5),
     });
     await repo.savePlan(old);
     await repo.configure(
@@ -1044,29 +886,20 @@ test("盘后改费用重冻计划仍保留旧选股版本", async () =>
     );
     assert.equal(
       (await repo.plan(dateAt(0))).selectionPolicy.version,
-      LEGACY_SELECTION_VERSION,
+      SELECTION_VERSION_V5,
     );
-    assert.equal((await repo.plan(dateAt(0))).orders[0].code, "002343");
+    assert.equal((await repo.plan(dateAt(0))).orders[0].code, "002692");
     assert.equal((await repo.history("paper_plan_revisions")).length, 1);
   }));
-test("旧版收益回放显式选择 v1；候选与对照共享冻结政策", () => {
+test("V5 收益回放与候选验证共用冻结政策及摘要", () => {
   const snap = tiedSnapshot();
   const day = dataset(dateAt(1), "002343");
   day.quotes["002692"] = { ...day.quotes["002343"] };
   day.minutes["002692"] = bars();
   const pairs = [{ snapshot: snap, dataset: day }];
-  const legacy = replayStrategy(
-    pairs,
-    strategy,
-    1_000_000,
-    undefined,
-    null,
-    null,
-    { selectionPolicy: selectionPolicy(LEGACY_SELECTION_VERSION) },
-  );
-  const modern = replayStrategy(pairs, strategy, 1_000_000);
-  assert.equal(legacy.fills[0].code, "002343");
-  assert.equal(modern.fills[0].code, "002692");
+  const replay = replayStrategy(pairs, strategy, 1_000_000);
+  assert.equal(replay.fills[0].code, "002692");
+  assert.equal(replay.selectionPolicy.version, SELECTION_VERSION_V5);
   const validation = validateCandidate(
     [],
     pairs,
@@ -1076,13 +909,16 @@ test("旧版收益回放显式选择 v1；候选与对照共享冻结政策", ()
     undefined,
     null,
     null,
-    { selectionPolicy: selectionPolicy(LEGACY_SELECTION_VERSION) },
+    {
+      selectionPolicy: selectionPolicy(SELECTION_VERSION_V5),
+    },
   );
   assert.equal(
     validation.baseline.selectionPolicyDigest,
     validation.candidate.selectionPolicyDigest,
   );
-  assert.equal(validation.selectionPolicy.version, LEGACY_SELECTION_VERSION);
+  assert.equal(validation.selectionPolicy.version, SELECTION_VERSION_V5);
+  assert.equal(validation.selectionPolicyDigest, replay.selectionPolicyDigest);
 });
 test("冻结政策被篡改后日线、首次会话及后续帧均拒绝，不修改账本", () => {
   const book = newBook();
@@ -1200,7 +1036,7 @@ test("模拟三轮完整建仓清仓，保存订单独立回放收益一致", as
   assert.equal((await verifyExport(tampered)).passed, false);
 });
 
-test("模拟账户可切换到 v4/v5 选股政策，下一份计划使用买点闸门", async () =>
+test("V5 账户配置在后续计划冻结 EOD 候选及买点闸门，无效版本不改写账户", async () =>
   withDB(async (env, DB) => {
     const repo = new PaperRepository(env);
     await repo.initialize();
@@ -1209,7 +1045,15 @@ test("模拟账户可切换到 v4/v5 选股政策，下一份计划使用买点�
       (await repo.account()).book.selectionPolicyVersion,
       DEFAULT_SELECTION_VERSION,
     );
-    // 切换到 v5
+    await assert.rejects(
+      () => repo.configure({ selectionPolicyVersion: "signal-ranking-v99" }),
+      /选股政策版本无效/,
+    );
+    assert.equal(
+      (await repo.account()).book.selectionPolicyVersion,
+      SELECTION_VERSION_V5,
+    );
+    // 保存 V5 配置
     const book = await repo.configure({
       selectionPolicyVersion: SELECTION_VERSION_V5,
     });
@@ -1232,88 +1076,4 @@ test("模拟账户可切换到 v4/v5 选股政策，下一份计划使用买点�
     assert.equal(plan.selectionPolicy.version, SELECTION_VERSION_V5);
     assert.equal(plan.selectionPolicy.extraCandidateSource, true);
     assert.equal(plan.selectionPolicy.brokenCandidateSource, true);
-  }));
-
-test("选股政策版本切换不触发当日计划重冻；无效版本拒绝", async () =>
-  withDB(async (env, DB) => {
-    const repo = new PaperRepository(env);
-    await repo.initialize();
-    // 无效版本拒绝
-    await assert.rejects(
-      () => repo.configure({ selectionPolicyVersion: "signal-ranking-v99" }),
-      /选股政策版本无效/,
-    );
-    // 旧版本也拒绝（只允许 v3 / v4 / v5）
-    await assert.rejects(
-      () =>
-        repo.configure({ selectionPolicyVersion: LEGACY_SELECTION_VERSION }),
-      /选股政策版本无效/,
-    );
-    // 切回 v3 成功
-    const v4Book = await repo.configure({
-      selectionPolicyVersion: SELECTION_VERSION_V4,
-    });
-    assert.equal(v4Book.selectionPolicyVersion, SELECTION_VERSION_V4);
-    const v3Book = await repo.configure({
-      selectionPolicyVersion: SELECTION_VERSION_V3,
-    });
-    assert.equal(v3Book.selectionPolicyVersion, SELECTION_VERSION_V3);
-    assert.equal(
-      (await repo.initialize()).book.selectionPolicyVersion,
-      SELECTION_VERSION_V3,
-      "手动回退到 v3 后，重新初始化不能再次升级",
-    );
-    const next = makePlan(tiedSnapshot(), (await repo.account()).book);
-    assert.equal(next.selectionPolicy.version, SELECTION_VERSION_V3);
-    // 配置历史记录了变更
-    const history = await repo.history("paper_configuration_history");
-    assert.equal(history.length, 2);
-    const changes = history.map((row) => JSON.parse(row.payload));
-    const v4Change = changes.find(
-      (c) => c.after.selectionPolicyVersion === SELECTION_VERSION_V4,
-    );
-    const v3Change = changes.find(
-      (c) => c.after.selectionPolicyVersion === SELECTION_VERSION_V3,
-    );
-    assert.ok(v4Change, "应记录 v4 切换");
-    assert.ok(v3Change, "应记录 v3 切回");
-    assert.equal(
-      v4Change.before.selectionPolicyVersion,
-      DEFAULT_SELECTION_VERSION,
-    );
-    assert.equal(v3Change.before.selectionPolicyVersion, SELECTION_VERSION_V4);
-  }));
-
-test("v4 计划冻结摘要与版本一致；旧快照无 brokenStocks 时 v4 行为与 v3 一致", async () =>
-  withDB(async (env, DB) => {
-    const repo = new PaperRepository(env);
-    const book = await repo.configure({
-      selectionPolicyVersion: SELECTION_VERSION_V4,
-    });
-    // 旧快照（无 brokenStocks）：v4 与 v3 产出相同的信号列表
-    const snap = tiedSnapshot();
-    const v4Signals = scoreSignals(
-      snap,
-      strategy,
-      selectionPolicy(SELECTION_VERSION_V4),
-    );
-    const v3Signals = scoreSignals(
-      snap,
-      strategy,
-      selectionPolicy(SELECTION_VERSION_V3),
-    );
-    assert.deepEqual(
-      v4Signals.map((s) => s.code),
-      v3Signals.map((s) => s.code),
-    );
-    // v4 计划摘要独立重算一致
-    const v4Plan = makePlan(snap, book, {
-      selectionPolicy: selectionPolicy(SELECTION_VERSION_V4),
-      snapshotDigest: await selectionSnapshotDigest(snap),
-    });
-    assert.equal(v4Plan.selectionPolicy.version, SELECTION_VERSION_V4);
-    assert.equal(
-      v4Plan.selectionPolicyDigest,
-      selectionPolicyDigest(selectionPolicy(SELECTION_VERSION_V4)),
-    );
   }));

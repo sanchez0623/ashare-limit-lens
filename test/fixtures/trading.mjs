@@ -1,5 +1,10 @@
 import { DEFAULT_FEES } from "../../shared/fees.js";
 import { BUY_POINT_TYPES } from "../../shared/buy-point-type.js";
+import {
+  selectionPolicy,
+  selectionPolicyFields,
+  SELECTION_VERSION_V5,
+} from "../../backend/domain/signal-selection.js";
 // All prices in this file are explicitly synthetic test fixtures.
 export const dateAt = (index) =>
   new Date(Date.UTC(2026, 0, 1 + index)).toISOString().slice(0, 10);
@@ -72,6 +77,7 @@ export function plan(orders, date = dateAt(0)) {
     feeConfig: DEFAULT_FEES,
     feeModel: "itemized-v2",
     feeConfigVersion: 1,
+    ...selectionPolicyFields(selectionPolicy(SELECTION_VERSION_V5)),
     orders,
   };
 }
@@ -92,9 +98,7 @@ export function snapshot(date, prices = [1000, 1000]) {
       height: 1,
       risks: [],
       price: prices[index] / 100,
-      // v5 默认设买点闸门：fixture stocks 默认带合格买点（打板），
-      // 避免每个测试都要显式传 v3 政策。需要测试"无买点被拒"的用例
-      // 显式清空 buyPoint.labels。
+      // V5 合成候选默认命中打板；拒绝用例须显式清空买点。
       buyPoint: {
         primary: { type: BUY_POINT_TYPES.LIMIT_UP_MOMENTUM },
         all: [{ type: BUY_POINT_TYPES.LIMIT_UP_MOMENTUM }],

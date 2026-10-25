@@ -1,4 +1,7 @@
 import { database } from "./database.js";
+import { assertDragonSettingsIsolation } from "../../shared/dragon-risk-config.js";
+import { isDragon } from "../domain/dragon-risk.js";
+import { bindDragonPlan } from "./dragon-risk.js";
 import {
   BASE_STRATEGY,
   newBook,
@@ -21,6 +24,7 @@ import { preserveProgramSignal } from "./strategy-signals.js";
 import { freezeQualityStatement } from "./t-quality.js";
 import { extractTTrades } from "../domain/t-quality.js";
 import { latestPolicyBundle, verifyPolicyBundle } from "./execution-cost.js";
+import { ENTRY_EXECUTION_MODES } from "../domain/intraday-entry.js";
 import {
   DEFAULT_SELECTION_VERSION,
   SELECTION_VERSION_V2,
@@ -120,6 +124,8 @@ export class PaperRepository {
     this.db = database(env);
   }
   async initialize(weights = BASE_STRATEGY.weights) {
+    const current = await this.account();
+    if (isDragon(current?.book)) return current;
     const now = new Date().toISOString();
     await this.db
       .prepare(
@@ -151,6 +157,11 @@ export class PaperRepository {
   }
   async upgradeSelectionPolicy() {
     const account = await this.account();
+    if (
+      isDragon(account?.book) ||
+      account?.book.dragonTransition?.state === "DRAINING"
+    )
+      return;
     // 升级范围：无显式版本的旧账户、v2、v3 账户，一律升到最新版本（当前 v5，
     // 启用龙头低吸完整能力：分类路由 + 炸板候选 + 买点闸门 + EOD 候选）。
     // 手动选择版本的账户及显式 v1/v4 不自动改参。
@@ -277,7 +288,12 @@ export class PaperRepository {
       )
       .bind(plan.signalDate, plan.createdAt, JSON.stringify(plan), hash);
     const quality = await freezeQualityStatement(this.db, plan, "main", hash);
-    await this.db.batch([statement, ...(quality ? [quality] : [])]);
+    const dragon = await bindDragonPlan(this.db, plan, "main");
+    await this.db.batch([
+      statement,
+      ...(quality ? [quality] : []),
+      ...(dragon ? [dragon] : []),
+    ]);
     return this.plan(plan.signalDate);
   }
   async history(table, limit = 120) {
@@ -572,6 +588,7 @@ export class PaperRepository {
     return row.count === 0;
   }
   async configure(settings, now = new Date()) {
+    assertDragonSettingsIsolation((await this.account())?.book, settings);
     const account = await this.initialize();
     const book = structuredClone(account.book);
     const feeConfig =
@@ -615,9 +632,9 @@ export class PaperRepository {
     // 手动策略参数：校验后登记为新策略版本（evidence.type = "manual"）
     // 并切换 activeStrategy；与费用/风控同一生效纪律——只在下一个尚未
     // 冻结的计划生效，已冻结计划与历史成交保持原参数。
-    const currentStrategy = withPyramidReduce(
-      withExposureTiers(await this.strategy(account.book)),
-    );
+    const currentStrategy = isDragon(account.book)
+      ? null
+      : withPyramidReduce(withExposureTiers(await this.strategy(account.book)));
     let strategyChange = null;
     if (settings.strategyParams !== undefined) {
       const params = normalizeStrategyParams(settings.strategyParams);
@@ -675,6 +692,18 @@ export class PaperRepository {
       book.selectionPolicyVersion = settings.selectionPolicyVersion;
       book.selectionPolicyMode = "manual";
     }
+    if (settings.entryExecutionMode !== undefined) {
+      if (!ENTRY_EXECUTION_MODES.includes(settings.entryExecutionMode))
+        throw new Error("交易执行方式无效");
+      book.entryExecutionMode = settings.entryExecutionMode;
+    }
+    if (
+      book.entryExecutionMode === "intraday-conditional" &&
+      book.selectionPolicyVersion !== SELECTION_VERSION_V5
+    )
+      throw new Error(
+        "盘中条件执行需要 V5；切换旧版本前请先选择原开盘执行方式",
+      );
     const stamp = now.toISOString(),
       nonce = crypto.randomUUID();
     const statements = [
@@ -733,7 +762,9 @@ export class PaperRepository {
       const snapshot = await this.snapshot(day),
         strategy = strategyChange
           ? strategyChange.params
-          : await this.strategy(book);
+          : isDragon(book)
+            ? null
+            : await this.strategy(book);
       // 调整费用/资金不借机换选股政策；仍使用被替换计划的冻结版本。
       const policy = previousPlan
         ? frozenSelectionPolicy(JSON.parse(previousPlan.payload))
@@ -755,27 +786,51 @@ export class PaperRepository {
       // 方案 7：做T质量摘要与证据同样沿用被替换计划的冻结版本——同日
       // 重冻时质量状态未变，正常修改费用不得解除停手/档位闸门。
       replacement = snapshot
-        ? createPlan(snapshot, book, strategy, book.activeStrategy, stamp, {
-            executionCostPolicy,
-            originalScoreLookup,
-            selectionPolicy: policy,
-            snapshotDigest: await selectionSnapshotDigest(snapshot),
-            ...(frozenExitContext
-              ? { exitContextFrozen: frozenExitContext }
-              : {}),
-            ...(previousPayload?.tQuality
-              ? { tQuality: previousPayload.tQuality }
-              : {}),
-            ...(previousPayload?.tQualityEvidence
-              ? { tQualityEvidence: previousPayload.tQualityEvidence }
-              : {}),
-          })
+        ? createPlan(
+            snapshot,
+            {
+              ...book,
+              entryExecutionMode:
+                previousPayload?.entryExecutionMode ?? "next-open",
+            },
+            strategy,
+            book.activeStrategy,
+            stamp,
+            {
+              executionCostPolicy,
+              originalScoreLookup,
+              selectionPolicy: policy,
+              snapshotDigest: await selectionSnapshotDigest(snapshot),
+              ...(frozenExitContext
+                ? { exitContextFrozen: frozenExitContext }
+                : {}),
+              ...(previousPayload?.tQuality
+                ? { tQuality: previousPayload.tQuality }
+                : {}),
+              ...(previousPayload?.tQualityEvidence
+                ? { tQualityEvidence: previousPayload.tQualityEvidence }
+                : {}),
+            },
+          )
         : defensivePlan(day, book, strategy, book.activeStrategy, stamp, {
             executionCostPolicy,
             originalScoreLookup,
             selectionPolicy: policy,
           });
       await preserveProgramSignal(this.db, replacement, snapshot);
+      if (isDragon(replacement))
+        statements.push(
+          this.db
+            .prepare(
+              `INSERT INTO dragon_plan_bindings(scope,signal_date,config_id,plan_digest) SELECT 'main',?,?,? WHERE ${guard} ON CONFLICT(scope,signal_date) DO UPDATE SET config_id=excluded.config_id,plan_digest=excluded.plan_digest`,
+            )
+            .bind(
+              day,
+              replacement.dragonPolicy.configId,
+              await digest(replacement),
+              ...guardArgs,
+            ),
+        );
       if (previousPlan)
         statements.push(
           this.db
@@ -817,6 +872,9 @@ export class PaperRepository {
       feesChanged,
       riskChanged,
       strategyChanged: !!strategyChange,
+      entryExecutionChanged:
+        (account.book.entryExecutionMode ?? "next-open") !==
+        (book.entryExecutionMode ?? "next-open"),
       selectionPolicyChanged:
         selectionPolicyForBook(account.book).version !==
         selectionPolicyForBook(book).version,
@@ -833,6 +891,7 @@ export class PaperRepository {
         improvementMode: account.book.improvementMode,
         benchmarkCode: account.book.benchmarkCode || DEFAULT_BENCHMARK,
         selectionPolicyVersion: selectionPolicyForBook(account.book).version,
+        entryExecutionMode: account.book.entryExecutionMode ?? "next-open",
       },
       after: {
         initialCashCents: book.initialCashCents,
@@ -847,6 +906,7 @@ export class PaperRepository {
         improvementMode: book.improvementMode,
         benchmarkCode: book.benchmarkCode || DEFAULT_BENCHMARK,
         selectionPolicyVersion: selectionPolicyForBook(book).version,
+        entryExecutionMode: book.entryExecutionMode ?? "next-open",
       },
       previousBaselines: baselines.map((row) => JSON.parse(row.payload)),
       revisedPlanDate: replacement?.signalDate || null,

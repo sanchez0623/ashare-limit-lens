@@ -33,6 +33,7 @@ import {
   detectDowngradeForPosition,
 } from "../../shared/downgrade.js";
 import { checkExitSignals } from "../../shared/exit-signals.js";
+import { planFreezeDeadline } from "../../shared/observation-schedule.js";
 import { BUY_POINT_TYPES } from "../../shared/buy-point-type.js";
 import {
   T_QUALITY_RULES_VERSION,
@@ -58,6 +59,12 @@ import {
 } from "./strategy-program.js";
 import { buildExecutionContext, solveFillQuantity } from "./execution-cost.js";
 import { canonicalJson } from "./research-lineage.js";
+import { isDragon, createDragonPlan, assertDragonPlan } from "./dragon-risk.js";
+import {
+  withIntradayEntry,
+  assertEntryPolicy,
+  conditionalFillGuard,
+} from "./intraday-entry.js";
 import {
   DEFAULT_SELECTION_VERSION,
   LEGACY_SELECTION_VERSION,
@@ -306,6 +313,10 @@ export function createPlan(
   createdAt,
   options = {},
 ) {
+  if (isDragon(book))
+    return createDragonPlan(snapshot, book, createdAt, options);
+  if (options.selectionPolicy?.version === "dragon-risk-v1")
+    throw new Error("风险预算政策需要完整独立配置，不能使用旧账户创建计划");
   // 政策冻结（§3.2）：订单计划保存完整规范化政策与内容摘要；
   // 新政策从下一个尚未冻结的计划生效，持仓本身不重置。
   const executionCostPolicy =
@@ -1015,93 +1026,134 @@ export function createPlan(
       chargeEntry(componentStates, entryAllocation.allocations, referenceCents);
     opened++;
   }
-  return {
-    signalDate: snapshot.date,
-    feeModel: book.feeModel || "legacy-v1",
-    feeConfig: structuredClone(feesForBook(book)),
-    feeConfigVersion: book.feeConfigVersion || 0,
-    // 冻结账户原始 5 字段 riskLimits（严格风控 schema 兼容，extra 字段
-    // 会被 normalizeRiskLimits 拒绝）；周期闸门单独冻结在 cycle.maxGrossExposure，
-    // executeFillWithCostModel 与家族核验通过 resolveExposureCap 复原同一口径。
-    riskLimits: structuredClone(riskLimits),
-    riskLimitsVersion: book.riskLimitsVersion || 0,
-    createdAt,
-    strategyVersion,
-    strategy,
-    ...(strategyProgram ? { strategyProgram } : {}),
-    ...policyFields,
-    selectionAudit,
-    executionCostModel: EXECUTION_COST_MODEL,
-    executionCostPolicy: structuredClone(executionCostPolicy),
-    previousLimitUpCodes,
-    previousLimitUpKnown: true,
-    emotion: strategyProgram ? strategyProgram.emotion : emotion,
-    cycle: cycle
-      ? {
-          phase: cycle.phase,
-          label: cycle.label,
-          score: cycle.score,
-          maxGrossExposure: cycle.maxGrossExposure,
-        }
-      : null,
-    targetExposure,
-    maxExposure: effectiveCap,
-    // 卖出上下文冻结：与政策 digest 同级，重算/影子/回测/核验直接读
-    // 这份快照复现同一决策，不再按当日行情重推（避免手续费变更引起
-    // 上下文漂移、EXIT 变 ADD）。无上下文时置 null，不写空壳。
-    exitContext: freezeExitContext({
-      exitFeaturesByCode,
-      exitEodRowsByCode,
-      exitBreaksByCode,
-      sectorLimitDrops,
-      phaseShift,
-      codes: holdings,
-    }),
-    // 方案 6：降级声明随计划冻结（门控开启时始终携带，空数组表示当日
-    // 无降级），版本与源快照绑定；历史快照不补标记。
-    ...(downgradeEnabled
-      ? { downgradeRulesVersion: DOWNGRADE_RULES_VERSION, downgrades }
-      : {}),
-    // 方案 7：做T质量冻结摘要随计划携带（调用方传入时始终携带——含
-    // 空历史摘要），支撑证据（做T记录 + 交易日）独立冻结在计划顶层，
-    // 核验方用证据独立重算摘要——摘要不可直接声明。旧计划两者皆无，
-    // 保持旧语义。
-    ...(tQuality
-      ? {
-          // 规则启用标记独立于摘要：核验据此要求新快照的计划必须携带
-          // 质量摘要与证据，删除两者伪装成旧计划会被快照标记拦截。
-          tQualityRulesVersion: T_QUALITY_RULES_VERSION,
-          tQuality: structuredClone(tQuality),
-          ...(tQualityEvidence
-            ? { tQualityEvidence: structuredClone(tQualityEvidence) }
-            : {}),
-        }
-      : {}),
-    orders: carriedPlanOrders(
-      orders,
-      book,
-      snapshot.date,
+  return withIntradayEntry(
+    {
+      signalDate: snapshot.date,
+      feeModel: book.feeModel || "legacy-v1",
+      feeConfig: structuredClone(feesForBook(book)),
+      feeConfigVersion: book.feeConfigVersion || 0,
+      // 冻结账户原始 5 字段 riskLimits（严格风控 schema 兼容，extra 字段
+      // 会被 normalizeRiskLimits 拒绝）；周期闸门单独冻结在 cycle.maxGrossExposure，
+      // executeFillWithCostModel 与家族核验通过 resolveExposureCap 复原同一口径。
+      riskLimits: structuredClone(riskLimits),
+      riskLimitsVersion: book.riskLimitsVersion || 0,
+      createdAt,
+      strategyVersion,
       strategy,
-      originalScoreLookup,
-    ),
-    constraints:
-      "下一交易日执行；T+1；整手买入；涨跌停不保证成交；成交费用和滑点计入账本。",
-  };
+      ...(strategyProgram ? { strategyProgram } : {}),
+      ...policyFields,
+      selectionAudit,
+      executionCostModel: EXECUTION_COST_MODEL,
+      executionCostPolicy: structuredClone(executionCostPolicy),
+      previousLimitUpCodes,
+      previousLimitUpKnown: true,
+      emotion: strategyProgram ? strategyProgram.emotion : emotion,
+      cycle: cycle
+        ? {
+            phase: cycle.phase,
+            label: cycle.label,
+            score: cycle.score,
+            maxGrossExposure: cycle.maxGrossExposure,
+          }
+        : null,
+      targetExposure,
+      maxExposure: effectiveCap,
+      // 卖出上下文冻结：与政策 digest 同级，重算/影子/回测/核验直接读
+      // 这份快照复现同一决策，不再按当日行情重推（避免手续费变更引起
+      // 上下文漂移、EXIT 变 ADD）。无上下文时置 null，不写空壳。
+      exitContext: freezeExitContext({
+        exitFeaturesByCode,
+        exitEodRowsByCode,
+        exitBreaksByCode,
+        sectorLimitDrops,
+        phaseShift,
+        codes: holdings,
+      }),
+      // 方案 6：降级声明随计划冻结（门控开启时始终携带，空数组表示当日
+      // 无降级），版本与源快照绑定；历史快照不补标记。
+      ...(downgradeEnabled
+        ? { downgradeRulesVersion: DOWNGRADE_RULES_VERSION, downgrades }
+        : {}),
+      // 方案 7：做T质量冻结摘要随计划携带（调用方传入时始终携带——含
+      // 空历史摘要），支撑证据（做T记录 + 交易日）独立冻结在计划顶层，
+      // 核验方用证据独立重算摘要——摘要不可直接声明。旧计划两者皆无，
+      // 保持旧语义。
+      ...(tQuality
+        ? {
+            // 规则启用标记独立于摘要：核验据此要求新快照的计划必须携带
+            // 质量摘要与证据，删除两者伪装成旧计划会被快照标记拦截。
+            tQualityRulesVersion: T_QUALITY_RULES_VERSION,
+            tQuality: structuredClone(tQuality),
+            ...(tQualityEvidence
+              ? { tQualityEvidence: structuredClone(tQualityEvidence) }
+              : {}),
+          }
+        : {}),
+      orders: carriedPlanOrders(
+        orders,
+        book,
+        snapshot.date,
+        strategy,
+        originalScoreLookup,
+      ),
+      constraints:
+        "下一交易日执行；T+1；整手买入；涨跌停不保证成交；成交费用和滑点计入账本。",
+    },
+    snapshot,
+    book,
+  );
 }
 
 export function assertProgramSnapshot(plan, snapshot, initialBook) {
+  if (isDragon(plan) || isDragon(initialBook)) {
+    assertDragonPlan(plan, initialBook);
+    const rebuilt = createDragonPlan(
+      snapshot ?? { date: plan.signalDate },
+      {
+        ...initialBook,
+        dragonConfig: plan.dragonPolicy.config,
+        dragonConfigId: plan.dragonPolicy.configId,
+        dragonConfigDigest: plan.dragonPolicy.configDigest,
+        feeModel: plan.feeModel,
+        feeConfig: plan.feeConfig,
+        feeConfigVersion: plan.feeConfigVersion,
+      },
+      plan.createdAt,
+      {
+        defensive: plan.sourceSnapshotMissing,
+        executionCostPolicy: plan.executionCostPolicy,
+        engineBuild: plan.engineBuild,
+        snapshotDigest: plan.selectionAudit?.snapshotDigest,
+      },
+    );
+    const { digest: _transportDigest, ...payload } = plan;
+    if (canonicalJson(rebuilt) !== canonicalJson(payload))
+      throw new Error("新政策冻结计划与原始输入不一致");
+    return;
+  }
   if (!plan) return;
   const downgradeEnabled = downgradeEnabledForPlan(plan);
   const sourceDowngradeEnabled = downgradeEnabledForSnapshot(snapshot);
   const hasTQuality = plan.tQuality != null || plan.tQualityEvidence != null;
   const planTQualityEnabled = tQualityEnabledForPlan(plan);
   const sourceTQualityEnabled = tQualityEnabledForSnapshot(snapshot);
+  const entryEnabled = !!plan.entryExecutionPolicy;
+  if (
+    snapshot?.intradayEntryContext &&
+    !["next-open", "intraday-conditional"].includes(plan.entryExecutionMode)
+  )
+    throw new Error("新快照的计划缺少执行方式声明");
+  if (entryEnabled !== (plan.entryExecutionMode === "intraday-conditional"))
+    throw new Error("盘中执行方式与规则声明不一致");
+  assertEntryPolicy(plan);
   if (
     !plan.strategy?.program &&
     !downgradeEnabled &&
     !sourceDowngradeEnabled &&
     !hasTQuality &&
-    !planTQualityEnabled
+    !planTQualityEnabled &&
+    !entryEnabled &&
+    !snapshot?.intradayEntryContext
   )
     return;
   if (downgradeEnabled !== sourceDowngradeEnabled)
@@ -1157,6 +1209,7 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
   };
   const referenceBook = {
     ...initialBook,
+    entryExecutionMode: plan.entryExecutionMode ?? "next-open",
     riskLimits: plan.riskLimits,
     riskLimitsVersion: plan.riskLimitsVersion,
     feeConfig: plan.feeConfig,
@@ -1187,6 +1240,8 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
     "emotion",
     "downgradeRulesVersion",
     "downgrades",
+    "entryExecutionMode",
+    "entryExecutionPolicy",
   ])
     if (canonicalJson(plan[key]) !== canonicalJson(expected[key]))
       throw new Error("策略计划与信号日原始快照、情绪选择或资金分配重算不一致");
@@ -1307,6 +1362,11 @@ export function defensivePlan(
   createdAt,
   options = {},
 ) {
+  if (isDragon(book))
+    return createDragonPlan({ date }, book, createdAt, {
+      ...options,
+      defensive: true,
+    });
   // 缺少昨日冻结信息时如实声明：昨日涨停风险项不适用，不猜测。
   const executionCostPolicy =
     options.executionCostPolicy ?? defaultExecutionCostPolicy();
@@ -1428,6 +1488,12 @@ export function applyPlanDowngrades(book, plan, notices = []) {
 }
 
 export function executePlan(inputBook, plan, dataset) {
+  if (isDragon(inputBook) || isDragon(plan))
+    throw new Error("新政策必须使用持久行情帧重放，不能回退旧执行器");
+  if (plan?.entryExecutionPolicy)
+    throw new Error(
+      "盘中条件计划需要持久行情帧重放，不能使用日线或开盘假设补造买入",
+    );
   if (plan) frozenSelectionPolicy(plan);
   if (plan) assertProgramPlan(plan, inputBook);
   const book = structuredClone(inputBook);
@@ -1435,12 +1501,13 @@ export function executePlan(inputBook, plan, dataset) {
   if (
     plan?.strategy?.program &&
     (!Number.isFinite(Date.parse(plan.createdAt)) ||
-      Date.parse(plan.createdAt) >= Date.parse(`${date}T01:15:00.000Z`))
+      Date.parse(plan.createdAt) >= planFreezeDeadline(plan, date))
   )
     throw new Error("策略程序计划实际冻结时间晚于执行日前闸门");
   if (
     plan &&
-    (plan.signalDate >= date || plan.createdAt >= `${date}T01:15:00.000Z`)
+    (plan.signalDate >= date ||
+      Date.parse(plan.createdAt) >= planFreezeDeadline(plan, date))
   ) {
     throw new Error("交易计划必须在执行日开盘前冻结，禁止使用当日收盘评分交易");
   }
@@ -1453,7 +1520,12 @@ export function executePlan(inputBook, plan, dataset) {
   const outcomes = [];
   const notices = [];
   const orders = structuredClone(plan?.orders || []).filter(
-    (order) => order.action !== "HOLD",
+    (order) =>
+      order.action !== "HOLD" &&
+      !(
+        book.dragonTransition?.state === "DRAINING" &&
+        (order.side === "BUY" || order.side === "PAIR")
+      ),
   );
   const runtime = new Map(
     orders.map((order) => [
@@ -1879,6 +1951,8 @@ export function executeFill(
   event,
   execution = null,
 ) {
+  const entryRejected = conditionalFillGuard(plan, order, side, event, dataset);
+  if (entryRejected) return { ok: false, reason: entryRejected };
   // 版本分派（§3.2/§5.4）：旧计划无政策标记 → 明确分派旧 10bps 兼容执行器；
   // 新版本计划缺政策/摘要或版本未知 → 暂停执行，不静默回退。
   const bundle = executionPolicyBundle(plan);
@@ -1939,6 +2013,13 @@ function executeFillWithCostModel(
       reason: side === "BUY" ? "涨停排队不假设成交" : "跌停卖出不假设成交",
     };
   let position = book.positions.find((item) => item.code === order.code);
+  if (
+    side === "BUY" &&
+    order.conditionalEntry &&
+    !position &&
+    book.positions.length >= plan.strategy.maxPositions
+  )
+    return { ok: false, reason: "实际持仓名额已用完" };
   let desired =
     side === "BUY"
       ? roundLot(desiredQuantity)
@@ -1972,6 +2053,9 @@ function executeFillWithCostModel(
       // 成交上限必须读周期口径：周期 20% 时不能按账户原始 60% 放行，
       // 否则会出现实际敞口突破周期上限的回归。
       equity * resolveExposureCap(riskLimits, plan?.cycle) - value,
+      ...(order.conditionalEntry
+        ? [equity * plan.targetExposure - value, order.entryBudgetCents]
+        : []),
     );
   }
   const allocationLimits =
@@ -2108,6 +2192,9 @@ function executeFillWithCostModel(
     source: dataset.source,
     sourcePriceCents: point,
     executionCost: solved.executionCost.costBreakdown,
+    ...(event.entryEvidence
+      ? { entryEvidence: structuredClone(event.entryEvidence) }
+      : {}),
     ...(strategyAllocations
       ? {
           strategyAllocations: strategyAllocations.map((row, index) => ({

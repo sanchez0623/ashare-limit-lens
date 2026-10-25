@@ -3,8 +3,23 @@ import { digestOf } from "./research-lineage.js";
 // 构建时按实际执行源码生成；源码运行与离线 verifier 使用同一文件清单。
 // 仅执行相关文件影响指纹，文档或其他页面变更不会改变冻结窗口。
 const files = [
+  "shared/observation-schedule.js",
+  "shared/dragon-risk-config.js",
+  "backend/domain/dragon-risk.js",
+  "backend/domain/dragon-self-check.js",
+  "backend/storage/dragon-risk.js",
+  "backend/services/dragon-risk.js",
+  "backend/services/dragon-research.js",
+  "backend/services/research-cancellation.js",
+  "backend/services/archived-backtest.js",
+  "backend/services/v5-reconstruction.js",
   "backend/domain/trading.js",
   "backend/domain/realtime.js",
+  "backend/domain/intraday-entry.js",
+  "backend/services/intraday-inputs.js",
+  "backend/services/entry-observation.js",
+  "backend/services/price-history.js",
+  "backend/services/price-supplement.js",
   "backend/domain/execution-cost.js",
   "backend/domain/validation.js",
   "backend/domain/execution-stress.js",

@@ -7,6 +7,7 @@ import {
   TERMINAL,
 } from "../domain/realtime.js";
 import { planRiskLimits } from "../../shared/risk-limits.js";
+import { isDragon } from "../domain/dragon-risk.js";
 import { tradingQuotes, tradingCalendar } from "./market.js";
 import { readWeights } from "./review.js";
 import { buildOperationEvents } from "./alerts.js";
@@ -14,6 +15,10 @@ import { instanceAlias } from "../domain/alert-messages.js";
 import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { safeError } from "../http.js";
 import { assertStoredProgramPlan } from "./strategy-program-evidence.js";
+import {
+  collectIntradayInputs,
+  verifyAuctionQuotes,
+} from "./intraday-inputs.js";
 const calendars = new Map();
 async function calendarFor(start, date, now) {
   const cached = calendars.get(date);
@@ -101,9 +106,31 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
     const codes = [
       ...new Set([
         ...session.orders.map((o) => o.code),
+        ...(session.plan.entryExecutionPolicy?.candidates ?? []),
         ...account.book.positions.map((p) => p.code),
       ]),
     ];
+    const entryInputs = await collectIntradayInputs(
+      session.plan,
+      clock.date,
+      codes,
+      { providers, now, env },
+    );
+    if (session.plan.entryExecutionPolicy) {
+      for (const row of entryInputs?.market?.discoveries ?? []) {
+        if (
+          codes.length >=
+          session.plan.entryExecutionPolicy.rules.maxCandidates +
+            account.book.positions.length
+        )
+          break;
+        if (
+          session.plan.entryExecutionPolicy.history[row.code] &&
+          !codes.includes(row.code)
+        )
+          codes.push(row.code);
+      }
+    }
     const quotes = await (providers.quotes || tradingQuotes)(codes, clock.date);
     const observation = {
       // 帧驱动重放时观察时间取帧采集时刻：与帧内报价自洽，按序补齐停机
@@ -112,6 +139,9 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
         providers.observedAt ??
         (providers.quotes ? now.toISOString() : new Date().toISOString()),
       quotes,
+      ...(entryInputs
+        ? { entryInputs: verifyAuctionQuotes(entryInputs, quotes, clock.date) }
+        : {}),
       pollIntervalSeconds: Number(env.TRADING_POLL_SECONDS || 10),
     };
     const result = advanceSession(account.book, session, observation);
@@ -183,7 +213,9 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
       missingQuoteCodes,
       drawdown,
       drawdownBreached:
-        drawdown >= planRiskLimits(result.session.plan).maxDrawdown,
+        drawdown >=
+        (result.session.plan.dragonPolicy?.config.risk.drawdown ??
+          planRiskLimits(result.session.plan).maxDrawdown),
       blockedProtectiveExits,
       incompleteRecoveries,
       corporateActionHolds,
@@ -259,6 +291,24 @@ export async function realtimeStatus(env, now = new Date()) {
           fillCount: session.fillCount,
           lastObservedAt: session.lastObservedAt,
           orders: session.orders.filter((o) => !o.protective || o.triggered),
+          ...(isDragon(session.plan)
+            ? {
+                dragonExecution: {
+                  config: session.plan.dragonPolicy.config,
+                  configId: session.plan.dragonPolicy.configId,
+                  signalDate: session.plan.signalDate,
+                  phase: session.regime.phase,
+                  dailyPaused: session.dailyPaused,
+                  missingHoldingQuotes: session.missingHoldingQuotes,
+                },
+              }
+            : {}),
+          ...(session.entryState
+            ? {
+                entryCoverage: session.entryState.coverage,
+                entryRulesVersion: session.entryState.version,
+              }
+            : {}),
         }
       : null,
     requirement:

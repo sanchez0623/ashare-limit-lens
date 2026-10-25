@@ -1,5 +1,18 @@
 # 文档索引
 
+默认测试和 CI 仅运行 V5 用例，范围与清单维护规则见 [V5 回归范围](v5-regression.md)。
+
+旧交易归入历史并从空仓开始下一交易日，见 [V5 交易周期归档](trading-cutover.md)。
+未执行的新周期切换龙头风险预算及 `npm run test:dragon` 专项验证也在该文档中说明。
+
+股票名称与双行业的界面更新、后台任务及 API 见 [数据管理](data-management.md)。
+
+申万多归属与官方、乐咕、同花顺的对照依据见 [2026-10-24 来源核对](industry-source-crosscheck-2026-10-24.md)。
+
+东财原生批量、F10 当前行业的全量对照与故障切换规则见 [东财行业接口核对](eastmoney-industry-sources.md)。
+
+新增：[龙头风险预算政策与新旧整体切换](design/dragon-risk.md)——独立配置、双向加仓与做 T、影子验证及核验。
+
 项目文档统一在 `docs/` 中随代码提交到 GitHub。运行指南描述当前实现；设计方案在文首标明实施状态与所依据的代码版本。
 
 | 分类          | 文档                                                                          | 状态     | 内容                                                                                                                                                                                                                 |
@@ -18,6 +31,10 @@
 ## 目录约定
 
 龙头低吸接入现状见 [dragon-head-dip-buy 实现核对](design/dragon-head-dip-buy-implementation-audit.md)（2026-10-22，部分实现，含源码、真实数据链路与当前账户运行核查）。
+
+六类买点的盘中执行与启用流程见 [盘中条件执行 v1](design/intraday-entry.md)（代码及合成测试已实现，可直接选择执行方式；整日影子核验作为独立运行诊断）。
+
+历史候选和逐帧研究回放见 [V5 历史重构与六类严格回放](design/v5-history-replay.md)（已实施；整段缺证据即阻断收益，原分钟采样模式独立保留）。
 
 ```text
 docs/

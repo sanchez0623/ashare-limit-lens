@@ -1,9 +1,24 @@
 import { database } from "../storage/database.js";
 import { beijingDate, readBuyPointParams } from "./review.js";
 import { marketData } from "./market.js";
-import { getMa5ByCode, getStockFeaturesByCode } from "./daily-closes.js";
+import {
+  resolveDailyPriceInputs,
+  verifiedPreviousRows,
+} from "./price-history.js";
 import { safeError } from "../http.js";
 import { normalize, promotionStats } from "../../shared/scoring.js";
+import { researchIndustryMetadata } from "./industry.js";
+
+async function withResearchIndustries(env, market) {
+  const codes =
+    market.analysis?.stocks?.map((r) => r.code) ??
+    market.rows?.map((r) => r.c) ??
+    [];
+  return {
+    ...market,
+    industryMetadata: await researchIndustryMetadata(env, codes),
+  };
+}
 
 const validPool = (rows) =>
   Array.isArray(rows) &&
@@ -90,6 +105,7 @@ async function archivedMarket(env, date) {
     date,
     source: snapshot.source ?? "已保存的评分快照",
     archived: true,
+    industryContext: snapshot.industryContext ?? null,
     ...(promotionBackfilled ? { promotionBackfilled: true } : {}),
     archivedAt: row.created_at,
     fetchedAt: snapshot.market?.fetchedAt ?? row.created_at,
@@ -118,40 +134,69 @@ export async function marketForDisplay(
 ) {
   if (date < today) {
     const archive = await archivedMarket(env, date);
-    if (archive) return archive;
+    if (archive) return withResearchIndustries(env, archive);
   }
   try {
-    const market = await loadMarket(date);
+    const market = await loadMarket(date, env);
     // 研究页客户端会用原始行重新 analyze，MA5 随 payload 下发供首阴校验；
     // 只带池内代码避免 payload 膨胀。数据缺失时 ma5ByCode 为空对象（优雅降级）。
-    const { ma5ByCode, asOf } = await getMa5ByCode(env, date);
+    const dailyInputs = await resolveDailyPriceInputs(env, date, {
+      rows: [
+        ...market.rows,
+        ...(market.brokenRows ?? []),
+        ...(market.previous ?? []),
+      ],
+      allowRemote: false,
+    });
+    const { ma5ByCode, featuresByCode, eodRows } = dailyInputs;
+    const asOf = ma5ByCode.size ? date : null;
     const poolCodes = new Set(
-      (market.rows ?? []).map((row) => row?.c).filter(Boolean),
+      [...(market.rows ?? []), ...(market.brokenRows ?? [])]
+        .map((row) => row?.c)
+        .filter(Boolean),
     );
     const slim = {};
     for (const [code, value] of ma5ByCode)
       if (poolCodes.has(code)) slim[code] = value;
     // 股票分类历史特征随 payload 下发（只带池内代码），研究页客户端
     // 重算 analyze 时口径与服务端一致
-    const { featuresByCode } = await getStockFeaturesByCode(env, date);
     const slimFeatures = {};
     for (const [code, value] of featuresByCode)
       if (poolCodes.has(code)) slimFeatures[code] = value;
     // 买点参数（首阴门槛）随 payload 下发，研究页客户端重算时口径一致
     const buyPointParams = await readBuyPointParams(env);
-    return {
+    return withResearchIndustries(env, {
       ...market,
+      previous: verifiedPreviousRows(
+        market.previous?.map(normalize),
+        eodRows,
+      ).map((r) => ({
+        c: r.code,
+        n: r.name,
+        hybk: r.sector,
+        ylbc: r.height,
+        p: r.close == null ? null : Math.round(r.close * 1000),
+        o: r.open == null ? null : Math.round(r.open * 1000),
+        h: r.high == null ? null : Math.round(r.high * 1000),
+        zdp: r.change,
+        zbc: r.breaks,
+      })),
+      previousPricesVerified: true,
+      prevEodByCode: Object.fromEntries(
+        [...eodRows].filter(([code]) => poolCodes.has(code)),
+      ),
+      dailyPriceSources: dailyInputs.status,
       ma5ByCode: slim,
       historyByCode: slimFeatures,
       buyPointParams,
       ...(asOf ? { ma5AsOf: asOf } : {}),
       // 研究页客户端用原始行重新 analyze，尾盘时点随观测时刻下发
       ...(tailSessionNow() ? { lateSession: true } : {}),
-    };
+    });
   } catch (error) {
     if (date === today) {
       const archive = await archivedMarket(env, date);
-      if (archive) return archive;
+      if (archive) return withResearchIndustries(env, archive);
     }
     if (date < today)
       throw new Error(

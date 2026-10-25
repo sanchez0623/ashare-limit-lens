@@ -3,7 +3,10 @@ import { downgradeEnabledForPlan } from "../../shared/downgrade.js";
 
 export async function preserveProgramSignal(db, plan, snapshot = null) {
   const downgradeEnabled = downgradeEnabledForPlan(plan);
-  const requiresSnapshot = Boolean(plan.strategyProgram) || downgradeEnabled;
+  const requiresSnapshot =
+    Boolean(plan.strategyProgram) ||
+    downgradeEnabled ||
+    !!plan.entryExecutionPolicy;
   if (!requiresSnapshot || plan.sourceSnapshotMissing) return;
   const reference =
     plan.strategyProgram?.snapshotDigest ?? plan.selectionAudit?.snapshotDigest;
@@ -50,7 +53,10 @@ export async function preserveProgramSignal(db, plan, snapshot = null) {
 export async function frozenProgramSignal(db, plan) {
   if (!plan || plan.sourceSnapshotMissing) return null;
   const downgradeEnabled = downgradeEnabledForPlan(plan);
-  const requiresSnapshot = Boolean(plan.strategyProgram) || downgradeEnabled;
+  const requiresSnapshot =
+    Boolean(plan.strategyProgram) ||
+    downgradeEnabled ||
+    !!plan.entryExecutionPolicy;
   const reference =
     plan.strategyProgram?.snapshotDigest ?? plan.selectionAudit?.snapshotDigest;
   if (!reference && !requiresSnapshot) return null;

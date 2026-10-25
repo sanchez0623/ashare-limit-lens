@@ -244,11 +244,13 @@ async function browserFixture(t) {
         textContent: "",
         disabled: false,
         attributes: {},
+        dataset: {},
         setAttribute(key, value) {
           this.attributes[key] = value;
         },
         querySelector: () => null,
         querySelectorAll: () => [],
+        closest: () => element(`parent:${id}`),
         addEventListener() {},
       });
     return elements.get(id);

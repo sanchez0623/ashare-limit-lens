@@ -4,6 +4,33 @@ import { marketClock, inSession } from "../backend/domain/realtime.js";
 import { RealtimeRepository } from "../backend/storage/realtime.js";
 import { recordOperationEvents } from "../backend/services/alerts.js";
 import { reportProcessProgress } from "../backend/services/watchdog.js";
+import { observePreopenAuction } from "../backend/services/intraday-inputs.js";
+import { preparePendingEntryObservation } from "../backend/services/entry-observation.js";
+import {
+  preparePendingDragonObservation,
+  refreshDragonEngine,
+} from "../backend/services/dragon-risk.js";
+import { runPaperDay } from "../backend/services/paper.js";
+import { OBSERVATION_SCHEDULE } from "../shared/observation-schedule.js";
+
+export function tradingRunnerDelay(
+  startedAt,
+  finishedAt,
+  intervalSeconds = 10,
+) {
+  const clock = marketClock(finishedAt);
+  const normalDelay = inSession(clock.time)
+    ? Math.max(1000, intervalSeconds * 1000 - (finishedAt - startedAt))
+    : 30000;
+  // 盘外的 30 秒等待不能跨过上午开盘或下午复市；覆盖核验仍按原阈值执行。
+  const untilOpen = ["09:30:00", "13:00:00"]
+    .map(
+      (time) =>
+        Date.parse(`${clock.date}T${time}+08:00`) - finishedAt.getTime(),
+    )
+    .filter((milliseconds) => milliseconds > 0);
+  return Math.max(1, Math.min(normalDelay, ...untilOpen));
+}
 
 export function startTradingRunner(env, runDaily, options = {}) {
   const interval = Number(env.TRADING_POLL_SECONDS || 10);
@@ -13,6 +40,7 @@ export function startTradingRunner(env, runDaily, options = {}) {
     stopped = false,
     dailyDate = null,
     lastDailyAttempt = 0,
+    lastEntryPreparation = 0,
     loopSequence = 0;
   const now = options.now || (() => new Date());
   const providers = options.providers ?? {};
@@ -65,11 +93,47 @@ export function startTradingRunner(env, runDaily, options = {}) {
       clock = marketClock(current);
     let storageOk = true;
     try {
+      const preparationInterval =
+        clock.time < OBSERVATION_SCHEDULE.preparationEnd
+          ? interval * 1000
+          : 300000;
+      if (current.getTime() - lastEntryPreparation >= preparationInterval) {
+        lastEntryPreparation = current.getTime();
+        await refreshDragonEngine(env, current);
+        if (clock.time < OBSERVATION_SCHEDULE.preparationEnd) {
+          const repo = new RealtimeRepository(env);
+          const account = await repo.account();
+          if (
+            account?.book.entryExecutionMode === "intraday-conditional" &&
+            account.book.lastDate < clock.date &&
+            !(await repo.plan(account.book.lastDate))
+          ) {
+            try {
+              await runPaperDay(env, account.book.lastDate);
+            } catch {
+              /* 数据未就绪时保持暂停，不越过盘前闸门。 */
+            }
+          }
+        }
+        try {
+          await preparePendingEntryObservation(env, current);
+          await preparePendingDragonObservation(env, current);
+        } catch {
+          /* 日线稍后到达时重试，不补造历史。 */
+        }
+      }
+      try {
+        await observePreopenAuction(env, current, providers);
+      } catch {
+        /* 竞价采集失败不阻塞持仓保护。 */
+      }
       // 赛马批次或连续基线运行时：一次联合采集行情帧，主账户随帧观察一次，
       // 影子账本按序重放消费；无联合采集需求时保持独立主账户轮询（§7.1）。
+      // 盘前准备/竞价请求可能跨过开盘，采集必须使用准备完成后的实际时刻。
+      const pollAt = now();
       const tournament = await runTournamentPoll(
         { ...env, TRADING_RUNNER: "server", TRADING_POLL_SECONDS: interval },
-        current,
+        pollAt,
         { providers },
       );
       // 联合采集时必须保留独立轮询的返回结果：丢成 SKIPPED 会把
@@ -82,7 +146,7 @@ export function startTradingRunner(env, runDaily, options = {}) {
               TRADING_RUNNER: "server",
               TRADING_POLL_SECONDS: interval,
             },
-            current,
+            pollAt,
             providers,
           );
       // 运维事件（§5.1）：保存 pollTrading 的返回结果并交给规则器；
@@ -96,8 +160,8 @@ export function startTradingRunner(env, runDaily, options = {}) {
         buffered.push({
           source: "loop",
           result: primary ?? { status: "SKIPPED" },
-          now: current.toISOString(),
-          tradeDate: clock.date,
+          now: pollAt.toISOString(),
+          tradeDate: marketClock(pollAt).date,
           sourceSequence: loopSequence,
         });
       if (!(await flushOperationEvents())) storageOk = false;
@@ -157,15 +221,7 @@ export function startTradingRunner(env, runDaily, options = {}) {
       }).catch(() => {});
     }
     if (!stopped)
-      timer = setTimeout(
-        loop,
-        inSession(marketClock(now()).time)
-          ? Math.max(
-              1000,
-              interval * 1000 - (now().getTime() - current.getTime()),
-            )
-          : 30000,
-      );
+      timer = setTimeout(loop, tradingRunnerDelay(current, now(), interval));
   };
   const ready = loop();
   return {

@@ -617,7 +617,18 @@ export function analyze(
     : new Map();
   const prevRowFor = (row) => {
     const prev = prevByCode.get(row.code) ?? null;
-    const eod = options.prevEodByCode?.get(row.code);
+    const eod =
+      options.prevEodByCode instanceof Map
+        ? options.prevEodByCode.get(row.code)
+        : options.prevEodByCode?.[row.code];
+    if (options.previousPricesVerified === true)
+      return {
+        height: prev?.height ?? null,
+        change: eod?.prevChange ?? null,
+        open: eod?.prevOpen ?? null,
+        close: eod?.prevClose ?? null,
+        breaks: eod?.prevBreaks ?? null,
+      };
     if (row.candidateSource !== "extra" || !eod) return prev;
     return {
       change: prev?.change ?? eod.prevChange ?? null,

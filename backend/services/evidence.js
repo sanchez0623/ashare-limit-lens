@@ -27,6 +27,7 @@ import {
   DIAGNOSTIC_METHOD_VERSION,
 } from "../domain/research-statistics.js";
 import { computeDailyReviewMetrics } from "../domain/review-metrics.js";
+import { isExecutionReview } from "../../shared/review.js";
 import { tradingCalendar } from "./market.js";
 import {
   latestPolicyBundle,
@@ -127,6 +128,12 @@ export async function recordReviewDailyMetric(env, date) {
     .first();
   if (!row) return { recorded: false, reason: "该日期尚无已核验反馈" };
   const review = JSON.parse(row.payload);
+  if (isExecutionReview(review))
+    return {
+      recorded: false,
+      skipped: true,
+      reason: "成交反馈使用独立口径，不登记旧评分 IC 或高分组超额。",
+    };
   const snapshotRow = await database(env)
     .prepare("SELECT payload FROM snapshots WHERE trade_date = ?")
     .bind(review.snapshotDate)
@@ -1058,15 +1065,19 @@ export async function refreshEvidence(env, { date, calendarDates } = {}) {
   const repository = new EvidenceRepository(env);
   const policyRow = await policyBundle(repository);
   const results = { date, recorded: null, reports: [], errors: [] };
+  let skipReview = false;
   try {
     const recorded = await recordReviewDailyMetric(env, date);
     results.recorded = recorded.recorded;
-    if (!recorded.recorded) results.errors.push(recorded.reason);
+    skipReview = !!recorded.skipped;
+    if (!recorded.recorded && !recorded.skipped)
+      results.errors.push(recorded.reason);
   } catch (error) {
     results.errors.push(`每日指标登记失败：${error.message}`);
   }
   for (const horizon of policyRow.payload.windows) {
     for (const builder of [buildReviewEvidence, buildAccountEvidence]) {
+      if (skipReview && builder === buildReviewEvidence) continue;
       try {
         const report = await builder(env, {
           asOf: date,
@@ -1102,9 +1113,19 @@ export async function discoverMissingEvidenceWindows(env) {
   const sources = {
     [REVIEW_SERIES]: {
       latest: (
-        await db.prepare("SELECT MAX(trade_date) AS d FROM reviews").first()
+        await db
+          .prepare(
+            "SELECT MAX(trade_date) AS d FROM reviews WHERE COALESCE(json_extract(payload, '$.reviewKind'), '') <> 'V5_EXECUTION'",
+          )
+          .first()
       )?.d,
-      count: (await db.prepare("SELECT COUNT(*) AS c FROM reviews").first()).c,
+      count: (
+        await db
+          .prepare(
+            "SELECT COUNT(*) AS c FROM reviews WHERE COALESCE(json_extract(payload, '$.reviewKind'), '') <> 'V5_EXECUTION'",
+          )
+          .first()
+      ).c,
     },
     [ACCOUNT_SERIES]: {
       latest: (

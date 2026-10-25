@@ -41,6 +41,11 @@ import {
 } from "../domain/historical-input.js";
 import { openHistoryStore } from "../storage/history.js";
 import {
+  runArchivedBacktest,
+  archivedBacktestDetail,
+} from "./archived-backtest.js";
+import { ARCHIVED_OBSERVATIONS_MODEL } from "./v5-reconstruction.js";
+import {
   loadOrBuildExitContext,
   phaseShiftOf,
   sectorDropsOf,
@@ -158,6 +163,7 @@ export async function runBacktest(
     fees,
     executionCostPolicy,
     selectionPolicyVersion,
+    executionModel,
   },
 ) {
   const store = openHistoryStore(env);
@@ -172,6 +178,22 @@ export async function runBacktest(
     );
   const dataset = await store.getDataset(datasetId);
   if (!dataset) throw new Error("历史数据集不存在");
+  if (executionModel === ARCHIVED_OBSERVATIONS_MODEL) {
+    try {
+      return await runArchivedBacktest(env, store, dataset, {
+        name,
+        strategy,
+        initialCapital,
+        fees,
+        executionCostPolicy,
+        selectionPolicyVersion,
+      });
+    } finally {
+      store.db?.close();
+    }
+  }
+  if (executionModel && executionModel !== HISTORICAL_EXECUTION_MODEL)
+    throw new Error("未知历史执行模型");
   if (dataset.executionModel !== "SIX_FACTOR_V1")
     throw new Error("回测需要六因子历史评分数据集（SIX_FACTOR_V1）");
   const strategyParams = strategy ?? BASE_STRATEGY;
@@ -486,6 +508,13 @@ export async function backtestDetail(env, runId) {
     );
   const run = await store.getBacktestRun(runId);
   if (!run) return null;
+  if (run.executionModel === ARCHIVED_OBSERVATIONS_MODEL) {
+    try {
+      return await archivedBacktestDetail(store, run);
+    } finally {
+      store.db?.close();
+    }
+  }
   const [plans, ledger, equity] = await Promise.all([
     store.listBacktestPlans(runId),
     store.listBacktestLedger(runId),

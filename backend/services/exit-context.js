@@ -21,6 +21,8 @@ import { sectorLimitUpDrops } from "../../shared/exit-signals.js";
 import { normalize } from "../../shared/scoring.js";
 import { CYCLE_PHASES } from "../../shared/sentiment-cycle.js";
 import { digest } from "../storage/paper.js";
+import { resolveDailyPriceInputs } from "./price-history.js";
+import { computeExitEodRowsByCode } from "./daily-closes.js";
 
 // 情绪周期切换：昨日在高潮/上升期，今日退潮/冰点 → true。
 export function phaseShiftOf(todayPhase, yesterdayPhase) {
@@ -65,6 +67,20 @@ export async function buildExitContext({ env, db, snapshot, date }) {
     getStockFeaturesByCode(env, date),
     getExitEodRowsByCode(env, date),
   ]);
+  const frozenPrices = snapshot?.dailyPriceInputs?.records?.length
+    ? snapshot.dailyPriceInputs
+    : snapshot?.intradayEntryContext?.priceHistoryInputs;
+  if (frozenPrices?.records?.length) {
+    const inputs = await resolveDailyPriceInputs(env, date, {
+      frozenInputs: frozenPrices,
+      allowRemote: false,
+    });
+    featuresResult.featuresByCode = inputs.featuresByCode;
+    for (const dataset of inputs.datasets)
+      for (const [code, value] of computeExitEodRowsByCode(dataset, date)
+        .rowsByCode)
+        eodResult.rowsByCode.set(code, value);
+  }
   const yesterdayRow = db
     ? await db
         .prepare(

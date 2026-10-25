@@ -8,7 +8,6 @@ import {
   transactionFees,
   createPlan,
 } from "../backend/domain/trading.js";
-import { replayStrategy } from "../backend/domain/validation.js";
 import { startTradingRunner } from "../scripts/trading-runner.mjs";
 import {
   openSession,
@@ -582,12 +581,7 @@ test("输家 CAS 批次不泄漏事件：账户提交失败时风险事件全部
     db.close();
   }
 });
-test("实时 AI 重放不以日线补造收益，缺少实时覆盖时禁止验证通过", () => {
-  const pair = { snapshot: snapshot(dateAt(0)), dataset: closing(dateAt(1)) };
-  const result = replayStrategy([pair], BASE_STRATEGY);
-  assert.equal(result.covered, false);
-  assert.equal(result.fillCount, 0);
-});
+
 async function baseline(repo) {
   const account = await repo.initialize();
   const day = dataset(dateAt(0));

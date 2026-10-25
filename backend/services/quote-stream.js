@@ -3,6 +3,10 @@ import { QuoteFrameRepository } from "../storage/quotes.js";
 import { RealtimeRepository } from "../storage/realtime.js";
 import { ShadowAccountRepository } from "../storage/shadow.js";
 import { marketClock, inSession } from "../domain/realtime.js";
+import {
+  collectIntradayInputs,
+  verifyAuctionQuotes,
+} from "./intraday-inputs.js";
 
 // 联合行情采集（§7.1）：一次采集，多账本独立消费。
 // 订阅股票为主账户、所有匹配组合及持续基线的持仓、未完成保护/补腿订单、冻结计划之并集，
@@ -14,6 +18,7 @@ export async function buildJointQuotePool(env, { now = new Date() } = {}) {
   const shadows = new ShadowAccountRepository(env);
   const clock = marketClock(now);
   const codes = new Set();
+  const entryPlans = [];
   const sources = { primary: [], researchPool: [], shadow: {} };
   let primary = null;
   try {
@@ -29,6 +34,11 @@ export async function buildJointQuotePool(env, { now = new Date() } = {}) {
       ? await papers.plan(primary.book.lastDate)
       : null;
     for (const order of plan?.orders ?? []) primaryCodes.add(order.code);
+    if (plan?.entryExecutionPolicy) {
+      entryPlans.push(plan);
+      for (const code of plan.entryExecutionPolicy.candidates)
+        primaryCodes.add(code);
+    }
     for (const code of primaryCodes) codes.add(code);
     sources.primary = [...primaryCodes].sort();
   }
@@ -39,6 +49,11 @@ export async function buildJointQuotePool(env, { now = new Date() } = {}) {
       accountCodes.add(position.code);
     const plan = await shadows.latestPlan(account.accountId);
     for (const order of plan?.orders ?? []) accountCodes.add(order.code);
+    if (plan?.entryExecutionPolicy) {
+      entryPlans.push(plan);
+      for (const code of plan.entryExecutionPolicy.candidates)
+        accountCodes.add(code);
+    }
     for (const code of accountCodes) codes.add(code);
     if (accountCodes.size)
       sources.shadow[account.accountId] = [...accountCodes].sort();
@@ -50,13 +65,29 @@ export async function buildJointQuotePool(env, { now = new Date() } = {}) {
     sources.researchPool = (snapshot.stocks ?? []).map((stock) => stock.code);
     sources.researchPoolDate = snapshot.date;
   }
-  return { codes: [...codes].sort(), sources, clock };
+  return { codes: [...codes].sort(), sources, clock, entryPlans };
 }
 
 export async function captureQuoteFrame(env, now, { providers = {} } = {}) {
   const clock = marketClock(now);
   if (!inSession(clock.time)) return null;
   const pool = await buildJointQuotePool(env, { now });
+  const inputs = await collectIntradayInputs(
+    pool.entryPlans[0],
+    clock.date,
+    pool.codes,
+    { providers, now, env },
+  );
+  if (pool.entryPlans.length) {
+    const additional = (inputs?.market?.discoveries ?? [])
+      .filter((row) =>
+        pool.entryPlans.some((p) => p.entryExecutionPolicy.history[row.code]),
+      )
+      .map((row) => row.code)
+      .sort()
+      .slice(0, 200);
+    pool.codes = [...new Set([...pool.codes, ...additional])].sort();
+  }
   if (!pool.codes.length) return null;
   const quotes = await (providers.quotes ?? tradingQuotes)(
     pool.codes,
@@ -68,6 +99,7 @@ export async function captureQuoteFrame(env, now, { providers = {} } = {}) {
     tradeDate: clock.date,
     observedAt,
     quotes,
+    entryInputs: verifyAuctionQuotes(inputs, quotes, clock.date),
     pollIntervalSeconds: Number(env.TRADING_POLL_SECONDS ?? 10),
     pool: {
       codes: pool.codes,

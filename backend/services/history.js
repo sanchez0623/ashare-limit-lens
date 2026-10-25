@@ -1,4 +1,5 @@
 import { createTencentHistoricalProvider } from "./historical-providers.js";
+import { runV5Import } from "./v5-reconstruction.js";
 import {
   assessFieldCoverage,
   buildSampleProvenance,
@@ -33,16 +34,57 @@ function newId(prefix) {
 export function historyProviders() {
   return { "tencent-free": createTencentHistoricalProvider() };
 }
-export async function probeHistoryCapabilities(env, { start, end }) {
+export async function probeHistoryCapabilities(
+  env,
+  { start, end, provider: providerId = "tencent-free" },
+) {
+  if (providerId === "local-fuyao-v5") {
+    const { existsSync } = await import("node:fs");
+    const { dailyDataDir } = await import("./daily-closes.js");
+    const dir = dailyDataDir(env);
+    const count = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM quote_frames WHERE trade_date >= ? AND trade_date <= ?",
+    )
+      .bind(start, end)
+      .first();
+    return {
+      provider: providerId,
+      probedAt: new Date().toISOString(),
+      requestedRange: { start, end },
+      localDailyAvailable: !!dir && existsSync(`${dir}/daily.parquet`),
+      apiConfigured: !!process.env.FU_YAO_API_KEY,
+      archivedFrames: Number(count?.count ?? 0),
+      kinds: ["V5_RECONSTRUCTION", "OBSERVATIONS"],
+      executionModel: "ARCHIVED_OBSERVATIONS_V1",
+      note: "名单分页、逐日字段与时点身份须在导入时另行验收；竞价机会不是完整竞价终态",
+    };
+  }
+  if (providerId !== "tencent-free") throw new Error("未知历史数据供应商");
   const provider = createTencentHistoricalProvider();
   return provider.capabilities({ start, end });
 }
 export async function createHistoryImport(
   env,
-  { provider = "tencent-free", kind, start, end, name, codes, datasetId },
+  { provider, kind, start, end, name, codes, datasetId },
 ) {
-  if (!["LIMIT_FEATURES", "DAILY", "MINUTES"].includes(kind))
-    throw new Error("历史导入类型无效（LIMIT_FEATURES、DAILY 或 MINUTES）");
+  const v5 = ["V5_RECONSTRUCTION", "OBSERVATIONS"].includes(kind);
+  provider ??= v5 ? "local-fuyao-v5" : "tencent-free";
+  if (
+    ![
+      "LIMIT_FEATURES",
+      "DAILY",
+      "MINUTES",
+      "V5_RECONSTRUCTION",
+      "OBSERVATIONS",
+    ].includes(kind)
+  )
+    throw new Error("历史导入类型无效");
+  if (v5 && provider !== "local-fuyao-v5")
+    throw new Error("V5 重构与归档帧导入需要 local-fuyao-v5");
+  if (kind === "OBSERVATIONS" && !datasetId)
+    throw new Error("OBSERVATIONS 必须指定源候选 datasetId");
+  if (datasetId && !["MINUTES", "OBSERVATIONS"].includes(kind))
+    throw new Error("仅分钟或归档帧导入支持源数据集");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end))
     throw new Error("历史导入日期范围无效");
   if (start > end) throw new Error("历史导入起始日期晚于结束日期");
@@ -59,7 +101,8 @@ export async function createHistoryImport(
       `${kind} 导入需要显式声明研究股票池（codes，六位数字代码数组）`,
     );
   const providers = historyProviders();
-  if (!providers[provider]) throw new Error("未知历史数据供应商");
+  if (!providers[provider] && !(v5 && provider === "local-fuyao-v5"))
+    throw new Error("未知历史数据供应商");
   const jobs = new HistoryJobRepository(env);
   const job = await jobs.createJob({
     id: newId("hjob"),
@@ -72,7 +115,7 @@ export async function createHistoryImport(
   const statusPayload = {};
   if (declaredCodes.length) statusPayload.codes = declaredCodes;
   if (datasetId) {
-    if (kind !== "MINUTES")
+    if (!["MINUTES", "OBSERVATIONS"].includes(kind))
       throw new Error("仅 MINUTES 导入支持附加到已有数据集（datasetId）");
     statusPayload.datasetId = datasetId;
   }
@@ -108,6 +151,15 @@ export async function runHistoryImport(env, jobId, options = {}) {
   const jobs = new HistoryJobRepository(env);
   const job = await jobs.getJob(jobId);
   if (!job) throw new Error("历史导入任务不存在");
+  if (
+    ["V5_RECONSTRUCTION", "OBSERVATIONS"].includes(job.kind) &&
+    job.datasetId &&
+    ["READY", "PARTIAL", "BLOCKED"].includes(job.stage)
+  )
+    return {
+      ...job,
+      note: "此历史版本已发布；补充资料请新建导入，保留已有数据集与结果",
+    };
   if (job.stage === "READY" && options.withObservationReturns !== true)
     return job;
   const store = openHistoryStore(env);
@@ -128,6 +180,19 @@ export async function runHistoryImport(env, jobId, options = {}) {
       note: "另一个执行器正在运行此导入任务，本次未接管（避免并发覆盖）",
     };
   try {
+    if (["V5_RECONSTRUCTION", "OBSERVATIONS"].includes(job.kind)) {
+      try {
+        return await runV5Import(env, job, {
+          jobs,
+          store,
+          options,
+          executorId: claim.executorId,
+          round: claim.round,
+        });
+      } finally {
+        store.db?.close();
+      }
+    }
     return await runHistoryImportInner(env, job, {
       jobs,
       store,

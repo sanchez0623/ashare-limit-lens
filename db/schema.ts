@@ -25,6 +25,61 @@ export const settings = sqliteTable("settings", {
   value: text("value").notNull(),
 });
 
+export const dataUpdateJobs = sqliteTable(
+  "data_update_jobs",
+  {
+    id: text("id").primaryKey(),
+    scope: text("scope").notNull(),
+    status: text("status").notNull(),
+    stage: text("stage").notNull().default("等待执行"),
+    progress: text("progress").notNull().default("{}"),
+    results: text("results").notNull().default("{}"),
+    error: text("error"),
+    cancelRequested: integer("cancel_requested").notNull().default(0),
+    workerId: text("worker_id"),
+    createdAt: text("created_at").notNull(),
+    startedAt: text("started_at"),
+    updatedAt: text("updated_at").notNull(),
+    finishedAt: text("finished_at"),
+  },
+  (table) => [
+    uniqueIndex("idx_data_update_active")
+      .on(sql`(1)`)
+      .where(sql`${table.status} IN ('QUEUED','RUNNING')`),
+    index("idx_data_update_history").on(
+      sql`${table.createdAt} DESC`,
+      sql`${table.id} DESC`,
+    ),
+  ],
+);
+export const metadataSnapshots = sqliteTable("metadata_snapshots", {
+  id: text("id").primaryKey(),
+  kind: text("kind").notNull(),
+  source: text("source").notNull(),
+  state: text("state").notNull().default("STAGED"),
+  fetchedAt: text("fetched_at").notNull(),
+  digest: text("digest").notNull(),
+  stats: text("stats").notNull(),
+});
+export const metadataRecords = sqliteTable(
+  "metadata_records",
+  {
+    snapshotId: text("snapshot_id").notNull(),
+    code: text("code").notNull(),
+    payload: text("payload").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.snapshotId, table.code] })],
+);
+export const metadataCurrent = sqliteTable("metadata_current", {
+  kind: text("kind").primaryKey(),
+  snapshotId: text("snapshot_id").notNull(),
+});
+export const dataUpdateWorker = sqliteTable("data_update_worker", {
+  singleton: integer("singleton").primaryKey(),
+  owner: text("owner"),
+  heartbeatAt: text("heartbeat_at").notNull(),
+});
+
 export const paperAccounts = sqliteTable("paper_accounts", {
   id: text("id").primaryKey(),
   revision: integer("revision").notNull().default(0),
@@ -32,6 +87,28 @@ export const paperAccounts = sqliteTable("paper_accounts", {
   lastRunId: text("last_run_id"),
   updatedAt: text("updated_at").notNull(),
 });
+export const paperTradingArchives = sqliteTable("paper_trading_archives", {
+  id: text("id").primaryKey(),
+  tradeDate: text("trade_date").notNull().unique(),
+  createdAt: text("created_at").notNull(),
+  summary: text("summary").notNull(),
+  digest: text("digest").notNull(),
+});
+export const paperTradingArchiveChunks = sqliteTable(
+  "paper_trading_archive_chunks",
+  {
+    archiveId: text("archive_id").notNull(),
+    tableName: text("table_name").notNull(),
+    chunkIndex: integer("chunk_index").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.archiveId, table.tableName, table.chunkIndex],
+    }),
+  ],
+);
 export const paperPlans = sqliteTable("paper_plans", {
   signalDate: text("signal_date").primaryKey(),
   createdAt: text("created_at").notNull(),
@@ -359,3 +436,18 @@ export const strategySignalSnapshots = sqliteTable(
     payload: text("payload").notNull(),
   },
 );
+
+export const dragonConfigVersions = sqliteTable("dragon_config_versions", {
+  id: text("id").primaryKey(),
+  payload: text("payload").notNull(),
+  digest: text("digest").notNull(),
+  engineBuild: text("engine_build").notNull(),
+  baseId: text("base_id"),
+  createdAt: text("created_at").notNull(),
+  origin: text("origin").notNull().default("LEGACY"),
+  validationMode: text("validation_mode")
+    .notNull()
+    .default("RESEARCH_REQUIRED"),
+  replacesId: text("replaces_id"),
+  provenanceDigest: text("provenance_digest"),
+});

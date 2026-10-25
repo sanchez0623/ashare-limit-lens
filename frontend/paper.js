@@ -1,4 +1,7 @@
 import { DEFAULT_FEES, FEE_FIELDS } from "../shared/fees.js";
+import { renderDragonSettings } from "./dragon-risk.js";
+import { initializeEntryObservation } from "./entry-observation.js";
+import { initializeEntryPlan } from "./entry-plan.js";
 import { DEFAULT_RISK_LIMITS, RISK_FIELDS } from "../shared/risk-limits.js";
 import {
   EXPOSURE_TIERS_DEFAULTS,
@@ -44,6 +47,9 @@ const tone = (value) => (value > 0 ? "up" : value < 0 ? "down" : "");
 const actionNames = {
   OPEN: "建仓",
   ADD: "加仓",
+  ADD_PROFIT: "盈利加仓",
+  ADD_LOSS: "亏损补仓",
+  T_RECOVERY: "做 T 第二腿",
   REDUCE: "减仓",
   EXIT: "清仓",
   T_FORWARD: "正向 T",
@@ -71,6 +77,10 @@ const statusNames = {
   PROMOTED: "已启用",
 };
 const executionNames = {
+  WATCHING: "观察中",
+  WAITING_CONFIRMATION: "等待企稳",
+  DATA_INSUFFICIENT: "数据不足",
+  TRIGGERED: "买点已触发",
   PENDING: "等待触发",
   BLOCKED: "受约束，重试中",
   PARTIAL: "部分成交",
@@ -95,6 +105,7 @@ let data = null,
   ledgerPage = 1,
   ledgerDate = "",
   stockPnlPage = 1;
+let entryPlan;
 const LEDGER_PAGE_SIZE = 10;
 const STOCK_PNL_PAGE_SIZE = 15;
 let ledgerData = null,
@@ -221,6 +232,8 @@ function breakdown(fill) {
   );
 }
 function priceConditions(order) {
+  if (order.tradingPolicyVersion === "dragon-risk-v1")
+    return `参考 ¥ ${money(order.referenceCents)}<span class="stock-code">保护位 ¥ ${money(order.stopCents)}；1R/2R 分档及跟踪退出<br>实际成交由当帧成本和容量决定</span>`;
   const reference = `<span class="stock-code">参考价 ¥ ${money(order.referenceCents)}</span>`;
   const protection = `<span class="stock-code">止损 ≤ ¥ ${money(order.stopCents)}<br>分批止盈 ≥ ¥ ${money(order.takeProfitCents)}</span>`;
   const execution =
@@ -388,6 +401,17 @@ function renderLedger() {
 }
 function render() {
   if (!data) return;
+  const archivePanel = $("paper-archives");
+  if (archivePanel) {
+    archivePanel.hidden = !data.archives?.length;
+    $("paper-archive-list").innerHTML = (data.archives ?? [])
+      .map((archive) => {
+        const query = new URLSearchParams({ id: archive.id }).toString();
+        return `<div class="version-row"><div><strong>${escape(archive.signalDate)} 及以前的交易</strong><span>${archive.primary.fills} 笔主账户成交 · ${archive.shadow.fills} 笔影子成交 · ${archive.primary.positions} 只原持仓</span></div><p>期末权益 ${money(archive.primary.equityCents)} 元；新周期从 ${escape(archive.tradeDate)} 开始，初始资金 ${money(archive.initialBook.initialCashCents)} 元。</p><a class="secondary" href="/api/paper/archives?${escape(query)}&amp;format=csv" download>历史成交 CSV</a> <a class="secondary" href="/api/paper/archives?${escape(query)}" download>完整历史 JSON</a></div>`;
+      })
+      .join("");
+  }
+  renderDragonSettings(data, { request, perform });
   const {
     book,
     equity,
@@ -400,6 +424,17 @@ function render() {
     stockPnlMeta,
   } = data;
   const live = data.realtime;
+  const entryObservation = data.entryObservation;
+  $("paper-entry-observation-status").textContent =
+    `${entryObservation?.message ?? "等待影子观察状态"}${entryObservation?.signalDate ? ` · 信号日 ${entryObservation.signalDate} · ${entryObservation.candidates} 只观察候选` : ""}${entryObservation?.readiness && !entryObservation.ready ? ` · 最近核验：${entryObservation.readiness.coverage ? "全天覆盖完整" : "全天覆盖不足"}，${entryObservation.readiness.replayPassed ? "重放一致" : "重放未通过"}` : ""}`;
+  const entryOption = $("paper-entry-execution-option");
+  entryOption.disabled = false;
+  if (!settingsDirty)
+    $("paper-entry-execution-mode").value =
+      book.entryExecutionMode ?? "next-open";
+  $("paper-entry-observe").textContent = entryObservation?.requested
+    ? "查看影子观察进度"
+    : "启动影子观察";
   const health = live?.health;
   $("paper-live-tag").textContent = live?.running
     ? "常驻执行器已连接"
@@ -463,9 +498,15 @@ function render() {
         `<article class="metric"><div class="metric-head">${label}</div><div class="metric-value ${color}">${value}</div><div class="metric-caption">${caption}</div></article>`,
     )
     .join("");
-  $("paper-date").textContent = book.lastDate
-    ? `已结算至 ${book.lastDate}`
-    : "等待首次盘后结算";
+  const cycle = data.archives?.find(
+    (archive) => archive.id === book.tradingCycleId,
+  );
+  $("paper-date").textContent =
+    cycle && !book.settlementCount
+      ? `新周期 ${cycle.tradeDate} · 等待首次结算`
+      : book.lastDate
+        ? `已结算至 ${book.lastDate}`
+        : "等待首次盘后结算";
   $("paper-audit").textContent = data.audit.passed
     ? "资金账本一致"
     : "账本核对异常";
@@ -477,7 +518,9 @@ function render() {
     data.benchmarkStatus,
   );
   $("paper-risk").textContent =
-    `单股上限 ${percent(riskLimits.maxPositionWeight)} · 总仓位上限 ${percent(riskLimits.maxGrossExposure)} · 回撤 ${percent(equity?.drawdown ?? 0)} / ${percent(riskLimits.maxDrawdown)} · 不透支`;
+    data.book.tradingPolicyVersion === "dragon-risk-v1"
+      ? `新政策 · 单股 ${percent(data.book.dragonConfig.risk.stockWeight)} · 总仓位 ${percent(data.book.dragonConfig.risk.grossWeight)} · 组合计划风险 ${percent(data.book.dragonConfig.risk.portfolioRisk)} · 回撤熔断 ${percent(data.book.dragonConfig.risk.drawdown)}`
+      : `单股上限 ${percent(riskLimits.maxPositionWeight)} · 总仓位上限 ${percent(riskLimits.maxGrossExposure)} · 回撤 ${percent(equity?.drawdown ?? 0)} / ${percent(riskLimits.maxDrawdown)} · 不透支`;
   $("paper-position-rows").innerHTML = book.positions.length
     ? book.positions
         .map((position) => {
@@ -520,6 +563,8 @@ function render() {
   $("paper-plan-meta").textContent = plan
     ? `策略 ${plan.strategyVersion} · 选股 ${(() => {
         const v = plan.selectionPolicy?.version;
+        if (plan.tradingPolicyVersion === "dragon-risk-v1")
+          return "独立风险预算 · 买点 → 成交额 → 代码";
         return v === "signal-ranking-v2"
           ? "精确分 → 成交额 → 代码"
           : v === "signal-ranking-v3"
@@ -529,58 +574,39 @@ function render() {
               : v === "signal-ranking-v5"
                 ? "精确分 → 分类路由 → 买点闸门 → 炸板及首阴/假阴候选"
                 : "整数分 → 代码";
-      })()} · 费用 v${plan.feeConfigVersion || 0} · 成本 ${plan.executionCostPolicy ? `${plan.executionCostPolicy.modelVersion} v${plan.executionCostPolicy.version || 0}` : "旧版固定 10bps"}${plan.sourceSnapshotMissing ? " · 评分缺失，仅执行风险保护" : ""} · 目标仓位 ${percent(plan.targetExposure)} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
+      })()} · 费用 v${plan.feeConfigVersion || 0} · 成本 ${plan.executionCostPolicy ? `${plan.executionCostPolicy.modelVersion} v${plan.executionCostPolicy.version || 0}` : "旧版固定 10bps"}${plan.sourceSnapshotMissing ? " · 信号缺失，仅执行风险保护" : ""} · ${plan.tradingPolicyVersion === "dragon-risk-v1" ? "仓位按买点与共享风险预算确定" : `目标仓位 ${percent(plan.targetExposure)}`} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
     : "当日评分保存后，生成下一交易日计划。";
+  const entryPolicy = plan?.entryExecutionPolicy;
+  entryPlan.render(plan);
+  if (entryPolicy) $("paper-plan-meta").textContent += " · 盘中条件执行";
   $("paper-plan-rows").innerHTML = plan?.orders.length
     ? plan.orders
         .map(
           (order) =>
-            `<tr><td><strong>${escape(order.name)}</strong><span class="stock-code">${escape(order.code)} · ${escape(order.sector)}</span></td><td><span class="action-tag">${actionNames[order.action]}</span></td><td>${order.score ?? "—"}${Number.isFinite(order.scoreValue) ? `<span class="stock-code">精确 ${Number(order.scoreValue.toFixed(6))}</span>` : ""}<span class="stock-code">原始 ${order.originalScore ?? "—"}</span></td><td>${order.quantity || "—"} 股</td><td class="plan-price-conditions">${priceConditions(order)}</td><td class="plan-reason">${escape(order.reason)}</td></tr>`,
+            `<tr><td><strong>${escape(order.name)}</strong><span class="stock-code">${escape(order.code)} · ${escape(order.sector)}</span></td><td><span class="action-tag">${actionNames[order.action]}</span></td><td>${plan.tradingPolicyVersion === "dragon-risk-v1" ? "买点与风险预算" : `${order.score ?? "—"}${Number.isFinite(order.scoreValue) ? `<span class="stock-code">精确 ${Number(order.scoreValue.toFixed(6))}</span>` : ""}<span class="stock-code">原始 ${order.originalScore ?? "—"}</span>`}</td><td>${order.quantity || "—"} 股</td><td class="plan-price-conditions">${priceConditions(order)}</td><td class="plan-reason">${escape(order.reason)}</td></tr>`,
         )
         .join("")
-    : `<tr><td colspan="6"><div class="empty compact">${plan ? "当前没有满足建仓条件的个股，保持空仓。" : "等待有效盘后评分。"}</div></td></tr>`;
-  const candidates = plan?.selectionAudit?.candidates ?? [];
-  const graded = candidates.filter((c) => c.grade !== undefined);
-  const gradeSummary = graded.length
-    ? ` · A ${candidates.filter((c) => c.grade === "A").length} / B ${candidates.filter((c) => c.grade === "B").length} / C ${candidates.filter((c) => c.grade === "C").length}`
-    : "";
-  const gradeCell = (candidate) => {
-    if (candidate.grade === undefined) return "未分级";
-    if (candidate.grade === null)
-      return `剔除<span class="stock-code">${escape(candidate.gradeReason)}</span>`;
-    const label =
-      candidate.grade === "A"
-        ? "重点关注"
-        : candidate.grade === "B"
-          ? "一般关注"
-          : "备选观察";
-    return `${candidate.grade} 级<span class="stock-code">${label} · ${escape(candidate.gradeReason)}</span>`;
-  };
-  const selectionExpanded =
-    $("paper-selection-audit").querySelector("details")?.open ?? false;
-  $("paper-selection-audit").innerHTML = candidates.length
-    ? `<details><summary>选股依据 · ${candidates.filter((c) => c.status === "SELECTED").length} 只入选 / ${candidates.length} 只候选${gradeSummary}</summary><div class="table-scroll"><table><thead><tr><th>顺序</th><th>个股</th><th>分级</th><th>精确评分</th><th>信号日成交额</th><th>选择结果</th></tr></thead><tbody>${candidates.map((c) => `<tr><td>${c.rank}</td><td>${escape(c.name)}<span class="stock-code">${escape(c.code)}</span></td><td>${gradeCell(c)}</td><td>${Number.isFinite(c.scoreValue) ? Number(c.scoreValue.toFixed(6)) : "—"}</td><td>${Number.isFinite(c.liquidityAmountCents) ? `¥ ${metricMoney(c.liquidityAmountCents)}` : "未知"}</td><td>${c.status === "SELECTED" ? "已入选" : "未入选"}<span class="stock-code">${escape(c.reason)}</span></td></tr>`).join("")}</tbody></table></div><p class="small-muted">成交额取自信号日冻结数据，仅作同分决胜；实际成交仍受下一交易日行情、资金及容量限制。</p></details>`
-    : "";
-  const selectionDetails = $("paper-selection-audit").querySelector("details");
-  if (selectionDetails) selectionDetails.open = selectionExpanded;
+    : `<tr><td colspan="6"><div class="empty compact">${entryPolicy ? "暂无预设交易订单；新增建仓等待下方观察标的的盘中买点触发。" : plan ? "当前没有满足建仓条件的个股，保持空仓。" : "等待有效盘后评分。"}</div></td></tr>`;
   $("paper-outcomes").innerHTML = run?.outcomes?.length
     ? `<details><summary>最近执行反馈 · ${escape(run.date)}</summary><div class="execution-feedback">${run.outcomes.map((order) => `<p><strong>${escape(order.name)} · ${actionNames[order.action]}</strong><span>${order.status === "FILLED" ? "已成交" : order.status === "PARTIAL" ? "部分完成" : "未执行"} ${order.filledQuantity ? `${order.filledQuantity} 股` : ""} · ${escape(order.reason || "")}</span></p>`).join("")}</div></details>`
     : "";
   renderLedger();
   const progress = run?.improvement;
   const days = progress?.days ?? Math.max(0, book.settlementCount - 1);
+  const dragonActive = book.tradingPolicyVersion === "dragon-risk-v1";
   $("paper-ai-tag").textContent = data.ai.configured
     ? "已配置模型"
     : "模型待配置";
-  $("paper-ai-content").innerHTML =
-    `<div class="strategy-active"><span>当前策略</span><strong>${escape(book.activeStrategy)}</strong></div><p>${data.ai.configured ? `已积累 ${days} 个可验证交易日。至少 20 日训练 + 10 日封存验证后提出新候选。` : "尚未配置服务端大模型密钥。规则策略正常运行；配置后接入真实 AI 提案与验证。"}</p><div class="ai-process">真实成交与费用<span>↓</span>AI 训练窗口建议<span>↓</span>独立验证 · 收益与回撤<span>↓</span>通过后启用新版本</div><p class="ai-note">每个封存窗口只验证一个候选；已冻结计划和历史交易保留原版本。</p>`;
+  $("paper-ai-content").innerHTML = dragonActive
+    ? `<div class="strategy-active"><span>当前政策</span><strong>dragon-risk-v1</strong></div><p>AI 只研究初始保护幅度、T 底仓比例与第二腿价差；一次最多两组。积累新政策 60 日训练、20 日封存测试与 30 日匹配前瞻，成本压力核验通过后才可晋级。</p><p class="ai-note">进度见下方高级模板核验；旧策略研究报告不参与本政策晋级。</p>`
+    : `<div class="strategy-active"><span>当前策略</span><strong>${escape(book.activeStrategy)}</strong></div><p>${data.ai.configured ? `已积累 ${days} 个可验证交易日。至少 20 日训练 + 10 日封存验证后提出新候选。` : "尚未配置服务端大模型密钥。规则策略正常运行；配置后接入真实 AI 提案与验证。"}</p><div class="ai-process">真实成交与费用<span>↓</span>AI 训练窗口建议<span>↓</span>独立验证 · 收益与回撤<span>↓</span>通过后启用新版本</div><p class="ai-note">每个封存窗口只验证一个候选；已冻结计划和历史交易保留原版本。</p>`;
   $("paper-version-list").innerHTML =
     versions
       .filter((version) => version.id !== "baseline-v1")
       .slice(0, 6)
       .map(
         (version) =>
-          `<div class="version-row"><div><strong>${escape(version.id)}</strong><span>${statusNames[version.status] || escape(version.status)}</span></div><p>${escape(version.evidence.rationale || version.evidence.error || "等待验证结果")}</p>${version.evidence.baseline ? `<small>封存验证 ${escape(version.evidence.validationStart)} — ${escape(version.evidence.validationEnd)}<br>基线 ${percent(version.evidence.baseline.totalReturn)} → 候选 ${percent(version.evidence.candidate.totalReturn)} · 回撤 ${percent(version.evidence.candidate.maxDrawdown)}</small>` : ""}${version.status === "VALIDATED" ? `<button class="secondary" data-activate="${escape(version.id)}">启用此版本</button>` : ""}</div>`,
+          `<div class="version-row"><div><strong>${escape(version.id)}</strong><span>${dragonActive ? "旧版本只读 · " : ""}${statusNames[version.status] || escape(version.status)}</span></div><p>${escape(version.evidence.rationale || version.evidence.error || "等待验证结果")}</p>${version.evidence.baseline ? `<small>封存验证 ${escape(version.evidence.validationStart)} — ${escape(version.evidence.validationEnd)}<br>基线 ${percent(version.evidence.baseline.totalReturn)} → 候选 ${percent(version.evidence.candidate.totalReturn)} · 回撤 ${percent(version.evidence.candidate.maxDrawdown)}</small>` : ""}${!dragonActive && data.dragon?.state !== "DRAINING" && version.status === "VALIDATED" ? `<button class="secondary" data-activate="${escape(version.id)}">启用此版本</button>` : ""}</div>`,
       )
       .join("") ||
     '<div class="small-muted">尚无 AI 候选版本，持续积累真实数据。</div>';
@@ -695,9 +721,16 @@ async function perform(task) {
     document
       .querySelectorAll("[data-paper-operation]")
       .forEach((button) => (button.disabled = false));
+    if (data) renderDragonSettings(data, { request, perform });
   }
 }
 export function initializePaper() {
+  entryPlan = initializeEntryPlan($("paper-entry-plan"));
+  initializeEntryObservation({
+    request,
+    getObservation: () => data?.entryObservation,
+    onStarted: refresh,
+  });
   $("paper-config-form").addEventListener("input", () => {
     settingsDirty = true;
   });
@@ -773,12 +806,20 @@ export function initializePaper() {
           : {}),
         improvementMode: $("paper-improvement-mode").value,
         benchmarkCode: $("paper-benchmark").value || DEFAULT_BENCHMARK,
-        ...([
-          "signal-ranking-v3",
-          "signal-ranking-v4",
-          "signal-ranking-v5",
-        ].includes($("paper-selection-version").value)
-          ? { selectionPolicyVersion: $("paper-selection-version").value }
+        ...(!(
+          data.book.tradingPolicyVersion === "dragon-risk-v1" ||
+          data.dragon?.state === "DRAINING"
+        )
+          ? {
+              entryExecutionMode: $("paper-entry-execution-mode").value,
+              ...([
+                "signal-ranking-v3",
+                "signal-ranking-v4",
+                "signal-ranking-v5",
+              ].includes($("paper-selection-version").value)
+                ? { selectionPolicyVersion: $("paper-selection-version").value }
+                : {}),
+            }
           : {}),
         fees: Object.fromEntries(
           FEE_FIELDS.map(({ key }) => [
@@ -788,15 +829,22 @@ export function initializePaper() {
               : Number($(`fee-${key}`).value) / 10000,
           ]),
         ),
-        riskLimits: Object.fromEntries(
-          RISK_FIELDS.map(({ key, percent }) => [
-            key,
-            percent
-              ? Number($(`risk-${key}`).value) / 100
-              : Number($(`risk-${key}`).value),
-          ]),
-        ),
-        strategyParams: collectStrategyParams(),
+        ...(!(
+          data.book.tradingPolicyVersion === "dragon-risk-v1" ||
+          data.dragon?.state === "DRAINING"
+        )
+          ? {
+              riskLimits: Object.fromEntries(
+                RISK_FIELDS.map(({ key, percent }) => [
+                  key,
+                  percent
+                    ? Number($(`risk-${key}`).value) / 100
+                    : Number($(`risk-${key}`).value),
+                ]),
+              ),
+              strategyParams: collectStrategyParams(),
+            }
+          : {}),
       });
       settingsDirty = false;
       return `设置已保存；策略参数登记为 ${result.book.activeStrategy}，将用于下一份计划，已冻结计划保持原参数。`;
