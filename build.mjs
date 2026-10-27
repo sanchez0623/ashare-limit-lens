@@ -1,6 +1,8 @@
 import { build } from "esbuild";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { executionEngineBuildDigest } from "./backend/domain/execution-build.js";
+import { observationScoreBuildDigest } from "./backend/domain/observation-score-build.js";
+import { marketEnvironmentBuildDigest } from "./backend/domain/market-environment-build.js";
 await mkdir(".sites-runtime", { recursive: true });
 await mkdir("dist/client/assets", { recursive: true });
 const client = await build({
@@ -37,6 +39,12 @@ await Promise.all([
 await build({
   entryPoints: ["backend/worker.js"],
   define: {
+    __MARKET_ENVIRONMENT_BUILD__: JSON.stringify(
+      await marketEnvironmentBuildDigest(),
+    ),
+    __OBSERVATION_SCORE_BUILD__: JSON.stringify(
+      await observationScoreBuildDigest(),
+    ),
     __EXECUTION_ENGINE_BUILD__: JSON.stringify(
       await executionEngineBuildDigest(),
     ),

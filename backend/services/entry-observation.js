@@ -171,6 +171,7 @@ export async function verifyEntryObservation(
     for (const frame of frames) {
       if ((await digestOf(frame.payload)) !== frame.digest)
         throw new Error("行情帧摘要不一致");
+      if (marketClock(new Date(frame.observedAt)).time >= "15:00:00") continue;
       const step = advanceSession(book, session, {
         ...frame.payload,
         observedAt: frame.observedAt,

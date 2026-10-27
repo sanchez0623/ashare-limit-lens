@@ -3,17 +3,39 @@
 import {
   DRAGON_POLICY_VERSION as VERSION,
   DRAGON_TEMPLATE_VERSION,
+  DRAGON_ADAPTIVE_TEMPLATE_VERSION,
+  DRAGON_T_CAPITAL_POLICY,
   DRAGON_REGIMES,
   DRAGON_HOLD_DAYS,
   normalizeDragonConfig,
   dragonPreview,
+  dragonTCapitalLimits,
 } from "../../shared/dragon-risk-config.js";
+import {
+  ADAPTIVE_RISK_POLICY,
+  initialAdaptiveRisk,
+  advanceAdaptiveRisk,
+  adaptiveEffective,
+  adaptiveEntryOrderDecision,
+  validAdaptiveRiskPolicy,
+  ADAPTIVE_RISK_POLICY_V2,
+  NEUTRAL_ADAPTIVE_RISK_POLICY,
+} from "../../shared/adaptive-risk.js";
+import {
+  MARKET_ENVIRONMENT_POLICY,
+  isEnvironmentPolicy,
+  freezeEnvironmentCohort,
+  assertEnvironmentCohort,
+} from "../../shared/market-environment.js";
+import { ENTRY_ORDER_POLICY } from "../../shared/entry-order-policy.js";
+import { assertManualExitRequests, manualExitFor } from "./manual-exits.js";
 import {
   INTRADAY_ENTRY_RULES,
   INTRADAY_ENTRY_VERSION,
   eligible,
   typesAt,
   updateEntryPath,
+  assertEntryHistoryProcessed,
 } from "./intraday-entry.js";
 import {
   selectionPolicy,
@@ -33,6 +55,10 @@ import {
 } from "./trading.js";
 import { feesForBook } from "../../shared/fees.js";
 import { planFreezeDeadline } from "../../shared/observation-schedule.js";
+import {
+  recordPracticeDecision as trace,
+  observePracticeRisk,
+} from "./practice-trace.js";
 
 export const DRAGON_RULES = Object.freeze({
   version: DRAGON_TEMPLATE_VERSION,
@@ -55,6 +81,11 @@ export const DRAGON_RULES = Object.freeze({
   holdDays: DRAGON_HOLD_DAYS,
 });
 export const isDragon = (value) => value?.tradingPolicyVersion === VERSION;
+export const isAdaptiveDragon = (plan) =>
+  plan?.dragonPolicy?.templateVersion === DRAGON_ADAPTIVE_TEMPLATE_VERSION;
+const hasTCapital = (plan) =>
+  plan?.dragonPolicy?.tCapitalPolicy?.version ===
+  DRAGON_T_CAPITAL_POLICY.version;
 const clone = (value) => structuredClone(value);
 const qOf = (book, code) => book.positions.find((p) => p.code === code);
 const qty = (p) => (p ? totalQuantity(p) : 0);
@@ -81,6 +112,7 @@ export function assertDragonPlan(plan, book = null) {
   if (!isDragon(plan))
     throw new Error("新政策计划缺少 dragon-risk-v1 标记，禁止回退旧规则");
   const policy = plan.dragonPolicy;
+  assertManualExitRequests(plan.manualExitRequests, plan);
   const expectedSelection = selectionPolicyFields(
     selectionPolicy(SELECTION_VERSION_DRAGON),
   );
@@ -93,13 +125,33 @@ export function assertDragonPlan(plan, book = null) {
   if (
     !policy ||
     policy.version !== VERSION ||
-    policy.templateVersion !== DRAGON_TEMPLATE_VERSION ||
+    ![DRAGON_TEMPLATE_VERSION, DRAGON_ADAPTIVE_TEMPLATE_VERSION].includes(
+      policy.templateVersion,
+    ) ||
+    (isAdaptiveDragon(plan)
+      ? !validAdaptiveRiskPolicy(policy.adaptiveRiskPolicy)
+      : Object.hasOwn(policy, "adaptiveRiskPolicy")) ||
+    (Object.hasOwn(policy, "entryOrderPolicy") &&
+      (!isAdaptiveDragon(plan) ||
+        policy.entryOrderPolicy !== ENTRY_ORDER_POLICY)) ||
+    (Object.hasOwn(policy, "tCapitalPolicy") &&
+      (!isAdaptiveDragon(plan) ||
+        canonicalJson(policy.tCapitalPolicy) !==
+          canonicalJson(DRAGON_T_CAPITAL_POLICY))) ||
     canonicalJson(policy.rules) !== canonicalJson(DRAGON_RULES) ||
     canonicalJson(plan.entryExecutionPolicy?.rules) !==
       canonicalJson(INTRADAY_ENTRY_RULES)
   )
     throw new Error("新政策规则或模板与冻结版本不一致");
   normalizeDragonConfig(policy.config);
+  if (isEnvironmentPolicy(policy.adaptiveRiskPolicy)) {
+    if (
+      canonicalJson(policy.marketEnvironmentPolicy) !==
+      canonicalJson(MARKET_ENVIRONMENT_POLICY)
+    )
+      throw new Error("市场环境政策摘要不一致");
+    assertEnvironmentCohort(policy.environmentCohort, plan);
+  }
   if (
     !policy.configId ||
     !policy.configDigest ||
@@ -119,7 +171,21 @@ export function assertDragonPlan(plan, book = null) {
   return policy.config;
 }
 export function createDragonPlan(snapshot, book, createdAt, options = {}) {
+  assertEntryHistoryProcessed(snapshot);
+  const manualExitRequests = options.manualExitRequests ?? [];
+  assertManualExitRequests(
+    manualExitRequests,
+    { signalDate: snapshot.date, createdAt },
+    book,
+  );
   const config = normalizeDragonConfig(book.dragonConfig);
+  const riskPolicy =
+    options.adaptiveRiskPolicy ??
+    (book.environmentControl === "LEGACY"
+      ? ADAPTIVE_RISK_POLICY_V2
+      : book.environmentControl === "NEUTRAL"
+        ? NEUTRAL_ADAPTIVE_RISK_POLICY
+        : ADAPTIVE_RISK_POLICY);
   const context = snapshot.intradayEntryContext;
   if (
     !options.defensive &&
@@ -128,14 +194,29 @@ export function createDragonPlan(snapshot, book, createdAt, options = {}) {
   )
     throw new Error("新政策缺少信号日冻结的买点历史");
   const history = clone(context?.history ?? {});
-  const candidates = Object.keys(history)
-    .filter((code) => eligible(history[code], null))
-    .sort(
-      (a, b) =>
-        (history[b].amount ?? 0) - (history[a].amount ?? 0) ||
-        a.localeCompare(b),
-    )
-    .slice(0, INTRADAY_ENTRY_RULES.maxPremarketCandidates);
+  const retained = options.observationUniverse;
+  if (
+    retained !== undefined &&
+    (!Array.isArray(retained) ||
+      retained.length > INTRADAY_ENTRY_RULES.maxCandidates ||
+      new Set(retained).size !== retained.length ||
+      retained.some(
+        (code) =>
+          !/^\d{6}$/.test(code) ||
+          (!history[code] && !book.positions.some((p) => p.code === code)),
+      ))
+  )
+    throw new Error("版本衔接的冻结观察名单无效");
+  const candidates =
+    retained ??
+    Object.keys(history)
+      .filter((code) => eligible(history[code], null))
+      .sort(
+        (a, b) =>
+          (history[b].amount ?? 0) - (history[a].amount ?? 0) ||
+          a.localeCompare(b),
+      )
+      .slice(0, INTRADAY_ENTRY_RULES.maxPremarketCandidates);
   const allCandidates = [
     ...new Set([...book.positions.map((p) => p.code), ...candidates]),
   ];
@@ -148,11 +229,44 @@ export function createDragonPlan(snapshot, book, createdAt, options = {}) {
     strategyVersion: book.dragonConfigId,
     entryExecutionMode: "intraday-conditional",
     sourceSnapshotMissing: !!options.defensive,
+    ...(retained ? { observationUniverse: clone(retained) } : {}),
     engineBuild: options.engineBuild ?? book.dragonEngineBuild,
+    ...(manualExitRequests.length
+      ? { manualExitRequests: clone(manualExitRequests) }
+      : {}),
     dragonPolicy: {
       version: VERSION,
-      templateVersion: DRAGON_TEMPLATE_VERSION,
+      templateVersion:
+        options.dragonTemplateVersion ?? DRAGON_ADAPTIVE_TEMPLATE_VERSION,
+      ...(options.dragonTemplateVersion === DRAGON_TEMPLATE_VERSION
+        ? {}
+        : {
+            adaptiveRiskPolicy: clone(riskPolicy),
+            ...(options.tCapitalPolicy === null
+              ? {}
+              : {
+                  tCapitalPolicy: clone(
+                    options.tCapitalPolicy ?? DRAGON_T_CAPITAL_POLICY,
+                  ),
+                }),
+            ...(options.entryOrderPolicy === null
+              ? {}
+              : {
+                  entryOrderPolicy:
+                    options.entryOrderPolicy ?? ENTRY_ORDER_POLICY,
+                }),
+          }),
       configId: book.dragonConfigId,
+      ...(options.dragonTemplateVersion !== DRAGON_TEMPLATE_VERSION &&
+      isEnvironmentPolicy(riskPolicy)
+        ? {
+            marketEnvironmentPolicy: clone(MARKET_ENVIRONMENT_POLICY),
+            environmentCohort: freezeEnvironmentCohort({
+              ...snapshot,
+              createdAt: snapshot.createdAt ?? createdAt,
+            }),
+          }
+        : {}),
       configDigest: book.dragonConfigDigest,
       config,
       ...(book.dragonConfigProvenance
@@ -165,6 +279,9 @@ export function createDragonPlan(snapshot, book, createdAt, options = {}) {
     entryExecutionPolicy: {
       version: INTRADAY_ENTRY_VERSION,
       sourceDate: snapshot.date,
+      ...(context?.industrySnapshotId
+        ? { industrySnapshotId: context.industrySnapshotId }
+        : {}),
       rules: clone(INTRADAY_ENTRY_RULES),
       history,
       candidates: allCandidates,
@@ -180,32 +297,52 @@ export function createDragonPlan(snapshot, book, createdAt, options = {}) {
       .map((s) => s.code)
       .sort(),
     previousLimitUpKnown: !options.defensive,
-    marketPolicy: dragonPreview(config, phase),
+    marketPolicy:
+      options.dragonTemplateVersion === DRAGON_TEMPLATE_VERSION
+        ? dragonPreview(config, phase)
+        : {
+            ...dragonPreview(config, "unknown"),
+            templateVersion: DRAGON_ADAPTIVE_TEMPLATE_VERSION,
+            adaptiveRiskPolicyVersion: riskPolicy.version,
+          },
     selectionAudit: {
       signalDate: snapshot.date,
       snapshotDigest: options.snapshotDigest ?? null,
       candidates: candidates.map((code, index) => ({
         code,
-        name: history[code].name,
+        name: history[code]?.name ?? qOf(book, code)?.name,
         rank: index + 1,
-        amount: history[code].amount,
+        amount: history[code]?.amount ?? null,
         status: "WATCHING",
         reason: "等待实际买点与共享风险预算",
       })),
     },
-    orders: book.positions.map((p) => ({
-      tradingPolicyVersion: VERSION,
-      referenceCents: p.markCents,
-      takeProfitCents: p.dragon?.p0Cents + p.dragon?.r0Cents,
-      id: `${snapshot.date}:${p.code}:HOLD`,
-      code: p.code,
-      name: p.name,
-      action: "HOLD",
-      side: "NONE",
-      quantity: 0,
-      stopCents: p.dragon?.stopCents,
-      reason: "由独立风险预算政策管理",
-    })),
+    orders: book.positions.map((p) => {
+      const order = {
+        tradingPolicyVersion: VERSION,
+        referenceCents: p.markCents,
+        takeProfitCents: p.dragon?.p0Cents + p.dragon?.r0Cents,
+        id: `${snapshot.date}:${p.code}:HOLD`,
+        code: p.code,
+        name: p.name,
+        action: "HOLD",
+        side: "NONE",
+        quantity: 0,
+        stopCents: p.dragon?.stopCents,
+        reason: "由独立风险预算政策管理",
+      };
+      const request = manualExitFor({ manualExitRequests }, p);
+      if (request)
+        Object.assign(order, {
+          action: "EXIT",
+          side: "SELL",
+          quantity: qty(p),
+          manualExitRequestId: request.id,
+          protective: true,
+          reason: request.reason,
+        });
+      return order;
+    }),
     constraints:
       "独立配置；按实际观测买点触发；所有买入共享预算；T+1；旧参数不参与。",
   };
@@ -214,6 +351,9 @@ export function createDragonPlan(snapshot, book, createdAt, options = {}) {
 }
 export function openDragonSession(book, plan, date) {
   assertDragonPlan(plan, book);
+  assertManualExitRequests(plan.manualExitRequests, plan, book);
+  if (plan.manualExitRequests?.some((row) => row.tradeDate > date))
+    throw new Error("尚未到用户指定的清仓交易日");
   if (
     !isDragon(book) ||
     book.lastDate !== plan.signalDate ||
@@ -242,7 +382,10 @@ export function openDragonSession(book, plan, date) {
     },
     entryState: {
       admissions: Object.fromEntries(
-        plan.entryExecutionPolicy.candidates.map((code) => [code, { code }]),
+        plan.entryExecutionPolicy.candidates.map((code) => [
+          code,
+          { code, source: "PREMARKET", admittedAt: plan.createdAt },
+        ]),
       ),
       paths: {},
       coverage: { acceptedQuotes: 0 },
@@ -253,8 +396,17 @@ export function openDragonSession(book, plan, date) {
       confirmations: 0,
       marketStamp: null,
     },
+    ...(isAdaptiveDragon(plan)
+      ? {
+          adaptiveRisk: initialAdaptiveRisk(
+            date,
+            plan.dragonPolicy.adaptiveRiskPolicy,
+          ),
+        }
+      : {}),
     dailyPaused: false,
     cooldownAtStart: book.dragonCooldownDays ?? 0,
+    practice: { version: 1, startedSequence: 0, decisions: {} },
   };
 }
 function marketState(session, observation) {
@@ -318,9 +470,19 @@ function reservations(
           buyFee +
           sellFee;
         if (p.sector) s.sectors[p.sector] = (s.sectors[p.sector] ?? 0) + cents;
+        s.stocks[p.code] = (s.stocks[p.code] ?? 0) + cents;
         return s;
       },
-      { cash: 0, exposure: 0, risk: 0, sectors: {} },
+      {
+        cash: 0,
+        exposure: 0,
+        risk: 0,
+        sectors: {},
+        stocks: {},
+        entryExposure: 0,
+        entrySectors: {},
+        entryStocks: {},
+      },
     );
   for (const o of session.orders) {
     if (
@@ -347,9 +509,40 @@ function reservations(
       : 0;
     result.cash += cents + fee;
     result.exposure += cents;
+    result.entryExposure += cents;
+    result.stocks[o.code] = (result.stocks[o.code] ?? 0) + cents;
+    result.entryStocks[o.code] = (result.entryStocks[o.code] ?? 0) + cents;
     result.risk += remaining * Math.max(1, o.maxPriceCents - o.stopCents) + fee;
     const sector = session.plan.entryExecutionPolicy.history[o.code]?.sector;
     result.sectors[sector] = (result.sectors[sector] ?? 0) + cents;
+    result.entrySectors[sector] = (result.entrySectors[sector] ?? 0) + cents;
+  }
+  return result;
+}
+
+function tRemaining(position) {
+  const t = position?.dragon?.t;
+  return t ? Math.max(0, t.firstQuantity - t.secondQuantity) : 0;
+}
+function strategicQuantity(position) {
+  const direction = position?.dragon?.t?.direction;
+  return Math.max(
+    0,
+    qty(position) +
+      (direction === "REVERSE"
+        ? tRemaining(position)
+        : direction === "FORWARD"
+          ? -tRemaining(position)
+          : 0),
+  );
+}
+function strategicExposure(book) {
+  const result = { gross: 0, sectors: {} };
+  for (const position of book.positions) {
+    const cents = strategicQuantity(position) * position.markCents;
+    result.gross += cents;
+    result.sectors[position.sector] =
+      (result.sectors[position.sector] ?? 0) + cents;
   }
   return result;
 }
@@ -398,13 +591,22 @@ export function dragonBudget(
       Math.ceil(qty(x) * x.markCents * 0.003),
     0,
   );
-  const policy = dragonPreview(config, session.regime.phase).effective;
+  const dynamic = isAdaptiveDragon(session.plan);
+  const policy = dynamic
+    ? adaptiveEffective(config, session.adaptiveRisk, {
+        code,
+        sector,
+        observedAt: session.lastObservedAt,
+        intent,
+      })
+    : dragonPreview(config, session.regime.phase).effective;
   const gross =
-    intent === "T_RECOVERY" && session.regime.phase === "ebbing"
+    !dynamic && intent === "T_RECOVERY" && session.regime.phase === "ebbing"
       ? Math.min(0.2, risk.grossWeight)
       : policy.grossWeight;
-  const factor =
-    intent === "T_RECOVERY" && session.regime.phase === "ebbing"
+  const factor = dynamic
+    ? policy.factor
+    : intent === "T_RECOVERY" && session.regime.phase === "ebbing"
       ? 1
       : regime.factor;
   if (
@@ -415,7 +617,17 @@ export function dragonBudget(
     gross == null ||
     session.plan.sourceSnapshotMissing
   )
-    return { quantity: 0, reason: "市场、数据或账户暂停新增风险" };
+    return {
+      quantity: 0,
+      reason: "市场、数据或账户暂停新增风险",
+      reasonCode: session.dailyPaused
+        ? "DAILY_PAUSED"
+        : session.missingHoldingQuotes
+          ? "HOLDING_DATA_MISSING"
+          : book.dragonHalted
+            ? "DRAWDOWN_HALTED"
+            : "MARKET_RESTRICTED",
+    };
   const pendingCodes = new Set(
     session.orders
       .filter(
@@ -432,15 +644,42 @@ export function dragonBudget(
     !pendingCodes.has(code) &&
     book.positions.length + pendingCodes.size >= risk.maxPositions
   )
-    return { quantity: 0, reason: "持仓及待成交名额已满" };
+    return {
+      quantity: 0,
+      reason: "持仓及待成交名额已满",
+      reasonCode: "MAX_POSITIONS",
+    };
   const equity = book.equityCents;
+  const tCapital = hasTCapital(session.plan);
+  const tIntent = ["T_FIRST", "T_RECOVERY"].includes(intent);
+  const peak = tCapital ? dragonTCapitalLimits(config, policy) : null;
+  const strategic = tCapital ? strategicExposure(book) : null;
+  const coreCap =
+    tCapital && !tIntent
+      ? Math.min(
+          equity * gross - strategic.gross - reserve.entryExposure,
+          equity * policy.stockWeight -
+            strategicQuantity(p) * (p?.markCents ?? 0) -
+            (reserve.entryStocks[code] ?? 0),
+          equity * policy.sectorWeight -
+            (strategic.sectors[sector] ?? 0) -
+            (reserve.entrySectors[sector] ?? 0),
+        )
+      : Infinity;
   const cap = Math.max(
     0,
     Math.min(
       book.cashCents - reserve.cash,
-      equity * gross - exposure - reserve.exposure,
-      equity * risk.stockWeight - qty(p) * (p?.markCents ?? 0),
-      equity * risk.sectorWeight -
+      coreCap,
+      equity * (peak?.grossWeight ?? gross) - exposure - reserve.exposure,
+      equity *
+        (peak?.stockWeight ??
+          (dynamic ? policy.stockWeight : risk.stockWeight)) -
+        qty(p) * (p?.markCents ?? 0) -
+        (tCapital ? (reserve.stocks[code] ?? 0) : 0),
+      equity *
+        (peak?.sectorWeight ??
+          (dynamic ? policy.sectorWeight : risk.sectorWeight)) -
         sectorExposure -
         (reserve.sectors[sector] ?? 0),
     ),
@@ -451,12 +690,19 @@ export function dragonBudget(
     equity * risk.entryRisk * factor * (intent.startsWith("ADD_") ? 0.5 : 1);
   const remainingRisk = Math.max(
     0,
-    equity * risk.portfolioRisk * factor - heldRisk - reserve.risk,
+    equity * risk.portfolioRisk * (dynamic ? policy.marketFactor : factor) -
+      heldRisk -
+      reserve.risk,
   );
   return {
     quantity: roundLot(
       Math.min(
         maxQuantity,
+        tCapital && intent === "T_FIRST"
+          ? p
+            ? availableQuantity(p, session.date) * config.advanced.tFraction
+            : 0
+          : Infinity,
         cap / (priceCents * 1.003),
         tradeRisk / perShareRisk,
         remainingRisk / perShareRisk,
@@ -465,13 +711,44 @@ export function dragonBudget(
     capCents: Math.floor(cap),
     riskBudgetCents: Math.floor(Math.min(tradeRisk, remainingRisk)),
     stopCents,
+    ...(tCapital
+      ? {
+          capital: {
+            version: session.plan.dragonPolicy.tCapitalPolicy.version,
+            coreGrossWeight: gross,
+            peakGrossWeight: peak.grossWeight,
+            peakStockWeight: peak.stockWeight,
+            peakSectorWeight: peak.sectorWeight,
+            strategicExposureCents: strategic.gross,
+            totalExposureCents: exposure,
+          },
+        }
+      : {}),
+    ...(dynamic
+      ? {
+          adaptiveRisk: {
+            version: session.adaptiveRisk.version,
+            marketTimestamp: session.adaptiveRisk.market.observedAt,
+            factor,
+            marketFactor: policy.marketFactor,
+            sectorFactor: policy.sectorFactor,
+            stockFactor: policy.stockFactor,
+          },
+        }
+      : {}),
     reason:
       cap <= 0 ? "现金、仓位或预留不足" : "计划风险、集中度与共享预算约束",
+    reasonCode: cap <= 0 ? "CASH_OR_EXPOSURE" : "RISK_BUDGET",
   };
 }
 function addOrder(session, code, action, reason, extras = {}) {
-  const id = `${session.date}:${code}:${action}`;
-  let order = session.orders.find((o) => o.id === id);
+  const baseId = `${session.date}:${code}:${action}`;
+  let order = session.orders.findLast(
+    (o) => o.code === code && o.intent === action,
+  );
+  const retry = order?.adaptiveCancelled && !order.filledQuantity;
+  const id = retry ? `${baseId}:retry:${session.sequence}` : baseId;
+  if (retry) order = null;
   if (!order) {
     const h = session.plan.entryExecutionPolicy.history[code];
     order = {
@@ -545,17 +822,25 @@ function fill(
     (side === "SELL" && quote.closeCents <= quote.limitDownCents)
   ) {
     order.reason = "涨跌停排队不假设成交";
+    trace(session, code, "LIMIT_LOCKED", {
+      intent: order.intent,
+      orderId: order.id,
+    });
     return null;
   }
   const now = Date.parse(session.lastObservedAt);
   if (
-    side === "BUY" &&
+    (side === "BUY" || isAdaptiveDragon(plan)) &&
     (quote.orderBookQuality !== "OK" ||
-      !(quote.ask1Cents > 0) ||
-      !(quote.ask1Shares > 0) ||
+      !((side === "BUY" ? quote.ask1Cents : quote.bid1Cents) > 0) ||
+      !((side === "BUY" ? quote.ask1Shares : quote.bid1Shares) > 0) ||
       !fresh(quote.orderBookTimestamp, now, INTRADAY_ENTRY_RULES.quoteMaxAgeMs))
   ) {
-    order.reason = "缺少当帧可验证卖盘";
+    order.reason = side === "BUY" ? "缺少当帧可验证卖盘" : "缺少当帧可验证买盘";
+    trace(session, code, "ORDERBOOK_MISSING", {
+      intent: order.intent,
+      orderId: order.id,
+    });
     return null;
   }
   const fees = (n) =>
@@ -576,7 +861,10 @@ function fill(
   });
   const available =
     side === "SELL"
-      ? availableQuantity(p, session.date)
+      ? Math.min(
+          availableQuantity(p, session.date),
+          isAdaptiveDragon(plan) ? quote.bid1Shares : Infinity,
+        )
       : Math.min(desired, quote.ask1Shares);
   const solve = (desiredQuantity) =>
     solveFillQuantity({
@@ -610,6 +898,12 @@ function fill(
   if (!solved.quantity) {
     order.reason = solved.detail ?? solved.reason;
     order.status = "BLOCKED";
+    trace(
+      session,
+      code,
+      side === "SELL" && !available ? "T1_BLOCKED" : "CAPACITY_BLOCKED",
+      { intent: order.intent, orderId: order.id, desired, available },
+    );
     return null;
   }
   const quantity = solved.quantity,
@@ -634,6 +928,10 @@ function fill(
     ) {
       order.reason = "实际可成交数量不足以覆盖做 T 双边费用和预计成本";
       order.status = "BLOCKED";
+      trace(session, code, "T_COST_BLOCKED", {
+        intent: order.intent,
+        orderId: order.id,
+      });
       return null;
     }
   }
@@ -705,6 +1003,9 @@ function fill(
     strategyVersion: plan.strategyVersion,
     tradingPolicyVersion: VERSION,
     orderId: order.id,
+    ...(order.manualExitRequestId
+      ? { manualExitRequestId: order.manualExitRequestId }
+      : {}),
     buyPoint: order.buyPoint ?? null,
     quoteTimestamp: quote.timestamp,
     observationSequence: session.sequence,
@@ -713,6 +1014,19 @@ function fill(
     sourcePriceCents: quote.closeCents,
     executionCost: solved.executionCost.costBreakdown,
     entryEvidence: {
+      ...(session.adaptiveRisk?.environment
+        ? {
+            environment: clone(session.adaptiveRisk.environment),
+            initialRiskPerShareCents: Math.max(
+              1,
+              price -
+                (budget?.stopCents ??
+                  Math.floor(
+                    price * (1 - plan.dragonPolicy.config.advanced.stopLoss),
+                  )),
+            ),
+          }
+        : {}),
       intent: order.intent,
       observedAt: session.lastObservedAt,
       quoteTimestamp: quote.timestamp,
@@ -728,6 +1042,11 @@ function fill(
       riskBudgetCents: budget?.riskBudgetCents ?? null,
       capCents: budget?.capCents ?? null,
       configId: plan.dragonPolicy.configId,
+      ...(session.adaptiveRisk
+        ? {
+            adaptiveRisk: adaptiveDecision(session, code, position.sector),
+          }
+        : {}),
     },
     cycleId: position.dragon?.id ?? `${session.date}:${code}`,
   };
@@ -735,8 +1054,225 @@ function fill(
   order.filledQuantity += quantity;
   order.status = order.filledQuantity >= order.quantity ? "FILLED" : "PARTIAL";
   order.reason = "按实际观测、共享容量、费用和风险预算成交";
+  trace(session, code, "FILLED", {
+    intent: order.intent,
+    orderId: order.id,
+    buyPoint: order.buyPoint ?? null,
+    quantity,
+    priceCents: price,
+  });
   mark(book);
   return { quantity, price, cashDelta, position, notional, fee };
+}
+function adaptiveDecision(session, code, sector) {
+  const state = session.adaptiveRisk;
+  if (!state) return null;
+  const e = adaptiveEffective(session.plan.dragonPolicy.config, state, {
+    code,
+    sector,
+  });
+  return {
+    version: state.version,
+    observedAt: state.observedAt,
+    marketTimestamp: state.market.observedAt,
+    stockTimestamp: state.stocks[code]?.observedAt ?? null,
+    effective: e,
+    reasons: [
+      state.market.reasons,
+      state.sectors[sector]?.reasons ?? [],
+      state.stocks[code]?.reasons ?? [],
+    ],
+  };
+}
+function localRegime(session, code, sector, legacy) {
+  if (!isAdaptiveDragon(session.plan)) return legacy;
+  const e = adaptiveEffective(
+    session.plan.dragonPolicy.config,
+    session.adaptiveRisk,
+    { code, sector },
+  );
+  return {
+    ...e,
+    t: e.tForward || e.tReverse,
+    target: null,
+    phase: session.regime.phase,
+  };
+}
+function cancelAdaptiveOrders(book, session, observation) {
+  if (!isAdaptiveDragon(session.plan)) return;
+  const waitForConfirmation =
+    session.plan.dragonPolicy.entryOrderPolicy === ENTRY_ORDER_POLICY ||
+    observation.entryOrderPolicy === ENTRY_ORDER_POLICY;
+  for (const order of session.orders) {
+    if (
+      terminal.has(order.status) ||
+      !["OPEN", "ADD_PROFIT", "ADD_LOSS"].includes(order.intent)
+    )
+      continue;
+    const sector =
+      qOf(book, order.code)?.sector ??
+      session.plan.entryExecutionPolicy.history[order.code]?.sector;
+    if (waitForConfirmation) {
+      if (order.expiresAt && clock(session.lastObservedAt) > order.expiresAt) {
+        order.status = order.filledQuantity ? "EXPIRED_PARTIAL" : "EXPIRED";
+        order.reason = "买点有效窗口结束，取消剩余买入";
+        delete order.entryPaused;
+        trace(session, order.code, "ORDER_EXPIRED", {
+          intent: order.intent,
+          buyPoint: order.buyPoint,
+        });
+        continue;
+      }
+      const decision = adaptiveEntryOrderDecision(
+        session.plan.dragonPolicy.config,
+        session.adaptiveRisk,
+        {
+          code: order.code,
+          sector,
+          intent: order.intent,
+          paused: session.dailyPaused || book.dragonHalted,
+          missingHoldingQuotes: session.missingHoldingQuotes,
+        },
+      );
+      if (decision === "WAIT") {
+        order.entryPaused = true;
+        order.reason = "等待有效行情和风控预热确认，保留剩余买入";
+        trace(session, order.code, "ADAPTIVE_WAIT", { intent: order.intent });
+        continue;
+      }
+      delete order.entryPaused;
+      if (decision === "CANCEL") {
+        order.status = "CANCELLED";
+        order.adaptiveCancelled = true;
+        order.reason = "已确认风险或操作权限收紧，取消剩余买入";
+        trace(session, order.code, "ADAPTIVE_CANCEL", { intent: order.intent });
+        continue;
+      }
+    }
+    const e = adaptiveEffective(
+      session.plan.dragonPolicy.config,
+      session.adaptiveRisk,
+      {
+        code: order.code,
+        sector,
+        paused:
+          session.dailyPaused ||
+          session.missingHoldingQuotes ||
+          book.dragonHalted,
+      },
+    );
+    const allowed =
+      order.intent === "OPEN"
+        ? e.open
+        : order.intent === "ADD_PROFIT"
+          ? e.profitAdd
+          : e.lossAdd;
+    if (!allowed) {
+      order.status = "CANCELLED";
+      order.adaptiveCancelled = true;
+      order.reason = "动态预算或操作权限收紧，取消剩余新增风险";
+      trace(session, order.code, "ADAPTIVE_CANCEL", {
+        intent: order.intent,
+        adaptiveRisk: adaptiveDecision(session, order.code, sector),
+      });
+      continue;
+    }
+    if (order.maxPriceCents > 0 && order.stopCents > 0) {
+      const remaining = Math.max(0, order.quantity - order.filledQuantity);
+      const budget = dragonBudget(
+        book,
+        session,
+        order.code,
+        order.maxPriceCents,
+        order.stopCents,
+        order.intent,
+        remaining,
+        order.id,
+      );
+      order.quantity =
+        order.filledQuantity + Math.min(remaining, budget.quantity);
+      if (order.quantity === order.filledQuantity) {
+        order.status = "CANCELLED";
+        order.adaptiveCancelled = true;
+        order.reason = "动态预算不足，取消剩余新增风险";
+        trace(session, order.code, "ADAPTIVE_CANCEL", {
+          intent: order.intent,
+          adaptiveRisk: adaptiveDecision(session, order.code, sector),
+        });
+      }
+    }
+  }
+}
+function dynamicReductionTarget(book, session, p) {
+  if (!isAdaptiveDragon(session.plan) || session.missingHoldingQuotes)
+    return null;
+  const e = adaptiveEffective(
+    session.plan.dragonPolicy.config,
+    session.adaptiveRisk,
+    { code: p.code, sector: p.sector },
+  );
+  const equity = book.equityCents;
+  const gross = book.positions.reduce((n, x) => n + qty(x) * x.markCents, 0);
+  const sector = book.positions
+    .filter((x) => x.sector === p.sector)
+    .reduce((n, x) => n + qty(x) * x.markCents, 0);
+  if (hasTCapital(session.plan)) {
+    const strategic = strategicExposure(book);
+    const coreQuantity = strategicQuantity(p);
+    const overlay = qty(p) - coreQuantity;
+    const peak = dragonTCapitalLimits(
+      session.plan.dragonPolicy.config,
+      e.protection,
+    );
+    let target = qty(p);
+    for (const [cap, exposure] of [
+      [e.protection.grossWeight, strategic.gross],
+      [e.protection.sectorWeight, strategic.sectors[p.sector] ?? 0],
+    ])
+      if (cap != null && exposure > equity * cap)
+        target = Math.min(
+          target,
+          Math.max(
+            0,
+            roundLot((coreQuantity * equity * cap) / exposure) + overlay,
+          ),
+        );
+    if (
+      e.protection.stockWeight != null &&
+      coreQuantity * p.markCents > equity * e.protection.stockWeight
+    )
+      target = Math.min(
+        target,
+        Math.max(
+          0,
+          roundLot((equity * e.protection.stockWeight) / p.markCents) + overlay,
+        ),
+      );
+    for (const [cap, exposure] of [
+      [peak.grossWeight, gross],
+      [peak.sectorWeight, sector],
+      [peak.stockWeight, qty(p) * p.markCents],
+    ])
+      if (cap != null && exposure > equity * cap)
+        target = Math.min(target, roundLot((qty(p) * equity * cap) / exposure));
+    return target < qty(p) ? target : null;
+  }
+  let target = qty(p);
+  for (const [cap, exposure] of [
+    [e.protection.grossWeight, gross],
+    [e.protection.sectorWeight, sector],
+  ])
+    if (cap != null && exposure > equity * cap)
+      target = Math.min(target, roundLot((qty(p) * equity * cap) / exposure));
+  if (
+    e.protection.stockWeight != null &&
+    qty(p) * p.markCents > equity * e.protection.stockWeight
+  )
+    target = Math.min(
+      target,
+      roundLot((equity * e.protection.stockWeight) / p.markCents),
+    );
+  return target < qty(p) ? target : null;
 }
 function processProtection(book, session, item, ledger, regime) {
   const p = qOf(book, item.quote.code);
@@ -744,22 +1280,26 @@ function processProtection(book, session, item, ledger, regime) {
   const c = p.dragon,
     price = p.markCents,
     config = session.plan.dragonPolicy.config;
+  const manualExit = manualExitFor(session.plan, p);
+  if (manualExit) c.exit = true;
   c.highCents = Math.max(c.highCents, price);
   let reason = null,
-    target = null;
+    target = null,
+    dynamicReduction = false;
+  const dynamicTarget = dynamicReductionTarget(book, session, p);
   const gross = book.equityCents
     ? (book.equityCents - book.cashCents) / book.equityCents
     : 0;
   if (
     book.dragonHalted ||
-    regime.phase === "freezing" ||
+    (!isAdaptiveDragon(session.plan) && regime.phase === "freezing") ||
     c.exit ||
     price <= c.stopCents ||
     p.heldDays >= c.holdDays
   ) {
     c.exit = true;
     target = 0;
-    reason = "熔断、保护位或持有期限要求退出";
+    reason = manualExit ? manualExit.reason : "熔断、保护位或持有期限要求退出";
   } else if (
     regime.target != null &&
     gross > Math.min(regime.target, config.risk.grossWeight)
@@ -802,17 +1342,38 @@ function processProtection(book, session, item, ledger, regime) {
       reason = "按累计盈利档位减仓";
     }
   }
+  // Dynamic limits may tighten an exit, but never bypass the existing profit
+  // milestones or the trailing-stop update while a reduction is capacity-bound.
+  if (dynamicTarget != null && (target == null || dynamicTarget < target)) {
+    target = dynamicTarget;
+    dynamicReduction = true;
+    reason = "市场、板块或个股动态敞口收紧";
+  }
   if (target == null) return false;
   if (c.t) recordT(book, p, "ABORTED_BY_RISK", session.date);
-  c.targetQuantity = Math.min(c.targetQuantity ?? Infinity, target);
+  if (!dynamicReduction)
+    c.targetQuantity = Math.min(c.targetQuantity ?? Infinity, target);
   for (const o of session.orders.filter(
     (o) => o.code === p.code && o.side === "BUY" && !terminal.has(o.status),
   ))
     o.status = "CANCELLED";
-  const desired = Math.max(0, qty(p) - c.targetQuantity),
+  const desired = Math.max(
+      0,
+      qty(p) - (dynamicReduction ? target : c.targetQuantity),
+    ),
     action = target === 0 ? "EXIT" : "REDUCE";
   if (desired > 0) {
+    trace(session, p.code, "PROTECTIVE_EXIT", {
+      intent: action,
+      desired,
+      stopCents: c.stopCents,
+      stage: c.stage,
+      ...(dynamicReduction
+        ? { adaptiveRisk: adaptiveDecision(session, p.code, p.sector) }
+        : {}),
+    });
     const order = addOrder(session, p.code, action, reason);
+    if (manualExit) order.manualExitRequestId = manualExit.id;
     order.quantity = order.filledQuantity + desired;
     fill(book, session, item, order, "SELL", desired, ledger);
   }
@@ -842,10 +1403,12 @@ function processT(book, session, item, ledger, regime, recoveringOnly = false) {
       reference = item.quote.previousCloseCents;
     const direction =
       conf.operations.tForward &&
+      regime.tForward !== false &&
       price <= reference * 0.98 &&
       path?.stableQuotes >= 1
         ? "FORWARD"
         : conf.operations.tReverse &&
+            regime.tReverse !== false &&
             price >= reference * 1.02 &&
             (path?.downQuotes ?? 0) >= 1
           ? "REVERSE"
@@ -997,6 +1560,10 @@ function processEntry(book, session, item, observation, ledger, regime) {
   const p = qOf(book, code),
     c = p?.dragon,
     path = session.entryState.paths[code];
+  if (session.plan.manualExitRequests?.some((row) => row.code === code)) {
+    trace(session, code, "MANUAL_EXIT", { intent: "EXIT" });
+    return;
+  }
   if (
     !eligible(
       h,
@@ -1005,23 +1572,35 @@ function processEntry(book, session, item, observation, ledger, regime) {
       ),
     ) ||
     !path
-  )
+  ) {
+    trace(session, code, "INELIGIBLE");
     return;
+  }
   const sector = observation.entryInputs?.market?.sectors?.find(
     (s) => s.name === h.sector,
   );
-  if (
-    !Number.isFinite(sector?.score) ||
-    sector.score < DRAGON_RULES.sectorMinimum ||
-    !regime.open ||
-    session.dailyPaused ||
-    book.dragonHalted ||
-    path.stableQuotes < 1 ||
-    !(item.volume > 0) ||
-    (h.previousVolumeShares > 0 &&
-      item.quote.volumeShares > h.previousVolumeShares * 3)
-  )
+  const entryBlock = !Number.isFinite(sector?.score)
+    ? "SECTOR_MISSING"
+    : sector.score < DRAGON_RULES.sectorMinimum
+      ? "SECTOR_WEAK"
+      : !regime.open
+        ? session.regime.phase === "unknown"
+          ? "MARKET_UNKNOWN"
+          : "MARKET_RESTRICTED"
+        : session.dailyPaused
+          ? "DAILY_PAUSED"
+          : book.dragonHalted
+            ? "DRAWDOWN_HALTED"
+            : path.stableQuotes < 1 || !(item.volume > 0)
+              ? "WAITING_CONFIRMATION"
+              : h.previousVolumeShares > 0 &&
+                  item.quote.volumeShares > h.previousVolumeShares * 3
+                ? "VOLUME_ABNORMAL"
+                : null;
+  if (entryBlock) {
+    trace(session, code, entryBlock, { sectorScore: sector?.score ?? null });
     return;
+  }
   const time = clock(observation.observedAt);
   const types = typesAt(
     session.plan.entryExecutionPolicy,
@@ -1046,8 +1625,10 @@ function processEntry(book, session, item, observation, ledger, regime) {
     c?.t ||
     c?.stage ||
     (c?.startDate === session.date && !pending)
-  )
+  ) {
+    trace(session, code, !types.length ? "NO_BUY_POINT" : "POSITION_PROTECTED");
     return;
+  }
   let intent = "OPEN",
     maxQuantity = Infinity;
   if (pending) {
@@ -1074,13 +1655,20 @@ function processEntry(book, session, item, observation, ledger, regime) {
     ) {
       intent = "ADD_LOSS";
       maxQuantity = roundLot(c.initialQuantity * 0.25);
-    } else return;
+    } else {
+      trace(session, code, "NO_ADD_SIGNAL");
+      return;
+    }
   }
-  let order = session.orders.find(
+  let order = session.orders.findLast(
     (o) => o.code === code && o.intent === intent,
   );
-  if (c?.dayAction === session.date && (!order || terminal.has(order.status)))
+  if (order?.entryPaused) return;
+  if (order?.adaptiveCancelled && !order.filledQuantity) order = null;
+  if (c?.dayAction === session.date && (!order || terminal.has(order.status))) {
+    trace(session, code, "DAILY_ACTION_LIMIT", { intent });
     return;
+  }
   if (order && terminal.has(order.status)) return;
   const triggerPrice = order?.triggerPriceCents ?? item.quote.closeCents;
   const maxPrice = Math.floor(triggerPrice * (1 + DRAGON_RULES.maxChase));
@@ -1096,6 +1684,18 @@ function processEntry(book, session, item, observation, ledger, regime) {
     maxQuantity,
     order?.id,
   );
+  trace(session, code, "BUY_POINT_TRIGGERED", {
+    intent,
+    buyPoint: types[0],
+    triggerPriceCents: triggerPrice,
+  });
+  if (budget.quantity < 100)
+    trace(session, code, budget.reasonCode ?? "RISK_BUDGET", {
+      intent,
+      buyPoint: types[0],
+      riskBudgetCents: budget.riskBudgetCents ?? 0,
+      capCents: budget.capCents ?? 0,
+    });
   if (!order) {
     order = addOrder(session, code, intent, budget.reason, {
       quantity: budget.quantity,
@@ -1110,6 +1710,7 @@ function processEntry(book, session, item, observation, ledger, regime) {
   }
   if (time > order.expiresAt) {
     order.status = order.filledQuantity ? "EXPIRED_PARTIAL" : "EXPIRED";
+    trace(session, code, "ORDER_EXPIRED", { intent, buyPoint: order.buyPoint });
     return;
   }
   if (order.quantity < 100 && !order.filledQuantity)
@@ -1169,11 +1770,22 @@ function processEntry(book, session, item, observation, ledger, regime) {
   state.dayAction = session.date;
 }
 export function advanceDragonSession(inputBook, inputSession, observation) {
+  if (
+    observation.entryOrderPolicy &&
+    observation.entryOrderPolicy !== ENTRY_ORDER_POLICY
+  )
+    throw new Error("不支持的盘中订单恢复政策");
   assertDragonPlan(inputSession.plan, inputBook);
   if (!isDragon(inputBook) || !isDragon(inputSession))
     throw new Error("新旧会话政策不能混用");
+  const { practice, ...sessionCore } = inputSession;
   const book = clone(inputBook),
-    session = clone(inputSession),
+    session = {
+      ...clone(sessionCore),
+      ...(practice
+        ? { practice: { ...practice, decisions: { ...practice.decisions } } }
+        : {}),
+    },
     ledger = [];
   if (session.status !== "OPEN") return { book, session, ledger };
   const now = Date.parse(observation.observedAt),
@@ -1191,11 +1803,19 @@ export function advanceDragonSession(inputBook, inputSession, observation) {
     return { book, session, ledger };
   session.sequence++;
   session.lastObservedAt = observation.observedAt;
+  if (!session.practice)
+    session.practice = {
+      version: 1,
+      startedSequence: session.sequence - 1,
+      decisions: {},
+    };
   for (const o of session.orders)
     if (o.expiresAt && time > o.expiresAt && !terminal.has(o.status))
       o.status = o.filledQuantity ? "EXPIRED_PARTIAL" : "EXPIRED";
-  const rule = marketState(session, observation),
-    regime = { ...rule, phase: session.regime.phase };
+  const rule = isAdaptiveDragon(session.plan)
+    ? null
+    : marketState(session, observation);
+  let regime = rule ? { ...rule, phase: session.regime.phase } : null;
   const history = session.plan.entryExecutionPolicy.history;
   for (const row of observation.entryInputs?.market?.discoveries ?? []) {
     if (
@@ -1203,16 +1823,31 @@ export function advanceDragonSession(inputBook, inputSession, observation) {
       INTRADAY_ENTRY_RULES.maxCandidates
     )
       break;
-    if (eligible(history[row.code], row))
-      session.entryState.admissions[row.code] ??= { code: row.code };
+    if (
+      eligible(history[row.code], row) &&
+      !session.entryState.admissions[row.code]
+    ) {
+      session.entryState.admissions[row.code] = {
+        code: row.code,
+        source: "INTRADAY_POOL",
+        admittedAt: observation.observedAt,
+      };
+      trace(session, row.code, "ADMITTED");
+    }
   }
+  for (const code of new Set([
+    ...Object.keys(session.entryState.admissions),
+    ...book.positions.map((p) => p.code),
+  ]))
+    if (!observation.quotes?.[code]) trace(session, code, "QUOTE_MISSING");
   const accepted = [];
   for (const [code, raw] of Object.entries(observation.quotes ?? {})) {
     if (
       !/^\d{6}$/.test(code) ||
       (!session.entryState.admissions[code] && !qOf(book, code))
-    )
+    ) {
       continue;
+    }
     const quote = { ...raw, code },
       last = session.quotes[code];
     if (
@@ -1222,8 +1857,17 @@ export function advanceDragonSession(inputBook, inputSession, observation) {
       !Number.isFinite(quote.volumeShares) ||
       quote.volumeShares < 0 ||
       (last && Date.parse(quote.timestamp) <= Date.parse(last.timestamp))
-    )
+    ) {
+      trace(
+        session,
+        code,
+        last && Date.parse(quote.timestamp) <= Date.parse(last.timestamp)
+          ? "QUOTE_REPEATED"
+          : "QUOTE_INVALID",
+        { quoteTimestamp: quote.timestamp ?? null },
+      );
       continue;
+    }
     const expected =
       session.initialBook.positions.find((p) => p.code === code)?.markCents ??
       history[code]?.previousCloseCents;
@@ -1231,8 +1875,10 @@ export function advanceDragonSession(inputBook, inputSession, observation) {
       !expected ||
       Math.abs(quote.previousCloseCents - expected) >
         Math.max(1, expected * 0.001)
-    )
+    ) {
+      trace(session, code, "PREVIOUS_CLOSE_MISMATCH");
       continue;
+    }
     const contiguous =
       last && Date.parse(quote.timestamp) - Date.parse(last.timestamp) <= 20000;
     const volume =
@@ -1255,9 +1901,78 @@ export function advanceDragonSession(inputBook, inputSession, observation) {
     accepted.push({ quote, volume });
   }
   mark(book);
+  observePracticeRisk(session, book);
   session.missingHoldingQuotes = book.positions.some(
     (p) => !fresh(session.quotes[p.code]?.timestamp, now, 15000),
   );
+  if (isAdaptiveDragon(session.plan)) {
+    const runtimePolicy =
+      observation.adaptiveRiskPolicy ??
+      session.plan.dragonPolicy.adaptiveRiskPolicy;
+    if (!validAdaptiveRiskPolicy(runtimePolicy))
+      throw new Error("盘中动态风控政策与版本不一致");
+    if (
+      session.adaptiveRisk?.version !== runtimePolicy.version &&
+      observation.adaptiveRiskPolicy &&
+      session.adaptiveRisk?.version ===
+        session.plan.dragonPolicy.adaptiveRiskPolicy.version
+    )
+      session.adaptiveRisk.version = runtimePolicy.version;
+    if (session.adaptiveRisk?.version !== runtimePolicy.version)
+      throw new Error("动态感知会话缺少冻结版本，禁止回退四档规则");
+    advanceAdaptiveRisk(session.adaptiveRisk, {
+      observedAt: observation.observedAt,
+      market: observation.entryInputs?.market,
+      environmentCohort: session.plan.dragonPolicy.environmentCohort,
+      environmentQuotes: observation.quotes,
+      quotes: Object.fromEntries(
+        accepted.map((item) => [item.quote.code, item.quote]),
+      ),
+      sectors: Object.fromEntries(
+        [
+          ...Object.keys(session.entryState.admissions),
+          ...book.positions.map((p) => p.code),
+        ].map((code) => [
+          code,
+          qOf(book, code)?.sector ?? history[code]?.sector,
+        ]),
+      ),
+      stopLoss: session.plan.dragonPolicy.config.advanced.stopLoss,
+    });
+    session.regime.phase = session.adaptiveRisk.market.valid
+      ? (session.adaptiveRisk.market.phase ?? "unknown")
+      : "unknown";
+    session.regime.marketStamp = session.adaptiveRisk.market.observedAt;
+    regime = localRegime(session);
+  }
+  if (isEnvironmentPolicy(session.plan.dragonPolicy.adaptiveRiskPolicy)) {
+    session.environmentOpportunities = { ...session.environmentOpportunities };
+    for (const { quote } of accepted) {
+      const code = quote.code,
+        h = history[code],
+        path = session.entryState.paths[code];
+      if (!h || !path || qOf(book, code)) continue;
+      for (const type of typesAt(
+        session.plan.entryExecutionPolicy,
+        h,
+        quote,
+        path,
+        time,
+        observation.entryInputs?.auction?.[code],
+        session.date,
+      )) {
+        const key = `${code}:${type}`;
+        session.environmentOpportunities[key] ??= {
+          code,
+          buyPoint: type,
+          sequence: session.sequence,
+          observedAt: session.lastObservedAt,
+          environment: clone(session.adaptiveRisk.environment),
+          enabled: session.plan.dragonPolicy.config.buyPoints[type] === true,
+        };
+      }
+    }
+  }
   const risk = session.plan.dragonPolicy.config.risk;
   if (1 - book.equityCents / session.initialBook.equityCents >= risk.dailyLoss)
     session.dailyPaused = true;
@@ -1266,13 +1981,26 @@ export function advanceDragonSession(inputBook, inputSession, observation) {
     risk.drawdown
   )
     book.dragonHalted = true;
+  cancelAdaptiveOrders(book, session, observation);
   const blocked = new Set();
   for (const item of accepted)
     if (processProtection(book, session, item, ledger, regime))
       blocked.add(item.quote.code);
   for (const item of accepted)
     if (!blocked.has(item.quote.code))
-      processT(book, session, item, ledger, regime, true);
+      processT(
+        book,
+        session,
+        item,
+        ledger,
+        localRegime(
+          session,
+          item.quote.code,
+          qOf(book, item.quote.code)?.sector,
+          regime,
+        ),
+        true,
+      );
   const rank = (item) => {
     const code = item.quote.code,
       h = history[code],
@@ -1300,11 +2028,35 @@ export function advanceDragonSession(inputBook, inputSession, observation) {
   );
   for (const item of accepted)
     if (!blocked.has(item.quote.code))
-      processEntry(book, session, item, observation, ledger, regime);
+      processEntry(
+        book,
+        session,
+        item,
+        observation,
+        ledger,
+        localRegime(
+          session,
+          item.quote.code,
+          history[item.quote.code]?.sector,
+          regime,
+        ),
+      );
   for (const item of accepted)
     if (!blocked.has(item.quote.code))
-      processT(book, session, item, ledger, regime);
+      processT(
+        book,
+        session,
+        item,
+        ledger,
+        localRegime(
+          session,
+          item.quote.code,
+          qOf(book, item.quote.code)?.sector,
+          regime,
+        ),
+      );
   mark(book);
+  observePracticeRisk(session, book);
   return { book, session, ledger };
 }
 export function closeDragonSession(inputBook, inputSession, dataset) {
@@ -1355,6 +2107,7 @@ export function closeDragonSession(inputBook, inputSession, dataset) {
   book.lastDate = session.date;
   book.settlementCount++;
   session.status = "CLOSED";
+  session.closingBook = clone(book);
   for (const o of session.orders)
     if (
       ["OPEN", "ADD_PROFIT", "ADD_LOSS"].includes(o.intent) &&
@@ -1390,6 +2143,11 @@ export function closeDragonSession(inputBook, inputSession, dataset) {
       unrealizedPnlCents,
       feesCents: book.feesCents,
       drawdown: 1 - book.equityCents / book.peakEquityCents,
+      maxObservedDrawdown: Math.max(
+        session.practice?.maxDrawdown ?? 0,
+        1 - book.equityCents / book.peakEquityCents,
+      ),
+      maxObservedDailyLoss: session.practice?.maxDailyLoss ?? null,
       complete: !notices.length,
       positionCount: book.positions.length,
       source: dataset.source,

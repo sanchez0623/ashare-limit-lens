@@ -9,6 +9,16 @@ export const ENTRY_EXECUTION_MODES = Object.freeze([
   "next-open",
   "intraday-conditional",
 ]);
+export function assertEntryHistoryProcessed(snapshot) {
+  const pending = new Set([
+    ...(snapshot?.dailyPriceSources?.pendingCodes ?? []),
+    ...(snapshot?.intradayEntryContext?.dataSources?.pendingCodes ?? []),
+  ]);
+  if (pending.size)
+    throw new Error(
+      `日线回补尚有 ${pending.size} 只未处理，等待补齐后冻结计划`,
+    );
+}
 export const INTRADAY_ENTRY_RULES = Object.freeze({
   version: INTRADAY_ENTRY_VERSION,
   maxCandidates: 200,
@@ -79,6 +89,7 @@ export function withIntradayEntry(plan, snapshot, book) {
       : plan;
   if (book.entryExecutionMode !== "intraday-conditional")
     throw new Error("未知交易执行方式");
+  assertEntryHistoryProcessed(snapshot);
   if (plan.selectionPolicy?.version !== "signal-ranking-v5")
     throw new Error("盘中条件执行需要 V5 选股政策");
   if (!plan.executionCostPolicy)
@@ -124,6 +135,9 @@ export function withIntradayEntry(plan, snapshot, book) {
       version: INTRADAY_ENTRY_VERSION,
       rules: structuredClone(INTRADAY_ENTRY_RULES),
       sourceDate: plan.signalDate,
+      ...(context?.industrySnapshotId
+        ? { industrySnapshotId: context.industrySnapshotId }
+        : {}),
       history: structuredClone(history),
       candidates,
       firstNegMinPrevHeight: context?.firstNegMinPrevHeight ?? 3,

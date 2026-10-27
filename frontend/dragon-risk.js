@@ -6,7 +6,13 @@ import {
   DRAGON_REGIMES,
   normalizeDragonConfig,
   dragonEffectiveFields,
+  dragonCapitalPreset,
+  dragonTCapitalLimits,
 } from "../shared/dragon-risk-config.js";
+import {
+  renderAdaptiveRisk,
+  renderAdaptiveComparison,
+} from "./adaptive-risk-view.js";
 
 const $ = (id) => document.getElementById(id);
 let dirty = false,
@@ -70,8 +76,14 @@ function collect() {
 }
 function showPreview(preview) {
   const e = preview.effective;
+  const config = collect();
+  const peak = dragonTCapitalLimits(config, {
+    ...e,
+    stockWeight: e.stockWeight ?? config.risk.stockWeight,
+    sectorWeight: e.sectorWeight ?? config.risk.sectorWeight,
+  });
   $("dragon-preview").innerHTML =
-    `<span class="dragon-preview-metrics"><span>新仓风险<strong>${(e.entryRisk * 100).toFixed(2)}%</strong></span><span>组合风险<strong>${(e.portfolioRisk * 100).toFixed(2)}%</strong></span><span>总仓位<strong>${e.grossWeight == null ? "仅保护" : (e.grossWeight * 100).toFixed(0) + "%"}</strong></span></span><span class="dragon-permissions">${[
+    `<span class="dragon-preview-metrics"><span>新仓风险<strong>${(e.entryRisk * 100).toFixed(2)}%</strong></span><span>组合风险<strong>${(e.portfolioRisk * 100).toFixed(2)}%</strong></span><span>底仓上限<strong>${e.grossWeight == null ? "仅保护" : (e.grossWeight * 100).toFixed(0) + "%"}</strong></span><span>T 峰值上限<strong>${!e.tForward && !e.tReverse ? "暂停启动" : peak.grossWeight == null ? "仅保护" : (peak.grossWeight * 100).toFixed(0) + "%"}</strong></span><span>T 旧仓比例<strong>${(config.advanced.tFraction * 100).toFixed(0)}%</strong></span></span><span class="dragon-permissions">${[
       ["新仓", e.open],
       ["盈利加仓", e.profitAdd],
       ["亏损补仓", e.lossAdd],
@@ -83,6 +95,7 @@ function showPreview(preview) {
           `<span class="${allowed ? "is-on" : "is-off"}">${allowed ? "✓" : "−"} ${label}</span>`,
       )
       .join("")}</span>`;
+  $("dragon-preview-comparison").innerHTML = renderAdaptiveComparison(preview);
 }
 export function renderDragonSettings(data, { request, perform }) {
   if (!$("dragon-config-panel") || !data.dragon) return;
@@ -114,6 +127,15 @@ export function renderDragonSettings(data, { request, perform }) {
       $("dragon-save-note").textContent =
         "有未保存的更改；保存前不会影响执行。";
     });
+    $("dragon-capital-preset").onclick = () => {
+      const config = dragonCapitalPreset(collect());
+      $("dragon-risk-portfolioRisk").value = config.risk.portfolioRisk * 100;
+      $("dragon-risk-grossWeight").value = config.risk.grossWeight * 100;
+      $("dragon-advanced-tFraction").value = config.advanced.tFraction * 100;
+      dirty = true;
+      $("dragon-save-note").textContent =
+        "已填入组合计划风险 5%、底仓 70%、T 比例 50%；保存后用于下一份未冻结计划。";
+    };
     const save = (cancelResearch = false) =>
       void perform(async () => {
         const result = await request("/api/paper/settings", {
@@ -132,6 +154,16 @@ export function renderDragonSettings(data, { request, perform }) {
       void perform(async () => {
         const result = await request("/api/paper/dragon/preview", {
           config: collect(),
+          mode: "live",
+        });
+        showPreview(result);
+        return "已按当前动态状态预览草稿；未修改配置或账户";
+      });
+    $("dragon-stress-preview-button").onclick = () =>
+      void perform(async () => {
+        const result = await request("/api/paper/dragon/preview", {
+          config: collect(),
+          mode: "stress",
           phase: $("dragon-preview-phase").value,
         });
         showPreview(result);
@@ -218,11 +250,9 @@ export function renderDragonSettings(data, { request, perform }) {
       execution?.dailyPaused ||
       execution?.missingHoldingQuotes
     ),
-    effectiveRows = dragonEffectiveFields(
-      frozenConfig ?? current.config,
-      phase,
-      paused,
-    ),
+    effectiveRows =
+      execution?.effectiveFields ??
+      dragonEffectiveFields(frozenConfig ?? current.config, phase, paused),
     format = (value, unit) =>
       value == null
         ? "仅保护已有仓位"
@@ -233,6 +263,14 @@ export function renderDragonSettings(data, { request, perform }) {
           : unit === "count"
             ? `${value} 只`
             : `${Number((value * 100).toFixed(4))}%`;
+  const tCapitalPolicy =
+    execution?.tCapitalPolicy ?? data.plan?.dragonPolicy?.tCapitalPolicy;
+  $("dragon-t-capital-note").textContent = tCapitalPolicy
+    ? "当前计划分别限制底仓与临时 T 仓：T 可使用余下现金，峰值总仓最高 100%；单股 T 最多为可卖旧仓的 50%，仍受动态预算和组合风险约束。"
+    : "新计划支持底仓加临时 T 仓，峰值总仓最高 100%、单股 T 最多为可卖旧仓的 50%；已有冻结计划沿用原规则，保存配置后用于下一份未冻结计划。";
+  $("dragon-dynamic-state").innerHTML = renderAdaptiveRisk(
+    execution?.adaptiveRisk,
+  );
   $("dragon-effective-rows").innerHTML = effectiveRows
     .map((row) => {
       const configured = current.config[row.group][row.key],
@@ -253,6 +291,24 @@ export function renderDragonSettings(data, { request, perform }) {
   if (current.research)
     $("dragon-verification").textContent +=
       ` 高级模板研究：${text(current.research.status)}，${current.research.report?.reason ?? "60日训练、20日封存、30日前瞻及压力验证"}。`;
+  if (current.patternResearch) {
+    const patterns = current.patternResearch;
+    const batch = patterns.batches[0];
+    $("dragon-verification").textContent +=
+      ` 盈利模式研究：完整日 ${patterns.availableDays}/${patterns.requiredDays}；${batch ? `${batch.stage} · ${batch.candidateCount}个候选 · 前瞻${batch.forwardDates.length}/30日。${batch.report?.reason ?? ""}` : "样本积累中；达到60日训练和20日封存后，每月最多一批战法组合对照。"}`;
+  }
+  if (current.practiceWeekly?.length) {
+    const weekly = current.practiceWeekly[0];
+    const labels = {
+      SENT: "已发送",
+      PENDING: "待重试",
+      SENDING: "发送中",
+      FAILED: "发送失败",
+      UNCERTAIN: "发送结果待核查",
+    };
+    $("dragon-verification").textContent +=
+      ` 飞书周报 ${weekly.week_end}：${labels[weekly.status] ?? weekly.status}。`;
+  }
   $("dragon-activate-button").disabled =
     !current.ready ||
     draining ||
@@ -263,7 +319,8 @@ export function renderDragonSettings(data, { request, perform }) {
       : "批准已验证的 AI 模板"
     : "申请结清旧仓并整体切换";
   $("dragon-resume-button").hidden = !active || !data.book.dragonHalted;
-  $("dragon-validate-button").hidden = !active || draining;
+  $("dragon-validate-button").hidden = true;
+  $("dragon-activate-button").hidden = active;
   $("dragon-validate-button").disabled =
     !!current.pendingConfigId ||
     !!current.researchLock ||

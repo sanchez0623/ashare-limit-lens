@@ -7,6 +7,7 @@ import {
 } from "../storage/shadow.js";
 import { QuoteFrameRepository } from "../storage/quotes.js";
 import { RealtimeRepository } from "../storage/realtime.js";
+import { industryContinuation } from "../storage/industry-continuation.js";
 import { collectPairs, buildSamples } from "./research.js";
 import {
   selectResearchWindows,
@@ -877,8 +878,10 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
     kinds: [SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION],
   });
   const entryObservationDay = ![0, 6].includes(marketClock(now).weekday);
+  const primaryAccount = await papers.account();
   if (
     !running &&
+    !isDragon(primaryAccount?.book) &&
     continuous?.status !== "ACTIVE" &&
     (intradayObserver?.status !== "ACTIVE" || !entryObservationDay) &&
     !dragonObservers.some((account) => account.status === "ACTIVE")
@@ -886,6 +889,14 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
     return null;
   const frame = await captureQuoteFrame(env, now, { providers });
   if (!frame) return null;
+  if (marketClock(now).time >= "15:00:00")
+    return {
+      captureOnly: true,
+      primary: {
+        status: "MARKET_CLOSED",
+        reason: "收盘帧已归档，仅采集不推进订单",
+      },
+    };
   const frames = new QuoteFrameRepository(env);
   let primary = null;
   // 主账户与影子账户同源按序消费（§7.1/§7.2）：当日全部已落盘帧按
@@ -899,8 +910,13 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
   const consumedObservedAt = new Set(
     primaryObservations.map((row) => row.payload?.observedAt).filter(Boolean),
   );
+  const primarySession = await papers.session(frame.tradeDate);
+  const continuation = await industryContinuation(env.DB, primarySession?.plan);
   const pendingPrimary = dayFrames.filter(
-    (candidate) => !consumedObservedAt.has(candidate.observedAt),
+    (candidate) =>
+      !consumedObservedAt.has(candidate.observedAt) &&
+      (!continuation ||
+        Date.parse(candidate.observedAt) >= Date.parse(continuation.createdAt)),
   );
   if (!pendingPrimary.length)
     primary = { status: "SKIPPED", reason: "主账户已消费当日全部已落盘帧" };
@@ -953,6 +969,7 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
       ? activeAccounts.filter(
           (account) =>
             account.kind === SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION ||
+            account.kind === SHADOW_ACCOUNT_KINDS.MARKET_ENVIRONMENT ||
             account.kind === SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS ||
             account.kind === SHADOW_ACCOUNT_KINDS.INTRADAY_OBSERVATION ||
             account.cohortId === cohort.id,
@@ -960,6 +977,7 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
       : activeAccounts.filter(
           (account) =>
             account.kind === SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION ||
+            account.kind === SHADOW_ACCOUNT_KINDS.MARKET_ENVIRONMENT ||
             account.kind === SHADOW_ACCOUNT_KINDS.BASELINE_CONTINUOUS ||
             account.kind === SHADOW_ACCOUNT_KINDS.INTRADAY_OBSERVATION,
         )
@@ -989,6 +1007,9 @@ export async function runTournamentPoll(env, now, { providers = {} } = {}) {
     }
     let lastResult = null;
     for (const replayFrame of replay) {
+      // Closing snapshots are evidence, not executable observations or cursor gaps.
+      if (marketClock(new Date(replayFrame.observedAt)).time >= "15:00:00")
+        continue;
       try {
         lastResult = await consumePortfolioFrame(
           env,

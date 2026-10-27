@@ -10,6 +10,15 @@ import {
   maintainDragonObservation,
 } from "./dragon-risk.js";
 import { isDragon } from "../domain/dragon-risk.js";
+import {
+  pendingManualExitRequests,
+  exportedManualExitReferences,
+} from "../storage/manual-exits.js";
+import {
+  INDUSTRY_CONTINUATION,
+  verifyIndustryContinuationEvidence,
+  verifyEntryOrderObservation,
+} from "../storage/industry-continuation.js";
 import { tradingArchives } from "../storage/trading-archives.js";
 import {
   dragonConfigProvenance,
@@ -379,6 +388,14 @@ async function settlePaperDay(env, date) {
           {
             executionCostPolicy,
             originalScoreLookup,
+            ...(isDragon(account.book)
+              ? {
+                  manualExitRequests: await pendingManualExitRequests(
+                    env.DB,
+                    account.book,
+                  ),
+                }
+              : {}),
             snapshotDigest: await selectionSnapshotDigest(snapshot),
             ...(exitContext ?? {}),
             ...(tQuality
@@ -508,6 +525,14 @@ export async function exportPaper(env, attempt = 0) {
     executionCostCalibrations,
     dragonConfigs,
     dragonBindings,
+    manualExitRequests: (
+      await env.DB.prepare(
+        "SELECT payload,digest FROM paper_manual_exit_requests ORDER BY created_at,id",
+      ).all()
+    ).results.map((row) => ({
+      payload: JSON.parse(row.payload),
+      digest: row.digest,
+    })),
     equities: rows[0].map((row) => JSON.parse(row.payload)).reverse(),
     ledger: rows[1]
       .map((row) => JSON.parse(row.payload))
@@ -628,14 +653,35 @@ export async function verifyExport(bundle) {
       ...bundle.plans,
       ...bundle.datasets,
       ...(bundle.configurationHistory || []),
+      ...(bundle.manualExitRequests || []),
       ...(bundle.supersededPlans || []),
       ...(bundle.realtimeSessions || []),
       ...(bundle.realtimeObservations || []).flatMap((row) => row.observations),
     ])
       if ((await digest(row.payload)) !== row.digest) hashes = false;
+    for (const row of bundle.configurationHistory ?? [])
+      if (
+        row.payload.type === INDUSTRY_CONTINUATION &&
+        !(await verifyIndustryContinuationEvidence(bundle, row.payload))
+      )
+        hashes = replay = false;
+    for (const [date, observations] of liveTicks)
+      for (const [index, row] of observations.entries())
+        if (
+          !(await verifyEntryOrderObservation(
+            bundle,
+            plans.get(liveSessions.get(date)?.signalDate),
+            date,
+            index + 1,
+            row.payload,
+          ))
+        )
+          hashes = replay = false;
     // 冻结政策的内容寻址核验（§3.2）：计划内嵌政策 payload 必须与摘要一致，
     // 否则重放无法证明使用了声明过的成交假设。
     for (const row of bundle.plans) {
+      if (!(await exportedManualExitReferences(bundle, row.payload)))
+        hashes = replay = false;
       const binding = bundle.dragonBindings?.find(
         (b) => b.signal_date === row.payload.signalDate,
       );

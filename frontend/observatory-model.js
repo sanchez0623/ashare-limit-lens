@@ -1,3 +1,5 @@
+import { REVIEW_ARCHIVE_START_DATE } from "../shared/review.js";
+
 // Presentation state only. Trading inputs and frozen judgments stay on the server.
 export const escapeHtml = (value) =>
   String(value ?? "").replace(
@@ -21,8 +23,11 @@ const paths = {
   "/archive/replay": ["review", "replay"],
   "/system/data": ["data"],
   "/system/alerts": ["alerts"],
-  "/system/settings": ["settings"],
-  "/system/strategies": ["strategies"],
+  "/system/research": ["settings", "current"],
+  "/system/research/scoring": ["settings", "scoring"],
+  "/system/research/history": ["settings", "history"],
+  "/system/settings": ["settings", "current"],
+  "/system/strategies": ["settings", "history"],
 };
 const aliases = {
   overview: "/today",
@@ -51,10 +56,14 @@ export function parseRoute(hash = "", maxDate) {
   const [view, tab] = paths[aliases[raw] ?? raw] ?? ["overview"];
   const params = new URLSearchParams(query);
   const height = params.get("height");
+  const date = validDate(params.get("date"), maxDate) ? params.get("date") : "";
   return {
     view,
     tab,
-    date: validDate(params.get("date"), maxDate) ? params.get("date") : "",
+    date:
+      view === "review" && date && date < REVIEW_ARCHIVE_START_DATE
+        ? REVIEW_ARCHIVE_START_DATE
+        : date,
     industryTaxonomy: ["EM", "SW1", "SW2", "SW3"].includes(
       params.get("taxonomy"),
     )
@@ -67,9 +76,35 @@ export function parseRoute(hash = "", maxDate) {
     query: (params.get("q") ?? "").slice(0, 100),
     sector: (params.get("sector") ?? "").slice(0, 100),
     theme: (params.get("theme") ?? "").slice(0, 100),
-    sort: ["score", "height", "seal", "first"].includes(params.get("sort"))
+    buyPoint: [
+      "limit-up-momentum",
+      "broken-board-dip",
+      "first-neg-dip",
+      "fake-neg-limit-dip",
+      "auction-dip",
+      "late-dip",
+    ].includes(params.get("buyPoint"))
+      ? params.get("buyPoint")
+      : "",
+    sort: [
+      "amount",
+      "height",
+      "seal",
+      "first",
+      ...(params.get("buyPoint") &&
+      [
+        "limit-up-momentum",
+        "broken-board-dip",
+        "first-neg-dip",
+        "fake-neg-limit-dip",
+        "auction-dip",
+        "late-dip",
+      ].includes(params.get("buyPoint"))
+        ? ["quality"]
+        : []),
+    ].includes(params.get("sort"))
       ? params.get("sort")
-      : "score",
+      : "amount",
   };
 }
 export function routeHash(route) {
@@ -88,7 +123,14 @@ export function routeHash(route) {
   if (route.query) params.set("q", route.query);
   if (route.sector) params.set("sector", route.sector);
   if (route.theme) params.set("theme", route.theme);
-  if (route.sort && route.sort !== "score") params.set("sort", route.sort);
+  if (route.buyPoint) params.set("buyPoint", route.buyPoint);
+  if (
+    route.sort &&
+    route.sort !== "amount" &&
+    route.sort !== "score" &&
+    (route.sort !== "quality" || route.buyPoint)
+  )
+    params.set("sort", route.sort);
   return `#${path}${params.size ? `?${params}` : ""}`;
 }
 export function navigationGroup(view) {
@@ -111,6 +153,19 @@ export function ladderRows(stocks = []) {
 
 const finite = (value, digits = 0) =>
   Number.isFinite(value) ? value.toFixed(digits) : "—";
+
+export function marketCycleDescription(analysis, payload) {
+  const cycle = analysis?.cycle;
+  if (!cycle)
+    return {
+      caption: "等待市场观测",
+      explanation: "涨停、炸板和连板高度数据到达后展示阶段。",
+    };
+  return {
+    caption: `${payload?.archived ? "收盘已冻结" : "实时观测"} · 强度 ${Number.isFinite(cycle.score) ? Math.round(cycle.score * 100) : "—"}/100`,
+    explanation: `${cycle.reason ?? ""} 阶段由当次涨停数、炸板数和最高连板综合分类；盘中跨过阈值会变化，不代表必须依次经历的固定周期。当前龙头策略按连续市场、板块、个股观测计算风险预算，阶段名称用于说明市场状态，实际买卖权限见执行状态。`,
+  };
+}
 
 export function marketSculptureSvg(
   stocks = [],
@@ -151,7 +206,7 @@ export function marketPrintSvg(payload) {
     ["涨停家数", finite(a.count), "家"],
     ["封板率", finite(a.sealRate, 1), "%"],
     ["最高连板", finite(a.height), "板"],
-    ["情绪强度", finite(a.emotion), "/100"],
+    ["市场阶段", a.cycle?.label ?? "未知", ""],
   ];
   const sculpture = marketSculptureSvg(a.stocks, {
     date: payload.date,

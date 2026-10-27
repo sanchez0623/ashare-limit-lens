@@ -10,6 +10,8 @@ import { classifyStock } from "../../shared/stock-class.js";
 import { INTRADAY_ENTRY_VERSION } from "../domain/intraday-entry.js";
 import { marketClock } from "../domain/realtime.js";
 import { resolveDailyPriceInputs } from "./price-history.js";
+import { ADAPTIVE_RISK_POLICY } from "../../shared/adaptive-risk.js";
+import { industryContinuation } from "../storage/industry-continuation.js";
 
 export function computeIntradayHistory(
   dataset,
@@ -119,6 +121,14 @@ export async function buildIntradayContext(
     asOf: snapshot.date,
     firstNegMinPrevHeight,
     history: {},
+    ...((snapshot.industryContext?.stockEmSnapshotId ??
+    snapshot.market?.industryContext?.stockEmSnapshotId)
+      ? {
+          industrySnapshotId:
+            snapshot.industryContext?.stockEmSnapshotId ??
+            snapshot.market?.industryContext?.stockEmSnapshotId,
+        }
+      : {}),
   };
   try {
     const inputs =
@@ -140,7 +150,12 @@ export async function buildIntradayContext(
         computeIntradayHistory(
           dataset,
           snapshot,
-          await loadIndustryMapping(env),
+          await loadIndustryMapping(
+            env,
+            context.industrySnapshotId
+              ? { id: context.industrySnapshotId }
+              : {},
+          ),
           inputs.featuresByCode,
         ),
       );
@@ -162,17 +177,91 @@ export async function buildIntradayContext(
 
 export async function collectEntryMarket(
   date,
-  { provider = marketData, env } = {},
+  { provider = marketData, env, industrySnapshotId } = {},
 ) {
-  const market = await provider(date, env);
+  const market = await provider(date, env, {
+    cacheTtlMs: ADAPTIVE_RISK_POLICY.marketIntervalMs,
+    cacheScope: "intraday",
+    ...(industrySnapshotId ? { industrySnapshotId } : {}),
+  });
   if (market.date !== date) throw new Error("盘中候选行情日期不一致");
+  if (
+    industrySnapshotId &&
+    market.industryContext?.stockEmSnapshotId !== industrySnapshotId
+  )
+    throw new Error("盘中行业来源与冻结计划版本不一致");
   const analysis = analyze(market.rows.map(normalize), market.broken, null);
+  const previous = (market.previous ?? []).map(normalize);
+  const premiums = previous.map((s) => s.change).filter(Number.isFinite);
+  const brokenBySector = new Map();
+  for (const row of market.brokenRows ?? []) {
+    const s = normalize(row);
+    brokenBySector.set(s.sector, (brokenBySector.get(s.sector) ?? 0) + 1);
+  }
+  const sectors = new Map(
+    analysis.sectors.map((s) => [
+      s.name,
+      {
+        name: s.name,
+        score: s.score,
+        count: s.count,
+        height: s.height,
+        coverage: s.coverage,
+        broken:
+          market.broken === null ? null : (brokenBySector.get(s.name) ?? 0),
+      },
+    ]),
+  );
+  for (const [name, broken] of brokenBySector)
+    if (!sectors.has(name))
+      sectors.set(name, {
+        name,
+        score: 0,
+        count: 0,
+        height: 0,
+        coverage: 100,
+        broken,
+      });
+  const sectorsComplete =
+    Array.isArray(market.rows) && Array.isArray(market.brokenRows);
+  // A known industry with no limit-up or broken-board stocks has zero activity;
+  // it is not a failed industry lookup. Only an explicit complete source and
+  // the published code-bound vocabulary can establish this zero.
+  if (
+    sectorsComplete &&
+    market.industryContext?.mappingPolicy === "CODE_SNAPSHOT_PRIMARY_V2"
+  )
+    for (const name of market.industryContext.industryNames ?? [])
+      if (!sectors.has(name))
+        sectors.set(name, {
+          name,
+          score: 0,
+          count: 0,
+          height: 0,
+          coverage: 100,
+          broken: 0,
+        });
   return {
     date,
     observedAt: market.fetchedAt,
     emotion: analysis.emotion,
     cycle: analysis.cycle,
-    sectors: analysis.sectors.map((s) => ({ name: s.name, score: s.score })),
+    metrics: {
+      limitUp: analysis.count,
+      broken: market.broken,
+      height: analysis.height,
+      first: analysis.first,
+      relay: analysis.relay,
+      premium: premiums.length
+        ? premiums.reduce((sum, v) => sum + v, 0) / premiums.length
+        : null,
+      premiumCoverage: previous.length ? premiums.length / previous.length : 0,
+    },
+    sectorsComplete,
+    ...(market.industryContext
+      ? { industryContext: market.industryContext }
+      : {}),
+    sectors: [...sectors.values()],
     discoveries: [...market.rows, ...(market.brokenRows ?? [])]
       .map(normalize)
       .map((s) => ({
@@ -271,8 +360,16 @@ export async function collectIntradayInputs(
       ? providers.entryInputs(codes, date)
       : providers.entryInputs;
   if (providers.quotes) return null;
+  const continuation = plan.entryExecutionPolicy.industrySnapshotId
+    ? null
+    : await industryContinuation(env?.DB, plan);
   const results = await Promise.allSettled([
-    collectEntryMarket(date, { env }),
+    collectEntryMarket(date, {
+      env,
+      industrySnapshotId:
+        plan.entryExecutionPolicy.industrySnapshotId ??
+        continuation?.industrySnapshotId,
+    }),
     now.getTime() + 8 * 3600000 - Date.parse(`${date}T00:00:00Z`) < 10 * 3600000
       ? collectAuctionEvidence(date, codes)
       : Promise.resolve(null),

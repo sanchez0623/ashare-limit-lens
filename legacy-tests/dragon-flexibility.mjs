@@ -17,6 +17,8 @@ import {
   requestDragonValidation,
 } from "../backend/services/dragon-risk.js";
 import { ensureDragonTemplateResearch } from "../backend/services/dragon-research.js";
+import { preserveProgramSignal } from "../backend/storage/strategy-signals.js";
+import { assertStoredProgramPlan } from "../backend/services/strategy-program-evidence.js";
 import { defaultDragonConfig } from "../shared/dragon-risk-config.js";
 import { defaultExecutionCostPolicy } from "../shared/execution-cost.js";
 import { newBook, createPlan } from "../backend/domain/trading.js";
@@ -306,6 +308,7 @@ test("自动升级保留未执行旧计划的修订，已执行会话不回写",
         const plan = createPlan(f.source, f.book, null, null, stamp, {
           executionCostPolicy: defaultExecutionCostPolicy(),
         });
+        await preserveProgramSignal(f.DB, plan, f.source);
         const digest = await digestOf(plan);
         await f.DB.prepare(
           "INSERT INTO paper_plans(signal_date,created_at,payload,digest) VALUES(?,?,?,?)",
@@ -342,7 +345,20 @@ test("自动升级保留未执行旧计划的修订，已执行会话不回写",
             "old-engine",
           );
         } else {
-          assert.equal(await f.repo.plan(signalDate), null);
+          const replacement = await f.repo.plan(signalDate);
+          assert.deepEqual(
+            replacement.observationUniverse,
+            plan.entryExecutionPolicy.candidates,
+          );
+          assert.equal(
+            replacement.engineBuild,
+            await executionEngineBuildDigest(),
+          );
+          await assertStoredProgramPlan(
+            f.env,
+            replacement,
+            (await f.repo.account()).book,
+          );
           const row = await f.DB.prepare(
             "SELECT payload,digest FROM paper_plan_revisions WHERE signal_date=?",
           )
@@ -544,7 +560,11 @@ test("人工生效后可主动发起研究验证，参数与账本不改写，�
     );
     const candidate = await loadDragonConfig(f.DB, status.configId),
       reference = await loadDragonConfig(f.DB, candidate.baseId);
-    assert.deepEqual(reference.config, f.record.config);
+    assert.deepEqual(reference.config, {
+      ...f.record.config,
+      risk: changedConfig().risk,
+    });
+    assert.deepEqual(reference.config.risk, candidate.config.risk);
     assert.equal(
       (await requestDragonValidation(f.env)).configId,
       status.configId,

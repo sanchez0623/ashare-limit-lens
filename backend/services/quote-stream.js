@@ -58,6 +58,13 @@ export async function buildJointQuotePool(env, { now = new Date() } = {}) {
     if (accountCodes.size)
       sources.shadow[account.accountId] = [...accountCodes].sort();
   }
+  sources.environmentCohorts = [];
+  for (const plan of entryPlans) {
+    const cohort = plan.dragonPolicy?.environmentCohort;
+    if (!cohort) continue;
+    for (const member of cohort.members) codes.add(member.code);
+    sources.environmentCohorts.push(cohort);
+  }
   const snapshotRows = await papers.history("snapshots", 1);
   if (snapshotRows[0]) {
     const snapshot = JSON.parse(snapshotRows[0].payload);
@@ -70,14 +77,32 @@ export async function buildJointQuotePool(env, { now = new Date() } = {}) {
 
 export async function captureQuoteFrame(env, now, { providers = {} } = {}) {
   const clock = marketClock(now);
-  if (!inSession(clock.time)) return null;
+  if ([0, 6].includes(clock.weekday)) return null;
+  const closing = clock.time >= "15:00:00" && clock.time <= "15:05:00";
+  if (!inSession(clock.time) && !closing) return null;
+  if (closing) {
+    const latest = await new QuoteFrameRepository(env).latestFrame(clock.date);
+    if (
+      latest &&
+      latest.observedAt >= `${clock.date}T07:00:00.000Z` &&
+      (latest.payload.pool?.codes ?? []).every((code) => {
+        const q = latest.payload.quotes?.[code];
+        return (
+          q?.date === clock.date &&
+          Date.parse(q.timestamp) >= Date.parse(`${clock.date}T15:00:00+08:00`)
+        );
+      })
+    )
+      return null;
+  }
   const pool = await buildJointQuotePool(env, { now });
-  const inputs = await collectIntradayInputs(
-    pool.entryPlans[0],
-    clock.date,
-    pool.codes,
-    { providers, now, env },
-  );
+  const inputs = closing
+    ? null
+    : await collectIntradayInputs(pool.entryPlans[0], clock.date, pool.codes, {
+        providers,
+        now,
+        env,
+      });
   if (pool.entryPlans.length) {
     const additional = (inputs?.market?.discoveries ?? [])
       .filter((row) =>

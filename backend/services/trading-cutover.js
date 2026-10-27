@@ -28,7 +28,12 @@ import { eligible, INTRADAY_ENTRY_RULES } from "../domain/intraday-entry.js";
 import { buildJointQuotePool } from "./quote-stream.js";
 import { exportPaper, verifyExport } from "./paper.js";
 import { isDragon } from "../domain/dragon-risk.js";
-import { loadDragonConfig } from "../storage/dragon-risk.js";
+import {
+  loadDragonConfig,
+  dragonBookFields,
+  registerDragonConfig,
+} from "../storage/dragon-risk.js";
+import { executionEngineBuildDigest } from "../domain/execution-build.js";
 import {
   saveDragonSettings,
   requestDragonActivation,
@@ -38,6 +43,8 @@ import {
 
 // Account state is moved, shared market inputs and research budgets remain historical.
 const clearedTables = [
+  "market_environment_snapshots",
+  "market_environment_opportunities",
   "paper_plans",
   "paper_equity",
   "paper_ledger",
@@ -60,8 +67,15 @@ const clearedTables = [
   "evidence_daily_metrics",
   "evidence_reports",
   "evidence_report_inputs",
+  "observation_score_cursors",
+  "observation_score_latest",
+  "observation_score_snapshots",
+  "observation_score_invalidations",
 ];
 const retainedTables = [
+  "market_environment_policies",
+  "market_environment_reports",
+  "market_environment_trials",
   "paper_accounts",
   "snapshots",
   "strategy_signal_snapshots",
@@ -69,6 +83,10 @@ const retainedTables = [
   "dragon_config_versions",
   "dragon_observation_reports",
   "exit_context_inputs",
+  "observation_score_policies",
+  "observation_score_calibrations",
+  "paper_trade_notifications",
+  "paper_manual_exit_requests",
 ];
 const observationKeys = [
   "intraday-entry-observation-request",
@@ -143,15 +161,16 @@ export async function prepareTradingCutover(
     .bind(signalDate)
     .first();
   const oldPlan = oldPlanRow && JSON.parse(oldPlanRow.payload);
+  const dragon = isDragon(account.book) && isDragon(oldPlan);
   if (
-    oldPlan?.selectionPolicy?.version !== "signal-ranking-v5" ||
+    (!dragon && oldPlan?.selectionPolicy?.version !== "signal-ranking-v5") ||
     oldPlan.entryExecutionMode !== "intraday-conditional" ||
     !oldPlan.entryExecutionPolicy?.candidates?.length
   )
-    throw new Error("缺少已冻结的 V5 盘中观察名单");
+    throw new Error("缺少已冻结的盘中观察名单");
   const oldPlanDigest = oldPlanRow.digest;
   if ((await digest(oldPlan)) !== oldPlanDigest)
-    throw new Error("原 V5 计划摘要不一致");
+    throw new Error("原交易计划摘要不一致");
   const sourceRow = await db
     .prepare("SELECT payload FROM strategy_signal_snapshots WHERE digest=?")
     .bind(oldPlan.selectionAudit.snapshotDigest)
@@ -164,7 +183,7 @@ export async function prepareTradingCutover(
     (await selectionSnapshotDigest(originalSource)) !==
       oldPlan.selectionAudit.snapshotDigest
   )
-    throw new Error("原 V5 观察名单的冻结快照缺失或摘要不一致");
+    throw new Error("原观察名单的冻结快照缺失或摘要不一致");
   const latest = await db
     .prepare("SELECT MAX(trade_date) AS date FROM snapshots")
     .first();
@@ -188,6 +207,24 @@ export async function prepareTradingCutover(
     pendingRecovery: [],
     tradingCycleId: archiveId,
   };
+  if (dragon) {
+    let config = await loadDragonConfig(db, oldPlan.dragonPolicy.configId);
+    if (config.engineBuild !== (await executionEngineBuildDigest())) {
+      const build = await executionEngineBuildDigest();
+      config = await registerDragonConfig(db, config.config, config.id, {
+        id: `dragon-cycle-${(await digest({ source: config.id, build })).slice(0, 32)}`,
+        origin: "ENGINE_UPGRADE",
+        validationMode: config.validationMode,
+        replacesId: config.id,
+      });
+    }
+    Object.assign(book, dragonBookFields(config));
+    book.dragonTransition = {
+      state: "ACTIVE",
+      configId: config.id,
+      candidate: false,
+    };
+  }
   const keep = new Set(oldPlan.entryExecutionPolicy.candidates);
   const snapshot = structuredClone(originalSource);
   snapshot.createdAt = now.toISOString();
@@ -201,7 +238,7 @@ export async function prepareTradingCutover(
     sourceSnapshotDigest: oldPlan.selectionAudit.snapshotDigest,
     sourcePlanDigest: oldPlanDigest,
   };
-  const strategy = await papers.strategy(book);
+  const strategy = dragon ? null : await papers.strategy(book);
   const plan = createPlan(
     snapshot,
     book,
@@ -211,6 +248,9 @@ export async function prepareTradingCutover(
     {
       executionCostPolicy: await latestPolicyBundle(db),
       snapshotDigest: await selectionSnapshotDigest(snapshot),
+      ...(dragon
+        ? { observationUniverse: oldPlan.entryExecutionPolicy.candidates }
+        : {}),
       ...(tQualityEnabledForSnapshot(snapshot)
         ? {
             tQuality: summarizeTQuality([], { signalDate }),
@@ -224,7 +264,7 @@ export async function prepareTradingCutover(
     JSON.stringify(plan.entryExecutionPolicy.candidates) !==
       JSON.stringify(oldPlan.entryExecutionPolicy.candidates)
   )
-    throw new Error("空仓 V5 计划必须仅保留原观察名单，不得包含旧订单");
+    throw new Error("新周期空仓计划必须仅保留原观察名单，不得包含旧订单");
   assertProgramSnapshot(plan, snapshot, book);
   openSession(book, plan, tradeDate);
   const tables = {};
@@ -259,7 +299,8 @@ export async function prepareTradingCutover(
     createdAt: now.toISOString(),
     tradeDate,
     signalDate,
-    policy: "signal-ranking-v5",
+    kind: "TRADING_CYCLE_RESTART",
+    policy: plan.tradingPolicyVersion ?? "signal-ranking-v5",
     entryExecutionMode: "intraday-conditional",
     primary: {
       fills: tables.paper_ledger.length,
@@ -268,6 +309,12 @@ export async function prepareTradingCutover(
       equityCents: account.book.equityCents,
       realizedPnlCents: account.book.realizedPnlCents,
       feesCents: account.book.feesCents,
+      openPositions: account.book.positions.map((position) => ({
+        code: position.code,
+        name: position.name,
+        quantity: position.lots.reduce((n, lot) => n + lot.quantity, 0),
+        markCents: position.markCents,
+      })),
     },
     shadow: {
       accounts: tables.shadow_accounts.length,
@@ -284,6 +331,7 @@ export async function prepareTradingCutover(
       index,
       digest,
     })),
+    note: "旧模拟周期及未平仓持仓完整归档；新周期从原配置初始资金和空仓开始，不生成卖出成交，不将归档差额计为收益。",
   };
   return {
     duplicate: false,
@@ -396,13 +444,18 @@ export async function applyTradingCutover(
     await assertStoredProgramPlan(env, plan, book);
     if (prepared.observe) {
       const shadows = new ShadowAccountRepository(env);
-      await shadows.ensureAccount("intraday-entry-observation-v1", {
-        kind: SHADOW_ACCOUNT_KINDS.INTRADAY_OBSERVATION,
+      const observerId = isDragon(book)
+        ? `dragon-observer:${book.dragonConfigId}`
+        : "intraday-entry-observation-v1";
+      await shadows.ensureAccount(observerId, {
+        kind: isDragon(book)
+          ? SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION
+          : SHADOW_ACCOUNT_KINDS.INTRADAY_OBSERVATION,
         book,
       });
-      await shadows.savePlan("intraday-entry-observation-v1", plan, snapshot);
+      await shadows.savePlan(observerId, plan, snapshot);
       await assertStoredProgramPlan(env, plan, book, {
-        tQualityScope: "shadow:intraday-entry-observation-v1",
+        tQualityScope: `shadow:${observerId}`,
       });
       await db
         .prepare("INSERT INTO settings(key,value) VALUES(?,?)")
@@ -516,7 +569,10 @@ export async function switchTradingCycleToDragon(
         snapshotDigest: await selectionSnapshotDigest(snapshot),
       },
     );
-    retainDragonObservationUniverse(plan, previousPlan.entryExecutionPolicy.candidates);
+    retainDragonObservationUniverse(
+      plan,
+      previousPlan.entryExecutionPolicy.candidates,
+    );
     await preserveProgramSignal(db, plan, snapshot);
     await papers.savePlan(plan);
     await assertStoredProgramPlan(env, plan, book);
@@ -594,103 +650,287 @@ export async function switchTradingCycleToDragon(
 // The watchlist is frozen input, while liquidity remains a live entry gate.
 // Keep the user's existing observations even when signal-day turnover is low.
 export function retainDragonObservationUniverse(plan, codes) {
-  if (!isDragon(plan) || !Array.isArray(codes)) throw new Error("只能恢复龙头政策的冻结观察名单");
-  const unique = [...new Set(codes)], history = plan.entryExecutionPolicy.history;
-  if (unique.length !== codes.length || unique.length > INTRADAY_ENTRY_RULES.maxPremarketCandidates)
+  if (!isDragon(plan) || !Array.isArray(codes))
+    throw new Error("只能恢复龙头政策的冻结观察名单");
+  const unique = [...new Set(codes)],
+    history = plan.entryExecutionPolicy.history;
+  if (
+    unique.length !== codes.length ||
+    unique.length > INTRADAY_ENTRY_RULES.maxPremarketCandidates
+  )
     throw new Error("冻结观察名单重复或超过盘前上限");
   for (const code of unique) {
     const h = history[code];
-    if (!/^\d{6}$/.test(code) || !h || h.recentLimitUp !== true || !h.name || /ST|退/i.test(h.name) ||
-        !h.sector || h.sector === "未分类" || !(h.previousCloseCents > 0) ||
-        !["relay-leader", "strong-reversal", "swing-range"].includes(h.stockClass))
+    if (
+      !/^\d{6}$/.test(code) ||
+      !h ||
+      h.recentLimitUp !== true ||
+      !h.name ||
+      /ST|退/i.test(h.name) ||
+      !h.sector ||
+      h.sector === "未分类" ||
+      !(h.previousCloseCents > 0) ||
+      !["relay-leader", "strong-reversal", "swing-range"].includes(h.stockClass)
+    )
       throw new Error(`观察标的 ${code} 的冻结历史或基本资格不完整`);
   }
-  const sorted = unique.sort((a, b) => (history[b].amount ?? 0) - (history[a].amount ?? 0) || a.localeCompare(b));
+  const sorted = unique.sort(
+    (a, b) =>
+      (history[b].amount ?? 0) - (history[a].amount ?? 0) || a.localeCompare(b),
+  );
+  // Persist the retained input so independent reconstruction and later engine
+  // upgrades keep the same watchlist rather than applying entry liquidity early.
+  plan.observationUniverse = [...sorted];
   plan.entryExecutionPolicy.candidates = sorted;
   plan.selectionAudit.candidates = sorted.map((code, index) => ({
-    code, name: history[code].name, rank: index + 1, amount: history[code].amount,
-    status: eligible(history[code], null) ? "WATCHING" : "WAITING_TURNOVER",
-    reason: eligible(history[code], null) ? "等待实际买点与共享风险预算" : "保留观察；盘中成交额达到准入门槛后仍可触发交易",
+    code,
+    name: history[code].name,
+    rank: index + 1,
+    amount: history[code].amount,
+    // Match createDragonPlan's observation audit; entry readiness is evaluated
+    // separately from the frozen history and the current market observation.
+    status: "WATCHING",
+    reason: "等待实际买点与共享风险预算",
   }));
   return plan;
 }
 
-export async function restoreDragonObservationUniverse(env, { now = new Date() } = {}) {
+export async function restoreDragonObservationUniverse(
+  env,
+  { now = new Date() } = {},
+) {
   const db = env.DB;
-  if (typeof db.transaction !== "function") throw new Error("观察名单修订需要本地事务数据库");
+  if (typeof db.transaction !== "function")
+    throw new Error("观察名单修订需要本地事务数据库");
   return db.transaction(async () => {
-    const papers = new PaperRepository(env), shadows = new ShadowAccountRepository(env);
-    const account = await papers.account(), book = account?.book;
-    if (!isDragon(book) || !book.tradingCycleId) throw new Error("当前不是已归档的新龙头交易周期");
-    const cycleRow = await db.prepare("SELECT summary,digest FROM paper_trading_archives WHERE id=?").bind(book.tradingCycleId).first();
+    const papers = new PaperRepository(env),
+      shadows = new ShadowAccountRepository(env);
+    const account = await papers.account(),
+      book = account?.book;
+    if (!isDragon(book) || !book.tradingCycleId)
+      throw new Error("当前不是已归档的新龙头交易周期");
+    const cycleRow = await db
+      .prepare("SELECT summary,digest FROM paper_trading_archives WHERE id=?")
+      .bind(book.tradingCycleId)
+      .first();
     const cycle = cycleRow && JSON.parse(cycleRow.summary);
-    if (!cycle || await digest(cycle) !== cycleRow.digest) throw new Error("新周期归档缺失或摘要不一致");
+    if (!cycle || (await digest(cycle)) !== cycleRow.digest)
+      throw new Error("新周期归档缺失或摘要不一致");
     assertWindow(cycle.tradeDate, book.lastDate, now);
-    if (book.settlementCount || book.positions.length || (book.pendingOrders ?? []).length ||
-        (book.pendingRecovery ?? []).length || (book.pendingExits ?? []).length)
+    if (
+      book.settlementCount ||
+      book.positions.length ||
+      (book.pendingOrders ?? []).length ||
+      (book.pendingRecovery ?? []).length ||
+      (book.pendingExits ?? []).length
+    )
       throw new Error("周期已执行或存在未完成操作，不能修订观察名单");
     for (const table of ["paper_ledger", "paper_equity", "paper_live_sessions"])
-      if (await db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).first()) throw new Error("主账户已有成交或会话，不能修订冻结观察名单");
-    if (await db.prepare("SELECT 1 FROM research_window_owners LIMIT 1").first()) throw new Error("活动研究期间不能修订观察名单");
-    const previousRow = await db.prepare("SELECT payload,digest FROM paper_plans WHERE signal_date=?").bind(book.lastDate).first();
+      if (await db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).first())
+        throw new Error("主账户已有成交或会话，不能修订冻结观察名单");
+    if (
+      await db.prepare("SELECT 1 FROM research_window_owners LIMIT 1").first()
+    )
+      throw new Error("活动研究期间不能修订观察名单");
+    const previousRow = await db
+      .prepare("SELECT payload,digest FROM paper_plans WHERE signal_date=?")
+      .bind(book.lastDate)
+      .first();
     const previous = previousRow && JSON.parse(previousRow.payload);
-    if (!previous || await digest(previous) !== previousRow.digest) throw new Error("当前冻结计划摘要不一致");
+    if (!previous || (await digest(previous)) !== previousRow.digest)
+      throw new Error("当前冻结计划摘要不一致");
     await assertStoredProgramPlan(env, previous, book);
-    const revisions = (await db.prepare("SELECT payload,digest FROM paper_plan_revisions WHERE signal_date=? ORDER BY created_at DESC,id DESC").bind(book.lastDate).all()).results;
-    const originalRow = revisions.find(row => JSON.parse(row.payload).selectionPolicy?.version === "signal-ranking-v5");
+    const revisions = (
+      await db
+        .prepare(
+          "SELECT payload,digest FROM paper_plan_revisions WHERE signal_date=? ORDER BY created_at DESC,id DESC",
+        )
+        .bind(book.lastDate)
+        .all()
+    ).results;
+    const originalRow = revisions.find(
+      (row) =>
+        JSON.parse(row.payload).selectionPolicy?.version ===
+        "signal-ranking-v5",
+    );
     const original = originalRow && JSON.parse(originalRow.payload);
-    if (!original || await digest(original) !== originalRow.digest || original.selectionAudit.snapshotDigest !== previous.selectionAudit.snapshotDigest)
+    if (
+      !original ||
+      (await digest(original)) !== originalRow.digest ||
+      original.selectionAudit.snapshotDigest !==
+        previous.selectionAudit.snapshotDigest
+    )
       throw new Error("缺少与当前信号输入一致的原 V5 观察名单");
     const snapshot = await frozenProgramSignal(db, previous);
-    const replacement = retainDragonObservationUniverse(structuredClone(previous), original.entryExecutionPolicy.candidates);
-    const observers = (await shadows.accounts({ kinds: [SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION] })).filter(row => row.status === "ACTIVE");
+    const replacement = retainDragonObservationUniverse(
+      structuredClone(previous),
+      original.entryExecutionPolicy.candidates,
+    );
+    const observers = (
+      await shadows.accounts({
+        kinds: [SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION],
+      })
+    ).filter((row) => row.status === "ACTIVE");
     const observerPlans = [];
     for (const observer of observers) {
-      if (observer.book.dragonConfigId !== book.dragonConfigId || observer.book.lastDate !== book.lastDate || observer.book.positions.length ||
-          await db.prepare("SELECT 1 FROM shadow_ledger WHERE account_id=? LIMIT 1").bind(observer.accountId).first() ||
-          await db.prepare("SELECT 1 FROM shadow_sessions WHERE account_id=? LIMIT 1").bind(observer.accountId).first())
+      if (
+        observer.book.dragonConfigId !== book.dragonConfigId ||
+        observer.book.lastDate !== book.lastDate ||
+        observer.book.positions.length ||
+        (await db
+          .prepare("SELECT 1 FROM shadow_ledger WHERE account_id=? LIMIT 1")
+          .bind(observer.accountId)
+          .first()) ||
+        (await db
+          .prepare("SELECT 1 FROM shadow_sessions WHERE account_id=? LIMIT 1")
+          .bind(observer.accountId)
+          .first())
+      )
         throw new Error("独立观察账户已开始执行或配置不一致，不能替换其名单");
-      const row = await db.prepare("SELECT * FROM shadow_plans WHERE account_id=? AND signal_date=?").bind(observer.accountId, book.lastDate).first();
+      const row = await db
+        .prepare(
+          "SELECT * FROM shadow_plans WHERE account_id=? AND signal_date=?",
+        )
+        .bind(observer.accountId, book.lastDate)
+        .first();
       if (!row) throw new Error("独立观察账户缺少冻结计划");
-      await assertStoredProgramPlan(env, JSON.parse(row.payload), observer.book, { tQualityScope: `shadow:${observer.accountId}` });
+      await assertStoredProgramPlan(
+        env,
+        JSON.parse(row.payload),
+        observer.book,
+        { tQualityScope: `shadow:${observer.accountId}` },
+      );
       observerPlans.push(row);
     }
     const candidates = replacement.entryExecutionPolicy.candidates;
-    if (JSON.stringify(candidates) === JSON.stringify(previous.entryExecutionPolicy.candidates) &&
-        observerPlans.every(row => JSON.stringify(JSON.parse(row.payload).entryExecutionPolicy.candidates) === JSON.stringify(candidates)))
-      return { changed: false, candidates: candidates.length, pendingTurnover: candidates.filter(code => !eligible(replacement.entryExecutionPolicy.history[code], null)).length };
+    if (
+      JSON.stringify(candidates) ===
+        JSON.stringify(previous.entryExecutionPolicy.candidates) &&
+      observerPlans.every(
+        (row) =>
+          JSON.stringify(
+            JSON.parse(row.payload).entryExecutionPolicy.candidates,
+          ) === JSON.stringify(candidates),
+      )
+    )
+      return {
+        changed: false,
+        candidates: candidates.length,
+        pendingTurnover: candidates.filter(
+          (code) =>
+            !eligible(replacement.entryExecutionPolicy.history[code], null),
+        ).length,
+      };
     replacement.createdAt = now.toISOString();
     const runId = crypto.randomUUID();
-    const update = await db.prepare("UPDATE paper_accounts SET revision=revision+1,last_run_id=?,updated_at=? WHERE id='primary' AND revision=?").bind(runId, replacement.createdAt, account.revision).run();
-    if (update.meta.changes !== 1) throw new Error("账户已变化，观察名单未修订");
-    await db.prepare("INSERT INTO paper_plan_revisions(id,signal_date,created_at,payload,digest) VALUES(?,?,?,?,?)").bind(runId, book.lastDate, replacement.createdAt, previousRow.payload, previousRow.digest).run();
-    await db.prepare("DELETE FROM paper_plans WHERE signal_date=?").bind(book.lastDate).run();
-    await db.prepare("DELETE FROM dragon_plan_bindings WHERE scope='main' AND signal_date=?").bind(book.lastDate).run();
+    const update = await db
+      .prepare(
+        "UPDATE paper_accounts SET revision=revision+1,last_run_id=?,updated_at=? WHERE id='primary' AND revision=?",
+      )
+      .bind(runId, replacement.createdAt, account.revision)
+      .run();
+    if (update.meta.changes !== 1)
+      throw new Error("账户已变化，观察名单未修订");
+    await db
+      .prepare(
+        "INSERT INTO paper_plan_revisions(id,signal_date,created_at,payload,digest) VALUES(?,?,?,?,?)",
+      )
+      .bind(
+        runId,
+        book.lastDate,
+        replacement.createdAt,
+        previousRow.payload,
+        previousRow.digest,
+      )
+      .run();
+    await db
+      .prepare("DELETE FROM paper_plans WHERE signal_date=?")
+      .bind(book.lastDate)
+      .run();
+    await db
+      .prepare(
+        "DELETE FROM dragon_plan_bindings WHERE scope='main' AND signal_date=?",
+      )
+      .bind(book.lastDate)
+      .run();
     await preserveProgramSignal(db, replacement, snapshot);
     await papers.savePlan(replacement);
     await assertStoredProgramPlan(env, replacement, book);
     openSession(book, replacement, cycle.tradeDate);
     for (const row of observerPlans) {
       const oldPlan = JSON.parse(row.payload);
-      const plan = retainDragonObservationUniverse({ ...oldPlan, createdAt: replacement.createdAt }, original.entryExecutionPolicy.candidates);
-      await db.prepare("DELETE FROM shadow_plans WHERE account_id=? AND signal_date=?").bind(row.account_id, book.lastDate).run();
-      await db.prepare("DELETE FROM dragon_plan_bindings WHERE scope=? AND signal_date=?").bind(`shadow:${row.account_id}`, book.lastDate).run();
+      const plan = retainDragonObservationUniverse(
+        { ...oldPlan, createdAt: replacement.createdAt },
+        original.entryExecutionPolicy.candidates,
+      );
+      await db
+        .prepare(
+          "DELETE FROM shadow_plans WHERE account_id=? AND signal_date=?",
+        )
+        .bind(row.account_id, book.lastDate)
+        .run();
+      await db
+        .prepare(
+          "DELETE FROM dragon_plan_bindings WHERE scope=? AND signal_date=?",
+        )
+        .bind(`shadow:${row.account_id}`, book.lastDate)
+        .run();
       await shadows.savePlan(row.account_id, plan, snapshot);
-      await assertStoredProgramPlan(env, plan, book, { tQualityScope: `shadow:${row.account_id}` });
-      await db.prepare("UPDATE shadow_accounts SET revision=revision+1,last_run_id=?,updated_at=? WHERE account_id=?").bind(runId, replacement.createdAt, row.account_id).run();
+      await assertStoredProgramPlan(env, plan, book, {
+        tQualityScope: `shadow:${row.account_id}`,
+      });
+      await db
+        .prepare(
+          "UPDATE shadow_accounts SET revision=revision+1,last_run_id=?,updated_at=? WHERE account_id=?",
+        )
+        .bind(runId, replacement.createdAt, row.account_id)
+        .run();
     }
-    const pendingTurnover = candidates.filter(code => !eligible(replacement.entryExecutionPolicy.history[code], null)).length;
-    const event = { type: "DRAGON_OBSERVATION_UNIVERSE_RESTORED", createdAt: replacement.createdAt,
-      signalDate: book.lastDate, tradeDate: cycle.tradeDate, previousCount: previous.entryExecutionPolicy.candidates.length,
-      count: candidates.length, pendingTurnover, sourcePlanDigest: originalRow.digest,
-      previousPlanDigest: previousRow.digest, planDigest: await digest(replacement), supersededShadowPlans: observerPlans,
-      note: "恢复用户原冻结观察名单；低于信号日流动性门槛的标的继续观察，实际入场仍核验盘中成交额、买点和风险预算。" };
-    await db.prepare("INSERT INTO paper_configuration_history(id,created_at,payload,digest) VALUES(?,?,?,?)").bind(runId, event.createdAt, JSON.stringify(event), await digest(event)).run();
-    const pool = await buildJointQuotePool(env, { now: new Date(`${cycle.tradeDate}T09:31:00+08:00`) });
-    if (candidates.some(code => !pool.sources.primary.includes(code)) || observerPlans.some(row => candidates.some(code => !pool.sources.shadow[row.account_id]?.includes(code))))
+    const pendingTurnover = candidates.filter(
+      (code) => !eligible(replacement.entryExecutionPolicy.history[code], null),
+    ).length;
+    const event = {
+      type: "DRAGON_OBSERVATION_UNIVERSE_RESTORED",
+      createdAt: replacement.createdAt,
+      signalDate: book.lastDate,
+      tradeDate: cycle.tradeDate,
+      previousCount: previous.entryExecutionPolicy.candidates.length,
+      count: candidates.length,
+      pendingTurnover,
+      sourcePlanDigest: originalRow.digest,
+      previousPlanDigest: previousRow.digest,
+      planDigest: await digest(replacement),
+      supersededShadowPlans: observerPlans,
+      note: "恢复用户原冻结观察名单；低于信号日流动性门槛的标的继续观察，实际入场仍核验盘中成交额、买点和风险预算。",
+    };
+    await db
+      .prepare(
+        "INSERT INTO paper_configuration_history(id,created_at,payload,digest) VALUES(?,?,?,?)",
+      )
+      .bind(runId, event.createdAt, JSON.stringify(event), await digest(event))
+      .run();
+    const pool = await buildJointQuotePool(env, {
+      now: new Date(`${cycle.tradeDate}T09:31:00+08:00`),
+    });
+    if (
+      candidates.some((code) => !pool.sources.primary.includes(code)) ||
+      observerPlans.some((row) =>
+        candidates.some(
+          (code) => !pool.sources.shadow[row.account_id]?.includes(code),
+        ),
+      )
+    )
       throw new Error("行情订阅未覆盖恢复后的完整观察名单");
     const verification = await verifyExport(await exportPaper(env));
-    if (!verification.passed) throw new Error("恢复观察名单后导出核验失败，已回滚");
-    return { changed: true, candidates: candidates.length, pendingTurnover, tradeDate: cycle.tradeDate, verification, poolCodes: pool.sources.primary };
+    if (!verification.passed)
+      throw new Error("恢复观察名单后导出核验失败，已回滚");
+    return {
+      changed: true,
+      candidates: candidates.length,
+      pendingTurnover,
+      tradeDate: cycle.tradeDate,
+      verification,
+      poolCodes: pool.sources.primary,
+    };
   });
 }

@@ -5,6 +5,9 @@ import {
 import { assertDragonPlan, isDragon } from "../domain/dragon-risk.js";
 import { digestOf, canonicalJson } from "../domain/research-lineage.js";
 import { executionEngineBuildDigest } from "../domain/execution-build.js";
+import { industryContinuation } from "./industry-continuation.js";
+import { assertManualExitReferences } from "./manual-exits.js";
+import { registerEnvironmentPolicy } from "./market-environment.js";
 
 export function dragonConfigProvenance(record) {
   if (!record.provenanceDigest) return null;
@@ -110,6 +113,8 @@ export async function loadDragonConfig(db, id) {
 export async function bindDragonPlan(db, plan, scope) {
   if (!isDragon(plan)) return null;
   assertDragonPlan(plan);
+  if (plan.dragonPolicy.marketEnvironmentPolicy) await registerEnvironmentPolicy(db);
+  await assertManualExitReferences(db, plan, scope);
   const record = await loadDragonConfig(db, plan.dragonPolicy.configId);
   if (
     record.digest !== plan.dragonPolicy.configDigest ||
@@ -139,6 +144,7 @@ export async function assertStoredDragonPlan(db, plan, book, scope) {
       .first());
   if (!binding && !isDragon(plan) && !isDragon(book)) return false;
   assertDragonPlan(plan, book);
+  await assertManualExitReferences(db, plan, scope, book);
   const record = await loadDragonConfig(db, plan.dragonPolicy.configId);
   if (
     !binding ||
@@ -148,8 +154,12 @@ export async function assertStoredDragonPlan(db, plan, book, scope) {
     canonicalJson(record.config) !== canonicalJson(plan.dragonPolicy.config) ||
     canonicalJson(dragonConfigProvenance(record)) !==
       canonicalJson(plan.dragonPolicy.provenance ?? null) ||
-    plan.engineBuild !== record.engineBuild ||
-    plan.engineBuild !== (await executionEngineBuildDigest())
+    plan.engineBuild !== record.engineBuild
+  )
+    throw new Error("新政策独立冻结依据、配置或执行指纹不一致");
+  if (
+    plan.engineBuild !== (await executionEngineBuildDigest()) &&
+    !(await industryContinuation(db, plan, scope))
   )
     throw new Error("新政策独立冻结依据、配置或执行指纹不一致");
   return true;

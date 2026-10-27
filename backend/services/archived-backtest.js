@@ -7,7 +7,11 @@ import {
   marketClock,
 } from "../domain/realtime.js";
 import { INTRADAY_ENTRY_RULES } from "../domain/intraday-entry.js";
-import { isDragon } from "../domain/dragon-risk.js";
+import { isDragon, isAdaptiveDragon } from "../domain/dragon-risk.js";
+import {
+  ADAPTIVE_RISK_POLICY,
+  hasAdaptiveMarketEvidence,
+} from "../../shared/adaptive-risk.js";
 import {
   normalizeDragonConfig,
   DRAGON_REGIMES,
@@ -156,11 +160,20 @@ export async function auditArchivedDay({
     if (
       !market ||
       market.date !== date ||
-      !ageOk(market.observedAt, at, INTRADAY_ENTRY_RULES.marketMaxAgeMs) ||
+      !ageOk(
+        market.observedAt,
+        at,
+        isAdaptiveDragon(plan)
+          ? ADAPTIVE_RISK_POLICY.marketMaxAgeMs
+          : INTRADAY_ENTRY_RULES.marketMaxAgeMs,
+      ) ||
       (!isDragon(plan) &&
         (!Number.isFinite(market.emotion) ||
           !Number.isFinite(market.cycle?.maxGrossExposure))) ||
-      (isDragon(plan) && !Object.hasOwn(DRAGON_REGIMES, market.cycle?.phase)) ||
+      (isDragon(plan) &&
+        (isAdaptiveDragon(plan)
+          ? !hasAdaptiveMarketEvidence(market)
+          : !Object.hasOwn(DRAGON_REGIMES, market.cycle?.phase))) ||
       !Array.isArray(market.sectors) ||
       !Array.isArray(market.discoveries)
     )

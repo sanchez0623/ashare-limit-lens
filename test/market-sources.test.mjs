@@ -6,6 +6,8 @@ import { rmSync } from "node:fs";
 import { localDatabase } from "../scripts/local-db.mjs";
 import { api } from "../backend/routes/api.js";
 import { closeDB } from "../backend/services/tag-contribution.js";
+import { marketData } from "../backend/services/market.js";
+import { clearCache } from "../backend/services/fuyao.js";
 
 // 标签收益库指向临时文件：本文件会注入涨停原因，不能污染真实 data/tag-contribution.db。
 const TAG_DB_PATH = join(
@@ -80,17 +82,56 @@ function installProvider(thsRespond) {
 }
 
 async function withThsSupplement(thsRespond, run) {
+  clearCache();
   const originalKey = process.env.FU_YAO_API_KEY;
   process.env.FU_YAO_API_KEY = "sk-synthetic-supplement";
   const provider = installProvider(thsRespond);
   try {
     return await run(provider.calls);
   } finally {
+    clearCache();
     provider.restore();
     if (originalKey === undefined) delete process.env.FU_YAO_API_KEY;
     else process.env.FU_YAO_API_KEY = originalKey;
   }
 }
+
+test("盘中30秒缓存与展示两分钟缓存独立，缓存命中不重写采集时间，空炸板池保留零", async () => {
+  const DB = localDatabase(),
+    originalNow = Date.now;
+  const started = originalNow();
+  let elapsed = 0;
+  Date.now = () => started + elapsed;
+  try {
+    await withThsSupplement(
+      () => ({ code: 0, data: { item: [], total: 0 } }),
+      async (calls) => {
+        const day = "2026-09-24",
+          options = { cacheScope: "intraday", cacheTtlMs: 30000 };
+        const displayed = await marketData(day, { DB });
+        const original = await marketData(day, { DB }, options);
+        assert.equal(calls.filter((c) => c === "getTopicZTPool").length, 2);
+        elapsed = 25000;
+        const cached = await marketData(day, { DB }, options);
+        assert.equal(cached.cached, true);
+        assert.equal(cached.fetchedAt, original.fetchedAt);
+        assert.equal(cached.broken, 0);
+        assert.deepEqual(cached.brokenRows, []);
+        elapsed = 31000;
+        assert.equal((await marketData(day, { DB }, options)).cached, false);
+        assert.equal(calls.filter((c) => c === "getTopicZTPool").length, 3);
+        assert.equal(
+          (await marketData(day, { DB })).fetchedAt,
+          displayed.fetchedAt,
+        );
+        assert.equal(calls.filter((c) => c === "getTopicZTPool").length, 3);
+      },
+    );
+  } finally {
+    Date.now = originalNow;
+    DB.close();
+  }
+});
 
 test("同花顺四路补全全部失败时仍返回东财主数据，零用户可见告警", async () => {
   const DB = localDatabase();

@@ -1,4 +1,5 @@
 import { BUY_POINT_LABELS } from "../shared/buy-point-type.js";
+import { renderPagination, bindPageJump } from "./pagination.js";
 import {
   OBSERVATION_CLASS_LABELS,
   formatObservationBuyPointReason,
@@ -26,13 +27,17 @@ const timestamp = (value) => {
 };
 
 function renderRules(rules) {
+  const ordering =
+    rules.ordering === "BUY_POINT_AMOUNT_CODE"
+      ? "从冻结历史按准入条件筛选，按信号日成交额、代码进入观察池；实际触发后按买点优先级、成交额和代码分配风险预算。"
+      : "旧政策按冻结快照分数降序、同分代码升序排列；原始规则和分数保留在导出中。";
   const windows = Object.entries(rules.windows ?? {})
     .map(
       ([type, ranges]) =>
         `<li>${escape(BUY_POINT_LABELS[type] ?? type)}：${ranges.map(([start, end]) => `${escape(start.slice(0, 5))}—${escape(end.slice(0, 5))}`).join("、")}${type === "limit-up-momentum" ? "（午后仅回封）" : ""}</li>`,
     )
     .join("");
-  return `<p>先从信号日涨停池、炸板池、日线扩展池中，取有冻结历史且未持仓的股票，按快照分数降序、同分代码升序排列；再按代码升序补入满足历史准入条件的股票。盘前最多 ${number(rules.maxPremarketCandidates)} 只，全天准入最多 ${number(rules.maxCandidates)} 只。</p>
+  return `<p>${ordering}盘前最多 ${number(rules.maxPremarketCandidates)} 只，全天准入最多 ${number(rules.maxCandidates)} 只。</p>
     <p>统一准入标准：冻结历史齐全、近期有涨停基因，属于连板龙头型、强势反包型或波段震荡型；行业、信号日收盘价有效，名称不含 ST 或退市标识。冻结历史成交额或当日有效成交额需至少 ${amount(rules.minTurnoverCny)}。行内只标注该股的准入结果和待确认项。</p>
     <p>入池后还需验证当日市场、板块和买点。低吸需要连续 ${number(rules.confirmationQuotes)} 次有效报价确认企稳，并满足增量成交量与成交成本约束。信号日买点是历史标签，下次交易日须重新触发。</p>
     <ul>${windows}</ul><p>所有时间为北京时间；股票类型、分数和依据均读取这份冻结计划及其原始快照。</p>`;
@@ -57,7 +62,6 @@ function renderRows(rows) {
     <td><strong>${escape(row.name)}</strong><span class="stock-code">${escape(row.code)} · ${escape(row.sector)}</span></td>
     <td class="entry-candidate-reason"><strong>${escape(row.stockClassLabel)}</strong><span class="stock-code">${escape(row.stockClassReason)}</span></td>
     <td class="entry-candidate-reason">${row.buyPoints.length ? row.buyPoints.map((point) => `<strong>${escape(point.label)}</strong><span class="stock-code">${escape(formatObservationBuyPointReason(point.reason))}</span>`).join("") : '<strong>待盘中识别</strong><span class="stock-code">信号日未标注买点，等待当日条件触发。</span>'}</td>
-    <td>${number(row.score)}${row.scoring ? `<span class="stock-code">原始 ${number(row.scoring.rawScore)}<br>扣分 ${number(row.scoring.deduction)}</span>` : ""}</td>
     <td>${amount(row.amountCny)}</td>
     <td class="entry-candidate-reason"><strong>${escape(row.sourceLabel)}</strong><br>
       <span class="entry-candidate-state ${row.readiness === "STATIC_READY" ? "entry-candidate-ready" : ""}">${row.readiness === "STATIC_READY" ? "静态准入通过 · 等待盘中触发" : row.readiness === "WAITING_TURNOVER" ? "待盘中成交额确认" : "准入条件待确认"}</span>
@@ -71,13 +75,11 @@ function renderRows(rows) {
 
 function renderPager(data, loading) {
   if (!data) return "";
-  const { page, totalPages } = data;
-  const button = (label, target, disabled = false) =>
-    `<button type="button" class="page-btn${target === page ? " active" : ""}" data-entry-candidate-page="${target}" ${disabled || loading ? "disabled" : ""}${target === page ? ' aria-current="page"' : ""}>${label}</button>`;
-  const pages = [...new Set([1, page - 1, page, page + 1, totalPages])]
-    .filter((p) => p >= 1 && p <= totalPages)
-    .sort((a, b) => a - b);
-  return `<div class="ledger-pager">${button("‹ 上一页", page - 1, page <= 1)}<span class="page-info">第 ${page} / ${totalPages} 页 · 共 ${data.total} 只 · 每页 ${data.pageSize} 只</span>${button("下一页 ›", page + 1, page >= totalPages)}<div class="page-numbers">${pages.map((p, i) => `${i && p - pages[i - 1] > 1 ? '<span class="page-ellipsis">…</span>' : ""}${button(p, p, p === page)}`).join("")}</div></div>`;
+  return renderPagination(data, {
+    attribute: "data-entry-candidate-page",
+    unit: "只",
+    loading,
+  });
 }
 
 export function initializeEntryObservationCandidates({ request }) {
@@ -107,6 +109,8 @@ export function initializeEntryObservationCandidates({ request }) {
     requestId = 0;
 
   function render() {
+    $("paper-entry-candidates-scoring-explanation").hidden =
+      data?.rules?.ordering === "BUY_POINT_AMOUNT_CODE";
     $("paper-entry-candidates-summary").textContent = data
       ? `信号日 ${data.signalDate} · 冻结于 ${timestamp(data.frozenAt)}（北京时间） · 观察池 ${data.candidateTotal} 只，筛选结果 ${data.total} 只`
       : `信号日 ${signalDate} · 正在读取冻结观察池`;
@@ -121,7 +125,7 @@ export function initializeEntryObservationCandidates({ request }) {
       : "正在读取冻结评分说明…";
     rows.innerHTML = data?.rows.length
       ? renderRows(data.rows)
-      : `<tr><td colspan="7"><div class="empty compact">${loading ? "正在加载候选明细…" : error ? "候选记录尚未加载，请重试。" : "没有匹配的观察候选，可调整筛选条件。"}</div></td></tr>`;
+      : `<tr><td colspan="6"><div class="empty compact">${loading ? "正在加载候选明细…" : error ? "候选记录尚未加载，请重试。" : "没有匹配的观察候选，可调整筛选条件。"}</div></td></tr>`;
     $("paper-entry-candidates-table").setAttribute(
       "aria-busy",
       String(loading),
@@ -167,6 +171,9 @@ export function initializeEntryObservationCandidates({ request }) {
     const page = Number(button.dataset.entryCandidatePage);
     if (page >= 1 && page <= data.totalPages) void load(page);
   };
+  bindPageJump(pager, (page) => {
+    if (!loading) void load(page);
+  });
   $("paper-entry-candidates-filter").onsubmit = (event) => {
     event.preventDefault();
     filters = {

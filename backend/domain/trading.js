@@ -1121,14 +1121,40 @@ export function assertProgramSnapshot(plan, snapshot, initialBook) {
       plan.createdAt,
       {
         defensive: plan.sourceSnapshotMissing,
+        dragonTemplateVersion: plan.dragonPolicy.templateVersion,
+        entryOrderPolicy: plan.dragonPolicy.entryOrderPolicy ?? null,
+        tCapitalPolicy: plan.dragonPolicy.tCapitalPolicy ?? null,
+        adaptiveRiskPolicy: plan.dragonPolicy.adaptiveRiskPolicy,
+        manualExitRequests: plan.manualExitRequests,
         executionCostPolicy: plan.executionCostPolicy,
         engineBuild: plan.engineBuild,
         snapshotDigest: plan.selectionAudit?.snapshotDigest,
+        ...(plan.observationUniverse
+          ? { observationUniverse: plan.observationUniverse }
+          : {}),
       },
     );
     const { digest: _transportDigest, ...payload } = plan;
     if (canonicalJson(rebuilt) !== canonicalJson(payload))
-      throw new Error("新政策冻结计划与原始输入不一致");
+      throw new Error(
+        `新政策冻结计划与原始输入不一致：${Object.keys(rebuilt)
+          .filter(
+            (key) =>
+              canonicalJson(rebuilt[key]) !== canonicalJson(payload[key]),
+          )
+          .flatMap((key) =>
+            key === "dragonPolicy"
+              ? Object.keys(rebuilt[key])
+                  .filter(
+                    (part) =>
+                      canonicalJson(rebuilt[key][part]) !==
+                      canonicalJson(payload[key]?.[part]),
+                  )
+                  .map((part) => `${key}.${part}`)
+              : [key],
+          )
+          .join("、")}`,
+      );
     return;
   }
   if (!plan) return;

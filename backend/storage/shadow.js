@@ -4,6 +4,7 @@ import { digest, normalizePageRequest } from "./paper.js";
 import { frozenSelectionPolicy } from "../domain/signal-selection.js";
 import { preserveProgramSignal } from "./strategy-signals.js";
 import { freezeQualityStatement } from "./t-quality.js";
+import { environmentStatements } from "./market-environment.js";
 
 // 影子账户体系（§6/§7）：多账户隔离的 CAS 提交、计划、成交、净值与消费游标。
 // 物理存储键采用 (account_id, localId)/(account_id, trade_date) 组合键；
@@ -13,6 +14,7 @@ import { freezeQualityStatement } from "./t-quality.js";
 
 export const SHADOW_ACCOUNT_KINDS = Object.freeze({
   DRAGON_OBSERVATION: "DRAGON_OBSERVATION",
+  MARKET_ENVIRONMENT: "MARKET_ENVIRONMENT",
   CANDIDATE: "CANDIDATE",
   PARENT_MATCH: "PARENT_MATCH",
   BASELINE_MATCH: "BASELINE_MATCH",
@@ -253,6 +255,15 @@ export class ShadowAccountRepository {
         ),
       ),
     ];
+    statements.push(
+      ...(await environmentStatements(
+        this.db,
+        { book, session, ledger },
+        observation,
+        accountId,
+        guarded,
+      )),
+    );
     const results = await this.db.batch(statements);
     return { applied: results[0].meta.changes === 1 };
   }

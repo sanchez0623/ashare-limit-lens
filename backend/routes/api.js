@@ -1,5 +1,19 @@
 import { json, validDate, readJson, safeError } from "../http.js";
 import {
+  marketEnvironment,
+  researchEnvironment,
+} from "../services/market-environment.js";
+import { BUY_POINT_TYPES } from "../../shared/buy-point-type.js";
+import {
+  scoringPolicy,
+  scoringScores,
+  scoringCalibration,
+} from "../services/observation-scoring.js";
+import {
+  researchDashboard,
+  researchRecords,
+} from "../services/research-dashboard.js";
+import {
   database,
   beijingDate,
   afterClose,
@@ -12,6 +26,7 @@ import {
   aiConfig,
   gradeWithAI,
   historyList,
+  readSavedReview,
 } from "../services/review.js";
 import { marketData, latestTradingDate } from "../services/market.js";
 import { marketForDisplay } from "../services/market-display.js";
@@ -35,6 +50,7 @@ import {
 import {
   saveDragonSettings,
   previewDragonConfig,
+  previewLiveDragonConfig,
   requestDragonActivation,
   dragonStatus,
   requestDragonValidation,
@@ -54,6 +70,10 @@ import {
 } from "../services/history.js";
 import { HistoryJobRepository, openHistoryStore } from "../storage/history.js";
 import { backtestDetail, runBacktest } from "../services/backtest.js";
+import {
+  proposePatternResearch,
+  maintainPatternResearch,
+} from "../services/dragon-pattern-research.js";
 import { pollTrading, realtimeStatus } from "../services/realtime.js";
 import {
   reserveCohort,
@@ -143,10 +163,13 @@ async function runDaily(env) {
   }
   let ai = result.ai || null;
   if (
+    !result.archived &&
     aiConfig(env).configured &&
     result.review &&
     !ai &&
-    result.review.validCount > 0
+    (result.review.reviewKind === "DRAGON_PRACTICE"
+      ? result.review.aiEligible
+      : result.review.validCount > 0)
   ) {
     try {
       ai = await gradeWithAI(env, result);
@@ -164,6 +187,15 @@ async function runDaily(env) {
   } catch (error) {
     evidence = { error: safeError(error) };
   }
+  let practiceResearch = null;
+  if (!result.archived && result.review?.reviewKind === "DRAGON_PRACTICE") {
+    try {
+      practiceResearch = await proposePatternResearch(env);
+      await maintainPatternResearch(env);
+    } catch (error) {
+      practiceResearch = { status: "ERROR", reason: safeError(error) };
+    }
+  }
   return {
     ...result,
     ai,
@@ -171,6 +203,7 @@ async function runDaily(env) {
     paper,
     tournament,
     evidence,
+    practiceResearch,
     aiError,
     aiStatus: aiConfig(env),
     history: await historyList(env),
@@ -191,6 +224,8 @@ export async function api(request, env) {
     "/api/paper/entry-observation/candidates": ["GET"],
     "/api/ai-grade": ["POST"],
     "/api/market": ["GET"],
+    "/api/market/environment": ["GET"],
+    "/api/research/environment": ["GET"],
     "/api/market/latest-date": ["GET"],
     "/api/paper": ["GET"],
     "/api/paper/ledger": ["GET"],
@@ -221,6 +256,10 @@ export async function api(request, env) {
     "/api/paper/live": ["GET"],
     "/api/paper/poll": ["POST"],
     "/api/research/status": ["GET"],
+    "/api/research/records": ["GET"],
+    "/api/research/scoring/policy": ["GET"],
+    "/api/research/scoring/scores": ["GET"],
+    "/api/research/scoring/calibration": ["GET"],
     "/api/strategies/cohorts": ["GET", "POST"],
     "/api/strategies/policy": ["POST"],
     "/api/history/capabilities": ["GET"],
@@ -279,6 +318,33 @@ export async function api(request, env) {
   if (Number(request.headers.get("Content-Length") || 0) > bodyLimit)
     return json({ error: "请求内容过长" }, 413);
   try {
+    if (path.startsWith("/api/research/scoring/")) {
+      const date = url.searchParams.get("date") || undefined;
+      const code = url.searchParams.get("code") || undefined;
+      const buyPoint = url.searchParams.get("buyPoint") || undefined;
+      if (
+        (date && !validDate(date)) ||
+        (code && !/^\d{6}$/.test(code)) ||
+        (buyPoint && !Object.hasOwn(BUY_POINT_LABELS, buyPoint))
+      )
+        return json({ error: "评分查询的日期、股票或买点无效" }, 400);
+      if (path.endsWith("/policy")) return json(await scoringPolicy(env));
+      if (path.endsWith("/scores"))
+        return json(await scoringScores(env, { date, code, buyPoint }));
+      const report = await scoringCalibration(env, {
+        date,
+        buyPoint,
+        phase: url.searchParams.get("phase") || undefined,
+        version: url.searchParams.get("version") || undefined,
+      });
+      const response = json(report);
+      if (url.searchParams.get("format") === "json")
+        response.headers.set(
+          "Content-Disposition",
+          'attachment; filename="observation-score-calibration.json"',
+        );
+      return response;
+    }
     if (path === "/api/data/status") return json(await metadataStatus(env));
     if (path === "/api/data/update") {
       const body = await readJson(request);
@@ -368,7 +434,37 @@ export async function api(request, env) {
       return json({ saved: true });
     }
     if (path === "/api/history") return json(await historyList(env));
-    if (path === "/api/research/status") return json(await researchStatus(env));
+    if (path === "/api/research/status")
+      return json({
+        ...(await researchStatus(env)),
+        dashboard: await researchDashboard(env),
+      });
+    if (path === "/api/research/records") {
+      const id = url.searchParams.get("id") || undefined;
+      const kind = url.searchParams.get("kind") || undefined;
+      const limit = Number(url.searchParams.get("limit") || 20),
+        offset = Number(url.searchParams.get("offset") || 0);
+      if (
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 50 ||
+        !Number.isInteger(offset) ||
+        offset < 0 ||
+        (id &&
+          (id.length > 200 ||
+            !["pattern", "template", "cohort", "experiment"].includes(kind)))
+      )
+        return json({ error: "研究记录查询无效" }, 400);
+      const result = await researchRecords(env, { id, kind, limit, offset });
+      if (!result) return json({ error: "研究记录不存在" }, 404);
+      const response = json(result);
+      if (url.searchParams.get("format") === "json")
+        response.headers.set(
+          "Content-Disposition",
+          'attachment; filename="research-record.json"',
+        );
+      return response;
+    }
     if (path === "/api/history/capabilities") {
       const start = url.searchParams.get("start");
       const end = url.searchParams.get("end");
@@ -445,14 +541,13 @@ export async function api(request, env) {
     if (path === "/api/review") {
       const date = url.searchParams.get("date") || beijingDate();
       if (!validDate(date)) return json({ error: "日期格式无效" }, 400);
-      const row = await database(env)
-        .prepare("SELECT payload,ai_payload FROM reviews WHERE trade_date=?")
-        .bind(date)
-        .first();
+      const saved = await readSavedReview(env, date);
       return json({
-        review: row ? JSON.parse(row.payload) : null,
-        ai: row?.ai_payload ? JSON.parse(row.ai_payload) : null,
-        reason: row ? null : "该日期尚无保存的反馈",
+        ...(saved ?? {
+          review: null,
+          ai: null,
+          reason: "该日期尚无保存的反馈",
+        }),
         aiStatus: aiConfig(env),
       });
     }
@@ -471,6 +566,32 @@ export async function api(request, env) {
           ai: row.ai_payload ? JSON.parse(row.ai_payload) : null,
         }),
       });
+    }
+    if (
+      path === "/api/market/environment" ||
+      path === "/api/research/environment"
+    ) {
+      const date = url.searchParams.get("date") || undefined,
+        at = url.searchParams.get("at") || undefined,
+        buyPoint = url.searchParams.get("buyPoint") || undefined,
+        dimension = url.searchParams.get("dimension") || undefined;
+      if (
+        (date && (!validDate(date) || date > beijingDate())) ||
+        (at &&
+          (!Number.isFinite(Date.parse(at)) || Date.parse(at) > Date.now())) ||
+        (dimension &&
+          !["strength", "direction", "fragility"].includes(dimension)) ||
+        (buyPoint && !Object.values(BUY_POINT_TYPES).includes(buyPoint))
+      )
+        return json({ error: "环境查询日期、时点或筛选无效" }, 400);
+      return json(
+        path === "/api/market/environment"
+          ? await marketEnvironment(env, {
+              date,
+              at: at ? new Date(at).toISOString() : undefined,
+            })
+          : await researchEnvironment(env, { date, buyPoint, dimension }),
+      );
     }
     if (path === "/api/market") {
       const date = url.searchParams.get("date") || beijingDate();
@@ -544,11 +665,26 @@ export async function api(request, env) {
           }),
         );
       }
+      const primary = await new PaperRepository(env).account();
+      if (
+        primary?.book?.tradingPolicyVersion === "dragon-risk-v1" ||
+        primary?.book?.dragonTransition?.state === "DRAINING"
+      )
+        return json(
+          { error: "旧策略赛马仅供历史查看，请使用龙头组合研究" },
+          409,
+        );
       const repository = new PaperRepository(env);
       await repository.initialize(await readWeights(env));
       return json(await reserveCohort(repository, env));
     }
     if (path === "/api/strategies/policy") {
+      const primary = await new PaperRepository(env).account();
+      if (
+        primary?.book?.tradingPolicyVersion === "dragon-risk-v1" ||
+        primary?.book?.dragonTransition?.state === "DRAINING"
+      )
+        return json({ error: "龙头模式不能修改旧赛马政策" }, 409);
       const body = await readJson(request);
       const cohorts = new CohortRepository(env);
       const owner = await cohorts.windowOwner();
@@ -664,10 +800,18 @@ export async function api(request, env) {
       const body = await readJson(request);
       if (
         !body ||
-        Object.keys(body).some((k) => !["config", "phase"].includes(k))
+        Object.keys(body).some(
+          (k) => !["config", "phase", "mode"].includes(k),
+        ) ||
+        (body.mode != null && !["live", "stress"].includes(body.mode)) ||
+        (body.mode === "live" && body.phase != null)
       )
         return json({ error: "预览字段无效" }, 400);
-      return json(previewDragonConfig(body.config, body.phase));
+      return json(
+        body.mode === "live"
+          ? await previewLiveDragonConfig(env, body.config)
+          : previewDragonConfig(body.config, body.phase),
+      );
     }
     if (path === "/api/paper/dragon/activate")
       return json(await requestDragonActivation(env));
@@ -691,7 +835,7 @@ export async function api(request, env) {
             Array.isArray(body.cancelResearch) ||
             Object.keys(body.cancelResearch).length !== 2 ||
             typeof body.cancelResearch.ownerId !== "string" ||
-            !["DRAGON", "EXPERIMENT", "COHORT"].includes(
+            !["DRAGON", "DRAGON_PATTERN", "EXPERIMENT", "COHORT"].includes(
               body.cancelResearch.ownerType,
             ))
         )

@@ -24,6 +24,7 @@ import {
   alertsEnabled,
   sendNotification,
 } from "./notifications.js";
+import { tradeNotificationStatus } from "./trade-notifications.js";
 
 const nowIso = () => new Date().toISOString();
 
@@ -443,6 +444,7 @@ export async function alertsStatus(env) {
       lastProgressAt: state?.lastProgressAt ?? null,
     },
     outbox: health,
+    trading: await tradeNotificationStatus(env),
     ruleVersion: (await store.latestRuleVersion())?.id ?? "default",
     note: alertsEnabled(env)
       ? "主动告警已启用"

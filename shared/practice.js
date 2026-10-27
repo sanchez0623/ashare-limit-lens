@@ -1,0 +1,41 @@
+export const PRACTICE_REVIEW_KIND = "DRAGON_PRACTICE";
+export const PRACTICE_SCHEMA_VERSION = 3;
+export const PRACTICE_FEATURE_VERSION = "dragon-practice-features-v1";
+export const PRACTICE_REASONS = Object.freeze({
+  ADMITTED: "已进入实际观察池",
+  ADAPTIVE_CANCEL: "动态预算或操作权限收紧，取消剩余新增风险",
+  ADAPTIVE_WAIT: "等待有效行情和风控预热确认，保留剩余买入",
+  INELIGIBLE: "静态准入条件未满足",
+  QUOTE_MISSING: "缺少该股报价",
+  QUOTE_INVALID: "报价错日、过期或无效",
+  QUOTE_REPEATED: "报价未推进，等待新观测",
+  PREVIOUS_CLOSE_MISMATCH: "昨收与冻结依据不一致",
+  SECTOR_MISSING: "板块输入缺失",
+  SECTOR_WEAK: "板块强度不足",
+  MARKET_RESTRICTED: "市场阶段限制新增",
+  MARKET_UNKNOWN: "市场阶段缺少有效证据",
+  DAILY_PAUSED: "触及当日亏损暂停线",
+  DRAWDOWN_HALTED: "触及账户回撤熔断线",
+  WAITING_CONFIRMATION: "等待连续报价及增量成交量确认",
+  VOLUME_ABNORMAL: "成交量异常放大",
+  NO_BUY_POINT: "当前未满足已启用买点",
+  POSITION_PROTECTED: "持仓退出、减仓或做T期间限制新增",
+  MANUAL_EXIT: "用户预约清仓，当日不再买入该股",
+  DAILY_ACTION_LIMIT: "同股当日操作次数限制",
+  NO_ADD_SIGNAL: "加仓条件未满足或操作未启用",
+  BUY_POINT_TRIGGERED: "实际观测触发买点",
+  MAX_POSITIONS: "持仓及待成交名额已满",
+  CASH_OR_EXPOSURE: "现金、集中度、仓位或预留不足",
+  RISK_BUDGET: "计划风险预算不足一手",
+  HOLDING_DATA_MISSING: "持仓行情缺失，停止新增风险",
+  LIMIT_LOCKED: "涨跌停约束，不能假设排队成交",
+  ORDERBOOK_MISSING: "缺少可验证的对手盘口",
+  CAPACITY_BLOCKED: "实际成交容量或费用约束未通过",
+  T_COST_BLOCKED: "目标价差不足以覆盖做T成本",
+  T1_BLOCKED: "T+1或可卖数量约束",
+  PROTECTIVE_EXIT: "保护退出或战略减仓已触发",
+  ORDER_EXPIRED: "买点窗口结束",
+  FILLED: "按实际行情及风险预算成交",
+});
+export const isPracticeReview = (review) =>
+  review?.reviewKind === PRACTICE_REVIEW_KIND;

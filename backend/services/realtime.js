@@ -1,4 +1,5 @@
 import { RealtimeRepository } from "../storage/realtime.js";
+import { industryContinuation } from "../storage/industry-continuation.js";
 import {
   openSession,
   advanceSession,
@@ -8,6 +9,8 @@ import {
 } from "../domain/realtime.js";
 import { planRiskLimits } from "../../shared/risk-limits.js";
 import { isDragon } from "../domain/dragon-risk.js";
+import { adaptiveRiskView } from "../../shared/adaptive-risk.js";
+import { dragonEffectiveFields } from "../../shared/dragon-risk-config.js";
 import { tradingQuotes, tradingCalendar } from "./market.js";
 import { readWeights } from "./review.js";
 import { buildOperationEvents } from "./alerts.js";
@@ -91,6 +94,16 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
       session = openSession(account.book, plan, clock.date);
     }
     await assertStoredProgramPlan(env, session.plan, session.initialBook);
+    const continuation = await industryContinuation(env.DB, session.plan);
+    if (
+      continuation &&
+      providers.observedAt &&
+      Date.parse(providers.observedAt) < Date.parse(continuation.createdAt)
+    )
+      return heartbeat({
+        status: "BLOCKED",
+        reason: "行业续跑仅处理登记后的新行情帧",
+      });
     if (session.status !== "OPEN")
       return heartbeat({ status: session.status, reason: "交易日已关闭" });
     // 每次轮询都核验会话冻结的政策摘要（§5.4）：已有会话同样不得在
@@ -143,7 +156,23 @@ export async function pollTrading(env, now = new Date(), providers = {}) {
         ? { entryInputs: verifyAuctionQuotes(entryInputs, quotes, clock.date) }
         : {}),
       pollIntervalSeconds: Number(env.TRADING_POLL_SECONDS || 10),
+      ...(continuation?.entryOrderPolicy
+        ? { entryOrderPolicy: continuation.entryOrderPolicy }
+        : {}),
+      ...(continuation?.adaptiveRiskPolicy
+        ? { adaptiveRiskPolicy: continuation.adaptiveRiskPolicy }
+        : {}),
     };
+    if (
+      continuation &&
+      observation.entryInputs?.market &&
+      observation.entryInputs.market.industryContext?.stockEmSnapshotId !==
+        continuation.industrySnapshotId
+    )
+      return heartbeat({
+        status: "BLOCKED",
+        reason: "盘中行业来源与续跑冻结版本不一致",
+      });
     const result = advanceSession(account.book, session, observation);
     const observedMs = new Date(observation.observedAt).getTime();
     const fresh = (quote) => {
@@ -269,7 +298,10 @@ export async function realtimeStatus(env, now = new Date()) {
   const repo = new RealtimeRepository(env),
     health = await repo.health(),
     clock = marketClock(now);
-  const session = await repo.session(clock.date);
+  const [session, account] = await Promise.all([
+    repo.session(clock.date),
+    repo.account(),
+  ]);
   const age = health
     ? Math.max(0, now.getTime() - new Date(health.checkedAt).getTime())
     : null;
@@ -295,11 +327,37 @@ export async function realtimeStatus(env, now = new Date()) {
             ? {
                 dragonExecution: {
                   config: session.plan.dragonPolicy.config,
+                  tCapitalPolicy:
+                    session.plan.dragonPolicy.tCapitalPolicy ?? null,
                   configId: session.plan.dragonPolicy.configId,
                   signalDate: session.plan.signalDate,
                   phase: session.regime.phase,
                   dailyPaused: session.dailyPaused,
                   missingHoldingQuotes: session.missingHoldingQuotes,
+                  adaptiveRisk: adaptiveRiskView(
+                    session.plan.dragonPolicy.config,
+                    session.adaptiveRisk,
+                    {
+                      observedAt: now.toISOString(),
+                      paused:
+                        session.dailyPaused ||
+                        session.missingHoldingQuotes ||
+                        account?.book.dragonHalted,
+                    },
+                  ),
+                  effectiveFields: dragonEffectiveFields(
+                    session.plan.dragonPolicy.config,
+                    session.regime.phase,
+                    session.dailyPaused ||
+                      session.missingHoldingQuotes ||
+                      account?.book.dragonHalted,
+                    session.adaptiveRisk
+                      ? {
+                          ...session.adaptiveRisk,
+                          observedAt: now.toISOString(),
+                        }
+                      : null,
+                  ),
                 },
               }
             : {}),

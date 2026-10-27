@@ -129,10 +129,19 @@ function mergeLimitBreakPools(emPool, thsPool) {
 // 既不能拖慢东财行情返回，也不能把补全失败混进用户可见告警。
 const THS_SUPPLEMENT_TIMEOUT_MS = 4000;
 
-export async function marketData(date, env) {
-  const hit = CACHE.get(date);
-  if (hit && Date.now() - hit.time < 120000)
-    return enrichMarketIndustries(env, { ...hit.body, cached: true });
+export async function marketData(
+  date,
+  env,
+  { cacheTtlMs = 120000, cacheScope = "display", industrySnapshotId } = {},
+) {
+  const cacheKey = `${cacheScope}:${date}`;
+  const hit = CACHE.get(cacheKey);
+  if (hit && Date.now() - hit.time < cacheTtlMs)
+    return enrichMarketIndustries(
+      env,
+      { ...hit.body, cached: true },
+      { industrySnapshotId },
+    );
 
   // 东财优先：涨停池/炸板池/昨日涨停池的权威口径全部来自东财。
   // 同花顺并行拉取四个补全源（涨停原因/炸板开板次数/跌停池/连板天梯），
@@ -152,16 +161,23 @@ export async function marketData(date, env) {
     thsGetLimitUpPool(date, {
       timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS,
       retries: 0,
+      cacheTtlMs,
     }),
     thsGetLimitBreakPool(date, {
       timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS,
       retries: 0,
+      cacheTtlMs,
     }),
     thsGetLimitDownPool(date, {
       timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS,
       retries: 0,
+      cacheTtlMs,
     }),
-    thsGetLimitUpLadder({ timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS, retries: 0 }),
+    thsGetLimitUpLadder({
+      timeoutMs: THS_SUPPLEMENT_TIMEOUT_MS,
+      retries: 0,
+      cacheTtlMs,
+    }),
   ]);
 
   if (main.status === "rejected") throw main.reason;
@@ -267,10 +283,10 @@ export async function marketData(date, env) {
     scope: "沪深主板、创业板；不含 ST、科创板、北交所及连续一字新股",
     fetchedAt: new Date().toISOString(),
     rows: pricedMain,
-    broken: mergedBrokenRows.length || null,
+    broken: broken.status === "fulfilled" ? mergedBrokenRows.length : null,
     // 炸板池原始行：出池持仓的炸板次数来源（方案 5 炸板不回封信号）；
     // broken 仅保留家数供封板率/展示，不丢个股记录。
-    brokenRows: pricedBroken.length > 0 ? pricedBroken : null,
+    brokenRows: broken.status === "fulfilled" ? pricedBroken : null,
     priceSupplementation: priceSupplement.evidence,
     previous: previousRows,
     previousLabel: "上一交易日",
@@ -290,8 +306,8 @@ export async function marketData(date, env) {
   };
 
   if (CACHE.size >= 20) CACHE.delete(CACHE.keys().next().value);
-  CACHE.set(date, { time: Date.now(), body: result });
-  return enrichMarketIndustries(env, result);
+  CACHE.set(cacheKey, { time: Date.now(), body: result });
+  return enrichMarketIndustries(env, result, { industrySnapshotId });
 }
 
 // 拉取单个指数的日线（含当日实时报价合并）；交易日历与基准曲线共用。
@@ -525,6 +541,33 @@ export function parseTencentQuotes(text, date) {
     const ask1Shares = Number.isFinite(Number(fields[20]))
       ? Math.max(0, Math.round(Number(fields[20]) * 100))
       : null;
+    // Preserve explicit zero liquidity separately from execution's conservative
+    // usable-book flag. Empty/negative/unknown fields remain unknown.
+    const observedNumber = (raw, scale) =>
+      typeof raw === "string" &&
+      raw.trim() &&
+      Number.isFinite(Number(raw)) &&
+      Number(raw) >= 0
+        ? Math.round(Number(raw) * scale)
+        : null;
+    const orderBookObservation = {
+      bid1Cents: observedNumber(fields[9], 100),
+      ask1Cents: observedNumber(fields[19], 100),
+      bid1Shares: observedNumber(fields[10], 100),
+      ask1Shares: observedNumber(fields[20], 100),
+    };
+    orderBookObservation.quality =
+      Object.values(orderBookObservation).every(Number.isFinite) &&
+      (orderBookObservation.bid1Cents > 0 ||
+        orderBookObservation.bid1Shares === 0) &&
+      (orderBookObservation.ask1Cents > 0 ||
+        orderBookObservation.ask1Shares === 0) &&
+      (!(
+        orderBookObservation.bid1Cents > 0 && orderBookObservation.ask1Cents > 0
+      ) ||
+        orderBookObservation.bid1Cents <= orderBookObservation.ask1Cents)
+        ? "OBSERVED"
+        : "UNKNOWN";
     let orderBookQuality = "OK";
     let orderBook = {};
     if (bid1Cents && ask1Cents && bid1Shares !== null && ask1Shares !== null) {
@@ -561,6 +604,7 @@ export function parseTencentQuotes(text, date) {
       limitUpCents: positive(fields[47]),
       limitDownCents: positive(fields[48]),
       ...orderBook,
+      orderBookObservation,
       orderBookQuality,
       orderBookTimestamp: /^\d{14}$/.test(fields[30])
         ? `${date}T${fields[30].slice(8, 10)}:${fields[30].slice(10, 12)}:${fields[30].slice(12, 14)}+08:00`

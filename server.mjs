@@ -6,7 +6,13 @@ import { dirname } from "node:path";
 import { localDatabase } from "./scripts/local-db.mjs";
 import { startTradingRunner } from "./scripts/trading-runner.mjs";
 import { startDataUpdateWorker } from "./scripts/data-worker-supervisor.mjs";
+import { bootstrapIndustryRepair } from "./scripts/bootstrap-industry-repair.mjs";
+import { bootstrapManualExits } from "./scripts/bootstrap-manual-exits.mjs";
+import { bootstrapMarketEnvironment } from "./scripts/bootstrap-market-environment.mjs";
+import { RealtimeRepository } from "./backend/storage/realtime.js";
 import worker from "./dist/server/index.js";
+import { installRuntimeLogTimestamps } from "./scripts/runtime-log.mjs";
+installRuntimeLogTimestamps();
 try {
   process.loadEnvFile();
 } catch {}
@@ -37,6 +43,7 @@ const DB = localDatabase(dbPath),
     TRADING_RUNNER:
       process.env.TRADING_ENABLED === "false" ? "disabled" : "server",
     ALERTS_ENABLED: process.env.ALERTS_ENABLED,
+    TRADE_NOTIFICATIONS_ENABLED: process.env.TRADE_NOTIFICATIONS_ENABLED,
     FEISHU_WEBHOOK_URL: process.env.FEISHU_WEBHOOK_URL,
     FEISHU_SECRET: process.env.FEISHU_SECRET,
     WATCHDOG_PROGRESS_URL: process.env.WATCHDOG_PROGRESS_URL,
@@ -90,11 +97,89 @@ const server = createServer(async (req, res) => {
 });
 let runner;
 let dataWorker;
-server.listen(port, host, () => {
+let scoringWorker, scoringRestart;
+server.listen(port, host, async () => {
   console.log(`Trading server listening on port ${port}`);
+  if (process.env.TRADING_ENABLED !== "false") {
+    try {
+      const repaired = await bootstrapIndustryRepair(env, dbPath);
+      if (repaired.mode === "CONTINUE")
+        console.log(
+          `[industry-repair] 已验证续跑：保留 ${repaired.preservedObservations} 次观测、${repaired.preservedFills} 笔成交及原持仓；备份 ${repaired.directory}`,
+        );
+      else if (repaired.changed)
+        console.log(
+          `[industry-repair] 已修正 ${repaired.corrections.length} 只行业；保留 ${repaired.candidates} 只观察，原 ${repaired.retiredObservations} 次观测已归档；备份 ${repaired.directory}`,
+        );
+    } catch (error) {
+      console.error(`[industry-repair] 未修改原账本：${error.message}`);
+      await new RealtimeRepository(env).heartbeat({
+        status: "BLOCKED",
+        reason: `行业输入修复未通过：${error.message}`,
+        checkedAt: new Date().toISOString(),
+        automatic: false,
+        runner: "disabled",
+        pollIntervalSeconds: Number(env.TRADING_POLL_SECONDS),
+      });
+      // Do not run an execution build against a plan whose repair was refused.
+      // Keep the server available to inspect/export its unchanged evidence.
+      return;
+    }
+  }
+  if (process.env.TRADING_ENABLED !== "false") {
+    try {
+      const manual = await bootstrapManualExits(env, dbPath);
+      if (manual.changed)
+        console.log(
+          `[manual-exit] 已冻结 ${manual.requests.map((row) => `${row.tradeDate} ${row.code} 清仓${row.quantity}股`).join("；")}，当天禁止买回该股`,
+        );
+      if (manual.status === "WAITING_PREPARATION")
+        throw new Error("清仓预约尚未在开盘前完成冻结，请先核对执行状态");
+    } catch (error) {
+      console.error(`[manual-exit] 准备失败：${error.message}`);
+      await new RealtimeRepository(env).heartbeat({
+        status: "BLOCKED",
+        reason: `用户清仓计划未通过：${error.message}`,
+        checkedAt: new Date().toISOString(),
+        automatic: false,
+        runner: "disabled",
+        pollIntervalSeconds: Number(env.TRADING_POLL_SECONDS),
+      });
+      return;
+    }
+  }
+  if (process.env.TRADING_ENABLED !== "false") {
+    try {
+      const environment = await bootstrapMarketEnvironment(env, dbPath);
+      console.log(`[market-environment] ${environment.status}`);
+    } catch (error) {
+      console.error(`[market-environment] ${error.message}`);
+      await new RealtimeRepository(env).heartbeat({
+        status: "BLOCKED",
+        reason: `市场环境准备失败：${error.message}`,
+        checkedAt: new Date().toISOString(),
+        automatic: false,
+        runner: "disabled",
+      });
+      return;
+    }
+  }
   dataWorker = startDataUpdateWorker(dbPath, {
     enabled: env.DATA_UPDATE_RUNNER === "local",
   });
+  if (process.env.SCORING_WORKER_ENABLED !== "false") {
+    const startScoring = () => {
+      scoringWorker = spawn(process.execPath, ["scripts/scoring-worker.mjs"], {
+        env: process.env,
+        stdio: "inherit",
+        detached: false,
+      });
+      scoringWorker.on("exit", () => {
+        if (!stopped) scoringRestart = setTimeout(startScoring, 30000);
+      });
+    };
+    startScoring();
+  }
   if (process.env.TRADING_ENABLED !== "false")
     runner = startTradingRunner(env, async () =>
       (
@@ -153,6 +238,8 @@ for (const signal of ["SIGTERM", "SIGINT"])
     if (stopped) return;
     stopped = true;
     runner?.stop();
+    clearTimeout(scoringRestart);
+    scoringWorker?.kill();
     await dataWorker?.stop();
     server.close(() => {
       DB.close();

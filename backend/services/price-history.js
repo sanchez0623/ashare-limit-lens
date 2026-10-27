@@ -210,7 +210,7 @@ export async function resolveDailyPriceInputs(
     history = getPricesHistorical,
     now = new Date(),
     localDataset,
-    maxCodes = 100,
+    maxCodes = Number.POSITIVE_INFINITY,
     deadlineMs = 45000,
     allowRemote = true,
   } = {},
@@ -284,10 +284,12 @@ async function resolveInputs(env, date, options) {
         !eodRows.has(c) ||
         featuresByCode.get(c)?.ma20 == null,
     );
-  const requested = requestedAll.slice(0, maxCodes).sort();
+  // This is a per-request work budget, not a universe limit. Read every cached
+  // record first so later attempts advance past a completed batch.
+  const requested = requestedAll.sort();
   const records = [],
-    errors = [];
-  let limited = requestedAll.length > requested.length;
+    errors = new Set();
+  let rateLimited = false;
   const clockTime = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Shanghai",
     hour: "2-digit",
@@ -316,22 +318,32 @@ async function resolveInputs(env, date, options) {
     canFetch &&
     (history !== getPricesHistorical || process.env.FU_YAO_API_KEY)
   ) {
+    const uncached = [];
+    for (const code of requested) {
+      try {
+        const cached = await cachedRecord(env, date, code);
+        if (cached) records.push(cached);
+        else uncached.push(code);
+      } catch {
+        errors.add(code);
+      }
+    }
     const started = Date.now();
     let cursor = 0,
-      rateLimited = false;
+      attempted = 0;
     const worker = async () => {
-      while (cursor < requested.length && !rateLimited) {
-        const code = requested[cursor++];
-        if (Date.now() - started >= deadlineMs) {
-          limited = true;
-          return;
-        }
+      while (cursor < uncached.length && !rateLimited) {
+        if (Date.now() - started >= deadlineMs || attempted >= maxCodes) return;
+        const code = uncached[cursor++];
         const failKey = `${date}:${code}`;
         if (
           history === getPricesHistorical &&
           Date.now() - (failures.get(failKey) ?? 0) < 60000
-        )
+        ) {
+          errors.add(code);
           continue;
+        }
+        attempted++;
         try {
           const record = await acquireRecord(
             env,
@@ -345,13 +357,12 @@ async function resolveInputs(env, date, options) {
         } catch (error) {
           if (history === getPricesHistorical)
             failures.set(failKey, Date.now());
-          errors.push(code);
+          errors.add(code);
           if (/限流|429/.test(error.message)) rateLimited = true;
         }
       }
     };
     await Promise.all([worker(), worker()]);
-    limited ||= rateLimited;
   } else {
     // 盘中只读已经冻结的原始历史，不获取可能尚未收盘的当日日线。
     for (const code of requested) {
@@ -359,7 +370,7 @@ async function resolveInputs(env, date, options) {
         const cached = await cachedRecord(env, date, code);
         if (cached) records.push(cached);
       } catch {
-        errors.push(code);
+        errors.add(code);
       }
     }
   }
@@ -385,6 +396,10 @@ async function resolveInputs(env, date, options) {
       })),
     ),
   };
+  const captured = new Set(records.map((record) => record.code));
+  const pendingCodes = requested.filter(
+    (code) => !captured.has(code) && !errors.has(code),
+  );
   return {
     datasets,
     ma5ByCode,
@@ -395,8 +410,10 @@ async function resolveInputs(env, date, options) {
       source: records.length ? "local-with-fuyao-fallback" : "local",
       requested: requestedAll.length,
       supplemented: records.length,
-      failedCodes: errors.sort(),
-      limited,
+      failedCodes: [...errors].sort(),
+      pendingCodes,
+      limited: rateLimited || pendingCodes.length > 0,
+      complete: pendingCodes.length === 0 && errors.size === 0,
       localAsOf: local?.dates.at(-1) ?? null,
     },
   };

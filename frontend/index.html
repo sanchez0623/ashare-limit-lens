@@ -7,7 +7,7 @@
     <title>涨停研究台 · 市场观察室</title>
     <meta
       name="description"
-      content="每日 A 股涨停复盘，查看可解释的个股评分、行业板块强度和市场情绪。"
+      content="每日 A 股涨停观察，查看分层买点评分、板块环境、实际风险与研究证据。"
     />
     <link
       rel="icon"
@@ -65,10 +65,7 @@
                 <span data-icon="shield"></span>运维告警
               </button>
               <button data-view="settings">
-                <span data-icon="sliders"></span>研究设置
-              </button>
-              <button data-view="strategies">
-                <span data-icon="chart"></span>策略赛马
+                <span data-icon="sliders"></span>研究与验证
               </button>
             </nav>
           </details>
@@ -208,9 +205,11 @@
                   <h2>
                     涨停个股 <span class="count-chip" id="pool-count">—</span>
                   </h2>
-                  <p>按综合评分排序，点击个股查看完整诊断</p>
+                  <p>按成交额观察，选择同一买点后可比较匹配程度</p>
                 </div>
-                <span class="small-muted" id="coverage-label">六维评分</span>
+                <span class="small-muted" id="coverage-label"
+                  >分层观察 · 风险独立</span
+                >
               </div>
               <div class="filters">
                 <div class="search-control">
@@ -248,9 +247,19 @@
                   ><button data-height="relay">连板</button>
                 </div>
                 <div class="sort-control">
-                  <label for="sort">排序</label
+                  <label for="buy-point-filter">买点</label
+                  ><select id="buy-point-filter" aria-label="买点评分卡">
+                    <option value="">全部 · 不混排</option>
+                    <option value="limit-up-momentum">打板</option>
+                    <option value="broken-board-dip">炸板低吸</option>
+                    <option value="first-neg-dip">首阴低吸</option>
+                    <option value="fake-neg-limit-dip">假阴跌停低吸</option>
+                    <option value="auction-dip">早盘竞价低吸</option>
+                    <option value="late-dip">尾盘跳水低吸</option></select
+                  ><label for="sort">排序</label
                   ><select id="sort">
-                    <option value="score">综合评分</option>
+                    <option value="amount">成交额</option>
+                    <option value="quality" disabled>所选买点质量</option>
                     <option value="height">连板高度</option>
                     <option value="seal">封单金额</option>
                     <option value="first">首封时间</option>
@@ -267,10 +276,14 @@
                   <thead>
                     <tr>
                       <th>个股 / 代码</th>
-                      <th>综合评分</th>
+                      <th>身份匹配</th>
+                      <th>买点质量</th>
+                      <th>风险压力</th>
+                      <th>执行状态 / 观测时间</th>
                       <th id="stock-industry-header">东财行业</th>
                       <th>连板</th>
                       <th>首封时间</th>
+                      <th>成交额</th>
                       <th>封单金额</th>
                       <th>换手率</th>
                       <th>炸板</th>
@@ -281,7 +294,7 @@
               </div>
               <div class="table-footer">
                 <span id="table-status">正在读取公开行情…</span
-                ><span>评分区间 0–100</span>
+                ><span id="stock-score-status">等待独立评分观测</span>
               </div>
             </section>
             <div class="right-column">
@@ -642,97 +655,16 @@
               </div>
             </section>
           </section>
-          <section id="settings-view" aria-label="设置" hidden>
-            <div class="model-grid">
-              <section class="panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>复盘评分设置</h2>
-                    <p>调整评分权重与观察排序；已归档的原始评分保持冻结</p>
-                  </div>
-                  <span id="weight-total" class="outline-tag">合计 100%</span>
-                </div>
-                <div class="preset-buttons">
-                  <button data-preset="balanced" class="active">综合复盘</button
-                  ><button data-preset="first">首板挖掘</button
-                  ><button data-preset="relay">短线接力</button>
-                </div>
-                <div id="weight-controls"></div>
-                <div class="model-actions">
-                  <button class="secondary" id="reset-model">
-                    恢复综合复盘</button
-                  ><span id="model-status" role="status"
-                    >权重相加后归一化计算</span
-                  >
-                </div>
-              </section>
-              <section class="panel model-explain">
-                <div class="panel-heading"><h2>分数如何产生</h2></div>
-                <div class="formula-box">
-                  综合分 = 有效指标加权均分<br /><span
-                    >− 风险扣分（最多 20 分）</span
-                  >
-                </div>
-                <h3>数据不完整时</h3>
-                <p>
-                  缺失指标不按零分计入，剩余权重重新归一化。数据覆盖率同时显示，覆盖率较低的得分可比性较弱。
-                </p>
-                <h3>风险扣分</h3>
-                <dl>
-                  <div>
-                    <dt>5 板及以上</dt>
-                    <dd>−8</dd>
-                  </div>
-                  <div>
-                    <dt>换手率 > 40%</dt>
-                    <dd>−8</dd>
-                  </div>
-                  <div>
-                    <dt>炸板 ≥ 3 次</dt>
-                    <dd>−5</dd>
-                  </div>
-                  <div>
-                    <dt>低换手竞价封板特征</dt>
-                    <dd>−10</dd>
-                  </div>
-                  <div>
-                    <dt>14:50 后回封</dt>
-                    <dd>−4</dd>
-                  </div>
-                </dl>
-                <p class="model-limit">
-                  此模型是规则评分，尚未进行历史收益校准。分数衡量观察指标，不代表次日上涨概率。
-                </p>
-              </section>
+          <section id="settings-view" aria-label="研究与验证" hidden>
+            <div class="paper-toolbar">
+              <p id="research-hub-message" role="status" aria-live="polite"></p>
+              <button id="research-hub-refresh" type="button" class="secondary">
+                刷新研究状态
+              </button>
             </div>
-            <section class="panel model-connection">
-              <div class="panel-heading">
-                <div>
-                  <h2>大模型连接</h2>
-                  <p>DeepSeek、OpenAI、通义兼容接口</p>
-                </div>
-                <span class="outline-tag" id="model-ai-status">未配置</span>
-              </div>
-              <p id="model-ai-detail">
-                服务端配置密钥、接口地址和模型后，AI
-                会根据冻结评分与已核验市场结果生成评价。密钥不进入浏览器。
-              </p>
-              <p>
-                AI
-                给出证据、判断失误与参数候选；模拟交易策略仅在独立验证通过后启用，历史记录保持冻结。
-              </p>
-            </section>
-            <section class="panel settings-research">
-              <div class="panel-heading">
-                <div>
-                  <h2>高级研究</h2>
-                  <p>策略赛马用于旧策略的候选比较、验证与批次记录。</p>
-                </div>
-                <button type="button" class="secondary" data-view="strategies">
-                  查看策略赛马
-                </button>
-              </div>
-            </section>
+            <div id="research-hub-current"></div>
+            <div id="research-hub-scoring" hidden></div>
+            <div id="research-hub-history" hidden></div>
           </section>
           <section id="paper-view" hidden>
             <div class="paper-toolbar">
@@ -821,7 +753,7 @@
                     id="paper-improve"
                     data-paper-operation
                   >
-                    检查改进条件
+                    前往研究与验证
                   </button>
                 </div>
                 <div id="paper-version-list"></div>
@@ -889,7 +821,7 @@
                     盘后冻结数量与价格条件，下一交易日按实时行情自动模拟成交
                   </p>
                 </div>
-                <span class="outline-tag" id="paper-plan-date">等待评分</span>
+                <span class="outline-tag" id="paper-plan-date">等待计划</span>
               </div>
               <div class="table-scroll">
                 <table>
@@ -897,7 +829,7 @@
                     <tr>
                       <th>个股 / 板块</th>
                       <th>动作</th>
-                      <th>策略评分</th>
+                      <th>交易依据</th>
                       <th>计划数量</th>
                       <th>事前价格条件</th>
                       <th>规划依据</th>
@@ -989,6 +921,11 @@
                       <p class="dragon-card-note">
                         8 项必要设置，按账户权益约束每一次新增风险。
                       </p>
+                      <p class="dragon-card-note" id="dragon-t-capital-note">
+                        仓位设置约束底仓；新计划做 T
+                        可使用余下现金，峰值总仓最高 100%。单股 T
+                        最多为可卖旧仓的 50%，仍受动态预算和组合风险限制。
+                      </p>
                       <div
                         id="dragon-risk-controls"
                         class="dragon-risk-grid"
@@ -1041,6 +978,14 @@
                         >保存后用于下一份未冻结计划，已有持仓基准保留。</span
                       >
                     </p>
+                    <button
+                      type="button"
+                      id="dragon-capital-preset"
+                      class="secondary"
+                      data-paper-operation
+                    >
+                      填入 70% 底仓 / 50% T 方案
+                    </button>
                     <button type="submit" class="primary" data-paper-operation>
                       保存新配置
                     </button>
@@ -1099,25 +1044,38 @@
                   </section>
                   <section class="dragon-info-card">
                     <div class="dragon-subheading">
-                      <h3>市场情境预览</h3>
-                      <span class="dragon-caption">只预览，不修改配置</span>
+                      <h3>动态市场感知</h3>
+                      <span class="dragon-caption">市场 · 板块 · 个股</span>
                     </div>
-                    <div class="dragon-preview-actions">
-                      <label class="sr-only" for="dragon-preview-phase"
-                        >预览市场情境</label
-                      ><select id="dragon-preview-phase"></select
-                      ><button
-                        type="button"
-                        id="dragon-preview-button"
-                        class="secondary"
-                        data-paper-operation
-                      >
-                        预览权限
-                      </button>
-                    </div>
+                    <div id="dragon-dynamic-state" aria-live="polite"></div>
+                    <button
+                      type="button"
+                      id="dragon-preview-button"
+                      class="secondary"
+                      data-paper-operation
+                    >
+                      按当前状态预览草稿
+                    </button>
+                    <details class="dragon-stress-preview">
+                      <summary>压力情境 · 手动对照</summary>
+                      <div class="dragon-preview-actions">
+                        <label class="sr-only" for="dragon-preview-phase"
+                          >预览市场情境</label
+                        ><select id="dragon-preview-phase"></select
+                        ><button
+                          type="button"
+                          id="dragon-stress-preview-button"
+                          class="secondary"
+                          data-paper-operation
+                        >
+                          预览压力情境
+                        </button>
+                      </div>
+                    </details>
                     <p id="dragon-preview" class="dragon-info-text">
-                      选择一种市场状态，查看预算收紧和操作权限。
+                      实际执行使用当前动态状态；草稿预览不修改配置或账户。
                     </p>
+                    <div id="dragon-preview-comparison"></div>
                   </section>
                 </div>
                 <details class="dragon-accordion">
@@ -1153,9 +1111,11 @@
                     <div>
                       <h3>市场权限</h3>
                       <p>
-                        上升使用全额预算；高潮使用 70%
-                        并禁止亏损补仓；退潮停止新增并逐步降至
-                        20%；冰点退出；数据不足保留有效保护。改善需连续两份有效快照。
+                        新计划使用市场、板块、个股三层连续系数，取最严格约束。
+                        恶化及时收紧；改善至少三份独立观测、持续 60
+                        秒后逐步恢复。
+                        超过可信动态敞口时减仓；数据缺失暂停相关新增，不因缺失数据强制卖出。
+                        四阶段只作解释，旧版本计划仍按冻结规则执行。
                       </p>
                     </div>
                     <div>
@@ -1370,67 +1330,7 @@
               </form>
             </section>
           </section>
-          <section id="strategies-view" hidden>
-            <div class="paper-toolbar">
-              <div>
-                <button type="button" class="secondary" data-view="settings">
-                  返回设置
-                </button>
-                <span id="strategies-status-note" class="outline-tag"
-                  >同一冻结批次内固定候选并行前瞻；批次结束至多启用一个候选</span
-                >
-              </div>
-              <div>
-                <label for="strategies-generation" class="small-muted"
-                  >研究范围</label
-                >
-                <select id="strategies-generation" aria-label="研究范围">
-                  <option value="LEGACY_AI">六因子数值微调</option>
-                  <option value="AI">AI 家族与组合</option>
-                  <option value="FAMILIES">固定家族模板</option>
-                  <option value="SELECTORS">固定情绪选择器</option>
-                  <option value="ALLOCATIONS">固定共享分配</option>
-                </select>
-                <button id="strategies-reserve" class="primary">
-                  发起新批次
-                </button>
-              </div>
-            </div>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>批次与政策</h2>
-                  <p>统一研究窗口锁、生成预算与统计预算；失败批次同样可查</p>
-                </div>
-                <span class="outline-tag">受控晋级</span>
-              </div>
-              <div id="strategies-status"></div>
-              <div id="strategies-space" class="strategy-space"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>批次列表</h2>
-                  <p>点击批次查看固定成员、匹配账户净值与资格</p>
-                </div>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>批次</th>
-                      <th>阶段</th>
-                      <th>父策略</th>
-                      <th>候选数</th>
-                      <th>创建时间</th>
-                    </tr>
-                  </thead>
-                  <tbody id="strategies-cohort-rows"></tbody>
-                </table>
-              </div>
-            </section>
-            <section class="panel" id="strategies-detail"></section>
-          </section>
+          <section id="strategies-view" hidden></section>
           <section id="alerts-view" hidden>
             <div class="paper-toolbar">
               <div>
@@ -1535,7 +1435,7 @@
                 </p>
               </section>
               <section class="panel">
-                <h3>东财行业 · 评分与风控</h3>
+                <h3>东财行业 · 环境与风险</h3>
                 <div id="data-em-count" class="data-big">—</div>
                 <p>
                   行业数量 · 有效覆盖 <strong id="data-em-coverage">—</strong>
@@ -1612,7 +1512,7 @@
           <footer class="page-footer">
             <span>LIMIT LENS <i>·</i> 给每个交易日，留一份观察。</span>
             <span id="sidebar-source">正在检查数据源</span>
-            <span id="snapshot-status">收盘后自动保存评分快照</span>
+            <span id="snapshot-status">收盘后自动保存市场快照</span>
           </footer>
         </main>
       </div>
@@ -1792,7 +1692,7 @@
           id="paper-entry-candidates-scoring-explanation"
           class="entry-candidates-explanation"
         >
-          <summary>评分依据</summary>
+          <summary>历史评分依据（旧记录，只读）</summary>
           <div id="paper-entry-candidates-scoring-rules"></div>
         </details>
       </div>
@@ -1836,7 +1736,6 @@
               <th scope="col">股票 / 行业</th>
               <th scope="col">股票类型 / 依据</th>
               <th scope="col">信号日买点 / 依据</th>
-              <th scope="col">冻结排序分</th>
               <th scope="col">信号日成交额</th>
               <th scope="col">入池来源 / 准入条件</th>
             </tr>

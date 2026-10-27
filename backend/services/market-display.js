@@ -1,5 +1,5 @@
 import { database } from "../storage/database.js";
-import { beijingDate, readBuyPointParams } from "./review.js";
+import { beijingDate, afterClose, readBuyPointParams } from "./review.js";
 import { marketData } from "./market.js";
 import {
   resolveDailyPriceInputs,
@@ -130,9 +130,9 @@ async function archivedMarket(env, date) {
 export async function marketForDisplay(
   env,
   date,
-  { today = beijingDate(), loadMarket = marketData } = {},
+  { today = beijingDate(), now = new Date(), loadMarket = marketData } = {},
 ) {
-  if (date < today) {
+  if (date < today || (date === today && afterClose(now))) {
     const archive = await archivedMarket(env, date);
     if (archive) return withResearchIndustries(env, archive);
   }

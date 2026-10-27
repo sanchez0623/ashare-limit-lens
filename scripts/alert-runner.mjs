@@ -11,6 +11,10 @@ import {
 } from "../backend/services/alerts.js";
 import { reportPipelineHealth } from "../backend/services/watchdog.js";
 import { AlertRepository } from "../backend/storage/alerts.js";
+import { processPracticeWeekly } from "../backend/services/practice-weekly.js";
+import { processTradeNotifications } from "../backend/services/trade-notifications.js";
+import { installRuntimeLogTimestamps } from "./runtime-log.mjs";
+installRuntimeLogTimestamps();
 
 try {
   process.loadEnvFile();
@@ -20,6 +24,7 @@ mkdirSync(dirname(dbPath), { recursive: true });
 const env = {
   DB: localDatabase(dbPath),
   ALERTS_ENABLED: process.env.ALERTS_ENABLED,
+  TRADE_NOTIFICATIONS_ENABLED: process.env.TRADE_NOTIFICATIONS_ENABLED,
   FEISHU_WEBHOOK_URL: process.env.FEISHU_WEBHOOK_URL,
   FEISHU_SECRET: process.env.FEISHU_SECRET,
   WATCHDOG_PIPELINE_URL: process.env.WATCHDOG_PIPELINE_URL,
@@ -47,6 +52,20 @@ const loop = async () => {
     const delivered = await processAlertOutbox(env, {
       leaseOwner: "alert-runner",
     });
+    try {
+      const trades = await processTradeNotifications(env);
+      for (const item of trades.deliveries ?? []) {
+        const message = `[trade-notifications] ${item.kind ?? "MESSAGE"} ${item.date ?? ""} ${item.id} ${item.status}${item.reason ? ` ${item.reason}` : ""}`;
+        if (["FAILED", "UNCERTAIN"].includes(item.status))
+          console.warn(message);
+        else console.log(message);
+      }
+    } catch (error) {
+      console.error(
+        `[trade-notifications] 本轮失败：${error?.code ?? error?.name ?? "ERROR"}`,
+      );
+    }
+    await processPracticeWeekly(env);
     const store = new AlertRepository(env);
     const state = await store.processorState();
     const outbox = await store.outboxHealth();

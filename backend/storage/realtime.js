@@ -1,4 +1,5 @@
 import { PaperRepository, digest } from "./paper.js";
+import { environmentStatements } from "./market-environment.js";
 
 export class RealtimeRepository extends PaperRepository {
   async session(date) {
@@ -135,6 +136,15 @@ export class RealtimeRepository extends PaperRepository {
           ],
         ),
       );
+    statements.push(
+      ...(await environmentStatements(
+        this.db,
+        result,
+        observation,
+        "primary",
+        guarded,
+      )),
+    );
     const results = await this.db.batch(statements);
     return results[0].meta.changes === 1;
   }

@@ -877,12 +877,14 @@ test("网络异常消耗重试预算：达到上限后过期，不再无限重�
   env.DB.close();
 });
 
-test("飞书加签：timestamp/sign 作为查询参数追加，URL 不会被拼接破坏", async () => {
+test("飞书加签：timestamp/sign 在JSON请求体中，符合官方自定义机器人协议", async () => {
   const secret = "s3cret-key";
   const calls = [];
+  const bodies = [];
   const original = globalThis.fetch;
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, init) => {
     calls.push(String(url));
+    bodies.push(JSON.parse(init.body));
     return {
       ok: true,
       status: 200,
@@ -901,10 +903,9 @@ test("飞书加签：timestamp/sign 作为查询参数追加，URL 不会被拼�
     assert.equal(outcome.ok, true);
     assert.equal(calls.length, 1);
     const sent = new URL(calls[0]);
-    // 直接拼 "&timestamp=" 会把参数并进路径，签名请求因此失效。
     assert.equal(sent.pathname, "/open-apis/bot/v2/hook/abc");
-    const timestamp = sent.searchParams.get("timestamp");
-    const sign = sent.searchParams.get("sign");
+    assert.equal(sent.search, "");
+    const { timestamp, sign } = bodies[0];
     assert.ok(timestamp && Number.isInteger(Number(timestamp)));
     assert.ok(sign);
     // 签名算法：Base64(HMAC-SHA256(key = "{timestamp}\n{secret}", msg = ""))。

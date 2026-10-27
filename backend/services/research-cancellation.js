@@ -78,7 +78,32 @@ export async function prepareResearchCancellation(env, owner, reason) {
         [row.candidate_version],
       );
   };
-  if (owner.ownerType === "DRAGON") {
+  if (owner.ownerType === "DRAGON_PATTERN") {
+    const row = await db
+      .prepare(
+        "SELECT revision,stage,manifest FROM dragon_pattern_batches WHERE id=?",
+      )
+      .bind(owner.ownerId)
+      .first();
+    if (
+      !row ||
+      ["PASSED", "FAILED", "INVALIDATED", "INCONCLUSIVE"].includes(row.stage)
+    )
+      throw new Error("待终止盈利模式研究已变化");
+    requireRow(
+      "EXISTS(SELECT 1 FROM dragon_pattern_batches WHERE id=? AND revision=? AND stage=?)",
+      [owner.ownerId, row.revision, row.stage],
+    );
+    statement(
+      "UPDATE dragon_pattern_batches SET stage='INVALIDATED',revision=revision+1,updated_at=? WHERE id=?",
+      [stamp, owner.ownerId],
+    );
+    for (const a of JSON.parse(row.manifest).accounts ?? [])
+      statement(
+        "UPDATE shadow_accounts SET status='INVALIDATED',revision=revision+1,updated_at=? WHERE account_id=?",
+        [stamp, a.accountId],
+      );
+  } else if (owner.ownerType === "DRAGON") {
     const row = await db
       .prepare(
         "SELECT status,updated_at FROM dragon_research_runs WHERE config_id=?",

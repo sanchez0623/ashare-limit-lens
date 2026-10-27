@@ -1,0 +1,13 @@
+CREATE TABLE market_environment_policies(version TEXT PRIMARY KEY, payload TEXT NOT NULL,digest TEXT NOT NULL,published_at TEXT NOT NULL);
+CREATE TABLE market_environment_snapshots(id TEXT PRIMARY KEY,scope TEXT NOT NULL,cycle_id TEXT NOT NULL,trade_date TEXT NOT NULL,sequence INTEGER NOT NULL,as_of TEXT NOT NULL,payload TEXT NOT NULL,digest TEXT NOT NULL);
+CREATE INDEX market_environment_at ON market_environment_snapshots(scope,trade_date,as_of);
+CREATE TABLE market_environment_opportunities(id TEXT PRIMARY KEY,scope TEXT NOT NULL,cycle_id TEXT NOT NULL,trade_date TEXT NOT NULL,code TEXT NOT NULL,buy_point TEXT,kind TEXT NOT NULL,as_of TEXT NOT NULL,payload TEXT NOT NULL,digest TEXT NOT NULL);
+CREATE INDEX market_environment_opportunity_date ON market_environment_opportunities(cycle_id,trade_date,scope);
+CREATE TABLE market_environment_trials(id TEXT PRIMARY KEY,cycle_id TEXT NOT NULL,manifest TEXT NOT NULL,manifest_digest TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,lease_owner TEXT,lease_until TEXT);
+CREATE UNIQUE INDEX market_environment_active_trial ON market_environment_trials(cycle_id) WHERE status='ACTIVE';
+CREATE TABLE market_environment_reports(id TEXT PRIMARY KEY,trial_id TEXT NOT NULL,as_of TEXT NOT NULL,payload TEXT NOT NULL,digest TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TRIGGER market_environment_policy_immutable BEFORE UPDATE ON market_environment_policies BEGIN SELECT RAISE(ABORT,'市场环境政策不可改写'); END;
+CREATE TRIGGER market_environment_snapshot_immutable BEFORE UPDATE ON market_environment_snapshots BEGIN SELECT RAISE(ABORT,'市场环境证据不可改写'); END;
+CREATE TRIGGER market_environment_opportunity_immutable BEFORE UPDATE ON market_environment_opportunities BEGIN SELECT RAISE(ABORT,'买点环境证据不可改写'); END;
+CREATE TRIGGER market_environment_manifest_immutable BEFORE UPDATE OF manifest,manifest_digest ON market_environment_trials BEGIN SELECT RAISE(ABORT,'环境对照清单不可改写'); END;
+CREATE TRIGGER market_environment_report_immutable BEFORE UPDATE ON market_environment_reports BEGIN SELECT RAISE(ABORT,'环境对照报告不可改写'); END;

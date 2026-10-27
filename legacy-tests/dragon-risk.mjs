@@ -135,6 +135,7 @@ async function fixture({ held = false, config = defaultDragonConfig() } = {}) {
     ];
   }
   const options = {
+    dragonTemplateVersion: "dragon-template-v1",
     executionCostPolicy: defaultExecutionCostPolicy(),
     snapshotDigest: await digestOf(source),
   };
@@ -188,7 +189,15 @@ function frame(
         date: day,
         observedAt: marketStamp ?? stamp,
         cycle: { phase },
-        sectors: [{ name: "测试行业", score: 85 }],
+        metrics: {
+          limitUp: 80,
+          broken: 0,
+          height: 5,
+          premium: 3,
+          premiumCoverage: 1,
+        },
+        sectorsComplete: true,
+        sectors: [{ name: "测试行业", score: 85, count: 6, broken: 0 }],
         discoveries: [],
       },
       auction: {

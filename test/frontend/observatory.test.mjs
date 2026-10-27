@@ -9,7 +9,24 @@ import {
   ladderRows,
   marketSculptureSvg,
   marketPrintSvg,
+  marketCycleDescription,
 } from "../../frontend/observatory-model.js";
+
+test("市场阶段明确区分实时观测与收盘冻结，并说明实际交易权限来源", () => {
+  const analysis = {
+    cycle: { score: 0.69, reason: "涨停55家，炸板23家，最高4板。" },
+  };
+  assert.match(
+    marketCycleDescription(analysis, {}).caption,
+    /实时观测.*69\/100/,
+  );
+  const frozen = marketCycleDescription(analysis, { archived: true });
+  assert.match(frozen.caption, /收盘已冻结/);
+  assert.match(frozen.explanation, /涨停55家/);
+  assert.match(frozen.explanation, /跨过阈值会变化/);
+  assert.match(frozen.explanation, /连续市场、板块、个股观测/);
+  assert.match(marketCycleDescription(null, null).caption, /等待/);
+});
 
 test("工作区地址支持刷新恢复，中文和组合筛选可以无损往返", () => {
   const route = {
@@ -39,15 +56,11 @@ test("每个执行、复盘和研究子页都有独立、可恢复的地址", ()
       assert.equal(restored.view, view);
       assert.equal(restored.tab, tab);
     }
-  for (const view of [
-    "overview",
-    "stocks",
-    "data",
-    "alerts",
-    "settings",
-    "strategies",
-  ])
+  for (const view of ["overview", "stocks", "data", "alerts", "settings"])
     assert.equal(parseRoute(routeHash({ view })).view, view);
+  for (const tab of ["current", "scoring", "history"]) {
+    assert.equal(parseRoute(routeHash({ view: "settings", tab })).tab, tab);
+  }
 });
 
 test("旧页面链接和交易配置锚点继续到达对应功能", () => {
@@ -61,6 +74,9 @@ test("旧页面链接和交易配置锚点继续到达对应功能", () => {
     ["paper", "config"],
   );
   assert.equal(parseRoute("#paper-entry-plan").tab, "plan");
+  assert.equal(parseRoute("#/system/settings").tab, "current");
+  assert.equal(parseRoute("#/system/strategies").view, "settings");
+  assert.equal(parseRoute("#strategies").tab, "history");
 });
 
 test("地址中的非法日期和筛选不会进入研究状态", () => {
@@ -74,7 +90,19 @@ test("地址中的非法日期和筛选不会进入研究状态", () => {
   assert.equal(route.date, "");
   assert.equal(route.height, "all");
   assert.equal(route.industryTaxonomy, "EM");
-  assert.equal(route.sort, "score");
+  assert.equal(route.sort, "amount");
+  assert.equal(
+    parseRoute("#/archive/review?date=2026-10-23", "2026-10-26").date,
+    "2026-10-26",
+  );
+  assert.equal(
+    parseRoute("#/archive/review?date=2026-10-27", "2026-10-27").date,
+    "2026-10-27",
+  );
+  assert.equal(
+    parseRoute("#/research/stocks?date=2026-10-23", "2026-10-26").date,
+    "2026-10-23",
+  );
 });
 
 test("连板结构忽略缺失高度，明确区分零样本与未知", () => {

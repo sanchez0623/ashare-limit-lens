@@ -4,6 +4,7 @@ import {
 } from "../shared/buy-point-type.js";
 import { OBSERVATION_CLASS_LABELS } from "../shared/entry-observation-display.js";
 import { planRiskLimits } from "../shared/risk-limits.js";
+import { renderPagination, bindPageJump } from "./pagination.js";
 
 const escape = (value) =>
   String(value ?? "").replace(
@@ -148,7 +149,9 @@ export function renderEntryPlanRules(plan, rows) {
     ? `<section><h3>01 · 如何进入观察池</h3><p>从已冻结历史中筛选符合分类、涨停基因与流动性要求的股票，观察池按信号日成交额降序、代码升序展示。</p><p>盘中同时满足买点时，按下表买点优先级、信号日成交额、代码排序，共享风险预算按此顺序分配。综合评分不参与排序。盘前最多 ${number(rules.maxPremarketCandidates)} 只，全天最多 ${number(rules.maxCandidates)} 只。</p></section>`
     : `<section><h3>01 · 如何进入观察池</h3><p>信号日涨停池、炸板池、日线扩展池中，有冻结历史且未持仓的股票先按快照分数降序、同分代码升序入池；再按代码升序补入历史准入合格股。</p><p>盘前最多 ${number(rules.maxPremarketCandidates)} 只；盘中仅从冻结历史范围扩展，全天最多 ${number(rules.maxCandidates)} 只。</p></section>`;
   const marketRules = dragon
-    ? `当日板块分 ≥ ${number(dragon.rules.sectorMinimum)}；市场改善需两份不同的有效快照确认，恶化立即收紧。上升允许已启用操作，高潮收紧预算且禁止亏损补仓，退潮停止新增，冰点退出；数据不足时仅保留保护。`
+    ? dragon.adaptiveRiskPolicy
+      ? `当日板块分 ≥ ${number(dragon.rules.sectorMinimum)}；市场、板块、个股三层连续感知共同约束预算与权限。恶化及时收紧，改善至少三份独立观测、持续 60 秒后逐步恢复。超过可信敞口时减仓；缺数据暂停新增，不因缺失数据强制卖出。阶段标签只作解释。`
+      : `当日板块分 ≥ ${number(dragon.rules.sectorMinimum)}；市场改善需两份不同的有效快照确认，恶化立即收紧。上升允许已启用操作，高潮收紧预算且禁止亏损补仓，退潮停止新增，冰点退出；数据不足时仅保留保护。`
     : `当日板块分 ≥ ${number(plan.strategy?.minSectorScore)}、情绪 ≥ ${number(plan.strategy?.exposureTiers?.midEmotion ?? 40)}，周期仓位上限 > 20%。`;
   const budgetRules = dragon
     ? `<section><h3>03 · 风险预算与 R 管理</h3><p>单笔计划风险 ${percent(dragon.config.risk.entryRisk)}，组合计划风险 ${percent(dragon.config.risk.portfolioRisk)}。按可用风险预算和止损距离、预计双边费用计算数量，100 股整手；现金、单股 ${percent(dragon.config.risk.stockWeight)}、板块 ${percent(dragon.config.risk.sectorWeight)}、总仓位 ${percent(dragon.config.risk.grossWeight)} 及最多 ${number(dragon.config.risk.maxPositions)} 只持仓共同约束。</p><p>初始保护幅度 ${percent(dragon.config.advanced.stopLoss)} 冻结为 R；${dragon.config.operations.profitAdd ? `盈利 ${number(dragon.rules.profitAddAt)}R 至 ${number(dragon.rules.profitAddBefore)}R 前，有新买点可加初仓 ${percent(dragon.rules.profitAddFraction)} 一次` : "盈利加仓关闭"}；${dragon.config.operations.lossAdd ? `亏损 ${number(-dragon.rules.lossAddTo)}R～${number(-dragon.rules.lossAddFrom)}R，有低吸确认可补初仓 ${percent(dragon.rules.lossAddFraction)} 一次` : "亏损补仓关闭"}。${dragon.rules.profitMilestones.map((r, index) => `${number(r)}R 减仓 ${percent(dragon.rules.profitFractions[index])}`).join("、")}，余量按 ${number(dragon.rules.trailingR)}R 跟踪保护。</p><p>日内亏损暂停 ${percent(dragon.config.risk.dailyLoss)}，回撤熔断 ${percent(dragon.config.risk.drawdown)}。追价上限 ${percent(dragon.rules.maxChase)}；卖盘、共享容量及成本不满足时不模拟成交。</p></section>`
@@ -234,9 +237,19 @@ export function initializeEntryPlan(root) {
           .map((row) => renderCandidate(row, plan.entryExecutionPolicy))
           .join("")
       : `<tr><td colspan="6"><div class="empty compact">${rows.length ? "没有匹配的观察标的，可调整搜索或筛选。" : "冻结观察池为空，候选历史不足或资格未满足，暂不新增买入。"}</div></td></tr>`;
-    root.querySelector("[data-entry-plan-pager]").innerHTML =
-      `<span role="status">筛选 ${filtered.length} / ${rows.length} 只 · 每页 ${PAGE_SIZE} 只 · 第 ${page} / ${pages} 页</span><div><button type="button" class="page-btn" data-entry-plan-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>‹ 上一页</button><button type="button" class="page-btn" data-entry-plan-page="${page + 1}" ${page >= pages ? "disabled" : ""}>下一页 ›</button></div>`;
+    root.querySelector("[data-entry-plan-pager]").innerHTML = renderPagination(
+      { page, totalPages: pages, total: filtered.length, pageSize: PAGE_SIZE },
+      {
+        attribute: "data-entry-plan-page",
+        unit: "只",
+        summary: `筛选 ${filtered.length} / ${rows.length} 只 · 每页 ${PAGE_SIZE} 只 · 第 ${page} / ${pages} 页`,
+      },
+    );
   }
+  bindPageJump(root, (target) => {
+    page = target;
+    renderCandidates();
+  });
   root.addEventListener("input", (event) => {
     if (!event.target.matches("[data-entry-plan-search]")) return;
     page = 1;

@@ -80,7 +80,15 @@ async function runChecks() {
           date,
           observedAt: stamp,
           cycle: { phase: "rising" },
-          sectors: [{ name: "合成行业", score: 85 }],
+          metrics: {
+            limitUp: 80,
+            broken: 0,
+            height: 5,
+            premium: 3,
+            premiumCoverage: 1,
+          },
+          sectorsComplete: true,
+          sectors: [{ name: "合成行业", score: 85, count: 6, broken: 0 }],
           discoveries: [],
         },
         auction: {
@@ -152,6 +160,16 @@ async function runChecks() {
     f.session = result.session;
     return result;
   };
+  const warm = (f, price, start = "09:30:00") => {
+    const from = Date.parse(`${date}T${start}+08:00`);
+    for (let i = 0; i <= 100; i += 10) {
+      const time = new Date(from + i * 1000 + 8 * 3600000)
+        .toISOString()
+        .slice(11, 19);
+      if (step(f, observation(time, price, 1000000)).ledger.length)
+        throw new Error("连续确认期间不应凭零增量成交量造交易");
+    }
+  };
   try {
     let refused = false;
     try {
@@ -171,22 +189,23 @@ async function runChecks() {
       canonicalJson(independent) === canonicalJson(f.plan),
     );
     check(
-      "two-snapshot-gate",
+      "dynamic-confirmation-gate",
       step(f, observation("09:31:00", 950, 1000000)).ledger.length === 0,
     );
+    warm(f, 950, "09:31:00");
     check(
       "observed-open",
-      step(f, observation("09:31:10", 951, 11000000)).ledger.some(
+      step(f, observation("09:32:50", 951, 11000000)).ledger.some(
         (l) => l.intent === "OPEN",
       ),
     );
     check(
       "duplicate-idempotence",
-      step(f, observation("09:31:10", 951, 11000000)).ledger.length === 0,
+      step(f, observation("09:32:50", 951, 11000000)).ledger.length === 0,
     );
     check(
       "t-plus-one",
-      step(f, observation("09:31:20", 910, 21000000)).ledger.length === 0 &&
+      step(f, observation("09:33:00", 910, 21000000)).ledger.length === 0 &&
         f.book.positions[0].dragon.exit,
     );
     for (const [intent, price] of [
@@ -194,14 +213,15 @@ async function runChecks() {
       ["ADD_LOSS", 974],
     ]) {
       const add = await fixture(true);
-      step(add, observation("09:31:00", price - 1, 1000000));
-      const result = step(add, observation("09:31:10", price, 11000000));
+      warm(add, price - 1);
+      step(add, observation("09:32:00", price - 1, 1000000));
+      const result = step(add, observation("09:32:10", price, 11000000));
       check(
         intent,
         result.ledger.some((l) => l.intent === intent) &&
           add.book.positions[0].dragon.r0Cents === 40 &&
           add.book.positions[0].dragon.stopCents === 960 &&
-          step(add, observation("09:31:20", price, 21000000)).ledger.length ===
+          step(add, observation("09:32:20", price, 21000000)).ledger.length ===
             0,
       );
     }
@@ -210,9 +230,10 @@ async function runChecks() {
       ["REVERSE", [1023, 1022, 990]],
     ]) {
       const t = await fixture(true, false);
-      step(t, observation("10:01:00", prices[0], 1000000));
-      const first = step(t, observation("10:01:10", prices[1], 11000000));
-      const second = step(t, observation("10:01:20", prices[2], 21000000));
+      warm(t, direction === "FORWARD" ? 980 : 1000, "10:00:00");
+      step(t, observation("10:02:00", prices[0], 1000000));
+      const first = step(t, observation("10:02:10", prices[1], 11000000));
+      const second = step(t, observation("10:02:20", prices[2], 21000000));
       check(
         `T_${direction}`,
         first.ledger.length === 1 &&

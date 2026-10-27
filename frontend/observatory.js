@@ -4,6 +4,7 @@ import {
   marketSculptureSvg,
   navigationGroup,
 } from "./observatory-model.js";
+import { REVIEW_ARCHIVE_START_DATE } from "../shared/review.js";
 
 const $ = (id) => document.getElementById(id);
 const tabs = {
@@ -22,11 +23,15 @@ const tabs = {
     ["review", "每日复盘"],
     ["replay", "严格历史回放"],
   ],
+  settings: [
+    ["current", "当前研究"],
+    ["scoring", "评分与校准"],
+    ["history", "历史记录"],
+  ],
   system: [
     ["data", "数据管理"],
     ["alerts", "运维告警"],
-    ["settings", "研究设置"],
-    ["strategies", "策略赛马"],
+    ["settings", "研究与验证"],
   ],
 };
 
@@ -194,7 +199,9 @@ export function initializeObservatory({
           ? state.paperTab
           : group === "review"
             ? state.reviewTab
-            : state.view;
+            : group === "settings"
+              ? state.researchTab
+              : state.view;
     $("workspace-tabs").hidden = !tabGroup;
     $("workspace-tabs").innerHTML = tabGroup
       ? tabs[tabGroup]
@@ -265,13 +272,13 @@ export function initializeObservatory({
           .slice(0, 3)
           .map(
             (s, i) =>
-              `<button class="direction-card" data-research-sector="${escape(s.name)}" data-taxonomy="EM"><span class="direction-number">0${i + 1} / INDUSTRY</span><span class="direction-glyph glyph-${i}" aria-hidden="true"><i></i><i></i><i></i></span><strong>${escape(s.name)}</strong><span>${s.count} 家涨停 · 最高 ${s.height ?? "—"} 板</span><span class="direction-score">板块评分 <b>${s.score ?? "—"}</b><i aria-hidden="true">↗</i></span></button>`,
+              `<button class="direction-card" data-research-sector="${escape(s.name)}" data-taxonomy="EM"><span class="direction-number">0${i + 1} / INDUSTRY</span><span class="direction-glyph glyph-${i}" aria-hidden="true"><i></i><i></i><i></i></span><strong>${escape(s.name)}</strong><span>${s.count} 家涨停 · 最高 ${s.height ?? "—"} 板</span><span class="direction-score">板块强度 <b>${s.score ?? "—"}</b><i aria-hidden="true">↗</i></span></button>`,
           )
           .join("")
       : `<div class="observation-empty"><span aria-hidden="true">⌁</span><p>${state.loading ? "正在寻找今天的主线" : "有效行情到达后，主线板块会在这里展开。"}</p></div>`;
     const tiles = mosaic(researchGroups);
     $("industry-mosaic").innerHTML = tiles.length
-      ? `<div class="mosaic-canvas">${tiles.map((s) => `<button class="mosaic-tile" ${s.other ? "data-mosaic-all" : `data-research-sector="${escape(s.name)}" data-taxonomy="${state.industryTaxonomy}"`} style="left:${s.x}%;top:${s.y}%;width:${s.width}%;height:${s.height}%;--strength:${Number.isFinite(s.score) ? Math.max(0.08, Math.min(0.65, s.score / 140)) : 0.08}" aria-label="${escape(s.name)}，${s.count}家涨停${s.other ? "，查看下方全部行业列表" : `，评分${s.score ?? "暂缺"}，查看个股`}"><strong>${escape(s.name)}</strong><span>${s.count} 家${!s.other ? ` · ${s.score ?? "—"} 分` : ""}</span></button>`).join("")}</div><p class="mosaic-caption">面积 = 涨停家数 · 色深 = 板块评分 · 精确数据见下方列表${state.industryTaxonomy !== "EM" ? " · 当前申万分类仅用于研究分组" : ""}</p>`
+      ? `<div class="mosaic-canvas">${tiles.map((s) => `<button class="mosaic-tile" ${s.other ? "data-mosaic-all" : `data-research-sector="${escape(s.name)}" data-taxonomy="${state.industryTaxonomy}"`} style="left:${s.x}%;top:${s.y}%;width:${s.width}%;height:${s.height}%;--strength:${Number.isFinite(s.score) ? Math.max(0.08, Math.min(0.65, s.score / 140)) : 0.08}" aria-label="${escape(s.name)}，${s.count}家涨停${s.other ? "，查看下方全部行业列表" : `，评分${s.score ?? "暂缺"}，查看个股`}"><strong>${escape(s.name)}</strong><span>${s.count} 家${!s.other ? ` · ${s.score ?? "—"} 分` : ""}</span></button>`).join("")}</div><p class="mosaic-caption">面积 = 涨停家数 · 色深 = 板块强度 · 精确数据见下方列表${state.industryTaxonomy !== "EM" ? " · 当前申万分类仅用于研究分组" : ""}</p>`
       : "";
     const printReady =
       !!p?.archived && !state.demo && !state.loading && !!p.analysis;
@@ -282,7 +289,9 @@ export function initializeObservatory({
   }
 
   function renderArchives(history, selectedDate) {
-    const snapshots = history?.snapshots ?? [];
+    const snapshots = (history?.snapshots ?? []).filter(
+      (s) => s.trade_date >= REVIEW_ARCHIVE_START_DATE,
+    );
     $("archive-days").innerHTML = snapshots.length
       ? snapshots
           .map((s, i) => {
@@ -290,7 +299,7 @@ export function initializeObservatory({
             return `<button class="archive-day ${date === selectedDate ? "selected" : ""}" data-archive-date="${escape(date)}" ${date === selectedDate ? 'aria-current="date"' : ""}><span class="folio-label">FIELD NOTE / ${String(i + 1).padStart(2, "0")}</span><strong>${escape(date.slice(5).replace("-", " / "))}</strong><span>${escape(date.slice(0, 4))} · 盘后归档</span><span class="archive-day-link">查看当日观察 <i aria-hidden="true">↗</i></span></button>`;
           })
           .join("")
-      : '<div class="empty compact">还没有盘后归档。真实快照保存后，会在这里留下日期索引。</div>';
+      : `<div class="empty compact">复盘档案从 ${REVIEW_ARCHIVE_START_DATE} 开始，盘后归档后会显示在这里。</div>`;
   }
 
   function updateExecution(data) {

@@ -26,6 +26,8 @@ npm run verify:paper -- /path/to/limit-lens-paper.json
 
 `npm test` 仅运行 V5 回归，覆盖评分与买点、盘中执行、T+1、成本核算、账本核验、影子观察和历史严格回放。可用 `npm run test:v5 -- --list` 查看清单；范围与归档说明见 [V5 回归范围](docs/v5-regression.md)。合成测试数据只用于验证，不写入生产。
 
+`npm run test:dragon` 验证龙头风险预算及[盈利模式研究闭环](docs/design/practice-research.md)：全账户复盘、采集覆盖、组合公平对照、严格晋级和周报去重。
+
 ## 自动运行与收益核验
 
 **秒级自动交易运行在常驻服务中。Windows 用户见 [启动说明](docs/windows.md)：安装 Docker Desktop 后双击 `scripts/windows/start.cmd`，打开 `http://localhost:3000`。** 默认腾讯 `qt.gtimg.cn` HTTP 短请求默认 10 秒轮询；持久化订单进度，关闭浏览器后继续运行。午休等待，盘后自动复盘与结算；重启后继续未完成订单。容器默认只开放本机端口，登录密码只在本机 `.env`。
@@ -47,7 +49,7 @@ Sites 工作日 15:30（Asia/Shanghai）任务继续调用 `POST /api/run-daily`
 | 通义     | https://dashscope.aliyuncs.com/compatible-mode/v1 | qwen-plus                  |
 | 火山方舟 | https://ark.cn-beijing.volces.com/api/v3          | 账户可用的模型或推理接入点 |
 
-未配置密钥时规则模拟照常运行，并明确显示 AI 未启用。AI 只读真实训练数据并提出有限参数候选；至少积累 20 日训练和 10 日独立验证后，比较扣费收益、回撤、成交数与数据覆盖。通过后才自动启用新版本，也可选择人工启用。历史计划和账本不改写，不能保证未来收益改善。
+未配置密钥时规则模拟照常运行，并明确显示 AI 未启用。龙头练习的正式候选只读取60个完整训练日，另以20个封存日和30个新前瞻日，分别对照父策略及固定模板，在三档成本下验证正净收益、超额、回撤、完整周期和统计证据；通过才按改进模式排队采用。旧策略使用其原有验证政策。历史计划和账本不改写，不能保证未来收益改善。
 
 ## 数据与访问
 

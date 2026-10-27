@@ -81,6 +81,7 @@ export async function entryObservationCandidates(env, options = {}) {
   if (!snapshot) throw new Error("冻结候选原始快照缺失，暂无法展示入池依据");
   const policy = plan.entryExecutionPolicy,
     rules = policy.rules ?? {};
+  const dragon = plan.tradingPolicyVersion === "dragon-risk-v1";
   const sources = new Map();
   for (const [source, items] of [
     ["limit-up", snapshot.stocks],
@@ -161,9 +162,11 @@ export async function entryObservationCandidates(env, options = {}) {
       amountCny: finite(history?.amount),
       previousCloseCents: finite(history?.previousCloseCents),
       buyPoints,
-      entryReason: archived
-        ? `来自${OBSERVATION_SOURCE_LABELS[source]}，有已冻结日线历史；按快照分数降序、同分代码升序进入观察池`
-        : "由已冻结历史准入范围补充，按代码升序加入观察池",
+      entryReason: dragon
+        ? "来自冻结历史，按信号日成交额与代码进入观察池；触发后按买点优先级分配风险预算"
+        : archived
+          ? `来自${OBSERVATION_SOURCE_LABELS[source]}，有已冻结日线历史；按快照分数降序、同分代码升序进入观察池`
+          : "由已冻结历史准入范围补充，按代码升序加入观察池",
       checks,
       readiness:
         pending.length === 0
@@ -231,7 +234,11 @@ export async function entryObservationCandidates(env, options = {}) {
     pageSize,
     totalPages,
     filters: { q, stockClass, buyPoint },
-    rules: { ...rules, firstNegMinPrevHeight: policy.firstNegMinPrevHeight },
+    rules: {
+      ...rules,
+      firstNegMinPrevHeight: policy.firstNegMinPrevHeight,
+      ordering: dragon ? "BUY_POINT_AMOUNT_CODE" : "LEGACY_SCORE",
+    },
     scoringRules: [...scoringRules.values()].map(
       ({ stockClasses, ...group }) => ({
         ...group,

@@ -12,6 +12,8 @@ import {
   DataUpdateCancelled,
   DataUpdateError,
 } from "../backend/domain/stock-metadata.js";
+import { installRuntimeLogTimestamps } from "./runtime-log.mjs";
+installRuntimeLogTimestamps();
 try {
   process.loadEnvFile();
 } catch {}
@@ -52,6 +54,7 @@ try {
   while (!stopping && !(await repo.claimWorker(owner))) await pause(1000);
   if (!stopping) {
     await repo.recoverInterrupted(owner);
+    console.log(`[data-worker] 执行器已就绪（pid=${process.pid}）`);
     heartbeat = setInterval(() => {
       heartbeatWork = heartbeatWork
         .then(async () => {
@@ -62,6 +65,7 @@ try {
         })
         .catch((error) => {
           console.error("[data-worker] 心跳失败：", error.message);
+          process.exitCode = 1;
           stop();
         });
     }, 3000);
@@ -147,7 +151,20 @@ try {
   process.exitCode = 1;
 } finally {
   clearInterval(heartbeat);
-  await heartbeatWork;
-  await repo.releaseWorker(owner);
-  DB.close();
+  try {
+    await heartbeatWork;
+    await repo.releaseWorker(owner);
+  } catch (error) {
+    console.error("[data-worker] 退出清理失败：", error.message);
+    process.exitCode = 1;
+  }
+  try {
+    DB.close();
+  } catch (error) {
+    console.error("[data-worker] 数据库关闭失败：", error.message);
+    process.exitCode = 1;
+  }
+  // An open supervisor IPC channel keeps Node alive after an error. Closing it
+  // lets the parent observe exit and perform its existing delayed restart.
+  if (process.connected) process.disconnect();
 }

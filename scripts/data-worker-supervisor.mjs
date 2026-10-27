@@ -14,9 +14,14 @@ export function startDataUpdateWorker(dbPath, { enabled = true } = {}) {
     child.on("error", (error) =>
       console.error("[data-worker] 启动失败：", error.message),
     );
-    child.on("exit", () => {
+    child.on("exit", (code, signal) => {
       child = null;
-      if (!stopped) restart = setTimeout(launch, 2000);
+      if (!stopped) {
+        console.warn(
+          `[data-worker] 进程退出（code=${code}, signal=${signal ?? "none"}），2 秒后重启`,
+        );
+        restart = setTimeout(launch, 2000);
+      }
     });
   };
   launch();

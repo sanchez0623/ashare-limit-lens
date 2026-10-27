@@ -46,11 +46,11 @@ async function fetchJson(url, init) {
 }
 
 // 飞书自定义机器人：text 消息；可选加签密钥。签名 = Base64(HMAC-SHA256(
-// key = "{timestamp}\n{secret}", msg = ""))，timestamp 与 sign 必须以查询
-// 参数追加——webhook 自身没有查询串，直接拼 "&timestamp=" 会得到错误 URL，
-// 配置签名密钥后必然发送失败。
+// key = "{timestamp}\n{secret}", msg = ""))。官方协议将 timestamp/sign
+// 放在 JSON 请求体中；不要把它们追加到 webhook 查询参数。
 async function sendFeishu({ config, text, eventId }) {
-  let url = config.webhookUrl;
+  const url = config.webhookUrl,
+    signing = {};
   if (config.secret) {
     const timestamp = Math.floor(Date.now() / 1000);
     const key = await crypto.subtle.importKey(
@@ -66,10 +66,8 @@ async function sendFeishu({ config, text, eventId }) {
       new TextEncoder().encode(""),
     );
     const sign = btoa(String.fromCharCode(...new Uint8Array(signature)));
-    const signed = new URL(url);
-    signed.searchParams.set("timestamp", String(timestamp));
-    signed.searchParams.set("sign", sign);
-    url = signed.toString();
+    signing.timestamp = String(timestamp);
+    signing.sign = sign;
   }
   let response, body;
   try {
@@ -77,6 +75,7 @@ async function sendFeishu({ config, text, eventId }) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        ...signing,
         msg_type: "text",
         content: { text: eventId ? `${text}\n事件: ${eventId}` : text },
       }),

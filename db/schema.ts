@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+export * from "./market-environment";
 import {
   sqliteTable,
   text,
@@ -451,3 +452,182 @@ export const dragonConfigVersions = sqliteTable("dragon_config_versions", {
   replacesId: text("replaces_id"),
   provenanceDigest: text("provenance_digest"),
 });
+
+export const dragonPatternBatches = sqliteTable("dragon_pattern_batches", {
+  id: text("id").primaryKey(),
+  stage: text("stage").notNull(),
+  manifest: text("manifest").notNull(),
+  manifestDigest: text("manifest_digest").notNull(),
+  report: text("report"),
+  reportDigest: text("report_digest"),
+  revision: integer("revision").notNull().default(0),
+  comparisonEnd: integer("comparison_end").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  leaseOwner: text("lease_owner"),
+  leaseUntil: text("lease_until"),
+});
+export const practiceWeeklyReports = sqliteTable("practice_weekly_reports", {
+  weekEnd: text("week_end").primaryKey(),
+  payload: text("payload").notNull(),
+  digest: text("digest").notNull(),
+  status: text("status").notNull(),
+  attempt: integer("attempt").notNull().default(0),
+  nextAttemptAt: text("next_attempt_at"),
+  leaseOwner: text("lease_owner"),
+  leaseUntil: text("lease_until"),
+  providerRef: text("provider_ref"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const observationScoreInvalidations = sqliteTable(
+  "observation_score_invalidations",
+  {
+    tradeDate: text("trade_date").primaryKey(),
+    reason: text("reason").notNull(),
+  },
+);
+
+export const observationScorePolicies = sqliteTable(
+  "observation_score_policies",
+  {
+    version: text("version").primaryKey(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+    publishedAt: text("published_at").notNull(),
+  },
+);
+export const observationScoreCursors = sqliteTable(
+  "observation_score_cursors",
+  {
+    tradeDate: text("trade_date").notNull(),
+    version: text("version").notNull(),
+    sequence: integer("sequence").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.tradeDate, table.version] })],
+);
+export const observationScoreLatest = sqliteTable(
+  "observation_score_latest",
+  {
+    tradeDate: text("trade_date").notNull(),
+    code: text("code").notNull(),
+    version: text("version").notNull(),
+    sequence: integer("sequence").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tradeDate, table.code, table.version] }),
+  ],
+);
+export const observationScoreSnapshots = sqliteTable(
+  "observation_score_snapshots",
+  {
+    id: text("id").primaryKey(),
+    tradeDate: text("trade_date").notNull(),
+    code: text("code").notNull(),
+    buyPoint: text("buy_point").notNull(),
+    kind: text("kind").notNull(),
+    cycleId: text("cycle_id"),
+    version: text("version").notNull(),
+    sequence: integer("sequence").notNull(),
+    observedAt: text("observed_at").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+  },
+  (table) => [
+    index("observation_score_snapshot_cycle").on(table.cycleId, table.kind),
+  ],
+);
+export const observationScoreCalibrations = sqliteTable(
+  "observation_score_calibrations",
+  {
+    id: text("id").primaryKey(),
+    asOf: text("as_of").notNull(),
+    version: text("version").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+);
+
+export const industryRepairArchives = sqliteTable("industry_repair_archives", {
+  id: text("id").primaryKey(),
+  tradeDate: text("trade_date").notNull(),
+  createdAt: text("created_at").notNull(),
+  summary: text("summary").notNull(),
+  digest: text("digest").notNull(),
+});
+export const paperManualExitRequests = sqliteTable(
+  "paper_manual_exit_requests",
+  {
+    id: text("id").primaryKey(),
+    cycleId: text("cycle_id").notNull(),
+    positionId: text("position_id").notNull(),
+    tradeDate: text("trade_date").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("paper_manual_exit_position").on(
+      table.cycleId,
+      table.positionId,
+      table.tradeDate,
+    ),
+  ],
+);
+export const paperTradeNotifications = sqliteTable(
+  "paper_trade_notifications",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    cycleId: text("cycle_id").notNull(),
+    sourceRef: text("source_ref").notNull(),
+    tradeDate: text("trade_date").notNull(),
+    part: integer("part").notNull().default(0),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+    status: text("status").notNull().default("PENDING"),
+    attempt: integer("attempt").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    leaseOwner: text("lease_owner"),
+    leaseUntil: text("lease_until"),
+    providerRef: text("provider_ref"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("paper_trade_notification_source").on(
+      table.kind,
+      table.cycleId,
+      table.sourceRef,
+      table.part,
+    ),
+    index("paper_trade_notification_pending").on(
+      table.status,
+      table.nextAttemptAt,
+    ),
+  ],
+);
+export const industryRepairArchiveChunks = sqliteTable(
+  "industry_repair_archive_chunks",
+  {
+    archiveId: text("archive_id")
+      .notNull()
+      .references(() => industryRepairArchives.id),
+    tableName: text("table_name").notNull(),
+    chunkIndex: integer("chunk_index").notNull(),
+    payload: text("payload").notNull(),
+    digest: text("digest").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.archiveId, table.tableName, table.chunkIndex],
+    }),
+  ],
+);

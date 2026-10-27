@@ -32,6 +32,12 @@ import {
 } from "../backend/domain/t-quality.js";
 import { snapshot } from "./fixtures/trading.mjs";
 import { api as handleApi } from "../backend/routes/api.js";
+import {
+  registerDragonConfig,
+  dragonBookFields,
+} from "../backend/storage/dragon-risk.js";
+import { defaultDragonConfig } from "../shared/dragon-risk-config.js";
+import { latestPolicyBundle } from "../backend/storage/execution-cost.js";
 
 const signalDate = "2026-10-23",
   tradeDate = "2026-10-26";
@@ -241,6 +247,145 @@ test("归档保存原始交易和持仓，当前账户与影子账户只保留�
     ).first(),
     null,
   );
+  assert.equal((await verifyExport(await exportPaper(f.env))).passed, true);
+});
+
+test("持仓中的龙头周期完整归档，保留政策与观察名单并从空仓重新记账", async (t) => {
+  const f = await fixture(t);
+  const record = await registerDragonConfig(f.DB, defaultDragonConfig(), null, {
+    origin: "MANUAL",
+    validationMode: "MANUAL_UNVERIFIED",
+  });
+  const oldBook = {
+    ...f.old,
+    ...dragonBookFields(record),
+    dragonTransition: {
+      state: "ACTIVE",
+      configId: record.id,
+      candidate: false,
+    },
+  };
+  oldBook.positions[0].dragon = {
+    id: `${signalDate}:600002`,
+    startDate: signalDate,
+    p0Cents: 1000,
+    r0Cents: 40,
+    stopCents: 960,
+    initialQuantity: 1000,
+    strategicQuantity: 1000,
+    strategicCostCents: 1000000,
+    stage: 0,
+    highCents: 1000,
+    holdDays: 3,
+    buyPoint: "broken-board-dip",
+    dayAction: signalDate,
+  };
+  await f.DB.prepare(
+    "UPDATE paper_accounts SET state=?,revision=revision+1 WHERE id='primary'",
+  )
+    .bind(JSON.stringify(oldBook))
+    .run();
+  await f.DB.prepare("DELETE FROM paper_plans").run();
+  const oldPlan = createPlan(
+    f.source,
+    oldBook,
+    null,
+    record.id,
+    now.toISOString(),
+    {
+      snapshotDigest: await selectionSnapshotDigest(f.source),
+      executionCostPolicy: await latestPolicyBundle(f.DB),
+    },
+  );
+  await f.papers.savePlan(oldPlan);
+  const continuation = {
+    type: "DRAGON_INDUSTRY_RUNTIME_CONTINUED",
+    createdAt: now.toISOString(),
+    note: "原周期续跑证明",
+  };
+  await f.DB.prepare(
+    "INSERT INTO paper_configuration_history(id,created_at,payload,digest) VALUES('old-continuation',?,?,?)",
+  )
+    .bind(
+      continuation.createdAt,
+      JSON.stringify(continuation),
+      await digest(continuation),
+    )
+    .run();
+  await assert.rejects(
+    f.DB.prepare(
+      "DELETE FROM paper_configuration_history WHERE id='old-continuation'",
+    ).run(),
+    /不可删除/,
+  );
+  await f.DB.prepare(
+    "INSERT INTO observation_score_cursors(trade_date,version,sequence,payload,digest) VALUES(?,'old',1,'{}','old')",
+  )
+    .bind(signalDate)
+    .run();
+  await f.DB.prepare(
+    "INSERT INTO observation_score_invalidations(trade_date,reason) VALUES(?,'旧周期')",
+  )
+    .bind(signalDate)
+    .run();
+  const originalFill = { ...f.fill, feeCents: f.fill.feesCents };
+  delete originalFill.feesCents;
+  await f.DB.prepare("UPDATE paper_ledger SET payload=? WHERE id=?")
+    .bind(JSON.stringify(originalFill), f.fill.id)
+    .run();
+  const summary = await applyTradingCutover(
+    f.env,
+    await prepareTradingCutover(f.env, options()),
+    { now },
+  );
+  const archive = await tradingArchive(f.env, summary.id);
+  assert.deepEqual(JSON.parse(archive.tables.paper_accounts[0].state), oldBook);
+  assert.deepEqual(
+    JSON.parse(archive.tables.paper_ledger[0].payload),
+    originalFill,
+  );
+  assert.deepEqual(
+    JSON.parse(
+      archive.tables.paper_configuration_history.find(
+        (row) => row.id === "old-continuation",
+      ).payload,
+    ),
+    continuation,
+  );
+  assert.equal(summary.primary.openPositions[0].quantity, 1000);
+  assert.equal(summary.policy, "dragon-risk-v1");
+  assert.equal(archive.tables.observation_score_cursors.length, 1);
+  assert.equal(archive.tables.observation_score_invalidations.length, 1);
+  assert.match(archivedLedgerCsv(archive), /"10000","-1010000"/);
+  const { book } = await f.papers.account(),
+    plan = await f.papers.plan(signalDate);
+  assert.deepEqual(book.positions, []);
+  assert.equal(book.cashCents, 100000000);
+  assert.equal(book.equityCents, 100000000);
+  assert.equal(book.feesCents, 0);
+  assert.equal(book.realizedPnlCents, 0);
+  assert.equal(book.settlementCount, 0);
+  assert.deepEqual(book.dragonConfig, oldBook.dragonConfig);
+  assert.equal(plan.dragonPolicy.configId, record.id);
+  assert.deepEqual(
+    plan.entryExecutionPolicy.candidates,
+    oldPlan.entryExecutionPolicy.candidates,
+  );
+  assert.deepEqual(plan.orders, []);
+  for (const table of [
+    "paper_ledger",
+    "observation_score_cursors",
+    "observation_score_invalidations",
+  ])
+    assert.equal(
+      (await f.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n,
+      0,
+    );
+  const observers = await f.shadows.accounts();
+  assert.equal(observers.length, 1);
+  assert.equal(observers[0].kind, SHADOW_ACCOUNT_KINDS.DRAGON_OBSERVATION);
+  assert.deepEqual(observers[0].book, book);
+  await assertStoredProgramPlan(f.env, plan, book);
   assert.equal((await verifyExport(await exportPaper(f.env))).passed, true);
 });
 

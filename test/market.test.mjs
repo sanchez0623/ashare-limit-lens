@@ -126,7 +126,7 @@ test("无归档但来源日期匹配时仍可查询公开历史，不补造盘�
   }
 });
 
-test("当天查询仍优先新行情，来源失败才读取已冻结的当日归档", async () => {
+test("盘中查询优先新行情，来源失败才读取已冻结的当日归档", async () => {
   const DB = localDatabase();
   try {
     await insertArchive(DB);
@@ -134,6 +134,7 @@ test("当天查询仍优先新行情，来源失败才读取已冻结的当日�
     const live = { date: DATE, rows: [raw], source: "合成实时测试" };
     const displayed = await marketForDisplay({ DB }, DATE, {
       today: DATE,
+      now: new Date(`${DATE}T10:00:00+08:00`),
       loadMarket: async () => {
         calls++;
         return live;
@@ -146,12 +147,43 @@ test("当天查询仍优先新行情，来源失败才读取已冻结的当日�
     assert.equal(calls, 1);
     const archive = await marketForDisplay({ DB }, DATE, {
       today: DATE,
+      now: new Date(`${DATE}T10:00:00+08:00`),
       loadMarket: async () => {
         throw new Error("synthetic source failed");
       },
     });
     assert.equal(archive.archived, true);
     assert.equal(archive.analysis.stocks[0].score, 71);
+  } finally {
+    DB.close();
+  }
+});
+
+test("15:05起当天优先展示冻结快照，来源波动不会改变已归档市场阶段", async () => {
+  const DB = localDatabase();
+  try {
+    const saved = oldSnapshot();
+    saved.marketSummary = {
+      count: 55,
+      height: 4,
+      cycle: { phase: "climax", label: "高潮期", score: 0.69 },
+    };
+    await insertArchive(DB, saved);
+    let calls = 0;
+    for (const time of ["15:05:00", "21:00:00"]) {
+      const displayed = await marketForDisplay({ DB }, DATE, {
+        today: DATE,
+        now: new Date(`${DATE}T${time}+08:00`),
+        loadMarket: async () => {
+          calls++;
+          throw new Error("冻结后不应访问行情源");
+        },
+      });
+      assert.equal(displayed.archived, true);
+      assert.deepEqual(displayed.analysis.cycle, saved.marketSummary.cycle);
+      assert.equal(displayed.archivedAt, saved.createdAt);
+    }
+    assert.equal(calls, 0);
   } finally {
     DB.close();
   }

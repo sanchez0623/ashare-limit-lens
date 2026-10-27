@@ -1,5 +1,9 @@
 # 文档索引
 
+[项目记忆与重复故障防范](project-memory.md)：冻结计划与执行版本失配的两次复发反馈、排查依据和运行恢复验收要求。
+
+新增：[龙头分层评分与自动校准](design/observation-scoring.md)——六类评分卡、独立风险、真实周期诊断及统一“研究与验证”入口，已实施。
+
 默认测试和 CI 仅运行 V5 用例，范围与清单维护规则见 [V5 回归范围](v5-regression.md)。
 
 旧交易归入历史并从空仓开始下一交易日，见 [V5 交易周期归档](trading-cutover.md)。
@@ -14,6 +18,8 @@
 东财原生批量、F10 当前行业的全量对照与故障切换规则见 [东财行业接口核对](eastmoney-industry-sources.md)。
 
 新增：[龙头风险预算政策与新旧整体切换](design/dragon-risk.md)——独立配置、双向加仓与做 T、影子验证及核验。
+
+新增：[模拟练习盈利模式研究闭环](design/practice-research.md)——全账户日复盘、免费行情覆盖核验、组合对照研究、自动采用与飞书周报。
 
 项目文档统一在 `docs/` 中随代码提交到 GitHub。运行指南描述当前实现；设计方案在文首标明实施状态与所依据的代码版本。
 
@@ -31,6 +37,8 @@
 | 设计方案 · P2 | [策略家族、选择器与共享分配](design/strategy-families-selector-allocation.md) | 已实施   | 首板、连板、板块共振、低换手、现金防守；冻结情绪选择与权重；共享现金、仓位、容量和费用归属                                                                                                                           |
 
 ## 目录约定
+
+三维市场环境、六类买点统计及三组独立对照见[市场环境实施说明](design/market-environment.md)（已实施；主账户政策为用户启用、尚未验证）。
 
 龙头低吸接入现状见 [dragon-head-dip-buy 实现核对](design/dragon-head-dip-buy-implementation-audit.md)（2026-10-22，部分实现，含源码、真实数据链路与当前账户运行核查）。
 

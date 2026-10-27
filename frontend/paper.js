@@ -2,6 +2,7 @@ import { DEFAULT_FEES, FEE_FIELDS } from "../shared/fees.js";
 import { renderDragonSettings } from "./dragon-risk.js";
 import { initializeEntryObservation } from "./entry-observation.js";
 import { initializeEntryPlan } from "./entry-plan.js";
+import { renderPagination, bindPageJump } from "./pagination.js";
 import { DEFAULT_RISK_LIMITS, RISK_FIELDS } from "../shared/risk-limits.js";
 import {
   EXPOSURE_TIERS_DEFAULTS,
@@ -305,28 +306,13 @@ function renderLedgerPage(ledger, meta) {
         .join("")
     : '<tr><td colspan="8"><div class="empty compact">该日期无成交记录。</div></td></tr>';
 
-  let pageButtons = "";
-  for (let i = 1; i <= totalPages; i++) {
-    if (
-      totalPages > 12 &&
-      i !== 1 &&
-      i !== totalPages &&
-      Math.abs(i - page) > 2
-    ) {
-      if (i === 2 || i === totalPages - 1)
-        pageButtons += '<span class="page-ellipsis">…</span>';
-      continue;
-    }
-    pageButtons += `<button class="page-btn ${i === page ? "active" : ""}" data-page="${i}">${i}</button>`;
-  }
-
-  const pagerHtml =
-    `<div class="ledger-pager">` +
-    `<button class="page-btn" data-page="${Math.max(1, page - 1)}" ${page <= 1 ? "disabled" : ""}>‹ 上一页</button>` +
-    `<span class="page-info">第 ${page} / ${totalPages} 页 · 共 ${total} 笔</span>` +
-    `<button class="page-btn" data-page="${Math.min(totalPages, page + 1)}" ${page >= totalPages ? "disabled" : ""}>下一页 ›</button>` +
-    `<div class="page-numbers">${pageButtons}</div>` +
-    `</div>`;
+  const pagerHtml = renderPagination(
+    { page, totalPages, total, pageSize: LEDGER_PAGE_SIZE },
+    {
+      unit: "笔",
+      loading: ledgerLoading,
+    },
+  );
 
   return { rowsHtml, pagerHtml, total, totalPages, page };
 }
@@ -346,28 +332,13 @@ function renderStockPnlPage(stockPnl, meta, heldQuantityByCode) {
         .join("")
     : '<tr><td colspan="6"><div class="empty compact">尚无已实现盈亏。卖出成交后按 FIFO 核算逐笔盈亏。</div></td></tr>';
 
-  let pageButtons = "";
-  for (let i = 1; i <= totalPages; i++) {
-    if (
-      totalPages > 12 &&
-      i !== 1 &&
-      i !== totalPages &&
-      Math.abs(i - page) > 2
-    ) {
-      if (i === 2 || i === totalPages - 1)
-        pageButtons += '<span class="page-ellipsis">…</span>';
-      continue;
-    }
-    pageButtons += `<button class="page-btn" data-pnl-page="${i}">${i}</button>`;
-  }
-
-  const pagerHtml =
-    `<div class="ledger-pager">` +
-    `<button class="page-btn" data-pnl-page="${Math.max(1, page - 1)}" ${page <= 1 ? "disabled" : ""}>‹ 上一页</button>` +
-    `<span class="page-info">第 ${page} / ${totalPages} 页 · 共 ${total} 只</span>` +
-    `<button class="page-btn" data-pnl-page="${Math.min(totalPages, page + 1)}" ${page >= totalPages ? "disabled" : ""}>下一页 ›</button>` +
-    `<div class="page-numbers">${pageButtons}</div>` +
-    `</div>`;
+  const pagerHtml = renderPagination(
+    { page, totalPages, total, pageSize: STOCK_PNL_PAGE_SIZE },
+    {
+      attribute: "data-pnl-page",
+      unit: "只",
+    },
+  );
 
   return { rowsHtml, pagerHtml, total, totalPages, page };
 }
@@ -578,7 +549,7 @@ function render() {
                 ? "精确分 → 分类路由 → 买点闸门 → 炸板及首阴/假阴候选"
                 : "整数分 → 代码";
       })()} · 费用 v${plan.feeConfigVersion || 0} · 成本 ${plan.executionCostPolicy ? `${plan.executionCostPolicy.modelVersion} v${plan.executionCostPolicy.version || 0}` : "旧版固定 10bps"}${plan.sourceSnapshotMissing ? " · 信号缺失，仅执行风险保护" : ""} · ${plan.tradingPolicyVersion === "dragon-risk-v1" ? "仓位按买点与共享风险预算确定" : `目标仓位 ${percent(plan.targetExposure)}`} · ${new Date(plan.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} 冻结`
-    : "当日评分保存后，生成下一交易日计划。";
+    : "当日市场快照归档后，生成下一交易日计划。";
   const entryPolicy = plan?.entryExecutionPolicy;
   entryPlan.render(plan);
   if (entryPolicy) $("paper-plan-meta").textContent += " · 盘中条件执行";
@@ -589,7 +560,7 @@ function render() {
             `<tr><td><strong>${escape(order.name)}</strong><span class="stock-code">${escape(order.code)} · ${escape(order.sector)}</span></td><td><span class="action-tag">${actionNames[order.action]}</span></td><td>${plan.tradingPolicyVersion === "dragon-risk-v1" ? "买点与风险预算" : `${order.score ?? "—"}${Number.isFinite(order.scoreValue) ? `<span class="stock-code">精确 ${Number(order.scoreValue.toFixed(6))}</span>` : ""}<span class="stock-code">原始 ${order.originalScore ?? "—"}</span>`}</td><td>${order.quantity || "—"} 股</td><td class="plan-price-conditions">${priceConditions(order)}</td><td class="plan-reason">${escape(order.reason)}</td></tr>`,
         )
         .join("")
-    : `<tr><td colspan="6"><div class="empty compact">${entryPolicy ? "暂无预设交易订单；新增建仓等待下方观察标的的盘中买点触发。" : plan ? "当前没有满足建仓条件的个股，保持空仓。" : "等待有效盘后评分。"}</div></td></tr>`;
+    : `<tr><td colspan="6"><div class="empty compact">${entryPolicy ? "暂无预设交易订单；新增建仓等待下方观察标的的盘中买点触发。" : plan ? "当前没有满足建仓条件的个股，保持空仓。" : "等待有效盘后市场快照。"}</div></td></tr>`;
   $("paper-outcomes").innerHTML = run?.outcomes?.length
     ? `<details><summary>最近执行反馈 · ${escape(run.date)}</summary><div class="execution-feedback">${run.outcomes.map((order) => `<p><strong>${escape(order.name)} · ${actionNames[order.action]}</strong><span>${order.status === "FILLED" ? "已成交" : order.status === "PARTIAL" ? "部分完成" : "未执行"} ${order.filledQuantity ? `${order.filledQuantity} 股` : ""} · ${escape(order.reason || "")}</span></p>`).join("")}</div></details>`
     : "";
@@ -601,7 +572,7 @@ function render() {
     ? "已配置模型"
     : "模型待配置";
   $("paper-ai-content").innerHTML = dragonActive
-    ? `<div class="strategy-active"><span>当前政策</span><strong>dragon-risk-v1</strong></div><p>AI 只研究初始保护幅度、T 底仓比例与第二腿价差；一次最多两组。积累新政策 60 日训练、20 日封存测试与 30 日匹配前瞻，成本压力核验通过后才可晋级。</p><p class="ai-note">进度见下方高级模板核验；旧策略研究报告不参与本政策晋级。</p>`
+    ? `<div class="strategy-active"><span>当前政策</span><strong>dragon-risk-v1</strong></div><p>组合研究比较六买点、加仓与做 T 开关及三个高级参数；每个候选最多两项变化。60 日训练、20 日封存、30 日前瞻和成本压力通过后，按原采用方式生效。</p><p class="ai-note">研究操作与证据统一在“研究与验证”；风险参数仍在本页修改。</p>`
     : `<div class="strategy-active"><span>当前策略</span><strong>${escape(book.activeStrategy)}</strong></div><p>${data.ai.configured ? `已积累 ${days} 个可验证交易日。至少 20 日训练 + 10 日封存验证后提出新候选。` : "尚未配置服务端大模型密钥。规则策略正常运行；配置后接入真实 AI 提案与验证。"}</p><div class="ai-process">真实成交与费用<span>↓</span>AI 训练窗口建议<span>↓</span>独立验证 · 收益与回撤<span>↓</span>通过后启用新版本</div><p class="ai-note">每个封存窗口只验证一个候选；已冻结计划和历史交易保留原版本。</p>`;
   $("paper-version-list").innerHTML =
     versions
@@ -731,6 +702,15 @@ export function initializePaper({ onState = () => {} } = {}) {
   if (paperController) return paperController;
   onStateChange = onState;
   entryPlan = initializeEntryPlan($("paper-entry-plan"));
+  bindPageJump($("paper-ledger-pager"), (page) => {
+    if (ledgerLoading) return;
+    ledgerPage = page;
+    void refreshLedger();
+  });
+  bindPageJump($("paper-stock-pnl-pager"), (page) => {
+    stockPnlPage = page;
+    void refresh();
+  });
   initializeEntryObservation({
     request,
     getObservation: () => data?.entryObservation,
@@ -795,13 +775,9 @@ export function initializePaper({ onState = () => {} } = {}) {
         : "验证未通过，请检查导出记录与行情完整度。";
     });
   $("paper-improve").onclick = () =>
-    perform(async () => {
-      const result = await request("/api/paper/improve", {});
-      return (
-        result.reason ||
-        `AI 改进状态：${statusNames[result.status] || result.status}`
-      );
-    });
+    window.dispatchEvent(
+      new CustomEvent("research-navigate", { detail: { tab: "current" } }),
+    );
   $("paper-config-form").onsubmit = (event) => {
     event.preventDefault();
     void perform(async () => {

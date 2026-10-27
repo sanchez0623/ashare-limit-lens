@@ -7,6 +7,8 @@ import { localDatabase } from "./local-db.mjs";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { runEvidenceWorkerTick } from "../backend/services/evidence.js";
+import { installRuntimeLogTimestamps } from "./runtime-log.mjs";
+installRuntimeLogTimestamps();
 
 try {
   process.loadEnvFile();

@@ -13,9 +13,13 @@ import {
   verifiedPreviousRows,
 } from "../backend/services/price-history.js";
 import { buildIntradayContext } from "../backend/services/intraday-inputs.js";
-import { saveSnapshot } from "../backend/services/review.js";
+import {
+  saveSnapshot,
+  buildSnapshotPayload,
+} from "../backend/services/review.js";
 import { analyze, normalize } from "../shared/scoring.js";
 import { digestOf } from "../backend/domain/research-lineage.js";
+import { createDragonPlan } from "../backend/domain/dragon-risk.js";
 
 const date = "2026-10-22";
 const now = new Date(`${date}T16:00:00+08:00`);
@@ -338,6 +342,7 @@ test("冻结输入摘要被篡改时拒绝；回补条数上限与缺失范围�
   assert.equal(result.status.requested, 2);
   assert.equal(result.status.supplemented, 1);
   assert.equal(result.status.limited, true);
+  assert.deepEqual(result.status.pendingCodes, ["600002"]);
   const tampered = structuredClone(result.evidence);
   tampered.records[0].record.raw.at(-1).close = 99;
   await assert.rejects(
@@ -352,6 +357,150 @@ test("冻结输入摘要被篡改时拒绝；回补条数上限与缺失范围�
     result.evidence.records[0].digest,
     await digestOf(result.evidence.records[0].record),
   );
+});
+
+test("日线逐股回补覆盖超过100只的完整名单，不截断第101只以后的资格依据", async () => {
+  const codes = Array.from({ length: 122 }, (_, i) => String(600001 + i));
+  const calls = [];
+  const result = await resolveDailyPriceInputs({}, date, {
+    codes,
+    localDataset: null,
+    history: provider(calls),
+    now,
+  });
+  assert.equal(calls.length, 244);
+  assert.equal(result.status.requested, 122);
+  assert.equal(result.status.supplemented, 122);
+  assert.equal(result.eodRows.size, 122);
+  assert.deepEqual(result.status.pendingCodes, []);
+  assert.equal(result.status.complete, true);
+  assert.equal(result.status.limited, false);
+});
+
+test("回补重试先读全部缓存，单轮预算用于新数据，后续批次持续前进", async (t) => {
+  const DB = localDatabase();
+  t.after(() => DB.close());
+  const calls = [];
+  const options = {
+    codes: ["600003", "600001", "600002"],
+    localDataset: null,
+    history: provider(calls),
+    now,
+    maxCodes: 1,
+  };
+  const a = await resolveDailyPriceInputs({ DB }, date, options);
+  const b = await resolveDailyPriceInputs({ DB }, date, options);
+  const c = await resolveDailyPriceInputs({ DB }, date, options);
+  assert.deepEqual(
+    [a.status.supplemented, b.status.supplemented, c.status.supplemented],
+    [1, 2, 3],
+  );
+  assert.deepEqual(c.status.pendingCodes, []);
+  assert.equal(c.status.limited, false);
+  assert.equal(calls.length, 6);
+  const cached = await resolveDailyPriceInputs({ DB }, date, {
+    ...options,
+    allowRemote: false,
+  });
+  assert.equal(cached.status.supplemented, 3);
+  assert.equal(calls.length, 6);
+});
+
+test("尚未回补的数据不能被当成不合格而冻结不完整观察池", () => {
+  assert.throws(
+    () =>
+      createDragonPlan(
+        {
+          dailyPriceSources: { pendingCodes: ["600101", "600102"] },
+        },
+        {},
+        now.toISOString(),
+      ),
+    /尚有 2 只未处理/,
+  );
+});
+
+test("尚未绑定计划的部分快照可在下轮完成回补，完成后的快照保持冻结", async (t) => {
+  const DB = localDatabase();
+  const OriginalDate = globalThis.Date,
+    originalFetch = globalThis.fetch,
+    originalKey = process.env.FU_YAO_API_KEY;
+  t.after(() => {
+    globalThis.Date = OriginalDate;
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.FU_YAO_API_KEY;
+    else process.env.FU_YAO_API_KEY = originalKey;
+    clearCache();
+    DB.close();
+  });
+  globalThis.Date = class extends OriginalDate {
+    constructor(...args) {
+      super(...(args.length ? args : [now.getTime()]));
+    }
+    static now() {
+      return now.getTime();
+    }
+  };
+  process.env.FU_YAO_API_KEY = "synthetic-resume-key";
+  clearCache();
+  const codes = ["600001", "600002", "600003"];
+  const market = {
+    date,
+    source: "synthetic",
+    rows: codes.map((c) => ({ ...raw, c })),
+    previous: [],
+  };
+  const partial = await resolveDailyPriceInputs({ DB }, date, {
+    codes,
+    localDataset: null,
+    history: provider(),
+    now,
+    maxCodes: 1,
+  });
+  const snapshot = await buildSnapshotPayload(
+    { DB },
+    market,
+    undefined,
+    partial,
+  );
+  await DB.prepare(
+    "INSERT INTO snapshots(trade_date,created_at,payload) VALUES(?,?,?)",
+  )
+    .bind(date, snapshot.createdAt, JSON.stringify(snapshot))
+    .run();
+  let requests = 0;
+  globalThis.fetch = async (address) => {
+    const url = new URL(address);
+    requests++;
+    return Response.json({
+      code: 0,
+      data: await provider()(url.searchParams.get("thscode"), {
+        adjust: url.searchParams.get("adjust"),
+      }),
+    });
+  };
+  await saveSnapshot({ DB }, { ...market, rows: [] }, []);
+  const completed = await DB.prepare(
+    "SELECT payload FROM snapshots WHERE trade_date=?",
+  )
+    .bind(date)
+    .first();
+  const value = JSON.parse(completed.payload);
+  assert.equal(value.dailyPriceInputs.records.length, 3);
+  assert.deepEqual(value.market.rows, market.rows);
+  assert.deepEqual(value.dailyPriceSources.pendingCodes, []);
+  assert.equal(value.dailyPriceSources.limited, false);
+  assert.equal(requests, 4);
+  await saveSnapshot({ DB }, { ...market, rows: [] });
+  assert.equal(
+    (
+      await DB.prepare("SELECT payload FROM snapshots WHERE trade_date=?")
+        .bind(date)
+        .first()
+    ).payload,
+    completed.payload,
+  );
+  assert.equal(requests, 4);
 });
 
 test("备用源限流时停止继续回补，缺失股票保持无数据", async () => {

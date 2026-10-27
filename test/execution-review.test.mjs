@@ -568,7 +568,7 @@ test("盘中、缺结算、历史无归档时不落库；损坏来源摘要不�
   );
 });
 
-test("历史评分及 AI 原样保留；历史列表显式区分新旧口径", async (t) => {
+test("历史评分及 AI 原样保留，复盘档案仅展示10月26日起的快照和反馈", async (t) => {
   atClose(t);
   const DB = localDatabase();
   t.after(() => DB.close());
@@ -587,11 +587,34 @@ test("历史评分及 AI 原样保留；历史列表显式区分新旧口径", a
   const old = await loadReview({ DB }, signalDate);
   assert.deepEqual(old.review, legacy);
   assert.deepEqual(old.ai, ai);
+  await saveReview(DB, { ...legacy, date: "2026-10-27", snapshotDate: date });
+  for (const day of [signalDate, date, "2026-10-27"])
+    await DB.prepare(
+      "INSERT INTO snapshots(trade_date,created_at,payload) VALUES(?,?,?)",
+    )
+      .bind(day, stamp, "{}")
+      .run();
   const history = await historyList({ DB });
-  assert.equal(history.reviews[0].reviewKind, "V5_EXECUTION");
-  assert.equal(history.reviews[0].summary.stockCount, 1);
-  assert.equal(history.reviews[1].systemScore, 64);
-  assert.equal(history.reviews[1].reviewKind, undefined);
+  assert.deepEqual(
+    history.snapshots.map((s) => s.trade_date),
+    ["2026-10-27", date],
+  );
+  assert.deepEqual(
+    history.reviews.map((r) => r.date),
+    ["2026-10-27", date],
+  );
+  assert.equal(history.reviews[0].systemScore, 64);
+  assert.equal(history.reviews[0].reviewKind, undefined);
+  assert.equal(history.reviews[1].reviewKind, "V5_EXECUTION");
+  assert.equal(history.reviews[1].summary.stockCount, 1);
+  assert.equal(
+    (await DB.prepare("SELECT COUNT(*) AS n FROM snapshots").first()).n,
+    3,
+  );
+  assert.equal(
+    (await DB.prepare("SELECT COUNT(*) AS n FROM reviews").first()).n,
+    3,
+  );
 });
 
 test("新成交反馈不登记旧评分 IC，也不被旧评分 worker 当作新来源日", async (t) => {

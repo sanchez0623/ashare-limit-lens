@@ -11,7 +11,9 @@ import {
   prepareTradingCutover,
   applyTradingCutover,
   switchTradingCycleToDragon,
+  restoreDragonObservationUniverse,
 } from "../../backend/services/trading-cutover.js";
+import { buildJointQuotePool } from "../../backend/services/quote-stream.js";
 import { saveDragonSettings } from "../../backend/services/dragon-risk.js";
 import { exportPaper, verifyExport } from "../../backend/services/paper.js";
 import { assertStoredProgramPlan } from "../../backend/services/strategy-program-evidence.js";
@@ -27,7 +29,9 @@ import {
   closeSession,
 } from "../../backend/domain/realtime.js";
 import { selectionSnapshotDigest } from "../../backend/domain/signal-selection.js";
+import { frozenProgramSignal } from "../../backend/storage/strategy-signals.js";
 import { dragonBudget } from "../../backend/domain/dragon-risk.js";
+import { advanceAdaptiveRisk } from "../../shared/adaptive-risk.js";
 import { snapshot, dataset } from "../fixtures/trading.mjs";
 import {
   renderEntryPlanRules,
@@ -115,6 +119,7 @@ async function fixture(
     papers,
     shadows,
     config,
+    source,
     sourceConfigId: saved.dragon.configId,
   };
 }
@@ -182,6 +187,84 @@ test("未执行的新周期可在周日实际时间整体切换龙头政策，�
   assert.equal((await f.papers.account()).revision, revision);
 });
 
+test("低于成交额门槛的原观察股在切换、恢复及计划重建中保留，观察数量与准入数量分开", async (t) => {
+  const f = await fixture(t, {
+    customizeSource: (source) => {
+      source.intradayEntryContext.history["600002"].amount = 200000000;
+    },
+  });
+  const originalCandidates = (await f.papers.plan(signalDate))
+    .entryExecutionPolicy.candidates;
+  assert.equal(originalCandidates.length, 2);
+  await switchTradingCycleToDragon(f.env, { now });
+  const { book } = await f.papers.account();
+  const plan = await f.papers.plan(signalDate);
+  assert.deepEqual(plan.observationUniverse, ["600001", "600002"]);
+  assert.deepEqual(
+    plan.entryExecutionPolicy.candidates,
+    plan.observationUniverse,
+  );
+  const rows = entryPlanRows(plan.entryExecutionPolicy);
+  assert.equal(rows.filter((row) => row.state === "ready").length, 1);
+  assert.equal(rows.filter((row) => row.state === "turnover").length, 1);
+  await assertStoredProgramPlan(f.env, plan, book);
+  assert.equal((await verifyExport(await exportPaper(f.env))).passed, true);
+
+  // Reproduce an older plan whose watchlist was narrowed during the switch.
+  const narrowed = createPlan(
+    await frozenProgramSignal(f.DB, plan),
+    book,
+    null,
+    book.dragonConfigId,
+    now.toISOString(),
+    {
+      executionCostPolicy: plan.executionCostPolicy,
+      snapshotDigest: plan.selectionAudit.snapshotDigest,
+      engineBuild: plan.engineBuild,
+      observationUniverse: ["600001"],
+    },
+  );
+  await f.DB.prepare("DELETE FROM paper_plans WHERE signal_date=?")
+    .bind(signalDate)
+    .run();
+  await f.DB.prepare(
+    "DELETE FROM dragon_plan_bindings WHERE scope='main' AND signal_date=?",
+  )
+    .bind(signalDate)
+    .run();
+  await f.papers.savePlan(narrowed);
+  await assertStoredProgramPlan(f.env, narrowed, book);
+  const before = await f.papers.account();
+  const restored = await restoreDragonObservationUniverse(f.env, { now });
+  assert.equal(restored.changed, true);
+  assert.equal(restored.candidates, 2);
+  assert.equal(restored.pendingTurnover, 1);
+  assert.equal(restored.verification.passed, true);
+  assert.deepEqual((await f.papers.account()).book, before.book);
+  const replacement = await f.papers.plan(signalDate);
+  assert.deepEqual(replacement.observationUniverse, ["600001", "600002"]);
+  assert.deepEqual(
+    replacement.entryExecutionPolicy.candidates,
+    replacement.observationUniverse,
+  );
+  await assertStoredProgramPlan(f.env, replacement, book);
+  const pool = await buildJointQuotePool(f.env, { now });
+  assert.deepEqual(pool.sources.primary, ["600001", "600002"]);
+  for (const codes of Object.values(pool.sources.shadow)) {
+    assert.deepEqual(codes, ["600001", "600002"]);
+  }
+  assert.equal(
+    (await restoreDragonObservationUniverse(f.env, { now })).changed,
+    false,
+  );
+  await assert.rejects(
+    restoreDragonObservationUniverse(f.env, {
+      now: new Date(`${tradeDate}T09:30:00+08:00`),
+    }),
+    /开盘/,
+  );
+});
+
 test("周一龙头风险预算实际成交后首日结算，整段导出仍按期初和切换事件重放", async (t) => {
   const f = await fixture(t);
   await switchTradingCycleToDragon(f.env, { now });
@@ -190,11 +273,12 @@ test("周一龙头风险预算实际成交后首日结算，整段导出仍按�
   const plan = await repo.plan(signalDate);
   let session = openSession(book, plan, tradeDate),
     fills = 0;
-  for (const [time, price, volume] of [
-    ["09:31:00", 950, 1000000],
-    ["09:31:10", 951, 11000000],
-  ]) {
-    const timestamp = `${tradeDate}T${time}+08:00`;
+  for (let index = 0; index < 8; index++) {
+    const price = index === 7 ? 951 : 950,
+      volume = index === 7 ? 11000000 : 1000000;
+    const timestamp = new Date(
+      Date.parse(`${tradeDate}T09:31:00+08:00`) + index * 10000,
+    ).toISOString();
     const observation = {
       observedAt: new Date(timestamp).toISOString(),
       pollIntervalSeconds: 10,
@@ -223,7 +307,15 @@ test("周一龙头风险预算实际成交后首日结算，整段导出仍按�
           date: tradeDate,
           observedAt: new Date(timestamp).toISOString(),
           cycle: { phase: "rising" },
-          sectors: [{ name: "测试行业", score: 85 }],
+          metrics: {
+            limitUp: 80,
+            broken: 0,
+            height: 5,
+            premium: 3,
+            premiumCoverage: 1,
+          },
+          sectorsComplete: true,
+          sectors: [{ name: "测试行业", score: 85, count: 6, broken: 0 }],
           discoveries: [],
         },
         auction: {
@@ -345,12 +437,14 @@ for (const priority of [true, false])
       const plan = await f.papers.plan(signalDate);
       let session = openSession(book, plan, tradeDate),
         fills = [];
-      for (const index of [0, 1]) {
-        const timestamp = `${tradeDate}T09:31:${index ? "10" : "00"}+08:00`;
+      for (let index = 0; index < 8; index++) {
+        const timestamp = new Date(
+          Date.parse(`${tradeDate}T09:31:00+08:00`) + index * 10000,
+        ).toISOString();
         const quotes = Object.fromEntries(
           ["600001", "600002"].map((code) => {
             const dip = priority && code === "600002",
-              price = (dip ? 920 : 950) + index;
+              price = (dip ? 920 : 950) + (index === 7 ? 1 : 0);
             return [
               code,
               {
@@ -361,7 +455,7 @@ for (const priority of [true, false])
                 openCents: dip ? 910 : 940,
                 highCents: 1000,
                 lowCents: dip ? 910 : 940,
-                volumeShares: index ? 11000000 : 1000000,
+                volumeShares: index === 7 ? 11000000 : 1000000,
                 limitUpCents: 1100,
                 limitDownCents: 900,
                 bid1Cents: price - 1,
@@ -383,7 +477,15 @@ for (const priority of [true, false])
               date: tradeDate,
               observedAt: new Date(timestamp).toISOString(),
               cycle: { phase: "rising" },
-              sectors: [{ name: "测试行业", score: 85 }],
+              metrics: {
+                limitUp: 80,
+                broken: 0,
+                height: 5,
+                premium: 3,
+                premiumCoverage: 1,
+              },
+              sectorsComplete: true,
+              sectors: [{ name: "测试行业", score: 85, count: 6, broken: 0 }],
               discoveries: [],
             },
             auction: Object.fromEntries(
@@ -420,7 +522,37 @@ test("同一可亏损预算下止损距离扩大时仓位缩小，并遵守整�
   const { book } = await f.papers.account(),
     plan = await f.papers.plan(signalDate);
   const session = openSession(book, plan, tradeDate);
-  session.regime.phase = "rising";
+  for (let seconds = 0; seconds <= 180; seconds += 10) {
+    const observedAt = new Date(
+      Date.parse(`${tradeDate}T09:30:00+08:00`) + seconds * 1000,
+    ).toISOString();
+    advanceAdaptiveRisk(session.adaptiveRisk, {
+      observedAt,
+      sectors: { 600001: "测试行业" },
+      market: {
+        date: tradeDate,
+        observedAt,
+        sectorsComplete: true,
+        metrics: {
+          limitUp: 80,
+          broken: 0,
+          height: 5,
+          premium: 3,
+          premiumCoverage: 1,
+        },
+        sectors: [{ name: "测试行业", score: 85, count: 6, broken: 0 }],
+      },
+      quotes: {
+        600001: {
+          date: tradeDate,
+          timestamp: observedAt,
+          closeCents: 1000,
+          volumeShares: 1000000,
+        },
+      },
+    });
+    session.lastObservedAt = observedAt;
+  }
   const near = dragonBudget(book, session, "600001", 1000, 950, "OPEN");
   const far = dragonBudget(book, session, "600001", 1000, 900, "OPEN");
   assert.ok(near.quantity > far.quantity);

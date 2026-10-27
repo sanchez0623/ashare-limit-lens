@@ -938,6 +938,10 @@ export async function promoteCandidate(repository, env, id) {
   );
 }
 export async function researchStatus(env) {
+  const { patternResearchStatus } = await import(
+    "./dragon-pattern-research.js"
+  );
+  const { practiceWeeklyStatus } = await import("./practice-weekly.js");
   const research = new ResearchRepository(env);
   const registry = await research.ensureRegistry();
   const policy = await research.getPolicy();
@@ -946,6 +950,8 @@ export async function researchStatus(env) {
   const used = await research.monthUsage(month);
   const experiments = await research.listExperiments(20);
   return {
+    practice: await patternResearchStatus(env),
+    weekly: await practiceWeeklyStatus(env),
     namespace: registry.namespace,
     bootstrapDone: registry.bootstrapDone,
     policy: {

@@ -1,3 +1,5 @@
+import { isPracticeReview } from "../shared/practice.js";
+import { environmentSummary } from "./environment-view.js";
 import {
   FACTORS,
   PRESETS,
@@ -6,13 +8,21 @@ import {
   timeLabel,
 } from "../shared/scoring.js";
 import { initializePaper } from "./paper.js";
-import { initializeStrategies } from "./strategies.js";
+import { initializeResearchHub } from "./research-hub.js";
+import { scoringCells, scoringCards } from "./scoring-view.js";
 import { initializeAlerts } from "./alerts.js";
 import { initializeDataManagement, beijingTime } from "./data-management.js";
-import { isExecutionReview } from "../shared/review.js";
+import {
+  isExecutionReview,
+  REVIEW_ARCHIVE_START_DATE,
+} from "../shared/review.js";
 import { executionReviewView, reviewMoney } from "./execution-review.js";
 import { initializeObservatory } from "./observatory.js";
-import { parseRoute, routeHash } from "./observatory-model.js";
+import {
+  parseRoute,
+  routeHash,
+  marketCycleDescription,
+} from "./observatory-model.js";
 import {
   researchIndustryName,
   researchIndustryGroups,
@@ -56,6 +66,9 @@ document
 const state = {
   view: "overview",
   paperTab: "live",
+  researchTab: "current",
+  scores: new Map(),
+  scoreStatus: null,
   reviewTab: "review",
   height: "all",
   // 板块研究页内 行业 ↔ 题材 切换标签状态
@@ -71,6 +84,7 @@ const state = {
   demo: false,
   request: 0,
   review: null,
+  reviewArchived: false,
   ai: null,
   aiConfig: { configured: false },
   history: null,
@@ -78,16 +92,6 @@ const state = {
   reviewMessage: "",
   storageAvailable: false,
 };
-try {
-  const pref = JSON.parse(localStorage.getItem("limitLensWeights"));
-  if (
-    Array.isArray(pref) &&
-    pref.length === 6 &&
-    pref.every((v) => Number.isInteger(v) && v >= 0 && v <= 50) &&
-    pref.some((v) => v > 0)
-  )
-    state.weights = pref;
-} catch {}
 const today = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Shanghai",
   year: "numeric",
@@ -106,6 +110,10 @@ $("trade-date").max = today;
 const observatory = initializeObservatory({
   navigate(view, tab) {
     if (view === "paper" && tab) state.paperTab = tab;
+    if (view === "settings" && tab)
+      state.researchTab = ["current", "scoring", "history"].includes(tab)
+        ? tab
+        : "current";
     if (view === "review" && tab) state.reviewTab = tab;
     if (view === "sectors" && tab) state.synergyTab = tab;
     setView(view);
@@ -130,6 +138,15 @@ const observatory = initializeObservatory({
 });
 const paper = initializePaper({ onState: observatory.updateExecution });
 const dataManagement = initializeDataManagement();
+const researchHub = initializeResearchHub({
+  navigate(view, tab) {
+    if (view === "paper") state.paperTab = tab;
+    setView(view);
+  },
+  onChanged() {
+    void paper.refresh();
+  },
+});
 const titles = {
   data: [
     "数据管理",
@@ -161,7 +178,11 @@ const titles = {
     "每个判断，都有回声。",
     "翻开当日的依据，用实际表现检验，再留下一份观察。",
   ],
-  settings: ["设置", "设置", "管理复盘评分、大模型连接与高级研究。"],
+  settings: [
+    "研究与验证",
+    "让规则，接受验证。",
+    "分层评分、龙头组合研究与真实周期校准。",
+  ],
   strategies: [
     "设置 / 策略赛马",
     "多策略并行赛马与受控晋级",
@@ -181,7 +202,9 @@ function routeState() {
         ? state.paperTab
         : state.view === "review"
           ? state.reviewTab
-          : state.synergyTab,
+          : state.view === "settings"
+            ? state.researchTab
+            : state.synergyTab,
     date: $("trade-date").value,
     industryTaxonomy: state.industryTaxonomy,
     height: state.height,
@@ -189,6 +212,7 @@ function routeState() {
     sector: pendingSector ?? $("sector-filter").value,
     theme: state.themeFilter,
     sort: $("sort").value,
+    buyPoint: $("buy-point-filter").value,
   };
 }
 function syncRoute({ replace = false } = {}) {
@@ -211,6 +235,9 @@ function restoreRoute({ initial = false } = {}) {
     dateChosen = true;
   }
   state.paperTab = route.view === "paper" ? route.tab : state.paperTab;
+  state.researchTab = route.view === "settings" ? route.tab : state.researchTab;
+  $("buy-point-filter").value = route.buyPoint;
+  $("sort").querySelector('[value="quality"]').disabled = !route.buyPoint;
   state.reviewTab = route.view === "review" ? route.tab : state.reviewTab;
   state.synergyTab = route.view === "sectors" ? route.tab : state.synergyTab;
   state.industryTaxonomy = route.industryTaxonomy;
@@ -241,10 +268,23 @@ function selectTheme(name) {
   $("sector-filter").value = "";
   setView("stocks");
 }
+function applyArchiveDateBoundary() {
+  const picker = $("trade-date");
+  picker.min = state.view === "review" ? REVIEW_ARCHIVE_START_DATE : "";
+  if (!picker.min || picker.value >= picker.min) return false;
+  picker.value = picker.min;
+  dateChosen = true;
+  return true;
+}
 function setView(view) {
+  if (view === "strategies") {
+    view = "settings";
+    state.researchTab = "history";
+  }
   if (!titles[view]) return;
   if (view !== state.view) scrollPositions.set(state.view, window.scrollY);
   state.view = view;
+  const dateChanged = applyArchiveDateBoundary();
   $("crumb").textContent = titles[view][0];
   $("page-title").textContent = titles[view][1];
   $("page-subtitle").textContent = titles[view][2];
@@ -280,7 +320,7 @@ function setView(view) {
     view === "data" ||
     view === "settings";
   if (view === "paper") void paper.refresh();
-  if (view === "strategies") initializeStrategies();
+  researchHub.setVisible(view === "settings", state.researchTab);
   if (view === "alerts") initializeAlerts();
   document.querySelector(".right-column").hidden = view === "stocks";
   $("overview-content").style.gridTemplateColumns =
@@ -289,6 +329,7 @@ function setView(view) {
   renderReview();
   syncRoute();
   window.scrollTo(0, scrollPositions.get(view) ?? 0);
+  if (dateChanged) void loadData();
 }
 window.addEventListener("popstate", () => restoreRoute());
 window.addEventListener("hashchange", () => restoreRoute());
@@ -355,6 +396,8 @@ function recalculate() {
           options,
         )
       : null;
+  if (state.analysis && state.payload?.environment)
+    state.analysis.environment = state.payload.environment;
 }
 function render() {
   const a = state.analysis,
@@ -395,23 +438,22 @@ function render() {
       amber: true,
     },
     {
-      name: "情绪强度",
-      value: has ? (a.emotion ?? "—") : "—",
-      unit: "/ 100",
-      caption: has
-        ? a.emotion === null
-          ? "当日无有效评分样本"
-          : `${a.emotion >= 75 ? "强度较高" : a.emotion >= 45 ? "强度中等" : "强度较低"} · ${a.emotionCoverage == null ? "已归档的收盘判断" : `数据覆盖 ${a.emotionCoverage}%`}`
-        : "涨停规模 · 封板率 · 高度",
+      name: a?.environment?.asOf ? "市场环境" : "市场阶段",
+      value: has
+        ? (environmentSummary(a.environment)?.value ?? a.cycle?.label ?? "未知")
+        : "—",
+      unit: "",
+      ...marketCycleDescription(a, state.payload),
+      ...(environmentSummary(a?.environment) ?? {}),
       icon: "dashboard",
-      pct: has ? (a.emotion ?? 0) : 0,
+      pct: 0,
       accent: true,
     },
   ];
   $("summary").innerHTML = metrics
     .map(
       (m) =>
-        `<article class="metric ${loading ? "loading" : ""}"><div class="metric-head">${m.name}${icon(m.icon)}</div><div class="metric-value ${m.accent ? "accent" : ""}">${m.value}<small>${m.unit}</small></div><div class="metric-caption">${m.caption}</div><div class="metric-line ${m.amber ? "amber" : ""}"><i style="width:${m.pct}%"></i></div></article>`,
+        `<article class="metric ${loading ? "loading" : ""}"><div class="metric-head">${m.name}${icon(m.icon)}</div><div class="metric-value ${m.accent ? "accent" : ""}">${m.value}<small>${m.unit}</small></div><div class="metric-caption">${m.caption}</div>${m.explanation ? `<details class="metric-explanation"><summary>判定依据与作用</summary><p>${escape(m.explanation)}</p></details>` : ""}<div class="metric-line ${m.amber ? "amber" : ""}"><i style="width:${m.pct}%"></i></div></article>`,
     )
     .join("");
   $("pool-count").textContent = has ? a.count : "—";
@@ -462,12 +504,29 @@ function filteredStocks() {
     .slice()
     .sort(
       sort === "height"
-        ? (a, b) => (b.height ?? 0) - (a.height ?? 0)
+        ? (a, b) =>
+            (b.height ?? 0) - (a.height ?? 0) || a.code.localeCompare(b.code)
         : sort === "seal"
-          ? (a, b) => (b.seal ?? -1) - (a.seal ?? -1)
+          ? (a, b) =>
+              (b.seal ?? -1) - (a.seal ?? -1) || a.code.localeCompare(b.code)
           : sort === "first"
-            ? (a, b) => (a.first ?? 999999) - (b.first ?? 999999)
-            : (a, b) => (b.score ?? -1) - (a.score ?? -1),
+            ? (a, b) =>
+                (a.first ?? 999999) - (b.first ?? 999999) ||
+                a.code.localeCompare(b.code)
+            : sort === "quality" && $("buy-point-filter").value
+              ? (a, b) =>
+                  (state.scores
+                    .get(b.code)
+                    ?.cards.find((c) => c.type === $("buy-point-filter").value)
+                    ?.value ?? -1) -
+                    (state.scores
+                      .get(a.code)
+                      ?.cards.find(
+                        (c) => c.type === $("buy-point-filter").value,
+                      )?.value ?? -1) || a.code.localeCompare(b.code)
+              : (a, b) =>
+                  (b.amount ?? -1) - (a.amount ?? -1) ||
+                  a.code.localeCompare(b.code),
     );
 }
 function industryResearchNote() {
@@ -537,10 +596,10 @@ function renderStocks() {
     ? rows
         .map(
           (r) =>
-            `<tr><td><button class="stock-name" data-stock="${escape(r.code)}">${escape(r.name)}</button><span class="stock-code">${escape(r.code)}</span></td><td>${scoreHtml(r.score)}</td><td><span class="sector-tag">${escape(r.sector)}</span>${currentSw ? `<small class="stock-research-industry">当前申万：${escape(researchIndustryName(r, state.industryTaxonomy, state.payload?.industryMetadata) ?? "未覆盖")}</small>` : ""}</td><td><span class="height-tag ${r.height >= 4 ? "high" : ""}">${r.height === 1 ? "首板" : r.height ? `${r.height} 板` : "—"}</span></td><td class="money">${timeLabel(r.first)}</td><td class="money">${money(r.seal)}</td><td class="money">${fmt(r.turnover)}%</td><td class="money">${r.breaks ?? "—"}</td></tr>`,
+            `<tr><td><button class="stock-name" data-stock="${escape(r.code)}">${escape(r.name)}</button><span class="stock-code">${escape(r.code)}</span></td>${scoringCells(state.scores.get(r.code), $("buy-point-filter").value, r.stockClass)}<td><span class="sector-tag">${escape(r.sector)}</span>${currentSw ? `<small class="stock-research-industry">当前申万：${escape(researchIndustryName(r, state.industryTaxonomy, state.payload?.industryMetadata) ?? "未覆盖")}</small>` : ""}</td><td><span class="height-tag ${r.height >= 4 ? "high" : ""}">${r.height === 1 ? "首板" : r.height ? `${r.height} 板` : "—"}</span></td><td class="money">${timeLabel(r.first)}</td><td class="money">${money(r.amount)}</td><td class="money">${money(r.seal)}</td><td class="money">${fmt(r.turnover)}%</td><td class="money">${r.breaks ?? "—"}</td></tr>`,
         )
         .join("")
-    : `<tr><td colspan="8"><div class="empty"><strong>${emptyTitle}</strong>${emptyText}</div></td></tr>`;
+    : `<tr><td colspan="12"><div class="empty"><strong>${emptyTitle}</strong>${emptyText}</div></td></tr>`;
   document
     .querySelectorAll("[data-stock]")
     .forEach((btn) => (btn.onclick = () => openStock(btn.dataset.stock)));
@@ -658,6 +717,8 @@ function renderLadder() {
 }
 function updateSource() {
   const p = state.payload;
+  if (p?.archived)
+    $("snapshot-status").textContent = `${p.date} 原始评分已归档`;
   $("source-tag").className =
     `source-tag ${state.demo ? "demo" : state.error ? "unavailable" : ""}`;
   $("source-tag").textContent = state.loading
@@ -709,6 +770,7 @@ function updateSource() {
     `${icon("refresh")}${state.loading ? "获取中…" : "刷新行情"}`;
 }
 async function loadData({ skipReview = false } = {}) {
+  applyArchiveDateBoundary();
   const req = ++state.request;
   const requestedDate = $("trade-date").value;
   state.demo = false;
@@ -716,7 +778,10 @@ async function loadData({ skipReview = false } = {}) {
   state.error = null;
   state.payload = null;
   state.analysis = null;
+  state.scores = new Map();
+  state.scoreStatus = null;
   state.review = null;
+  state.reviewArchived = false;
   state.ai = null;
   state.reviewMessage = "正在检查历史反馈";
   updateSource();
@@ -739,6 +804,20 @@ async function loadData({ skipReview = false } = {}) {
       throw new Error("返回的数据日期与所选日期不一致，请重新刷新");
     state.payload = payload;
     recalculate();
+    if (!state.analysis.environment) {
+      try {
+        const response = await fetch(
+          `/api/market/environment?date=${encodeURIComponent(requestedDate)}${payload.archived ? `&at=${encodeURIComponent(payload.archivedAt)}` : ""}`,
+          { signal: AbortSignal.timeout(3000) },
+        );
+        const environment = await response.json();
+        if (req === state.request && response.ok && environment.asOf) {
+          state.analysis.environment = environment;
+          state.payload.environment = environment;
+        }
+      } catch {}
+    }
+    void readScores(req);
   } catch (e) {
     if (req !== state.request) return;
     state.error =
@@ -750,7 +829,6 @@ async function loadData({ skipReview = false } = {}) {
       state.loading = false;
       updateFilters();
       updateSource();
-      updateWeightSummary();
       render();
       syncRoute({ replace: true });
       if (
@@ -809,19 +887,12 @@ window.addEventListener("metadata-updated", () => {
 function openStock(code) {
   const r = state.analysis?.stocks.find((r) => r.code === code);
   if (!r) return;
-  const sec = state.analysis.sectors.find((s) => s.name === r.sector);
-  const strongest = r.factors
-    .filter((f) => f.value !== null)
-    .sort((a, b) => b.value - a.value)[0];
-  const weakest = r.factors
-    .filter((f) => f.value !== null)
-    .sort((a, b) => a.value - b.value)[0];
-  const words = `${r.name}为${r.height === 1 ? "首板" : r.height ? `${r.height}连板` : "连板高度暂缺"}，${timeLabel(r.first)}首次封板${r.breaks !== null ? `，盘中炸板 ${r.breaks} 次` : ""}。${strongest ? `${strongest.name}是当前较强指标（${Math.round(strongest.value)} 分）。` : ""}${weakest && weakest !== strongest ? `${weakest.name}相对偏弱（${Math.round(weakest.value)} 分）。` : ""}${r.themes?.length ? `涨停原因标签 ${r.themes.join("、")}。` : ""}所属行业 ${sec?.count || 0} 家涨停，板块得分 ${sec?.score ?? "—"}。`;
   $("stock-detail").innerHTML =
-    `<div class="detail-head"><div><h2>${escape(r.name)}</h2><span class="stock-code">${escape(r.code)}${state.demo ? " · 演示样本" : ""}</span><div class="detail-tags"><span class="sector-tag">${escape(r.sector)}</span><span class="height-tag">${r.height === 1 ? "首板" : `${r.height ?? "—"} 板`}</span></div></div><div class="detail-score">${r.score ?? "—"}<small>综合评分 / 100</small></div></div><div class="detail-facts"><div><label>封单金额</label><strong>${money(r.seal)}</strong></div><div><label>封单 / 成交额</label><strong>${r.sealRatio === null ? "—" : fmt(r.sealRatio * 100)}%</strong></div><div><label>换手率</label><strong>${fmt(r.turnover)}%</strong></div><div><label>最后封板</label><strong>${timeLabel(r.last)}</strong></div></div><div class="detail-section"><h3>六维评分拆解</h3>${r.factors.map((f) => `<div class="factor-row"><span>${f.name}</span><span class="factor-track"><i style="width:${f.value ?? 0}%"></i></span><strong>${f.value === null ? "—" : Math.round(f.value)}</strong><span class="weight">权重 ${f.weight}</span></div>`).join("")}<p class="detail-footnote">有效指标均分 ${fmt(r.rawScore)} − 风险扣分 ${r.deduction} = ${r.score ?? "—"} 分 · 覆盖率 ${r.coverage}%</p></div><div class="detail-section"><h3>风险观察</h3>${r.risks.length ? r.risks.map((x) => `<div class="risk-row"><strong>${x.text} −${x.penalty}</strong><span>${x.detail}</span></div>`).join("") : '<p class="detail-footnote">当前字段未触发模型风险扣分项；公告、基本面与题材风险仍需单独核实。</p>'}</div><div class="detail-section"><h3>盘后诊断</h3><p class="detail-text">${escape(words)}</p></div><p class="detail-footnote">次日观察：竞价是否有承接、同板块是否形成合力、开板后能否回封。当前规则分数尚未经过历史收益校准，不代表上涨概率。</p>`;
+    `<div class="detail-head"><div><h2>${escape(r.name)}</h2><span class="stock-code">${escape(r.code)}${state.demo ? " · 演示样本" : ""}</span><p>${escape(r.sector)} · ${r.height ?? "—"} 板</p></div></div><div class="detail-facts"><div><label>成交额</label><strong>${money(r.amount)}</strong></div><div><label>封单金额</label><strong>${money(r.seal)}</strong></div><div><label>换手率</label><strong>${fmt(r.turnover)}%</strong></div><div><label>首次封板</label><strong>${timeLabel(r.first)}</strong></div></div><section class="detail-section"><h3>历史形态与风险事实</h3><p>${escape(r.stockClassReason ?? "分类证据不足")}</p><p>${escape((r.buyPoint?.labels ?? []).map((v) => (typeof v === "string" ? v : v.label)).join("、") || "暂无已归档形态标签")}；盘后形态不等于实际盘中触发。</p>${(r.risks ?? []).map((x) => `<p>${escape(x.text ?? x)}：${escape(x.detail ?? "")}</p>`).join("")}</section><section class="detail-section"><h3>六类买点评分卡</h3>${scoringCards(state.scores.get(code))}</section>`;
   observatory.showStockPlan(code, state.payload?.date, state.demo);
   if (!$("stock-dialog").open) $("stock-dialog").showModal();
 }
+
 document
   .querySelectorAll(".close-dialog")
   .forEach((btn) => (btn.onclick = () => btn.closest("dialog").close()));
@@ -864,6 +935,7 @@ $("theme-filter-clear").onclick = () => {
 $("refresh-btn").onclick = loadData;
 $("trade-date").onchange = () => {
   dateChosen = true;
+  applyArchiveDateBoundary();
   syncRoute();
   void loadData();
 };
@@ -885,82 +957,6 @@ document.querySelectorAll("[data-height]").forEach(
       syncRoute({ replace: true });
     }),
 );
-function renderWeights() {
-  $("weight-controls").innerHTML = FACTORS.map(
-    (f, i) =>
-      `<div class="weight-item"><div class="weight-heading"><label for="weight-${i}">${f.name}</label><output id="weight-output-${i}" for="weight-${i}">${state.weights[i]}%</output></div><input id="weight-${i}" data-weight="${i}" type="range" min="0" max="50" step="1" value="${state.weights[i]}" aria-describedby="weight-desc-${i}"><p id="weight-desc-${i}">${f.description}</p></div>`,
-  ).join("");
-  document.querySelectorAll("[data-weight]").forEach(
-    (input) =>
-      (input.oninput = () => {
-        const next = [...state.weights];
-        next[Number(input.dataset.weight)] = Number(input.value);
-        if (!next.some((v) => v > 0)) {
-          input.value = state.weights[Number(input.dataset.weight)];
-          $("model-status").textContent = "至少保留一项有效权重";
-          return;
-        }
-        state.weights = next;
-        $(`weight-output-${input.dataset.weight}`).textContent =
-          `${input.value}%`;
-        saveWeights();
-      }),
-  );
-  updateWeightSummary();
-}
-function updateWeightSummary() {
-  const total = state.weights.reduce((a, b) => a + b, 0);
-  $("weight-total").textContent = `合计 ${total}%`;
-  $("model-status").textContent = state.payload?.archived
-    ? "当前展示当天冻结评分；修改权重不会重算历史归档"
-    : total === 100
-      ? "已即时重算 · 即时重算"
-      : `合计 ${total}%，计算时自动归一化`;
-  document.querySelectorAll("[data-preset]").forEach((btn) =>
-    btn.classList.toggle(
-      "active",
-      PRESETS[btn.dataset.preset].every((v, i) => v === state.weights[i]),
-    ),
-  );
-}
-let settingsTimer;
-function saveWeights() {
-  try {
-    localStorage.setItem("limitLensWeights", JSON.stringify(state.weights));
-  } catch {}
-  updateWeightSummary();
-  recalculate();
-  render();
-  clearTimeout(settingsTimer);
-  settingsTimer = setTimeout(async () => {
-    try {
-      const response = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ weights: state.weights }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-      $("model-status").textContent = "权重已保存 · 已归档评分保持原样";
-    } catch {
-      $("model-status").textContent =
-        "服务器保存失败，当前调整仍可使用，请稍后重试。";
-    }
-  }, 500);
-}
-document.querySelectorAll("[data-preset]").forEach(
-  (btn) =>
-    (btn.onclick = () => {
-      state.weights = [...PRESETS[btn.dataset.preset]];
-      saveWeights();
-      renderWeights();
-    }),
-);
-$("reset-model").onclick = () => {
-  state.weights = [...PRESETS.balanced];
-  saveWeights();
-  renderWeights();
-};
 function demoData() {
   const sectors = [
     "示例·软件服务",
@@ -1021,9 +1017,13 @@ $("demo-btn").onclick = () => {
   ++state.request;
   state.loading = false;
   state.demo = true;
+  state.scores = new Map();
+  state.scoreStatus = "DEMO";
+  $("stock-score-status").textContent = "演示模式不生成真实评分或研究证据";
   state.themeFilter = null;
   state.error = null;
   state.review = null;
+  state.reviewArchived = false;
   state.ai = null;
   state.reviewMessage = "演示样本不会保存评分或生成市场反馈。";
   state.payload = {
@@ -1054,21 +1054,26 @@ function renderReview() {
   const r = state.review,
     ai = state.ai;
   const execution = !r || isExecutionReview(r);
+  const practice = isPracticeReview(r);
   const executionView = isExecutionReview(r) ? executionReviewView(r) : null;
   $("review-view").classList.toggle("execution-review", execution);
   $("review-stock-title").textContent = execution
-    ? "昨日计划与今日成交表现"
+    ? practice
+      ? "全账户、候选与风险过程"
+      : "昨日计划与今日成交表现"
     : "原始评分与实际表现";
   $("review-stock-description").textContent = execution
-    ? "仅主账户实际成交标的；按冻结买点、执行事实和含费结果反馈"
+    ? practice
+      ? "含未交易持仓与实际准入候选；只根据原始观测解释触发、拦截和缺口"
+      : "仅主账户实际成交标的；按冻结买点、执行事实和含费结果反馈"
     : "固定昨日样本，检验今天的表现，避免事后挑选赢家";
   $("review-stock-headers").innerHTML = (
     execution
       ? [
-          "实际成交个股",
+          practice ? "持仓及候选" : "实际成交个股",
           "买点与动作",
           "实际成交",
-          "今日市场表现",
+          practice ? "持仓风险与已观察波动" : "今日市场表现",
           "含费损益（元）",
           "执行反馈",
         ]
@@ -1087,7 +1092,9 @@ function renderReview() {
     ? "板块反馈"
     : "板块判断反馈";
   $("review-sector-description").textContent = execution
-    ? "按成交标的的冻结行业归属汇总，不代表整个板块表现"
+    ? practice
+      ? "按全账户持仓及候选的冻结行业归属汇总"
+      : "按成交标的的冻结行业归属汇总，不代表整个板块表现"
     : "使用昨日固定的涨停成员，比较次日平均表现";
   $("review-sector-headers").innerHTML = (
     execution
@@ -1122,6 +1129,9 @@ function renderReview() {
     ? "正在归档与核验收盘结果…"
     : state.reviewMessage || "核验昨日冻结计划在今日的实际成交与收盘表现。";
   $("run-review").disabled = state.reviewBusy || state.demo;
+  $("run-review").textContent = state.reviewArchived
+    ? "刷新归档"
+    : "归档与核验";
   $("review-coverage").textContent = r
     ? execution
       ? r.total
@@ -1251,26 +1261,31 @@ function renderReview() {
   $("ai-status-tag").textContent = state.aiConfig.configured
     ? "已连接"
     : "待配置";
-  $("model-ai-status").textContent = state.aiConfig.configured
-    ? "已配置"
-    : "未配置";
-  $("model-ai-detail").textContent = state.aiConfig.configured
-    ? `已配置 ${state.aiConfig.model}。只向模型发送冻结依据、核验结果与同口径的近期客观指标（不含过往AI意见），评价会与原始数据一并保存。`
-    : "服务端配置密钥、接口地址和模型后，AI 会根据已归档依据与核验结果生成评价。密钥不进入浏览器。";
   $("ai-content").innerHTML = ai
-    ? `<div class="ai-score"><strong>${ai.score}</strong><span>AI 主观评价 / 100<small>${escape(ai.model)} · AI 主观把握${ai.confidence === "high" ? "较高" : ai.confidence === "medium" ? "中等" : "较低"}（主观评价，不是统计置信区间）</small></span></div><p class="ai-summary">${escape(ai.summary)}</p><h3>评价依据</h3><ul>${ai.evidence.map((v) => `<li>${escape(v)}</li>`).join("")}</ul>${ai.failures.length ? `<h3>判断不足</h3><ul>${ai.failures.map((v) => `<li>${escape(v)}</li>`).join("")}</ul>` : ""}${ai.suggestions.length ? `<h3>改进建议</h3><ul>${ai.suggestions.map((v) => `<li>${escape(v)}</li>`).join("")}</ul>` : ""}<p class="ai-note">${execution ? "AI 主观评价与客观成交指标分别保留；单日反馈不证明策略有效，不改变配置验证状态。" : "AI 评价与规则反馈分分别保留。统计区间见上方滚动证据摘要；建议不会自动改写模型。"}</p>`
-    : `<div class="ai-empty"><span class="ai-symbol">${icon("sliders")}</span><h3>${state.aiConfig.configured ? (r?.status === "NO_TRADES" ? "当日无成交" : "等待已核验结果") : "大模型尚未配置"}</h3><p>${state.aiConfig.configured ? (execution ? "至少一个实际成交标的可核验后，AI 才生成描述性复盘；无成交不评价策略优劣。" : "积累事前快照并取得次日收盘结果后，AI 才对系统评价。") : "已预留 DeepSeek、OpenAI、通义兼容接口。配置服务端密钥后启用；不会用模拟 AI 结论替代真实调用。"}</p><div class="ai-process">${execution ? "冻结昨日计划<span>↓</span>核验今日成交与成本<span>↓</span>AI 复盘、证据与改进建议" : "冻结昨日评分<span>↓</span>核验今日市场结果<span>↓</span>AI 评分、证据与改进建议"}</div></div>`;
+    ? `<div class="ai-score"><strong>复盘</strong><span>依据与待验证建议<small>${escape(ai.model)} · AI 主观把握${ai.confidence === "high" ? "较高" : ai.confidence === "medium" ? "中等" : "较低"}（主观评价，不是统计置信区间）</small></span></div><p class="ai-summary">${escape(ai.summary)}</p><h3>评价依据</h3><ul>${ai.evidence.map((v) => `<li>${escape(v)}</li>`).join("")}</ul>${ai.failures.length ? `<h3>判断不足</h3><ul>${ai.failures.map((v) => `<li>${escape(v)}</li>`).join("")}</ul>` : ""}${ai.suggestions.length ? `<h3>改进建议</h3><ul>${ai.suggestions.map((v) => `<li>${escape(v)}</li>`).join("")}</ul>` : ""}${practice && ai.hypotheses?.length ? `<h3>待验证假设</h3><ul>${ai.hypotheses.map((h) => `<li>${escape(h.statement)}<small>依据：${escape(h.evidenceRefs.join("、"))}；验证：${escape(h.requiredValidation)}</small></li>`).join("")}</ul>` : ""}<p class="ai-note">${execution ? "AI 主观评价与客观成交指标分别保留；单日反馈不证明策略有效，不改变配置验证状态。" : "AI 评价与规则反馈分分别保留。统计区间见上方滚动证据摘要；建议不会自动改写模型。"}</p>`
+    : `<div class="ai-empty"><span class="ai-symbol">${icon("sliders")}</span><h3>${state.aiConfig.configured ? (practice ? "等待练习复盘" : r?.status === "NO_TRADES" ? "当日无成交" : "等待已核验结果") : "大模型尚未配置"}</h3><p>${state.aiConfig.configured ? (practice ? "根据全账户持仓、候选触发、风险约束和数据质量生成运行复盘；零成交也保留有依据的解释。" : execution ? "至少一个实际成交标的可核验后，AI 才生成描述性复盘；无成交不评价策略优劣。" : "积累事前快照并取得次日收盘结果后，AI 才对系统评价。") : "已预留 DeepSeek、OpenAI、通义兼容接口。配置服务端密钥后启用；不会用模拟 AI 结论替代真实调用。"}</p><div class="ai-process">${execution ? "冻结昨日计划<span>↓</span>核验今日成交与成本<span>↓</span>AI 复盘、证据与改进建议" : "冻结昨日评分<span>↓</span>核验今日市场结果<span>↓</span>AI 评分、证据与改进建议"}</div></div>`;
   $("ai-grade-btn").disabled =
     state.demo ||
+    state.reviewArchived ||
     state.reviewBusy ||
     !state.aiConfig.configured ||
     !r ||
     !!ai ||
-    (execution ? r.validCount < 1 : r.validCount < 10 || r.coverage < 0.8);
-  $("ai-grade-btn").textContent = ai ? "评价已保存" : "生成 AI 评价";
-  const history = state.history?.reviews || [];
+    (practice
+      ? !r.aiEligible
+      : execution
+        ? r.validCount < 1
+        : r.validCount < 10 || r.coverage < 0.8);
+  $("ai-grade-btn").textContent = ai
+    ? "评价已保存"
+    : state.reviewArchived
+      ? "归档评价只读"
+      : "生成 AI 评价";
+  const history = (state.history?.reviews ?? []).filter(
+    (h) => h.date >= REVIEW_ARCHIVE_START_DATE,
+  );
   $("review-history").innerHTML = history.length
-    ? `<div class="history-list">${history.map((h) => `<button data-history="${escape(h.date)}"><span>${escape(h.snapshotDate)} → ${escape(h.date)}</span><span>${isExecutionReview(h) ? (h.status === "NO_TRADES" ? "当日无成交" : `成交 ${h.summary.stockCount} 只 · 当日含费 ${reviewMoney(h.summary.dailyPnlCents)} 元`) : `历史评分反馈 · 客观 ${h.systemScore ?? "—"} 分`} · AI ${h.aiScore ?? "—"} 分</span></button>`).join("")}</div>`
+    ? `<div class="history-list">${history.map((h) => `<button data-history="${escape(h.date)}"><span>${escape(h.snapshotDate)} → ${escape(h.date)}</span><span>${isPracticeReview(h) ? `全账户当日含费 ${reviewMoney(h.summary.dailyPnlCents)} 元 · ${h.summary.fillCount}笔成交` : isExecutionReview(h) ? (h.status === "NO_TRADES" ? "当日无成交" : `成交 ${h.summary.stockCount} 只 · 当日含费 ${reviewMoney(h.summary.dailyPnlCents)} 元`) : `历史评分反馈 · 客观 ${h.systemScore ?? "—"} 分`}${isPracticeReview(h) ? " · 每日运行复盘" : " · AI文字复盘"}</span></button>`).join("")}</div>`
     : '<div class="empty compact">尚无反馈记录。快照与反馈会保存到服务端，跨设备可查看。</div>';
   document.querySelectorAll("[data-history]").forEach(
     (btn) =>
@@ -1296,6 +1311,7 @@ async function readReview(req = state.request) {
     state.history = historyResponse.ok ? h : state.history;
     if (!response.ok) throw new Error(p.error);
     state.review = p.review;
+    state.reviewArchived = !!p.archived;
     state.ai = p.ai;
     state.aiConfig = p.aiStatus || state.aiConfig;
     // 滚动证据为探索诊断（purpose=DIAGNOSTIC），只展示后端冻结结果
@@ -1325,6 +1341,7 @@ async function runDaily(req = state.request) {
     if (req !== state.request || state.demo) return;
     if (!response.ok) throw new Error(p.error);
     state.review = p.review;
+    state.reviewArchived = !!p.archived;
     state.ai = p.ai || null;
     state.aiConfig = p.aiStatus || state.aiConfig;
     state.history = p.history || state.history;
@@ -1354,7 +1371,7 @@ async function runDaily(req = state.request) {
   }
 }
 $("run-review").onclick = () => {
-  if ($("trade-date").value === today) void runDaily();
+  if ($("trade-date").value === today && !state.reviewArchived) void runDaily();
   else void readReview();
 };
 $("ai-grade-btn").onclick = async () => {
@@ -1408,10 +1425,54 @@ async function initialize() {
     state.storageAvailable = true;
     if (validWeightsForUI(p.weights)) state.weights = p.weights;
     state.aiConfig = p.ai;
-    renderWeights();
   }
   await loadData();
 }
+async function readScores(req = state.request) {
+  if (state.demo) return;
+  const date = $("trade-date").value;
+  try {
+    const response = await fetch(
+      `/api/research/scoring/scores?date=${encodeURIComponent(date)}`,
+    );
+    const payload = await response.json();
+    if (req !== state.request || date !== $("trade-date").value || state.demo)
+      return;
+    if (!response.ok) throw new Error(payload.error);
+    state.scores = new Map(payload.rows.map((r) => [r.code, r]));
+    state.scoreStatus = payload.status;
+    $("stock-score-status").textContent =
+      payload.status === "SOURCE_CHANGED"
+        ? payload.note
+        : payload.rows.some((r) => r.freshness === "STALE")
+          ? "存在过期观测，动态分数保持未知"
+          : payload.status === "LAGGING"
+            ? "评分处理中，显示已处理观测"
+            : payload.rows.length
+              ? "固定规则 · 不同买点不混排 · 北京时间"
+              : "尚无该日实际观测，分数保持未知";
+    renderStocks();
+  } catch {
+    if (req === state.request)
+      $("stock-score-status").textContent = "评分暂不可用，行情与交易继续运行";
+  }
+}
+$("buy-point-filter").onchange = () => {
+  $("sort").querySelector('[value="quality"]').disabled =
+    !$("buy-point-filter").value;
+  if (!$("buy-point-filter").value && $("sort").value === "quality")
+    $("sort").value = "amount";
+  renderStocks();
+  syncRoute({ replace: true });
+};
+window.addEventListener("research-navigate", (event) => {
+  state.researchTab = event.detail?.tab ?? "current";
+  setView("settings");
+});
+setInterval(() => {
+  if (["stocks", "overview"].includes(state.view) && !document.hidden)
+    void readScores();
+}, 15000);
 function validWeightsForUI(w) {
   return (
     Array.isArray(w) &&
@@ -1422,7 +1483,7 @@ function validWeightsForUI(w) {
 }
 routingReady = true;
 restoreRoute({ initial: true });
-renderWeights();
+
 updateSource();
 render();
 renderReview();
@@ -1436,7 +1497,7 @@ if (document.modelContext?.registerTool) {
           name: "read_limit_up_analysis",
           title: "读取涨停分析",
           description:
-            "读取当前交易日的个股与行业评分，并明确返回真实或演示数据状态。",
+            "读取当前日期的客观行情与分层买点评分，携带版本、观测时间、覆盖和执行状态；真实与演示明确区分。",
           inputSchema: {
             type: "object",
             properties: {},
@@ -1461,7 +1522,9 @@ if (document.modelContext?.registerTool) {
                   code: r.code,
                   name: r.name,
                   sector: r.sector,
-                  score: r.score,
+                  observationScore: state.scores.get(r.code) ?? null,
+                  stockClass: r.stockClass ?? null,
+                  amount: r.amount ?? null,
                   coverage: r.coverage,
                   risks: r.risks.map((x) => x.text),
                 })) || [],

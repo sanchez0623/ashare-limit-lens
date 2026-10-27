@@ -1,7 +1,14 @@
 import { BUY_POINT_LABELS } from "./buy-point-type.js";
+import { adaptiveEffective } from "./adaptive-risk.js";
 
 export const DRAGON_POLICY_VERSION = "dragon-risk-v1";
 export const DRAGON_TEMPLATE_VERSION = "dragon-template-v1";
+export const DRAGON_ADAPTIVE_TEMPLATE_VERSION = "dragon-template-v2";
+// Frozen only in new adaptive plans. Missing policy retains the old shared cap.
+export const DRAGON_T_CAPITAL_POLICY = Object.freeze({
+  version: "dragon-t-capital-v1",
+  maxGrossWeight: 1,
+});
 export const DRAGON_RISK_FIELDS = Object.freeze([
   {
     key: "entryRisk",
@@ -68,7 +75,7 @@ export const DRAGON_ADVANCED_FIELDS = Object.freeze([
     label: "做 T 占可卖底仓比例",
     default: 0.1,
     min: 0.05,
-    max: 0.2,
+    max: 0.5,
   },
   {
     key: "tSpread",
@@ -112,7 +119,7 @@ export const DRAGON_FIELD_REGISTRY = Object.freeze(
           : f.integer
             ? "count"
             : "ratio",
-        editableBy: group === "advanced" ? ["user", "ai-candidate"] : ["user"],
+        editableBy: group !== "risk" ? ["user", "ai-candidate"] : ["user"],
         effectiveScope: "next-unfrozen-plan",
       }),
     ),
@@ -201,6 +208,34 @@ export function defaultDragonConfig() {
     ),
   };
 }
+export function dragonCapitalPreset(config = defaultDragonConfig()) {
+  const next = structuredClone(normalizeDragonConfig(config));
+  next.risk.portfolioRisk = 0.05;
+  next.risk.grossWeight = 0.7;
+  next.advanced.tFraction = 0.5;
+  return normalizeDragonConfig(next);
+}
+
+export function dragonTCapitalLimits(config, effective) {
+  const grossWeight =
+    effective.grossWeight == null
+      ? null
+      : Math.min(
+          DRAGON_T_CAPITAL_POLICY.maxGrossWeight,
+          effective.grossWeight / config.risk.grossWeight,
+        );
+  return {
+    grossWeight,
+    stockWeight:
+      effective.stockWeight == null
+        ? null
+        : Math.min(1, effective.stockWeight * (1 + config.advanced.tFraction)),
+    sectorWeight:
+      effective.sectorWeight == null
+        ? null
+        : Math.min(1, effective.sectorWeight * (1 + config.advanced.tFraction)),
+  };
+}
 function exact(value, keys, name) {
   if (
     !value ||
@@ -271,30 +306,34 @@ export function normalizeDragonConfig(input) {
     );
   return out;
 }
-export function dragonPreview(config, phase = "unknown") {
+export function dragonPreview(config, phase = "unknown", adaptive = null) {
   const c = normalizeDragonConfig(config),
     regime = DRAGON_REGIMES[phase] ?? DRAGON_REGIMES.unknown;
   return {
     policyVersion: DRAGON_POLICY_VERSION,
-    templateVersion: DRAGON_TEMPLATE_VERSION,
+    templateVersion: adaptive
+      ? DRAGON_ADAPTIVE_TEMPLATE_VERSION
+      : DRAGON_TEMPLATE_VERSION,
     phase,
-    label: regime.label,
+    label: adaptive ? "三层动态感知" : regime.label,
     configured: c,
-    effective: {
-      entryRisk: c.risk.entryRisk * regime.factor,
-      portfolioRisk: c.risk.portfolioRisk * regime.factor,
-      grossWeight:
-        regime.target == null
-          ? regime.factor
-            ? c.risk.grossWeight * regime.factor
-            : null
-          : Math.min(c.risk.grossWeight, regime.target),
-      open: regime.open,
-      profitAdd: regime.profitAdd && c.operations.profitAdd,
-      lossAdd: regime.lossAdd && c.operations.lossAdd,
-      tForward: regime.t && c.operations.tForward,
-      tReverse: regime.t && c.operations.tReverse,
-    },
+    effective: adaptive
+      ? adaptiveEffective(c, adaptive)
+      : {
+          entryRisk: c.risk.entryRisk * regime.factor,
+          portfolioRisk: c.risk.portfolioRisk * regime.factor,
+          grossWeight:
+            regime.target == null
+              ? regime.factor
+                ? c.risk.grossWeight * regime.factor
+                : null
+              : Math.min(c.risk.grossWeight, regime.target),
+          open: regime.open,
+          profitAdd: regime.profitAdd && c.operations.profitAdd,
+          lossAdd: regime.lossAdd && c.operations.lossAdd,
+          tForward: regime.t && c.operations.tForward,
+          tReverse: regime.t && c.operations.tReverse,
+        },
     note: "计划风险为估算；费用、滑点、仓位与成交容量可继续收紧。缺数据停止新增，不回退旧参数。",
   };
 }
@@ -304,9 +343,10 @@ export function dragonEffectiveFields(
   config,
   phase = "unknown",
   paused = false,
+  adaptive = null,
 ) {
   const c = normalizeDragonConfig(config),
-    preview = dragonPreview(c, phase),
+    preview = dragonPreview(c, phase, adaptive),
     rows = [];
   for (const [group, fields] of [
     ["risk", DRAGON_RISK_FIELDS],
@@ -320,10 +360,17 @@ export function dragonEffectiveFields(
         reason = "依设定执行";
       if (
         group === "risk" &&
-        ["entryRisk", "portfolioRisk", "grossWeight"].includes(f.key)
+        [
+          "entryRisk",
+          "portfolioRisk",
+          "grossWeight",
+          ...(adaptive ? ["stockWeight", "sectorWeight"] : []),
+        ].includes(f.key)
       ) {
         effective = preview.effective[f.key];
-        reason = preview.label + "市场预算";
+        reason = adaptive
+          ? `动态市场系数 ${(preview.effective.marketFactor * 100).toFixed(1)}%；单股与板块另受局部系数约束`
+          : preview.label + "市场预算";
         if (paused && f.key !== "grossWeight") {
           effective = 0;
           reason = "账户暂停新增风险，保护退出继续";

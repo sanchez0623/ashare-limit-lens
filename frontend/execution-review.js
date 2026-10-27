@@ -1,4 +1,5 @@
 import { BUY_POINT_LABELS } from "../shared/buy-point-type.js";
+import { isPracticeReview } from "../shared/practice.js";
 
 const escape = (value) =>
   String(value ?? "").replace(
@@ -47,6 +48,7 @@ const statusNames = {
 };
 
 export function executionReviewView(review) {
+  if (isPracticeReview(review)) return practiceReviewView(review);
   const r = review,
     s = r.summary;
   const policy = r.policy ?? {};
@@ -129,5 +131,88 @@ export function executionReviewView(review) {
           )
           .join("")
       : '<tr><td colspan="5"><div class="empty compact">当日无成交，不生成板块表现结论。</div></td></tr>',
+  };
+}
+
+function practiceReviewView(r) {
+  const s = r.summary,
+    a = r.account;
+  const groups = (r.attribution.byBuyPoint ?? [])
+    .map(
+      (g) =>
+        `${BUY_POINT_LABELS[g.key] ?? g.key}：${g.completedRounds}个已完成周期，含费 ${reviewMoney(g.netPnlCents)} 元`,
+    )
+    .join("；");
+  const combined = (r.attribution.byOperationCombination ?? [])
+    .map(
+      (g) =>
+        `${
+          g.key === "OPEN_EXIT"
+            ? "建仓退出"
+            : g.key
+                .split("+")
+                .map((v) => actionNames[v] ?? v)
+                .join("+")
+        }：${g.completedRounds}个周期，胜率 ${g.winRate == null ? "—" : (g.winRate * 100).toFixed(1) + "%"}，含费 ${reviewMoney(g.netPnlCents)} 元，平均持有 ${g.averageHoldingCalendarDays?.toFixed(1) ?? "—"}天`,
+    )
+    .join("；");
+  return {
+    dateLabel: `${r.date} 全账户练习复盘`,
+    metrics: [
+      {
+        name: "全账户当日含费损益",
+        value: reviewMoney(a.dailyPnlCents),
+        unit: "元",
+        caption: "与期初至收盘权益变化核对",
+      },
+      {
+        name: "实际成交 / 候选",
+        value: `${s.fillCount} / ${s.candidateCount}`,
+        unit: "笔 / 只",
+        caption: `持仓 ${s.positionCount ?? "未知"} 只 · 完整周期 ${s.completedRounds}`,
+      },
+      {
+        name: "当日费用 / 已完成T价差",
+        value: `${reviewMoney(s.feeCents)} / ${reviewMoney(s.completedTNetPnlCents)}`,
+        unit: "元",
+        caption: "T价差已包含在账户收益内",
+      },
+      {
+        name: "研究数据",
+        value: r.researchEligible ? "完整" : "证据不足",
+        unit: "",
+        caption: `${r.coverage.frameCount ?? 0}帧 · ${r.coverage.gaps?.length ?? 0}类缺口`,
+      },
+    ],
+    conclusion: `${r.conclusion} ${groups || "尚无当日完成周期；分组证据持续积累。"} ${combined ? `操作组合：${combined}。` : ""} ${!r.coverage.complete ? "行情或输入缺口仅作诊断，不进入正式验证。" : ""}`,
+    rows:
+      r.rows
+        .map((row) => {
+          const decisions = [...row.decisions].sort((x, y) =>
+            String(y.last.observedAt).localeCompare(String(x.last.observedAt)),
+          );
+          const reasons = decisions
+            .slice(0, 4)
+            .map((d) =>
+              line(
+                escape(d.reason),
+                `${escape(d.phase)} · ${escape(d.observations)}次观测`,
+              ),
+            )
+            .join("");
+          const risk = row.risk
+            ? `${line("初始R / 保护位", `¥${reviewMoney(row.risk.r0Cents)} / ¥${reviewMoney(row.risk.stopCents)}`)}${line("减仓档 / 当前R", `${row.risk.stage ?? "—"} / ${Number.isFinite(row.risk.currentR) ? row.risk.currentR.toFixed(2) : "—"}`)}`
+            : "无持仓风险敞口";
+          return `<tr><td><strong class="review-stock">${escape(row.name)}</strong><span class="stock-code">${escape(row.code)} · ${row.role === "CANDIDATE" ? "观察候选" : "持仓或成交"}</span></td><td>${escape(row.buyPoints.map((p) => BUY_POINT_LABELS[p] ?? p).join("、") || "待触发")}${line("动作", escape(row.actions.join("、") || "无成交"))}</td><td>${line("期初 → 期末", `${row.openingQuantity} → ${row.endingQuantity} 股`)}${line("成交", `${row.fillCount} 笔`)}</td><td>${risk}${row.observedExcursion ? line("入场后已观察有利 / 不利波动", `${(row.observedExcursion.favorable * 100).toFixed(2)}% / ${(row.observedExcursion.adverse * 100).toFixed(2)}%`) : ""}</td><td>${line("当日", moneyCell(row.dailyPnlCents))}${line("历史成本浮盈", moneyCell(row.unrealizedPnlCents))}${line("费用", reviewMoney(row.feeCents))}</td><td>${reasons || "过程证据未知"}${row.risk?.pendingT ? line("做T", "第二腿未完成，实际仓位保留") : ""}${row.reasons.map((v) => line("资料缺项", escape(v))).join("")}</td></tr>`;
+        })
+        .join("") ||
+      `<tr><td colspan="6">空仓且无实际准入候选；${escape(r.conclusion)}</td></tr>`,
+    sectors:
+      r.sectors
+        .map(
+          (sector) =>
+            `<tr><td>${escape(sector.name)}</td><td>${sector.stockCount} 只 / ${sector.fillCount} 笔</td><td>全账户持仓及成交</td><td>${moneyCell(sector.dailyPnlCents)}</td><td>费用 ${reviewMoney(sector.feeCents)} 元</td></tr>`,
+        )
+        .join("") || '<tr><td colspan="5">无行业风险敞口</td></tr>',
   };
 }

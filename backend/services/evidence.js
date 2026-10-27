@@ -1115,14 +1115,14 @@ export async function discoverMissingEvidenceWindows(env) {
       latest: (
         await db
           .prepare(
-            "SELECT MAX(trade_date) AS d FROM reviews WHERE COALESCE(json_extract(payload, '$.reviewKind'), '') <> 'V5_EXECUTION'",
+            "SELECT MAX(trade_date) AS d FROM reviews WHERE COALESCE(json_extract(payload, '$.reviewKind'), '') NOT IN ('V5_EXECUTION', 'DRAGON_PRACTICE')",
           )
           .first()
       )?.d,
       count: (
         await db
           .prepare(
-            "SELECT COUNT(*) AS c FROM reviews WHERE COALESCE(json_extract(payload, '$.reviewKind'), '') <> 'V5_EXECUTION'",
+            "SELECT COUNT(*) AS c FROM reviews WHERE COALESCE(json_extract(payload, '$.reviewKind'), '') NOT IN ('V5_EXECUTION', 'DRAGON_PRACTICE')",
           )
           .first()
       ).c,

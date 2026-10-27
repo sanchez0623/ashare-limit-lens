@@ -9,6 +9,12 @@ import {
   DRAGON_FIELD_REGISTRY,
 } from "../../shared/dragon-risk-config.js";
 import {
+  ADAPTIVE_RISK_POLICY,
+  adaptiveRiskView,
+  initialAdaptiveRisk,
+  hasAdaptiveMarketEvidence,
+} from "../../shared/adaptive-risk.js";
+import {
   registerDragonConfig,
   loadDragonConfig,
   dragonBookFields,
@@ -23,7 +29,14 @@ import {
 import { executionEngineBuildDigest } from "../domain/execution-build.js";
 import { digestOf, canonicalJson } from "../domain/research-lineage.js";
 import { newBook, auditLedger } from "../domain/trading.js";
-import { isDragon, DRAGON_RULES } from "../domain/dragon-risk.js";
+import {
+  isDragon,
+  isAdaptiveDragon,
+  DRAGON_RULES,
+  createDragonPlan,
+} from "../domain/dragon-risk.js";
+import { frozenProgramSignal } from "../storage/strategy-signals.js";
+import { verifyPolicyBundle } from "../storage/execution-cost.js";
 import { INTRADAY_ENTRY_RULES } from "../domain/intraday-entry.js";
 import { dragonSyntheticChecks } from "../domain/dragon-self-check.js";
 import {
@@ -36,7 +49,9 @@ import {
   openSession,
   advanceSession,
   closeSession,
+  inSession,
 } from "../domain/realtime.js";
+import { practiceCoverage } from "../domain/practice-coverage.js";
 import { buildIntradayContext } from "./intraday-inputs.js";
 import { freezePortfolioPlan, settlePortfolioDay } from "./portfolio-runner.js";
 import { collectTradingDay } from "./market.js";
@@ -48,6 +63,10 @@ import {
   dragonResearchStatus,
 } from "./dragon-research.js";
 import { prepareResearchCancellation } from "./research-cancellation.js";
+import {
+  PATTERN_POLICY,
+  patternEconomicPass,
+} from "../domain/dragon-patterns.js";
 
 const observerId = (id) => `dragon-observer:${id}`;
 const protectedLegacyFields = [
@@ -93,6 +112,7 @@ async function commitAccount(
     beforePolicy: account.book.tradingPolicyVersion ?? "legacy",
     afterPolicy: book.tradingPolicyVersion ?? "legacy",
     transition: book.dragonTransition,
+    pendingDragonConfigId: book.pendingDragonConfigId ?? null,
     riskRuntime: {
       dragonHalted: book.dragonHalted,
       dragonRiskPeakCents: book.dragonRiskPeakCents,
@@ -138,6 +158,55 @@ export function previewDragonConfig(config, phase = "unknown") {
     ...dragonPreview(config, phase),
     fields: dragonEffectiveFields(config, phase),
     effectiveFrom: "预览情境；保存后用于下一份尚未冻结的计划",
+  };
+}
+export async function previewLiveDragonConfig(env, input, now = new Date()) {
+  const config = normalizeDragonConfig(input);
+  const repo = new RealtimeRepository(env);
+  const { date } = marketClock(now);
+  const [session, account] = await Promise.all([
+    repo.session(date),
+    repo.account(),
+  ]);
+  const dynamic = session?.adaptiveRisk;
+  const state = structuredClone(dynamic ?? initialAdaptiveRisk(date));
+  // Project the same frozen sensing state at the requested time; no observation
+  // is advanced and no quote/provider or account is written by a preview.
+  const projected = adaptiveRiskView(config, state, {
+    observedAt: now.toISOString(),
+    paused:
+      account?.book.dragonHalted ||
+      session?.dailyPaused ||
+      session?.missingHoldingQuotes,
+  });
+  const actual = dynamic
+    ? adaptiveRiskView(session.plan.dragonPolicy.config, state, {
+        observedAt: now.toISOString(),
+        paused:
+          account?.book.dragonHalted ||
+          session.dailyPaused ||
+          session.missingHoldingQuotes,
+      })
+    : null;
+  const fieldState = { ...state, observedAt: now.toISOString() };
+  return {
+    ...dragonPreview(config, state.market.phase ?? "unknown", fieldState),
+    effective: projected.effective,
+    mode: "live",
+    adaptiveRisk: projected,
+    actual,
+    fields: dragonEffectiveFields(
+      config,
+      state.market.phase,
+      account?.book.dragonHalted ||
+        session?.dailyPaused ||
+        session?.missingHoldingQuotes,
+      fieldState,
+    ),
+    effectiveFrom: "当前动态状态下的草稿预览；保存后用于下一份未冻结计划",
+    note: dynamic
+      ? "沿用当前会话的实际感知依据；预览不推进账户或确认次数。"
+      : "尚无今日动态会话；等待新计划与有效行情，暂不新增风险。",
   };
 }
 export async function dragonStatus(env, book = null, now = new Date()) {
@@ -248,7 +317,13 @@ export async function dragonStatus(env, book = null, now = new Date()) {
             clock.time < "15:00:00"
           ? "WAITING_EXECUTION"
           : "PREPARED";
+  const { patternResearchStatus } = await import(
+    "./dragon-pattern-research.js"
+  );
+  const { practiceWeeklyStatus } = await import("./practice-weekly.js");
   return {
+    patternResearch: await patternResearchStatus(env),
+    practiceWeekly: await practiceWeeklyStatus(env),
     policyVersion: DRAGON_POLICY_VERSION,
     state,
     ready,
@@ -280,6 +355,7 @@ export async function dragonStatus(env, book = null, now = new Date()) {
     registry: DRAGON_FIELD_REGISTRY,
     rulesPreview: {
       market: DRAGON_REGIMES,
+      adaptive: ADAPTIVE_RISK_POLICY,
       trading: DRAGON_RULES,
       entry: INTRADAY_ENTRY_RULES,
     },
@@ -652,6 +728,147 @@ export async function requestDragonActivation(env) {
   await commitAccount(env.DB, account, book, "DRAGON_DRAIN_STARTED", {}, true);
   return dragonStatus(env, book);
 }
+
+// Only the completed, source-verified pattern batch can queue its own winner.
+export async function queueVerifiedPattern(env, batchId, revision) {
+  const row = await env.DB.prepare(
+    "SELECT * FROM dragon_pattern_batches WHERE id=? AND stage='READY' AND revision=?",
+  )
+    .bind(batchId, revision)
+    .first();
+  if (!row) throw new Error("盈利模式批次尚未完成或已变化");
+  const manifest = JSON.parse(row.manifest),
+    report = JSON.parse(row.report);
+  if (
+    (await digestOf(manifest)) !== row.manifest_digest ||
+    (await digestOf(report)) !== row.report_digest ||
+    !report.actualAccountsVerified
+  )
+    throw new Error("研究清单或实际账户核验缺失");
+  const candidate = manifest.candidates.find((c) => c.id === report.winnerId);
+  const comparisons =
+    report.forward?.filter((r) => r.candidateId === report.winnerId) ?? [];
+  const historical =
+    report.historical?.filter((r) => r.candidateId === report.winnerId) ?? [];
+  const validWindow = (rows, length) =>
+    rows.length === PATTERN_POLICY.multipliers.length &&
+    PATTERN_POLICY.multipliers.every(
+      (m) => rows.filter((r) => r.multiplier === m).length === 1,
+    ) &&
+    rows.every(
+      (r) =>
+        r.passed &&
+        r.againstParent?.passed &&
+        r.againstBaseline?.passed &&
+        [r.candidate, r.parent, r.baseline].every(
+          (v) =>
+            v?.returns?.length === length && v.returns.every(Number.isFinite),
+        ) &&
+        patternEconomicPass(
+          r.candidate,
+          r.parent,
+          manifest.parent.config.risk,
+        ) &&
+        patternEconomicPass(
+          r.candidate,
+          r.baseline,
+          manifest.parent.config.risk,
+        ),
+    );
+  if (
+    !candidate ||
+    canonicalJson(manifest.policy) !== canonicalJson(PATTERN_POLICY) ||
+    new Set(report.forwardDates).size !== PATTERN_POLICY.forwardDays ||
+    !validWindow(historical, PATTERN_POLICY.testDays) ||
+    !validWindow(comparisons, PATTERN_POLICY.forwardDays)
+  )
+    throw new Error("候选未通过净盈利和对照验证");
+  const record = await loadDragonConfig(env.DB, candidate.id);
+  if (record.engineBuild !== (await executionEngineBuildDigest()))
+    throw new Error("执行版本已变化");
+  const proofRow = await env.DB.prepare(
+    "SELECT payload,digest FROM dragon_observation_reports WHERE config_id=? ORDER BY trade_date DESC LIMIT 1",
+  )
+    .bind(record.id)
+    .first();
+  const proof = proofRow && JSON.parse(proofRow.payload);
+  if (
+    !proof?.passed ||
+    (await digestOf(proof)) !== proofRow.digest ||
+    proof.engineBuild !== record.engineBuild ||
+    proof.configDigest !== record.digest ||
+    proof.date !== report.forwardDates.at(-1) ||
+    proof.observerId !== observerId(record.id)
+  )
+    throw new Error("当前版本真实技术报告未通过");
+  await assertReadinessEvidence(env, proof);
+  const account = await new PaperRepository(env).account();
+  if (
+    account.book.dragonConfigId !== manifest.parent.id ||
+    canonicalJson(account.book.dragonConfig) !==
+      canonicalJson(manifest.parent.config) ||
+    account.book.feeConfigVersion !== manifest.feeConfigVersion ||
+    (await digestOf(account.book.feeConfig)) !== manifest.feeDigest ||
+    canonicalJson(record.config.risk) !==
+      canonicalJson(manifest.parent.config.risk) ||
+    account.book.pendingDragonConfigId ||
+    account.book.dragonTransition?.candidate
+  )
+    throw new Error("研究父配置或费用已变化");
+  const book = structuredClone(account.book);
+  if (book.improvementMode === "auto") book.pendingDragonConfigId = record.id;
+  else
+    book.dragonTransition = {
+      state: "ACTIVE",
+      configId: record.id,
+      baseId: manifest.parent.id,
+      candidate: true,
+      observerId: `dragon-observer:${record.id}`,
+    };
+  const when = new Date().toISOString();
+  const extra = [
+    (guard, args) =>
+      env.DB.prepare(
+        `INSERT INTO dragon_research_runs(config_id,base_id,status,manifest,report,created_at,updated_at) SELECT ?,?,'PASSED',?,?,?,? WHERE ${guard}`,
+      ).bind(
+        record.id,
+        manifest.parent.id,
+        JSON.stringify({ ...manifest, patternBatchId: batchId }),
+        JSON.stringify(report),
+        when,
+        when,
+        ...args,
+      ),
+    (guard, args) =>
+      env.DB.prepare(
+        `UPDATE dragon_pattern_batches SET stage='PASSED',revision=revision+1,updated_at=? WHERE id=? AND ${guard}`,
+      ).bind(when, batchId, ...args),
+    (guard, args) =>
+      env.DB.prepare(
+        `DELETE FROM research_window_owners WHERE namespace='main' AND owner_type='DRAGON_PATTERN' AND owner_id=? AND ${guard}`,
+      ).bind(batchId, ...args),
+    ...manifest.accounts.map(
+      (a) => (guard, args) =>
+        env.DB.prepare(
+          `UPDATE shadow_accounts SET status='STOPPED',revision=revision+1,updated_at=? WHERE account_id=? AND ${guard}`,
+        ).bind(when, a.accountId, ...args),
+    ),
+  ];
+  await commitAccount(
+    env.DB,
+    account,
+    book,
+    "DRAGON_PATTERN_QUEUED",
+    { batchId, winnerId: record.id },
+    false,
+    extra,
+    {
+      sql: "EXISTS(SELECT 1 FROM dragon_pattern_batches WHERE id=? AND revision=? AND stage='READY') AND EXISTS(SELECT 1 FROM research_window_owners WHERE namespace='main' AND owner_type='DRAGON_PATTERN' AND owner_id=?)",
+      args: [batchId, revision, batchId],
+    },
+  );
+  return { queued: book.improvementMode === "auto", configId: record.id };
+}
 export async function requestDragonValidation(env) {
   await refreshDragonEngine(env);
   const papers = new PaperRepository(env),
@@ -684,8 +901,8 @@ export async function requestDragonValidation(env) {
   const reference = await registerDragonConfig(
     env.DB,
     canonicalJson(base.config) === canonicalJson(current.config)
-      ? defaultDragonConfig()
-      : base.config,
+      ? { ...defaultDragonConfig(), risk: structuredClone(current.config.risk) }
+      : { ...base.config, risk: structuredClone(current.config.risk) },
     base.id,
     {
       origin: "RESEARCH",
@@ -846,6 +1063,43 @@ export async function applyDragonLifecycle(env, date, now = new Date()) {
       configId: record.id,
       candidate: false,
     };
+    if (future) {
+      const previous = JSON.parse(future.payload);
+      if (
+        (await digestOf(previous)) !== future.digest ||
+        !(await verifyPolicyBundle(previous.executionCostPolicy))
+      )
+        throw new Error("升级前冻结计划或成本摘要不一致");
+      const source = await frozenProgramSignal(env.DB, previous);
+      if (!source) throw new Error("版本衔接缺少原冻结信号");
+      const plan = createDragonPlan(
+        source,
+        {
+          ...book,
+          feeConfig: previous.feeConfig,
+          feeModel: previous.feeModel,
+          feeConfigVersion: previous.feeConfigVersion,
+        },
+        now.toISOString(),
+        {
+          executionCostPolicy: previous.executionCostPolicy,
+          snapshotDigest: previous.selectionAudit.snapshotDigest,
+          observationUniverse: previous.entryExecutionPolicy.candidates,
+          manualExitRequests: previous.manualExitRequests,
+        },
+      );
+      const planDigest = await digestOf(plan);
+      extra.push((guard, args) =>
+        env.DB.prepare(
+          `INSERT INTO paper_plans(signal_date,created_at,payload,digest) SELECT ?,?,?,? WHERE ${guard}`,
+        ).bind(date, plan.createdAt, JSON.stringify(plan), planDigest, ...args),
+      );
+      extra.push((guard, args) =>
+        env.DB.prepare(
+          `INSERT INTO dragon_plan_bindings(scope,signal_date,config_id,plan_digest) SELECT 'main',?,?,? WHERE ${guard}`,
+        ).bind(date, record.id, planDigest, ...args),
+      );
+    }
     await commitAccount(
       env.DB,
       account,
@@ -960,6 +1214,7 @@ export async function verifyDragonObservation(
       session = openSession(book, inputPlan, date),
       ledger = [];
     for (const f of frames) {
+      if (marketClock(new Date(f.observedAt)).time >= "15:00:00") continue;
       const step = advanceSession(book, session, {
         ...f.payload,
         observedAt: f.observedAt,
@@ -1039,22 +1294,42 @@ export async function verifyDragonObservation(
     date,
     Number(env.TRADING_POLL_SECONDS ?? 10),
   );
+  const intradayFrames = frames.filter((f) =>
+    inSession(marketClock(new Date(f.observedAt)).time),
+  );
   const marketCoverage =
-    frames.length > 0 &&
-    frames.every((f) => {
+    intradayFrames.length > 0 &&
+    intradayFrames.every((f) => {
       const m = f.payload?.entryInputs?.market,
         age = Date.parse(f.observedAt) - Date.parse(m?.observedAt);
       return (
         m?.date === date &&
-        Object.hasOwn(DRAGON_REGIMES, m.cycle?.phase) &&
+        (isAdaptiveDragon(plan)
+          ? hasAdaptiveMarketEvidence(m)
+          : Object.hasOwn(DRAGON_REGIMES, m.cycle?.phase)) &&
         age >= 0 &&
-        age <= 120000
+        age <=
+          (isAdaptiveDragon(plan)
+            ? ADAPTIVE_RISK_POLICY.marketMaxAgeMs
+            : 120000)
       );
     });
+  const detailedCoverage =
+    stored.practice &&
+    frames.some((f) => marketClock(new Date(f.observedAt)).time >= "15:00:00")
+      ? practiceCoverage({
+          date,
+          session: stored,
+          frames: intradayFrames,
+          closingFrames: frames,
+        })
+      : null;
   const inputsPresent =
-    frames.some(
-      (f) => Object.keys(f.payload?.entryInputs?.auction ?? {}).length > 0,
-    ) &&
+    (detailedCoverage
+      ? detailedCoverage.complete
+      : frames.some(
+          (f) => Object.keys(f.payload?.entryInputs?.auction ?? {}).length > 0,
+        )) &&
     frames.every(
       (f) => f.payload?.pool?.sources?.researchPoolDate === plan.signalDate,
     ) &&
@@ -1195,8 +1470,27 @@ export async function maintainDragonObservation(env, date, now = new Date()) {
   return { status: "OBSERVING", accountId, signalDate: date };
 }
 export async function preparePendingDragonObservation(env, now = new Date()) {
-  const account = await new PaperRepository(env).account();
-  if (account?.book.lastDate)
+  const { prepareManualExitPlan } = await import("./manual-exits.js");
+  await prepareManualExitPlan(env, now);
+  const { maintainPatternResearch } = await import(
+    "./dragon-pattern-research.js"
+  );
+  await maintainPatternResearch(env, now);
+  let account = await new PaperRepository(env).account();
+  if (isDragon(account?.book) && account.book.pendingDragonConfigId) {
+    const pending = await loadDragonConfig(
+      env.DB,
+      account.book.pendingDragonConfigId,
+    );
+    if (pending.origin === "ENGINE_UPGRADE") {
+      await applyDragonLifecycle(env, account.book.lastDate, now);
+      account = await new PaperRepository(env).account();
+    }
+  }
+  if (account?.book.lastDate) {
+    const { prepareEnvironmentTrial } = await import("./market-environment.js");
+    await prepareEnvironmentTrial(env, now);
     return maintainDragonObservation(env, account.book.lastDate, now);
+  }
   return null;
 }

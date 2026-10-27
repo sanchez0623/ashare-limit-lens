@@ -1,4 +1,5 @@
 import { BUY_POINT_LABELS } from "../shared/buy-point-type.js";
+import { renderPagination, bindPageJump } from "./pagination.js";
 
 const PAGE_SIZE = 10;
 const escape = (value) =>
@@ -113,25 +114,11 @@ function renderRows(rows) {
 
 function renderPager(data, loading) {
   if (!data) return "";
-  const { page, totalPages, total } = data;
-  const button = (label, target, disabled = false, active = false) =>
-    `<button type="button" class="page-btn${active ? " active" : ""}" data-entry-ledger-page="${target}" ${loading || disabled ? "disabled" : ""}${active ? ' aria-current="page"' : ""}>${label}</button>`;
-  // 只生成边界与当前页邻近的按钮，页数很大时也保持固定大小。
-  const pages = [...new Set([1, page - 1, page, page + 1, totalPages])]
-    .filter((number) => number >= 1 && number <= totalPages)
-    .sort((a, b) => a - b);
-  const numbers = pages
-    .map(
-      (number, index) =>
-        `${index && number - pages[index - 1] > 1 ? '<span class="page-ellipsis">…</span>' : ""}${button(number, number, number === page, number === page)}`,
-    )
-    .join("");
-  return `<div class="ledger-pager">
-    ${button("‹ 上一页", page - 1, page <= 1)}
-    <span class="page-info">第 ${page} / ${totalPages} 页 · 共 ${total} 笔 · 每页 ${data.pageSize} 笔</span>
-    ${button("下一页 ›", page + 1, page >= totalPages)}
-    <div class="page-numbers">${numbers}</div>
-  </div>`;
+  return renderPagination(data, {
+    attribute: "data-entry-ledger-page",
+    unit: "笔",
+    loading,
+  });
 }
 
 export function initializeEntryObservationLedger({ request }) {
@@ -199,6 +186,9 @@ export function initializeEntryObservationLedger({ request }) {
     const page = Number(button.dataset.entryLedgerPage);
     if (page >= 1 && page <= data.totalPages) void load(page);
   };
+  bindPageJump(pager, (page) => {
+    if (!loading) void load(page);
+  });
   refresh.onclick = () => {
     if (!loading) void load(data?.page ?? 1);
   };

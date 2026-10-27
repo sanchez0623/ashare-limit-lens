@@ -204,17 +204,31 @@ export class StockMetadataRepository {
       .run();
     return this.job(id);
   }
-  async snapshot(kind) {
-    const row = await this.db
-      .prepare(
-        "SELECT s.* FROM metadata_current c JOIN metadata_snapshots s ON s.id=c.snapshot_id WHERE c.kind=? AND s.state='PUBLISHED'",
-      )
-      .bind(kind)
-      .first();
+  async snapshot(kind, { id, before } = {}) {
+    const row =
+      id || before
+        ? await this.db
+            .prepare(
+              `SELECT * FROM metadata_snapshots WHERE kind=? AND state='PUBLISHED'${id ? " AND id=?" : ""}${before ? " AND fetched_at<=?" : ""} ORDER BY fetched_at DESC,id DESC LIMIT 1`,
+            )
+            .bind(kind, ...(id ? [id] : []), ...(before ? [before] : []))
+            .first()
+        : await this.db
+            .prepare(
+              "SELECT s.* FROM metadata_current c JOIN metadata_snapshots s ON s.id=c.snapshot_id WHERE c.kind=? AND s.state='PUBLISHED'",
+            )
+            .bind(kind)
+            .first();
     if (!row) return null;
     let cache = snapshotCaches.get(this.db);
     if (!cache) snapshotCaches.set(this.db, (cache = new Map()));
-    if (cache.get(kind)?.id === row.id) return cache.get(kind);
+    const cacheKey = id || before ? `${kind}:${row.id}` : kind;
+    if (
+      cache.get(cacheKey)?.id === row.id &&
+      cache.get(cacheKey)?.fetchedAt === row.fetched_at &&
+      cache.get(cacheKey)?.digest === row.digest
+    )
+      return cache.get(cacheKey);
     const records = (
       await this.db
         .prepare(
@@ -233,7 +247,7 @@ export class StockMetadataRepository {
       records,
       byCode: new Map(records.map((r) => [r.code, r])),
     };
-    cache.set(kind, result);
+    cache.set(cacheKey, result);
     return result;
   }
   async publish(kind, input, { jobId, owner, source, warnings = [] }) {
