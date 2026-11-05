@@ -88,7 +88,18 @@
 ## MEM-003：进程停摆导致漏日结算缺失，账户连续性永久卡死——漏日自动补结算落地
 
 - 记录日期：2026-11-05，北京时间。
-- 事故：11-04 11:06 与 11-05 10:41 执行进程两次停摆（第二次伴随系统睡眠 1 小时与 12:21 蓝屏 0x7F_8，Windows 事件日志见 Kernel-Power 41/6008、事件 1005 磁盘 IO 错误与 crashpad in-page error——机器硬件体检仍未做）。11-04 的实时会话带真实成交但收盘结算从未运行，`lastDate` 停在 11-03，11-05 全天 `SESSION_BLOCKED / MISSING_SETTLEMENT` 零执行。原架构下自动恢复不可能：`runDaily` 只结算当天，盘前补结算仅覆盖"lastDate 无计划"场景，而 11-04 有计划有会话。
+- 事故：11-04 11:06 与 11-05 10:41 执行进程两次停摆。11-04 的实时会话带真实成交但收盘结算从未运行，`lastDate` 停在 11-03，11-05 全天 `SESSION_BLOCKED / MISSING_SETTLEMENT` 零执行。原架构下自动恢复不可能：`runDaily` 只结算当天，盘前补结算仅覆盖"lastDate 无计划"场景，而 11-04 有计划有会话。
+
+### 硬件根因证据（2026-11-05 16:30 采集，未做内存诊断）
+
+- **WHEA-Logger Event 19（已更正硬件错误）10-27 21:58 至 11-04 23:06 共 68 次**，全部为"处理器核心 / Corrected Machine Check / **Internal parity error**"，APIC ID 0 与 1 交替。按日：10-27 3、10-28 9、10-29 21、10-30 13、10-31 4、11-01 1、11-02 3、11-03 9、11-04 5。**11-04 11:04:28 那条正好在服务 11:06 静默死亡之前 2 分钟**，与停摆时间吻合。
+- 近 4 天 5 次内核崩溃（`C:\Windows\Minidump`）：11-02 10:20 `0x0A` IRQL_NOT_LESS_OR_EQUAL、11-02 15:25、11-02 16:42、11-03 22:26 `0x50` PAGE_FAULT_IN_NONPAGED_AREA、11-05 12:22 `0x7F(8)` DOUBLE_FAULT。三类 BugCheck 组合指向 CPU 缓存/内存控制器或内存条，而非存储。
+- 磁盘侧排除：`chkdsk C: /scan`（提权在线扫描，1.92 分钟）阶段 1-3 与 USN 日志全部通过，"Windows 已扫描文件系统，没有发现问题"；`Get-PhysicalDisk` HealthStatus=Healthy，存储为 YMTC YMSS2ED08D25MC SSD（954GB，C/D 两卷均 Healthy）。
+- 内存配置：2×16GB SK Hynix HMCG78AGBSA092N DDR5-5600 双通道（Controller0/1 ChannelA）。
+- 驱动与更新：最近驱动为 10-09/10-10，Windows 更新止于 10-19；而硬件错误自 10-27 起量级暴增，**不是新驱动或系统更新直接引入**。
+- 机器里还有 11-05 10:51 应用 API 触发的睡眠与 12:22 意外重启（Kernel-Power 41/6008、事件 1005 磁盘 IO 报错）。
+- 用户决定：暂不执行内存诊断重启（`{memdiag}` 引导项已确认可用但**未设置 bootsequence**），仅保留证据。因此**内存诊断尚未运行**，不得声称已完成。
+- 处置建议（未实施）：内存诊断 memtest 全轮次 → 关 XMP/降频 → 检查散热与 BIOS/微码 → 换内存条复测 → 仍复现则怀疑 CPU/主板。硬件问题未排除前，软件层只能缩短故障时长，不能保证交易日内不中断。
 
 ### 已落地的修复（paper.js / historical-quotes.js 均不在执行白名单，指纹保持 b29bba9b）
 
