@@ -37,7 +37,9 @@ import {
   tradingCalendar,
   indexDailyCloses,
 } from "./market.js";
-import { readWeights, aiConfig } from "./review.js";
+import { historicalDailyQuotes } from "./historical-quotes.js";
+import { planFreezeDeadline } from "../../shared/observation-schedule.js";
+import { afterClose, readWeights, aiConfig } from "./review.js";
 import { proposeImprovement } from "./research.js";
 import { digestOf, canonicalJson } from "../domain/research-lineage.js";
 import { loadOrBuildExitContext } from "./exit-context.js";
@@ -82,6 +84,7 @@ import {
   assertStoredProgramPlan,
   ensureFrozenTQuality,
 } from "./strategy-program-evidence.js";
+import { executionEngineBuildDigest } from "../domain/execution-build.js";
 
 // 做T记录提取（方案 7）：当日成交 → paper_t_trades 的 upsert 记录集。
 //   - 当日做T腿（T_FORWARD/T_REVERSE）：同日两腿齐 → 当日了结；单腿 →
@@ -121,9 +124,52 @@ export function buildTTradeRecords({ fills, openRecords, now }) {
     upserts.push(settleRecord(openByCode.get(code)));
   return upserts;
 }
-export async function runPaperDay(env, date) {
+// 漏日空仓补结算的冻结依据核验：只在该交易日从未建立实时会话、账户空仓且
+// 无在途订单时使用。此时计划不可能产生任何成交，因此不执行订单，仅核对
+// 计划摘要、主账户绑定、配置摘要与登记构建是否仍是同一份冻结依据；当前
+// 运行构建的差异由调用方显式记录进结算提示，不使用旧指纹或放宽其他校验。
+export async function assertSessionlessSettlementPlan(env, plan, date) {
+  if (!plan || !isDragon(plan)) throw new Error("漏日补结算仅支持独立政策计划");
+  const live = await env.DB.prepare(
+    "SELECT 1 FROM paper_live_sessions WHERE trade_date=? LIMIT 1",
+  )
+    .bind(date)
+    .first();
+  if (live) throw new Error("当日已有实时会话，不能按无会话空仓结算");
+  const stored = await env.DB.prepare(
+    "SELECT digest FROM paper_plans WHERE signal_date=?",
+  )
+    .bind(plan.signalDate)
+    .first();
+  if (!stored || (await digestOf(plan)) !== stored.digest)
+    throw new Error("冻结计划摘要不一致，结算暂停");
+  const binding = await env.DB.prepare(
+    "SELECT config_id AS configId, plan_digest AS planDigest FROM dragon_plan_bindings WHERE scope='main' AND signal_date=?",
+  )
+    .bind(plan.signalDate)
+    .first();
+  if (
+    !binding ||
+    binding.planDigest !== stored.digest ||
+    binding.configId !== plan.dragonPolicy?.configId
+  )
+    throw new Error("主账户计划绑定与冻结计划不一致，结算暂停");
+  const config = await env.DB.prepare(
+    "SELECT digest, engine_build AS engineBuild FROM dragon_config_versions WHERE id=?",
+  )
+    .bind(binding.configId)
+    .first();
+  if (
+    !config ||
+    config.digest !== plan.dragonPolicy?.configDigest ||
+    config.engineBuild !== plan.engineBuild
+  )
+    throw new Error("登记配置与冻结计划不一致，结算暂停");
+}
+
+export async function runPaperDay(env, date, options = {}) {
   try {
-    return await settlePaperDay(env, date);
+    return await settlePaperDay(env, date, options);
   } catch (error) {
     const reason = safeError(error);
     const repository = new PaperRepository(env);
@@ -134,7 +180,7 @@ export async function runPaperDay(env, date) {
   }
 }
 
-async function settlePaperDay(env, date) {
+async function settlePaperDay(env, date, options = {}) {
   const repository = new RealtimeRepository(env);
   let account = await repository.initialize(await readWeights(env));
   const existing = account.book.lastDate === date;
@@ -163,12 +209,29 @@ async function settlePaperDay(env, date) {
     const previousDate =
       calendar.dates.filter((day) => day < date).at(-1) || null;
     if (account.book.lastDate && account.book.lastDate !== previousDate) {
-      const reason =
-        "存在尚未结算的交易日，请补齐已冻结计划和对应行情后重放；账户暂不跨日结算";
-      await repository.logRun(date, "BLOCKED", { reason });
-      // 结算失败（漏日）也必须交出未来日历：赛马窗口据此冻结结束日，
-      // 漏日保留在冻结窗口内，不会被后续结算日顺延补满。
-      return { status: "BLOCKED", reason, calendarDates };
+      // 漏日自动补结算（仅收盘后窗口）：执行进程停摆会让某个交易日错过
+      // 15:05 结算，账户从此永远差一天、每日阻断且无法自愈。此处按序
+      // 递归重放缺失交易日（漏多日时由最深缺口向外逐日补齐），重放沿用
+      // 同一结算路径与全部冻结依据守卫——连续性、事前计划、成本政策、
+      // 执行指纹逐项核验，不补造观测或成交；任何一天补结算失败即保持
+      // 原样阻断当日，不放宽校验、不跨日混算。收盘前只阻断不重放，
+      // 避免盘中推进 lastDate 打开当日会话。
+      if (afterClose(options.now)) {
+        const catchup = await settlePaperDay(env, previousDate, options);
+        account = await repository.initialize(await readWeights(env));
+        if (account.book.lastDate !== previousDate) {
+          const reason = `存在尚未结算的交易日（${account.book.lastDate} → ${date}），漏日补结算未完成：${catchup.reason ?? catchup.status}`;
+          await repository.logRun(date, "BLOCKED", { reason });
+          return { status: "BLOCKED", reason, calendarDates };
+        }
+      } else {
+        const reason =
+          "存在尚未结算的交易日，请补齐已冻结计划和对应行情后重放；账户暂不跨日结算";
+        await repository.logRun(date, "BLOCKED", { reason });
+        // 结算失败（漏日）也必须交出未来日历：赛马窗口据此冻结结束日，
+        // 漏日保留在冻结窗口内，不会被后续结算日顺延补满。
+        return { status: "BLOCKED", reason, calendarDates };
+      }
     }
     // A new account never retroactively executes an older plan.
     const plan = account.book.lastDate
@@ -211,18 +274,99 @@ async function settlePaperDay(env, date) {
       benchmark,
     );
     dataset.previousTradingDate = previousDate;
+    // 补结算历史日：实时行情快照只覆盖当天，历史日缺失的持仓/订单收盘价
+    // 用交易所日线（原始未复权）兜底构造，字段满足 closeSession 的最终
+    // 收盘核验（≥15:00 时间戳）与昨收对账。仍缺失的代码由结算守卫按
+    // "缺少最终收盘价"原样阻断，不静默造数、不放宽除权核对。
+    const markCodes = [
+      ...new Set([
+        ...account.book.positions.map((position) => position.code),
+        ...(plan?.orders ?? []).map((order) => order.code),
+      ]),
+    ].filter((code) => !dataset.quotes[code]);
+    if (markCodes.length && previousDate) {
+      const historical = await historicalDailyQuotes(
+        markCodes,
+        date,
+        previousDate,
+      );
+      for (const [code, quote] of Object.entries(historical))
+        if (!dataset.quotes[code]) dataset.quotes[code] = quote;
+    }
     try {
       if (plan) {
-        const session =
-          (await repository.session(date)) ||
-          openSession(account.book, plan, date);
-        await assertStoredProgramPlan(env, session.plan, session.initialBook);
+        const stored = await repository.session(date);
+        // 漏日仅重估结算：计划错过执行日冻结截止（漏日导致计划迟到）时，
+        // 当日执行会话在 openSession/openDragonSession 的冻结截止守卫下
+        // 永不合法，但零成交的持仓重估仍必须完成，否则连续性链条永久断
+        // 裂。此时不建执行会话、不执行任何订单，构造结算专用零帧会话仅
+        // 做持仓重估与在途状态结转；当日存在成交记录视为数据异常原样阻
+        // 断。执行路径的冻结截止守卫原样保留，此处不放宽任何执行闸门。
+        const sessionlessHeld =
+          !stored &&
+          Date.parse(plan.createdAt) >= planFreezeDeadline(plan, date) &&
+          // dragon 持仓的在途状态（恢复腿/退出标记）由 closeDragonSession
+          // 随持仓结转；非 dragon 的在途单据寄存在账本上、由会话订单重建，
+          // 仅重估会话（零订单）会丢失它们——此类账本保持原样阻断。
+          (isDragon(account.book) ||
+            (!(account.book.pendingOrders ?? []).length &&
+              !(account.book.pendingExits ?? []).length &&
+              !(account.book.pendingRecovery ?? []).length));
+        if (sessionlessHeld) {
+          const ledgerRows = await repository.ledgerRowsForDate(date);
+          if (ledgerRows.length)
+            throw new Error("当日无会话但存在成交记录，数据异常，结算暂停");
+        }
+        const session = stored ||
+          (sessionlessHeld
+            ? {
+                tradingPolicyVersion: plan.tradingPolicyVersion,
+                date,
+                signalDate: plan.signalDate,
+                status: "OPEN",
+                plan: structuredClone(plan),
+                initialBook: structuredClone(account.book),
+                sequence: 0,
+                fillCount: 0,
+                quotes: {},
+                orders: [],
+                lastObservedAt: null,
+              }
+            : openSession(account.book, plan, date));
+        // 漏日补结算：该交易日从未建立实时会话，账户空仓且无在途订单时，
+        // 冻结计划的登记构建可能已随升级变化（新版本仍在排队等待衔接）。
+        // 这种情形没有任何订单位于执行链上，只允许结算空仓边界；计划摘要、
+        // 主账户绑定、配置摘要与登记构建仍逐项核验，不补造观测或成交。
+        const sessionlessEmpty =
+          !stored &&
+          isDragon(plan) &&
+          !account.book.positions.length &&
+          !(account.book.pendingOrders ?? []).length &&
+          !(account.book.pendingExits ?? []).length &&
+          !(account.book.pendingRecovery ?? []).length &&
+          plan.engineBuild !== (await executionEngineBuildDigest());
+        if (sessionlessEmpty)
+          await assertSessionlessSettlementPlan(env, plan, date);
+        else
+          await assertStoredProgramPlan(env, session.plan, session.initialBook);
         dataset.executionMode = "realtime";
         settlement = closeSession(account.book, session, dataset);
         if (!session.sequence)
           settlement.notices.push(
             "当日没有实时轮询记录，不补造开盘或盘中成交；仅结算实际持仓",
           );
+        if (sessionlessEmpty)
+          settlement.notices.push(
+            `冻结计划登记构建 ${String(plan.engineBuild).slice(0, 12)} 与当前运行构建不同（新版本待衔接）；按空仓补结算，未执行任何订单`,
+          );
+        if (sessionlessHeld) {
+          settlement.notices.push(
+            "当日计划错过冻结窗口（漏日补结算），未建立执行会话、未成交；仅按交易所收盘价重估持仓",
+          );
+          // 仅重估结算不落会话行：当日从未存在执行会话，结算专用会话也
+          // 没有 regime 等执行态字段，落行会让 /api/paper/live 误读执行态。
+          settlement.session = null;
+        }
       } else settlement = executePlan(account.book, plan, dataset);
     } catch (error) {
       await repository.logRun(date, "BLOCKED", { reason: error.message });

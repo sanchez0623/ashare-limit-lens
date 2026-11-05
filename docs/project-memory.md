@@ -46,3 +46,61 @@
 ### 本次记录的恢复状态
 
 截至上述 09:53 核查，**尚未确认主交易执行恢复**。后续确实恢复后，应追加实际恢复时间、所用衔接机制和观测推进证据，不提前标记已解决。
+
+## MEM-002：同类指纹失配第三次复发——升级发生在 09:30 衔接窗口之后，当日全阻断
+
+- 记录日期：2026-10-27，北京时间 13:3x 核查。告警 `inc-2026-10-15T06:57:06.506Z-38b6c9d7#18`：`LOOP_FAILED / primary / RUNNER_FAILED`，13:15 触发，持续 225 分钟（约自 09:30 开盘起）。
+
+### 已核实事实
+
+- `/api/paper/live`：`running:true`、心跳新鲜，但 `health.status=ERROR`，reason 仍为“新政策独立冻结依据、配置或执行指纹不一致”；`session:null`，`paper_live_sessions` 表为空——当日主账户零会话、零执行，不是无买点空仓。
+- 指纹对比：
+  - 冻结主计划（`paper_plans.signal_date=2026-10-26`，09:26:46 北京冻结，`scope='main'` 绑定 config `dragon-engine-d63742fc…`）：`engineBuild=3eec234d…`。
+  - 当前源码与 dist bundle：`b29bba9b…`。dist 构建于 12:15:38 北京；常驻进程为两个 `node ./server.mjs`，均 12:20 北京启动，确认加载 b29bba9b。
+- 账户 book：`lastDate=2026-10-26`、`positions=0`、`dragonTransition.configId=d63742fc`、`pendingDragonConfigId=dragon-engine-b5144c37…`（即 b29bba9b 新版本只排队、未生效）。
+- 时间线：09:26:46 冻结 3eec234d 计划 → 09:47:20 注册 4fee2912 → 10:27:26 注册 b29bba9b。后两者均在 09:30 衔接窗口关闭之后。
+
+### 反复发生的直接原因
+
+`applyDragonLifecycle`（`backend/services/dragon-risk.js:976`）只在三个窗口允许把未执行旧计划迁移到新指纹：当日 `>=15:05`、次日 `<09:30`、新周期特殊窗。`refreshDragonEngine` 在窗口外检测到指纹变化时只设置 `pendingDragonConfigId`，不改动已冻结计划；而 `assertStoredDragonPlan` 每轮仍严格校验“冻结指纹 == 当前运行指纹”。因此**只要执行白名单源码在 09:30 之后、当日 15:05 之前被改动并重建/重启，主账户就必然全天阻断、每 10 秒报 RUNNER_FAILED**。10-23 至 10-27 的 `dragon_config_versions` 显示 ENGINE_UPGRADE 几乎每个交易日都在盘中/盘后注册，同类拦截因而反复出现。
+
+### 本次阻断结论与下一合法窗口
+
+- 13:3x 时点：今日 `>=15:05` 窗口条件是 `clock.date === lastDate(2026-10-26)`，不成立；今日 `<09:30` 窗口已过——**当日无合法衔接路径，主账户 10-27 全天不执行**。不做改指纹、清库、伪造计划等任何绕过操作。
+- 下一合法窗口：**2026-10-28 开盘前（时钟日期晚于 lastDate 且北京时 < 09:30）**，前提是执行白名单源码不再变动（否则 `applyDragonLifecycle` 会抛“待生效配置执行指纹已变化，请重新验证”），且常驻服务在运行。迁移成功时旧计划会存入 `paper_plan_revisions`，以原冻结信号重冻新指纹计划。
+- 发布纪律（防止第四次）：执行源码改动+构建+重启只能安排在收盘后 `>=15:05`，或次日 09:30 前完成；09:30–15:05 之间不得上线新执行指纹。恢复验收仍按 MEM-001：health 转 OK、当日会话建立、跨轮询间隔主观测推进，三者齐备才算恢复。
+
+### 后续恢复结果（2026-10-27 15:05 已确认恢复）
+
+- 15:05:24 曾报 `SETTLEMENT_LATE / SETTLEMENT_FAILED`，经查是**结算流程执行中途（开始约 20 秒后）触发的短暂迟延告警**，并非最终失败。
+- 15:05:45（北京）`runDaily` 完成：空仓补结算 10-27（零成交，notice 明确“登记构建 3eec234d 与当前 b29bba9b 不同，按空仓补结算”）、`lastDate` 推进至 2026-10-27、`pendingDragonConfigId` 清空、新配置 `dragon-engine-b5144c37…`（engineBuild=b29bba9b）正式 ACTIVE、已冻结 10-28 交易计划。
+- 新计划核验：engineBuild=b29bba9b 与当前运行一致，候选池 57 只，`entryExecutionPolicy`/`executionCostPolicy` 齐全，`scope='main'` 绑定与计划摘要一致。
+- 待最终确认：2026-10-28 开盘后当日实时会话建立、主观测跨轮询推进。计划/指纹/账户三者已一致。
+
+### 后续改动：结算备注上界面 + 结算告警加时间闸门（2026-10-27 下午）
+
+- 多进程排查：15:05:23 那次“结算失败”根因不是“采样太早”，而是**三个 node 实例并发操作同一库**：PID 33908（手动从 Windows Terminal 启动，唯一持有 3000 端口）为正常实例；PID 28276、3356 是 codex app-tools（`launch_codex_app_tools_mcp.cmd ./server.mjs`）在 12:20 重复拉起的无端口实例，其交易循环 CAS 竞争产生 `settled:false`，触发误报。用户要求先排查不擅自杀进程，处置待用户决定。
+- 界面：交易页“下一交易日计划”区块下新增“结算备注”折叠区（`paper-settlement-notices`，渲染 `run.notices`，数据本就经 `/api/paper` 返回），默认展开；无备注时隐藏。
+- 告警闸门：`classifyOperationalFacts(input, policy)` 增加 policy 参数；daily 失败若发生在 AFTER_CLOSE 且北京时 `< settlementLateWarningAt`（默认 15:20）则不产生告警事件（宽限窗），到点仍失败才报 WARNING、15:30 升 CRITICAL。`recordOperationEvents` 改为读取已存规则版本的 policy 后传入。
+- 指纹安全：本次改动文件（alert-rules.js、services/alerts.js、前端）均**不在执行引擎白名单**，构建后执行指纹仍为 b29bba9b，10-28 计划与账户绑定不受影响。已构建；告警测试 35/35、sessionless 测试 4/4 通过。
+- 运行加载状态：**常驻进程尚未重启，仍运行 12:15 的旧构建**；告警闸门与界面改动需重启 server 后才在运行实例生效（前端静态资源刷新即可见新备注，后端闸门需重启）。重启须由用户确认，重启时间不受窗口限制（这些文件不改执行指纹）。
+
+## MEM-003：进程停摆导致漏日结算缺失，账户连续性永久卡死——漏日自动补结算落地
+
+- 记录日期：2026-11-05，北京时间。
+- 事故：11-04 11:06 与 11-05 10:41 执行进程两次停摆（第二次伴随系统睡眠 1 小时与 12:21 蓝屏 0x7F_8，Windows 事件日志见 Kernel-Power 41/6008、事件 1005 磁盘 IO 错误与 crashpad in-page error——机器硬件体检仍未做）。11-04 的实时会话带真实成交但收盘结算从未运行，`lastDate` 停在 11-03，11-05 全天 `SESSION_BLOCKED / MISSING_SETTLEMENT` 零执行。原架构下自动恢复不可能：`runDaily` 只结算当天，盘前补结算仅覆盖"lastDate 无计划"场景，而 11-04 有计划有会话。
+
+### 已落地的修复（paper.js / historical-quotes.js 均不在执行白名单，指纹保持 b29bba9b）
+
+1. 漏日自动补结算（paper.js）：结算时发现 `lastDate` 落后于上一交易日且处于收盘后窗口（`afterClose`）时，按序递归重放缺失交易日；连续性、事前计划、成本政策、执行指纹逐项核验，任何一天失败即保持原样阻断。盘中只阻断不重放（防止盘中推进 lastDate 打开当日会话）。
+2. 历史日线兜底（historical-quotes.js）：实时快照只覆盖当天，补结算历史日的持仓收盘价从腾讯 fqkline 日线（qfq 前复权）构造。注意：**fqkline 不带 `,qfq` 后缀时对个股返回空数据**；若结算日至今发生除权，前复权昨收与账面原价不一致，由 closeSession 除权守卫原样阻断，不静默混口径。
+3. 漏日仅重估结算（paper.js `sessionlessHeld`）：计划错过执行日冻结截止（`planFreezeDeadline`）时，retro-open 会话在 openSession/openDragonSession 守卫下永不合法，但零成交的持仓重估必须完成否则连续性断裂。构造结算专用零帧会话仅重估持仓：当日存在成交记录视为数据异常阻断；非 dragon 账本有在途单据（pendingOrders/Exits/Recovery）时阻断（closeSession 按会话订单重建在途状态，零订单会话会丢状态；dragon 由持仓自带 dragon.t/dragon.exit 结转，安全）；**结算专用会话不落 paper_live_sessions 行**——它没有 regime 等执行态字段，落行会让 `/api/paper/live` 读 `session.regime.phase` 报错（本次实际踩坑）。
+4. 保活（Layer A）：`scripts/keepalive.mjs` + 计划任务 "LimitLens Keepalive"（每 2 分钟，当前用户注册；SYSTEM/ONLOGON 需管理员未注册）。端口无响应即拉起 server.mjs，日志在 `.sites-runtime/logs/`。当晚两次重启均由 keepalive 自动完成，已实战验证。电源策略本就是接通电源从不睡眠；10:51 的睡眠是应用 API 主动触发，空闲超时防护覆盖不了。
+5. 工具（Layer 兜底）：`scripts/replay-settlement.mjs`（收盘后手动/计划任务触发漏日重放，窗口前拒绝执行；计划任务 cwd 是 System32，必须显式 `loadEnvFile(项目根/.env)`）。
+
+### 验收记录
+
+- 2026-11-05 15:52 重放完成：11-04（历史日线兜底，601086/603258 按真实收盘重估）与 11-05（仅重估、零成交、notice 如实声明）均 SETTLED，`lastDate=2026-11-05`，plan(signal_date=11-05) 已冻结，净值行两天齐且 complete=1。
+- 回归：settlement-catchup 新用例 2/2、全量 V5 回归 465/465。
+- 新构建已构建并经 keepalive 拉起生效（指纹 b29bba9b 不变，冻结计划/绑定不受影响）。
+- 待最终确认：11-06 开盘当日会话建立、主观测跨轮询推进；SESSION_BLOCKED 与 REQUIRED_QUOTE_STALE 两个 incident 在真实恢复证据出现后自动转 RESOLVED。

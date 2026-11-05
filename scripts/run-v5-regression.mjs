@@ -38,6 +38,8 @@ const suites = {
     "downgrade",
     "t-quality",
     "t-quality-recovery",
+    "sessionless-settlement",
+    "settlement-catchup",
     "ledger-pagination",
     "trading-cutover",
   ],
