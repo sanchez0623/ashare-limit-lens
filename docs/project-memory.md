@@ -95,7 +95,9 @@
 1. 漏日自动补结算（paper.js）：结算时发现 `lastDate` 落后于上一交易日且处于收盘后窗口（`afterClose`）时，按序递归重放缺失交易日；连续性、事前计划、成本政策、执行指纹逐项核验，任何一天失败即保持原样阻断。盘中只阻断不重放（防止盘中推进 lastDate 打开当日会话）。
 2. 历史日线兜底（historical-quotes.js）：实时快照只覆盖当天，补结算历史日的持仓收盘价从腾讯 fqkline 日线（qfq 前复权）构造。注意：**fqkline 不带 `,qfq` 后缀时对个股返回空数据**；若结算日至今发生除权，前复权昨收与账面原价不一致，由 closeSession 除权守卫原样阻断，不静默混口径。
 3. 漏日仅重估结算（paper.js `sessionlessHeld`）：计划错过执行日冻结截止（`planFreezeDeadline`）时，retro-open 会话在 openSession/openDragonSession 守卫下永不合法，但零成交的持仓重估必须完成否则连续性断裂。构造结算专用零帧会话仅重估持仓：当日存在成交记录视为数据异常阻断；非 dragon 账本有在途单据（pendingOrders/Exits/Recovery）时阻断（closeSession 按会话订单重建在途状态，零订单会话会丢状态；dragon 由持仓自带 dragon.t/dragon.exit 结转，安全）；**结算专用会话不落 paper_live_sessions 行**——它没有 regime 等执行态字段，落行会让 `/api/paper/live` 读 `session.regime.phase` 报错（本次实际踩坑）。
-4. 保活（Layer A）：`scripts/keepalive.mjs` + 计划任务 "LimitLens Keepalive"（每 2 分钟，当前用户注册；SYSTEM/ONLOGON 需管理员未注册）。端口无响应即拉起 server.mjs，日志在 `.sites-runtime/logs/`。当晚两次重启均由 keepalive 自动完成，已实战验证。电源策略本就是接通电源从不睡眠；10:51 的睡眠是应用 API 主动触发，空闲超时防护覆盖不了。
+4. 保活（Layer A）：`scripts/keepalive.mjs` + 计划任务 "LimitLens Keepalive"（每 2 分钟，当前用户注册；SYSTEM/ONLOGON 需管理员未注册）。端口在监听即视为存活（用 `net.connect` 探测，不依赖认证）；否则 detached 拉起 server.mjs，日志在 `.sites-runtime/logs/`。两个必须遵守的实现约束：(a) **脚本不得调用 `process.exit()`**——异步句柄未清理时计划任务会把成功运行记为 1067（进程异常终止）；(b) **子进程 stdout/stderr 必须直接写日志文件描述符**，用 pipe 时父进程退出会关闭管道，常驻服务写 stdout 触发 EPIPE 可能被带崩。任务本身用 XML 注册，`MultipleInstancesPolicy=Parallel` + `ExecutionTimeLimit=PT1M` + `StartWhenAvailable=true`：早期用 `/SC MINUTE` 默认 IgnoreNew 时，一次僵死实例会让后续所有触发被静默忽略、保活整体失效（实测 Last Run Time 停在 16:06 三分钟不再推进）。
+   验收方式：杀掉监听进程后端口应在 2 分钟内被自动重新占用，且任务 `Last Result=0`、`Last Run Time` 持续按周期推进（已实测：38 秒恢复、连续两个周期结果均为 0）。
+   电源策略本就是接通电源从不睡眠；10:51 的睡眠是应用 API 主动触发，空闲超时防护覆盖不了。
 5. 工具（Layer 兜底）：`scripts/replay-settlement.mjs`（收盘后手动/计划任务触发漏日重放，窗口前拒绝执行；计划任务 cwd 是 System32，必须显式 `loadEnvFile(项目根/.env)`）。
 
 ### 验收记录
@@ -103,4 +105,5 @@
 - 2026-11-05 15:52 重放完成：11-04（历史日线兜底，601086/603258 按真实收盘重估）与 11-05（仅重估、零成交、notice 如实声明）均 SETTLED，`lastDate=2026-11-05`，plan(signal_date=11-05) 已冻结，净值行两天齐且 complete=1。
 - 回归：settlement-catchup 新用例 2/2、全量 V5 回归 465/465。
 - 新构建已构建并经 keepalive 拉起生效（指纹 b29bba9b 不变，冻结计划/绑定不受影响）。
+- 2026-11-05 16:20 复核：`lastDate=2026-11-05`，`signal_date=2026-11-05` 的 `scope='main'` 绑定存在，计划 engineBuild=b29bba9b 与当前源码/dist 一致，`assertStoredProgramPlan` 实跑通过（EXECUTION GUARD: PASS）——次日开盘具备建立会话的全部前提。
 - 待最终确认：11-06 开盘当日会话建立、主观测跨轮询推进；SESSION_BLOCKED 与 REQUIRED_QUOTE_STALE 两个 incident 在真实恢复证据出现后自动转 RESOLVED。
